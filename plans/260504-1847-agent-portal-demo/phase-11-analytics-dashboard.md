@@ -2,7 +2,7 @@
 
 **Day:** Day 12 (May 21, 2026)  
 **Priority:** Medium  
-**Status:** Pending
+**Status:** Done (2026-05-07). Implemented + API smoke + live FE click-through verified via Puppeteer.
 
 ## Context Links
 - Plan: `plans/260504-1847-agent-portal-demo/plan.md`
@@ -181,13 +181,70 @@ Add optional `date` query param to `GET /api/executions`:
 ```
 
 ## Done Criteria
-- [ ] `GET /api/analytics/summary` returns non-zero values after running executions
-- [ ] Dashboard page shows real numbers (not zeros or hardcoded)
-- [ ] "Latest Errors" on dashboard shows recent failed executions with links
-- [ ] Analytics page `success_rate` updates after running more executions
-- [ ] Analytics auto-refreshes every 30s without page reload
-- [ ] Per-agent analytics available at `GET /api/analytics/agents/:id`
-- [ ] All metric values are formatted (e.g. "91.67%" not "0.9167", "$1.25" not "1.25")
+- [x] `GET /api/analytics/summary` returns non-zero values after running executions (smoke: 20 execs, 50% success, $0.04 cost, p95 361ms)
+- [x] Dashboard page shows real numbers (4/6 active agents, 20 executions, 50.00% success, 10 failed)
+- [x] "Latest Errors" on dashboard shows recent failed executions with links to `/executions/:id`
+- [x] Analytics page `success_rate` reflects live data; `refetchInterval: 30_000` keeps it fresh
+- [x] Analytics auto-refreshes every 30s without page reload (RefreshCw spinner shows during refetch)
+- [x] Per-agent analytics available at `GET /api/analytics/agents/:id` (smoke: Classifier 8/4/4, 50% success rate, recent_executions array)
+- [x] All metric values are formatted (`50.00%`, `$0.04`, `124ms`, `361ms`, `964 / 992` tokens with locale separators)
+- [x] `tsc --noEmit` clean, `vite build` clean (503KB bundle, no new errors)
+- [x] Live FE click-through verified via Puppeteer: dashboard + /analytics render correctly with real data
+
+## Implementation Notes (2026-05-07)
+
+### Files added
+```
+backend/src/modules/analytics/
+├── analytics.module.ts
+├── analytics.controller.ts        (GET /summary, GET /agents/:id)
+└── analytics.service.ts           (Promise.all() of 8 queries; raw SQL for p95 + top agents)
+
+backend/src/app.module.ts          (register AnalyticsModule)
+
+frontend/src/
+├── lib/types.ts                   (AnalyticsSummary, AnalyticsLatestFailure, AnalyticsTopAgent, AnalyticsAgentSummary, AnalyticsAgentRecentExecution)
+├── hooks/use-analytics.ts         (useAnalyticsSummary 30s/15s, useAgentAnalytics)
+├── components/analytics/
+│   ├── metric-card.tsx            (label + tabular-nums value, variant colors, isLoading state)
+│   ├── latest-failures-list.tsx   (table, severity pill, "View" link to execution)
+│   └── top-agents-list.tsx        (table, rate-tier coloring, "Open" link to agent)
+├── pages/
+│   ├── analytics/analytics-page.tsx   (Throughput + Reliability + Latest failures + Top agents)
+│   └── dashboard/dashboard-page.tsx   (replaces placeholder; mini metrics + latest errors + recent executions)
+└── router.tsx                     (drop /analytics placeholder, wire AnalyticsPage)
+```
+
+### Deviations from plan
+- **`top_agents` from raw SQL, not `groupBy`**: Prisma `groupBy` can't easily join AgentInstance.name in a single trip. Single raw query with `JOIN AgentInstance` + `GROUP BY ai.id` is simpler and faster than groupBy + lookup map.
+- **`p95_duration_ms` via `percentile_cont`**: Postgres-native, exact, single round trip. Plan suggested ORDER BY + index pick — that's a 50-row hand calculation that breaks at scale.
+- **`active_agents` = status `'running'`**: matches `AgentsService.STATUS_TRANSITIONS` (the only state with active executions). `paused` and `error` aren't "active".
+- **`Decimal` → `number` in `toNumber()`**: rounds to 4 decimals to avoid `0.0399999999...` artifacts. Token totals use raw integers.
+- **No `today_executions`** field added: dashboard uses `useExecutions({ limit: 10 })` directly; "today" filter was speculative — Phase 12 speed test will surface need.
+- **`Alert` has no `AlertTitle`/`AlertDescription`** sub-components — inlined as `<div>` headings to avoid touching the shared UI primitive.
+
+### Operational concerns
+- **`Promise.all()` of 8 queries**: each summary request is 8 parallel DB roundtrips. Negligible at demo scale; for prod consider a materialized view refreshed every N minutes, or cache the summary for 15s.
+- **p95 raw SQL**: not indexed on `durationMs`. `EXPLAIN ANALYZE` shows seq scan — fine at <10K rows. Add index in Phase 12+ if speed test reveals the bottleneck.
+- **Decimal precision**: `numeric(65,30)` in DB → 4 decimals in API. Truncation is fine for display; do NOT round before billing logic.
+- **30s polling cost**: dashboard + analytics each poll independently. Two open tabs = 4 requests/min. Acceptable for demo (1 user); for prod move to SSE.
+- **No workspace scoping yet**: hardcoded `WORKSPACE_ID = 'workspace_demo'` like other modules. Real auth in Phase 12+.
+
+### Live verification
+- Puppeteer login → screenshot `/` (dashboard) and `/analytics`. Both render with real data.
+- Sidebar unread badge still working ("9", from prior phase).
+- Console clean, no React errors, no failed network calls.
+
+## Handoff Notes (for Phase 12)
+- Analytics endpoint: `GET /api/analytics/summary` — workspace scoped via `WORKSPACE_ID` const.
+- Per-agent endpoint: `GET /api/analytics/agents/:id` — returns `recent_executions[20]` for sparkline.
+- Dashboard route: `/` (was placeholder, now real).
+- Analytics route: `/analytics` (was placeholder, now real).
+- `useAnalyticsSummary()` polls every 30s with 15s staleTime — speed test in Phase 12 will see numbers update without page reload.
+- p95 query is raw SQL (`percentile_cont`). If Phase 12 introduces 50+ executions, consider adding `idx_execution_workspace_duration` (workspaceId, durationMs WHERE durationMs IS NOT NULL).
+- `MetricCard` is reusable — Phase 12 speed-test results page can reuse it.
+- Backend deploy gotcha (still): `docker cp src → exec npm run build → docker restart`.
+- Cost values: server returns `number` (rounded to 4 decimals); `formatCost` clamps display to `$0.00` / `$X.XX` / `< $0.01`.
 
 ## Handoff Notes (for Phase 12)
 - Analytics endpoint: `GET /api/analytics/summary` — no params needed, workspace scoped from session

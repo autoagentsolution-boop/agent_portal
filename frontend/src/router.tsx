@@ -11,7 +11,7 @@ import { ExecutionDetailPage } from './pages/executions/execution-detail-page';
 import { ExecutionsPage } from './pages/executions/executions-page';
 import { IntegrationsPage } from './pages/integrations/integrations-page';
 import { NotificationsPage } from './pages/notifications/notifications-page';
-import { PlaceholderPage } from './pages/placeholder-page';
+import { AnalyticsPage } from './pages/analytics/analytics-page';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -31,7 +31,7 @@ export const router = createBrowserRouter([
       { path: '/executions/:id', element: <ExecutionDetailPage /> },
       { path: '/integrations', element: <IntegrationsPage /> },
       { path: '/notifications', element: <NotificationsPage /> },
-      { path: '/analytics', element: <PlaceholderPage title="Analytics" phase="Phase 11" /> },
+      { path: '/analytics', element: <AnalyticsPage /> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

@@ -149,3 +149,64 @@ export interface Notification {
   updatedAt: string;
   agentInstance?: { id: string; name: string; templateId: string } | null;
 }
+
+export interface AnalyticsLatestFailure {
+  execution_id: string;
+  agent_instance_id: string;
+  agent_name: string;
+  template_id: string;
+  status: ExecutionStatus;
+  error_message: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+}
+
+export interface AnalyticsTopAgent {
+  agent_instance_id: string;
+  name: string;
+  template_id: string;
+  runs: number;
+  success_rate: number;
+  avg_duration_ms: number;
+  total_cost_usd: number;
+}
+
+export interface AnalyticsSummary {
+  total_agents: number;
+  active_agents: number;
+  total_executions: number;
+  success_executions: number;
+  failed_executions: number;
+  success_rate: number;
+  avg_duration_ms: number;
+  p95_duration_ms: number;
+  total_tokens_input: number;
+  total_tokens_output: number;
+  estimated_cost_usd: number;
+  latest_failures: AnalyticsLatestFailure[];
+  top_agents: AnalyticsTopAgent[];
+}
+
+export interface AnalyticsAgentRecentExecution {
+  execution_id: string;
+  status: ExecutionStatus;
+  duration_ms: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+  cost_usd: number;
+}
+
+export interface AnalyticsAgentSummary {
+  agent_instance_id: string;
+  name: string;
+  template_id: string;
+  total_executions: number;
+  success_executions: number;
+  failed_executions: number;
+  success_rate: number;
+  avg_duration_ms: number;
+  total_tokens_input: number;
+  total_tokens_output: number;
+  estimated_cost_usd: number;
+  recent_executions: AnalyticsAgentRecentExecution[];
+}

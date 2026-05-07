@@ -8,6 +8,7 @@ import { IntegrationsModule } from './modules/integrations/integrations.module.j
 import { ExecutionsModule } from './modules/executions/executions.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { N8nModule } from './modules/n8n/n8n.module.js';
+import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { N8nModule } from './modules/n8n/n8n.module.js';
     ExecutionsModule,
     NotificationsModule,
     N8nModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}
