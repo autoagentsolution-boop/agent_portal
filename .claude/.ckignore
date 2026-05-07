@@ -1,0 +1,18 @@
+# Allow all directories - disable scout-block filtering
+# Negation patterns (!) override default blocks
+
+# Keep only truly massive dirs blocked
+node_modules
+.git
+
+# Allow everything else that defaults would block
+!dist
+!build
+!.next
+!.nuxt
+!__pycache__
+!.venv
+!venv
+!vendor
+!target
+!coverage

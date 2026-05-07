@@ -1,0 +1,104 @@
+{
+  "id": "ap08EmailDraftRsp",
+  "name": "Email Draft Responder",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Email Draft Responder\n\nWebhook-driven mock draft generator for the Agent Operations Portal demo.\n\nContract:\n- Inbound: spec §12.1 (execution_id, callback{url,secret}, input.items[])\n- Callback: spec §12.2 (status, metrics, result)\n- Result schema: spec §14.2 (drafts[].subject|body|approval_status)\n\nDemo rule (CRITICAL):\nNever send emails. Every draft is created with approval_status='waiting_for_review'.\nBackend approval endpoint flips that flag — no SMTP involved.",
+        "height": 280,
+        "width": 540,
+        "color": 4
+      },
+      "id": "n2-sticky-01",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [200, 80],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "email-draft-responder",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "n2-webhook-01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 400],
+      "webhookId": "email-draft-responder-webhook",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst item = raw && raw.body ? raw.body : raw;\nconst startedAt = new Date().toISOString();\n\nif (!item.execution_id) {\n  throw new Error('Missing execution_id in payload');\n}\nif (!item.callback || !item.callback.url || !item.callback.secret) {\n  throw new Error('Missing callback.url or callback.secret in payload');\n}\n\nconst config = item.config || {};\nconst tone = (config.reply_tone || 'professional').toString().toLowerCase();\nconst signature = config.signature || 'The Demo Team';\nconst simulateFailure = config.simulate_failure === true;\n\nconst providedItems = item.input && Array.isArray(item.input.items) ? item.input.items : [];\nconst items = providedItems.length > 0 ? providedItems : [\n  {\n    from: 'jordan@acme.io',\n    subject: 'Need automation help for client onboarding',\n    body: 'Hi team — we are scoping a project for client onboarding automation. Could you share pricing and a demo slot this week?'\n  },\n  {\n    from: 'priya@northwind.example',\n    subject: 'Question about your platform integrations',\n    body: 'Quick one — does your platform support Slack and Gmail out of the box? We are evaluating options before our roadmap planning.'\n  }\n];\n\nconst buildCallback = (status, result, error, metrics) => {\n  const finishedAt = new Date().toISOString();\n  return {\n    callbackUrl: item.callback.url,\n    callbackSecret: item.callback.secret,\n    callbackBody: {\n      execution_id: item.execution_id,\n      agent_instance_id: item.agent_instance_id,\n      template_id: item.template_id,\n      status,\n      n8n_execution_id: $execution.id,\n      started_at: startedAt,\n      finished_at: finishedAt,\n      metrics,\n      result,\n      error\n    },\n    httpResponse: { received: true, execution_id: item.execution_id, status }\n  };\n};\n\nif (simulateFailure) {\n  return [{\n    json: buildCallback(\n      'failed',\n      null,\n      { code: 'MOCK_PROVIDER_TIMEOUT', message: 'Simulated provider timeout for demo', retryable: true },\n      { input_count: items.length, output_count: 0, error_count: items.length, tokens_input: 0, tokens_output: 0, estimated_cost_usd: 0 }\n    )\n  }];\n}\n\nconst toneOpener = {\n  professional: 'Thank you for reaching out.',\n  friendly: 'Thanks so much for getting in touch!',\n  concise: 'Thanks for the note.'\n}[tone] || 'Thank you for reaching out.';\n\nconst toneCloser = {\n  professional: 'Looking forward to your response.',\n  friendly: 'Happy to chat whenever works for you.',\n  concise: 'Let me know a good time.'\n}[tone] || 'Looking forward to your response.';\n\nconst drafts = items.map((email) => {\n  const original = (email.subject || '').trim();\n  const subject = original.toLowerCase().startsWith('re:') ? original : `Re: ${original || 'your message'}`;\n  const snippet = (email.body || '').split(/\\s+/).slice(0, 18).join(' ');\n  const body = [\n    `Hi${email.from ? ' ' + email.from.split('@')[0] : ''},`,\n    '',\n    `${toneOpener} I read your note: \"${snippet}${snippet ? '…' : ''}\"`,\n    'A teammate will follow up shortly with the details you asked about. In the meantime, here is a 15-minute slot you can grab if useful: https://demo.invalid/book.',\n    '',\n    toneCloser,\n    '',\n    signature\n  ].join('\\n');\n\n  return {\n    from: email.from || null,\n    original_subject: email.subject || null,\n    subject,\n    body,\n    approval_status: 'waiting_for_review'\n  };\n});\n\nconst tokensIn = items.reduce((sum, e) => sum + ((e.subject || '').length + (e.body || '').length), 0);\nconst tokensOut = drafts.reduce((sum, d) => sum + d.body.length + d.subject.length, 0);\nconst summary = `${drafts.length} draft${drafts.length === 1 ? '' : 's'} created and waiting for approval.`;\n\nreturn [{\n  json: buildCallback(\n    'success',\n    {\n      summary,\n      data: {\n        items_processed: drafts.length,\n        drafts,\n        summary\n      }\n    },\n    null,\n    {\n      input_count: items.length,\n      output_count: drafts.length,\n      error_count: 0,\n      tokens_input: Math.ceil(tokensIn / 4),\n      tokens_output: Math.ceil(tokensOut / 4),\n      estimated_cost_usd: Number((drafts.length * 0.0025).toFixed(4))\n    }\n  )\n}];"
+      },
+      "id": "n2-code-01",
+      "name": "Generate Drafts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-demo-callback-secret",
+              "value": "={{ $json.callbackSecret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.callbackBody) }}",
+        "options": {
+          "timeout": 5000,
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n2-http-01",
+      "name": "Callback Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [720, 400],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Generate Drafts').item.json.httpResponse) }}",
+        "options": {}
+      },
+      "id": "n2-respond-01",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [960, 400]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Generate Drafts", "type": "main", "index": 0 }]]
+    },
+    "Generate Drafts": {
+      "main": [[{ "node": "Callback Backend", "type": "main", "index": 0 }]]
+    },
+    "Callback Backend": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 20
+  },
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": [{ "id": "JTbpl2odMInfCc80", "name": "AgentPortal" }]
+}

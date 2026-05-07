@@ -1,0 +1,430 @@
+{
+  "name": "Gmail Classifier API",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Label Actions\nGmail nodes — Add \"Ads\", \"Work\", \"Personal\", \"Financial\", or \"Other\" labels.",
+        "height": 1232,
+        "width": 304,
+        "color": 7
+      },
+      "id": "0fa0472f-ef1f-4f0b-a119-d9e5edf5031c",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2032,
+        528
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Classification\nEmail Content Classifier (LangChain) — classifies message content into category labels.",
+        "height": 352,
+        "width": 352,
+        "color": 7
+      },
+      "id": "ed1ac69a-4582-4324-bba8-efc91e83a251",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1568,
+        816
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Trigger\nGmail Trigger — listens for new incoming messages.",
+        "height": 256,
+        "width": 420,
+        "color": 7
+      },
+      "id": "d2e67bf1-7f27-44bd-90ae-a84a0765373b",
+      "name": "Sticky Note4",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        624,
+        896
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "SPAM"
+        ]
+      },
+      "id": "5d5168b2-8cdb-4469-9b45-51b077da3b10",
+      "name": "Add \"Ads\" label to message",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        2128,
+        624
+      ],
+      "webhookId": "50f63b22-df69-48ee-a9c9-3b167fa1e73a",
+      "typeVersion": 2.1,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "J03GF1gGnkhHb4yf",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "IMPORTANT"
+        ]
+      },
+      "id": "1b50312a-f510-4e17-96c6-849bfad50e12",
+      "name": "Add \"Work\" label to message",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        2128,
+        800
+      ],
+      "webhookId": "0c81ecf9-c11c-4474-b948-3f8d8fcafe66",
+      "typeVersion": 2.1,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "J03GF1gGnkhHb4yf",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "CATEGORY_PERSONAL"
+        ]
+      },
+      "id": "c7f06dc9-750e-4189-a332-7d3b13846957",
+      "name": "Add \"Personal\" label to message",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        2128,
+        976
+      ],
+      "webhookId": "d64c6e75-6c9c-4a9c-901f-06e7280f4705",
+      "typeVersion": 2.1,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "J03GF1gGnkhHb4yf",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "IMPORTANT"
+        ]
+      },
+      "id": "1f85d0f7-c273-43d5-ba3f-5983786669f2",
+      "name": "Add \"Financial\" label to message",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        2128,
+        1152
+      ],
+      "webhookId": "7bee9f47-421b-4a78-997f-568f248fd90e",
+      "typeVersion": 2.1,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "J03GF1gGnkhHb4yf",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_8235329133055563657"
+        ]
+      },
+      "id": "7ce8755f-c5aa-4961-83fc-d05effcfbdea",
+      "name": "Add \"Other\" label to message",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        2128,
+        1328
+      ],
+      "webhookId": "e0c44ca8-5f72-4712-9e24-b8b85f00884e",
+      "typeVersion": 2.1,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "J03GF1gGnkhHb4yf",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {}
+      },
+      "id": "d61e138d-3d99-47a1-bf86-9ed2b7846fca",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "position": [
+        672,
+        1008
+      ],
+      "typeVersion": 1.3,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "J03GF1gGnkhHb4yf",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputText": "={{ $json.classifierText }}",
+        "categories": {
+          "categories": [
+            {
+              "category": "Advertisment Emails",
+              "description": "Ads"
+            },
+            {
+              "category": "Work Emails",
+              "description": "Your work inbox"
+            },
+            {
+              "category": "Personal Emails",
+              "description": "Your personal inbox"
+            },
+            {
+              "category": "Financial Emails",
+              "description": "Emails with payments to be made"
+            },
+            {
+              "category": "Linkedid Job Alert",
+              "description": "Related with Linkedid job alerts"
+            }
+          ]
+        },
+        "options": {
+          "fallback": "other",
+          "systemPromptTemplate": "Please classify the text provided by the user into one of the following categories: {Advertisment Emails, Work Emails, Personal Emails, Financial Emails, Job Alert Emails}, and use the provided formatting instructions below. Don't explain, and only output the json."
+        }
+      },
+      "id": "50a5e572-6a4f-486c-9854-3f57f758b84e",
+      "name": "Email Content Classifier",
+      "type": "@n8n/n8n-nodes-langchain.textClassifier",
+      "position": [
+        1664,
+        928
+      ],
+      "typeVersion": 1.1,
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1456,
+        1344
+      ],
+      "id": "552098f2-4bd3-47d6-b065-0ee8f0f9d41f",
+      "name": "Google Gemini Chat Model",
+      "retryOnFail": true,
+      "notesInFlow": true,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "5xewTuOoP6IT65dj",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      },
+      "notes": "Service is high load at the moment. Please wait and try again later."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $json;\n\nconst from = item.From || item.from || \"\";\nconst subject = item.Subject || item.subject || \"\";\nconst snippet = item.snippet || \"\";\nconst payloadText = JSON.stringify(item.payload || {});\n\nconst fullText = [\n  `Actual From: ${from}`,\n  `Actual Subject: ${subject}`,\n  `Snippet: ${snippet}`,\n  `Payload: ${payloadText}`,\n].join(\"\\n\");\n\n// Try to detect forwarded original sender/subject\nconst originalFromMatch =\n  fullText.match(/Forwarded message[\\s\\S]*?From:\\s*([^<\\n]+)<([^>\\n]+)>/i) ||\n  fullText.match(/From:\\s*([^<\\n]+)<([^>\\n]+)>/i);\n\nconst originalSubjectMatch =\n  fullText.match(/Forwarded message[\\s\\S]*?Subject:\\s*([^\\n]+)/i) ||\n  fullText.match(/Subject:\\s*([^\\n]+)/i);\n\nconst originalFromName = originalFromMatch?.[1]?.trim() || \"\";\nconst originalFromEmail = originalFromMatch?.[2]?.trim() || \"\";\nconst originalSubject = originalSubjectMatch?.[1]?.trim() || subject;\n\nconst effectiveFromEmail = originalFromEmail || from;\nconst effectiveSubject = originalSubject || subject;\n\nlet normalizedCategoryHint = \"unknown\";\n\nif (\n  /linkedin\\.com/i.test(effectiveFromEmail) ||\n  /linkedin job alert/i.test(fullText) ||\n  /job alert/i.test(effectiveSubject) ||\n  /data engineer|remote|salary|year|job/i.test(effectiveSubject)\n) {\n  normalizedCategoryHint = \"linkedin_job_alert\";\n}\n\nreturn [\n  {\n    json: {\n      ...item,\n      actualFrom: from,\n      actualSubject: subject,\n      originalFromName,\n      originalFromEmail,\n      originalSubject,\n      effectiveFromEmail,\n      effectiveSubject,\n      normalizedCategoryHint,\n      classifierText: `\nActual Gmail From: ${from}\nActual Gmail Subject: ${subject}\n\nOriginal Forwarded From: ${originalFromName} <${originalFromEmail}>\nOriginal Forwarded Subject: ${originalSubject}\n\nSnippet:\n${snippet}\n\nDetected Hint:\n${normalizedCategoryHint}\n      `.trim(),\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        1008
+      ],
+      "id": "859e8601-798c-4095-b7ad-43d77bc6d9d3",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_6302926922642775986"
+        ]
+      },
+      "id": "3a012858-95b7-455c-aba4-d55901cefd45",
+      "name": "Add \"Other\" label to message1",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        2144,
+        1552
+      ],
+      "webhookId": "f05fc6be-541f-4921-b6b6-b3df26b53f19",
+      "typeVersion": 2.1,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "J03GF1gGnkhHb4yf",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gmail-email-classifier",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        624,
+        560
+      ],
+      "id": "35ff6036-41b8-43d8-9a3b-12fd1b6b769f",
+      "name": "Webhook",
+      "webhookId": "2d35c452-f03e-487c-87ad-222f2d1d85a6",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eFRVHkWsWyguLo3l",
+          "name": "Header Auth account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Content Classifier": {
+      "main": [
+        [
+          {
+            "node": "Add \"Ads\" label to message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add \"Work\" label to message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add \"Personal\" label to message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add \"Financial\" label to message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add \"Other\" label to message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add \"Other\" label to message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Email Content Classifier",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Email Content Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 20
+  },
+  "versionId": "3d64b921-4f70-43bf-af81-3e15a62ce8f2",
+  "meta": {
+    "templateId": "11114",
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f1b8bc81f1c1c33d6d1864b2b68c15964a0f609dbe50c9cfaa4c477d4dc0784b"
+  },
+  "id": "wvyFRb1dM0QausJp",
+  "tags": [
+    {
+      "updatedAt": "2026-05-06T07:20:53.388Z",
+      "createdAt": "2026-05-06T07:20:53.388Z",
+      "id": "JTbpl2odMInfCc80",
+      "name": "AgentPortal"
+    }
+  ]
+}

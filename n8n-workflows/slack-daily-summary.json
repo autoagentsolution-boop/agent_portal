@@ -1,0 +1,104 @@
+{
+  "id": "ap08SlackDailySum",
+  "name": "Slack Daily Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Slack Daily Summary\n\nWebhook-driven mock channel digest for the Agent Operations Portal demo.\n\nContract:\n- Inbound: spec §12.1 (execution_id, callback{url,secret}, input.items[])\n- Callback: spec §12.2 (status, metrics, result)\n- Result schema: spec §14.3 (summary, risks[], action_items[].owner|task|priority)\n\nDeterministic theming so the same input always yields the same digest. Tune the keyword maps in the Code node to add channels/topics.",
+        "height": 240,
+        "width": 540,
+        "color": 4
+      },
+      "id": "n3-sticky-01",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [200, 80],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "slack-daily-summary",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "n3-webhook-01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 360],
+      "webhookId": "slack-daily-summary-webhook",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst item = raw && raw.body ? raw.body : raw;\nconst startedAt = new Date().toISOString();\n\nif (!item.execution_id) throw new Error('Missing execution_id in payload');\nif (!item.callback || !item.callback.url || !item.callback.secret) {\n  throw new Error('Missing callback.url or callback.secret in payload');\n}\n\nconst config = item.config || {};\nconst channel = (config.channel || '#general').toString();\nconst maxRisks = typeof config.max_risks === 'number' ? config.max_risks : 3;\nconst maxActions = typeof config.max_action_items === 'number' ? config.max_action_items : 4;\nconst simulateFailure = config.simulate_failure === true;\n\nconst providedItems = item.input && Array.isArray(item.input.items) ? item.input.items : [];\nconst messages = providedItems.length > 0 ? providedItems : [\n  { user: 'alex',  text: 'Customer demo went well — they asked about SSO and audit logs.' },\n  { user: 'mira',  text: 'API timeout spiked again this morning around 9am, looking into it.' },\n  { user: 'kai',   text: 'Reminder: client review deadline is Friday — slides are 70% done.' },\n  { user: 'mira',  text: 'Pushed a hotfix for the timeout, monitoring throughput now.' },\n  { user: 'alex',  text: 'Two new prospects from the webinar, scoring them tomorrow.' },\n  { user: 'sam',   text: 'Roadmap doc updated — please review by EOD Wednesday.' },\n  { user: 'kai',   text: 'Need design review for the onboarding flow before Friday.' },\n  { user: 'mira',  text: 'Latency back to baseline. Will write up post-mortem tomorrow.' },\n  { user: 'alex',  text: 'Pricing experiment is converging — 3% lift on annual plans.' },\n  { user: 'sam',   text: 'Heads up: vendor invoice deadline is end of week, finance asked us to confirm.' },\n  { user: 'mira',  text: 'Considering moving the cron job to a separate worker — main process is noisy.' },\n  { user: 'kai',   text: 'Customer success ticket about export-to-CSV failing on large datasets.' },\n  { user: 'alex',  text: 'Marketing wants the case study live before the conference.' },\n  { user: 'sam',   text: 'New hire onboarding starts Monday — calendar invites going out today.' },\n  { user: 'mira',  text: 'Dependency security alert (low) on a transitive package — non-blocking.' },\n  { user: 'kai',   text: 'Design review feedback: tighten the empty state copy on agents page.' },\n  { user: 'alex',  text: 'Closed-won update: $24k ARR signed this morning.' },\n  { user: 'sam',   text: 'Need someone to cover oncall Saturday — any takers?' },\n  { user: 'mira',  text: 'Cron worker spike repro\\'d locally — will ship a fix tomorrow.' },\n  { user: 'kai',   text: 'Client review slides ready for dry-run at 4pm.' }\n];\n\nconst buildCallback = (status, result, error, metrics) => {\n  const finishedAt = new Date().toISOString();\n  return {\n    callbackUrl: item.callback.url,\n    callbackSecret: item.callback.secret,\n    callbackBody: {\n      execution_id: item.execution_id,\n      agent_instance_id: item.agent_instance_id,\n      template_id: item.template_id,\n      status,\n      n8n_execution_id: $execution.id,\n      started_at: startedAt,\n      finished_at: finishedAt,\n      metrics,\n      result,\n      error\n    },\n    httpResponse: { received: true, execution_id: item.execution_id, status }\n  };\n};\n\nif (simulateFailure) {\n  return [{\n    json: buildCallback(\n      'failed',\n      null,\n      { code: 'MOCK_PROVIDER_TIMEOUT', message: 'Simulated provider timeout for demo', retryable: true },\n      { input_count: messages.length, output_count: 0, error_count: messages.length, tokens_input: 0, tokens_output: 0, estimated_cost_usd: 0 }\n    )\n  }];\n}\n\nconst RISK_KEYWORDS = ['timeout', 'spike', 'failing', 'failed', 'security alert', 'deadline', 'oncall', 'invoice deadline', 'noisy'];\nconst THEME_KEYWORDS = {\n  reliability: ['timeout', 'spike', 'latency', 'cron', 'worker', 'monitor', 'baseline'],\n  delivery: ['deadline', 'review', 'slides', 'design review', 'roadmap'],\n  customer: ['customer', 'prospect', 'pricing', 'webinar', 'closed-won', 'demo', 'case study'],\n  ops: ['invoice', 'oncall', 'onboarding', 'security alert', 'vendor']\n};\n\nconst lc = (s) => (s || '').toLowerCase();\n\nconst risks = [];\nfor (const m of messages) {\n  const text = lc(m.text);\n  for (const kw of RISK_KEYWORDS) {\n    if (text.includes(kw)) {\n      const sentence = (m.text || '').trim();\n      if (sentence && !risks.some((r) => r.toLowerCase() === sentence.toLowerCase())) risks.push(sentence);\n      break;\n    }\n  }\n  if (risks.length >= maxRisks) break;\n}\n\nconst themeHits = {};\nfor (const m of messages) {\n  const text = lc(m.text);\n  for (const [theme, kws] of Object.entries(THEME_KEYWORDS)) {\n    if (kws.some((kw) => text.includes(kw))) {\n      themeHits[theme] = (themeHits[theme] || 0) + 1;\n    }\n  }\n}\nconst themesRanked = Object.entries(themeHits).sort((a, b) => b[1] - a[1]).map(([t]) => t);\nconst topThemes = themesRanked.slice(0, 3);\nconst summary = topThemes.length > 0\n  ? `${channel}: ${messages.length} messages today. Top themes — ${topThemes.join(', ')}.`\n  : `${channel}: ${messages.length} messages today. No dominant theme detected.`;\n\nconst ACTION_RULES = [\n  { match: /timeout|latency|spike/i, owner: 'Engineering', task: 'Investigate API timeout / latency spike', priority: 'high' },\n  { match: /design review|empty state/i, owner: 'Design', task: 'Run design review on flagged screens', priority: 'medium' },\n  { match: /deadline|client review|slides/i, owner: 'Product', task: 'Lock client review deliverables before Friday', priority: 'high' },\n  { match: /pricing|case study|prospect/i, owner: 'Marketing', task: 'Follow up on pricing / case study traction', priority: 'medium' },\n  { match: /invoice|finance/i, owner: 'Finance', task: 'Confirm vendor invoice cycle', priority: 'low' },\n  { match: /oncall/i, owner: 'On-call', task: 'Find Saturday oncall coverage', priority: 'medium' },\n  { match: /security alert/i, owner: 'Security', task: 'Triage transitive dependency alert', priority: 'low' }\n];\n\nconst actionItems = [];\nconst seen = new Set();\nfor (const m of messages) {\n  for (const rule of ACTION_RULES) {\n    if (rule.match.test(m.text || '')) {\n      const key = `${rule.owner}|${rule.task}`;\n      if (!seen.has(key)) {\n        seen.add(key);\n        actionItems.push({ owner: rule.owner, task: rule.task, priority: rule.priority });\n      }\n      break;\n    }\n  }\n  if (actionItems.length >= maxActions) break;\n}\n\nconst tokensIn = messages.reduce((sum, m) => sum + (m.text || '').length, 0);\nconst tokensOut = summary.length + risks.join(' ').length + JSON.stringify(actionItems).length;\n\nreturn [{\n  json: buildCallback(\n    'success',\n    {\n      summary,\n      data: {\n        items_processed: messages.length,\n        summary,\n        risks,\n        action_items: actionItems\n      }\n    },\n    null,\n    {\n      input_count: messages.length,\n      output_count: actionItems.length,\n      error_count: 0,\n      tokens_input: Math.ceil(tokensIn / 4),\n      tokens_output: Math.ceil(tokensOut / 4),\n      estimated_cost_usd: Number((messages.length * 0.0004).toFixed(4))\n    }\n  )\n}];"
+      },
+      "id": "n3-code-01",
+      "name": "Summarize Channel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 360]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-demo-callback-secret",
+              "value": "={{ $json.callbackSecret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.callbackBody) }}",
+        "options": {
+          "timeout": 5000,
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n3-http-01",
+      "name": "Callback Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [720, 360],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Summarize Channel').item.json.httpResponse) }}",
+        "options": {}
+      },
+      "id": "n3-respond-01",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [960, 360]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Summarize Channel", "type": "main", "index": 0 }]]
+    },
+    "Summarize Channel": {
+      "main": [[{ "node": "Callback Backend", "type": "main", "index": 0 }]]
+    },
+    "Callback Backend": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 20
+  },
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": [{ "id": "JTbpl2odMInfCc80", "name": "AgentPortal" }]
+}
