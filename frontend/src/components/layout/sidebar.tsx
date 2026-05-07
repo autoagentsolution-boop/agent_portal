@@ -3,6 +3,7 @@ import { LayoutDashboard, Bot, Activity, Plug, Bell, BarChart3, LogOut } from 'l
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../contexts/auth-context';
 import { Button } from '../ui/button';
+import { useUnreadNotificationCount } from '../../hooks/use-notifications';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -15,6 +16,8 @@ const navItems = [
 
 export function Sidebar() {
   const { user, logout } = useAuth();
+  const unreadQ = useUnreadNotificationCount();
+  const unread = unreadQ.data ?? 0;
 
   return (
     <aside className="w-60 shrink-0 border-r border-gray-200 bg-white flex flex-col">
@@ -23,24 +26,32 @@ export function Sidebar() {
         <p className="text-xs text-gray-500">Demo Portal</p>
       </div>
       <nav className="flex-1 px-2 py-3 flex flex-col gap-0.5">
-        {navItems.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
-                isActive
-                  ? 'bg-gray-100 text-gray-900 font-medium'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-              )
-            }
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </NavLink>
-        ))}
+        {navItems.map(({ to, label, icon: Icon, end }) => {
+          const isNotifications = to === '/notifications';
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+                  isActive
+                    ? 'bg-gray-100 text-gray-900 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                )
+              }
+            >
+              <Icon className="h-4 w-4" />
+              <span className="flex-1">{label}</span>
+              {isNotifications && unread > 0 && (
+                <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
+            </NavLink>
+          );
+        })}
       </nav>
       <div className="border-t border-gray-200 p-3">
         <div className="flex flex-col gap-1 mb-2">

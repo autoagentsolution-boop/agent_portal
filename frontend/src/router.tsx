@@ -9,6 +9,8 @@ import { CreateAgentPage } from './pages/agents/create-agent-page';
 import { DashboardPage } from './pages/dashboard/dashboard-page';
 import { ExecutionDetailPage } from './pages/executions/execution-detail-page';
 import { ExecutionsPage } from './pages/executions/executions-page';
+import { IntegrationsPage } from './pages/integrations/integrations-page';
+import { NotificationsPage } from './pages/notifications/notifications-page';
 import { PlaceholderPage } from './pages/placeholder-page';
 
 export const router = createBrowserRouter([
@@ -27,8 +29,8 @@ export const router = createBrowserRouter([
       { path: '/agents/:id', element: <AgentDetailPage /> },
       { path: '/executions', element: <ExecutionsPage /> },
       { path: '/executions/:id', element: <ExecutionDetailPage /> },
-      { path: '/integrations', element: <PlaceholderPage title="Integrations" phase="Phase 09" /> },
-      { path: '/notifications', element: <PlaceholderPage title="Notifications" phase="Phase 10" /> },
+      { path: '/integrations', element: <IntegrationsPage /> },
+      { path: '/notifications', element: <NotificationsPage /> },
       { path: '/analytics', element: <PlaceholderPage title="Analytics" phase="Phase 11" /> },
     ],
   },

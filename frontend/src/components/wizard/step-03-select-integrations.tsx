@@ -18,6 +18,7 @@ const statusVariant: Record<IntegrationStatus, 'success' | 'warning' | 'danger' 
   connected: 'success',
   not_connected: 'warning',
   error: 'danger',
+  expired: 'warning',
 };
 
 export function StepSelectIntegrations({ state, dispatch }: StepProps) {

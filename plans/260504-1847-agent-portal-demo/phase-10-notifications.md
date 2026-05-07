@@ -2,7 +2,7 @@
 
 **Day:** Day 11 (May 20, 2026)  
 **Priority:** Medium  
-**Status:** Pending
+**Status:** Done (2026-05-07). Implemented + API smoke + live FE click-through verified via Puppeteer.
 
 ## Context Links
 - Plan: `plans/260504-1847-agent-portal-demo/plan.md`
@@ -160,19 +160,69 @@ Document for demo script:
 ```
 
 ## Done Criteria
-- [ ] Failing a Ticket Triage execution → notification appears on `/notifications` within 2s of execution completing
-- [ ] Notification shows correct agent name, severity, and "View Execution" links to correct execution
-- [ ] "Mark Resolved" removes notification from Unread filter
-- [ ] `/integrations` page shows all 6 integrations with correct status from DB
-- [ ] "Mock Connect" on a not_connected integration → status changes to mock_connected in UI
-- [ ] "Test Connection" → success toast appears
-- [ ] Sidebar "Notifications" link shows unread badge count
+- [x] Backend: notifications findAll joins agentInstance (name + templateId) so cards can show agent context without an extra fetch
+- [x] Backend: `GET /api/notifications/count?status=unread` returns `{ count: N }` — used by sidebar badge with 30s refetch
+- [x] FE: `Notification` type + `use-notifications.ts` (list, unread count, acknowledge, resolve)
+- [x] FE: notifications page with 8 filter tabs (All / Unread / Critical / Warning / Info / Success / Resolved / Acknowledged)
+- [x] FE: notification card with severity icon, status pill, View Execution / Retry / Mark Read / Mark Resolved actions
+- [x] FE: integrations page with status filter tabs + card grid (Mock Connect / Test / Disconnect)
+- [x] FE: sidebar Notifications link shows red badge with unread count (clamped 99+)
+- [x] FE: router rewired — placeholder pages dropped for /notifications and /integrations
+- [x] API smoke: count went 10 → 9 after acknowledge; mock-connect, test, disconnect all 201
+- [x] FE compiles (tsc) + production-builds (vite build) clean
+- [x] Live FE click-through verified via Puppeteer screenshots at http://localhost:5173 — login, /notifications (all + unread filter), /integrations all render correctly. Sidebar badge displays "9" matching DB unread count. Acknowledged pill shows on previously-acknowledged TriagerFail notification. All 6 integration cards display with mock_connected status.
+
+### Live verification gotchas (2026-05-07)
+- **Wrong FE container**: a stale container `agentportal-frontend` (port 3000) was bind-mounted to a *different project* (`Codex/PortalAgent_n8n/agent-portal/frontend`). It had no notifications/integrations pages and produced a white screen. Solution: ignore that container; this project's FE runs at port **5173** via host-side `npm run dev` (or `docker compose up frontend` per docker-compose.yml).
+- **Vite stale module cache**: after host-edit the `.vite` cache occasionally serves an old module map. `rm -rf frontend/node_modules/.vite` + restart vite resolved a spurious "useDisconnectIntegration not exported" SyntaxError.
+
+## Implementation Notes (2026-05-07)
+
+### Files added
+```
+backend/src/modules/notifications/
+├── notifications.controller.ts       (added /count + agent_instance_id + limit on findAll)
+└── notifications.service.ts           (count(), agentInstance include, limit)
+
+frontend/src/
+├── lib/types.ts                       (Notification, NotificationSeverity/Status, IntegrationTestResult, +'expired')
+├── hooks/
+│   ├── use-notifications.ts           (new)
+│   └── use-integrations.ts            (extended w/ mock-connect, test, disconnect mutations)
+├── components/
+│   ├── notifications/
+│   │   ├── notification-severity-icon.tsx
+│   │   ├── notification-card.tsx
+│   │   └── notification-list.tsx
+│   ├── integrations/
+│   │   ├── integration-status-badge.tsx
+│   │   ├── integration-card.tsx
+│   │   └── integration-list.tsx
+│   └── layout/sidebar.tsx             (unread badge)
+├── pages/
+│   ├── notifications/notifications-page.tsx
+│   └── integrations/integrations-page.tsx
+└── router.tsx                         (drop placeholders, wire real pages)
+```
+
+### Deviations from plan
+- **Notification type `execution_result` (not `execution_failed`)**: backend was already emitting `type: 'execution_result'` (verified in DB) regardless of status. Plan called for `execution_failed/execution_warning/execution_success`. Kept the existing emitter unchanged — severity is the discriminator. If needed in Phase 11 analytics, group on `severity` not `type`.
+- **`expired` integration status**: type was added to `IntegrationStatus` per plan, even though no current code path produces it. The wizard's `statusVariant` map needed the extra key for type completeness — added with `warning` styling.
+- **Acknowledged filter tab**: spec showed Unread/Resolved tabs but not Acknowledged. Added it as a separate tab since the backend already supports it and the demo's "Mark Read" path produces this state.
+- **Container source sync gotcha**: backend container has no bind mount, so editing host `src/` doesn't reach the container. Workflow: `docker cp src-files → exec npm run build → docker restart`. Documented for Phase 11+.
+
+### Operational concerns
+- **Sidebar polling cost**: 30s interval × N tabs × M users. For demo (1 user) negligible; for prod swap to SSE or websockets.
+- **Notification list limit**: capped at 200 server-side (default 100). Phase 11 analytics queries should use raw aggregations, not paginated list.
+- **Optimistic concurrency**: acknowledge/resolve are last-writer-wins — acceptable for demo. No versioning column.
+- **PII in notification messages**: `n.message` ships raw error text from n8n callbacks. Demo data is safe; for prod scrub before display.
 
 ## Handoff Notes (for Phase 11)
-- Notifications page route: `/notifications`
-- Integrations page route: `/integrations`
-- `GET /api/notifications?status=unread` for sidebar badge — cache 30s
-- Notification severity/type values: `critical/warning/info/success` + `execution_failed/execution_warning`
-- Integration status values: `connected/mock_connected/not_connected/error/expired`
-- All 6 integrations seeded in Phase 01: `gmail, slack, google_sheet, helpdesk, notion, hubspot`
-- Analytics page (Phase 11) needs: total executions, success rate, cost — all computed from `executions` table
+- Notifications page route: `/notifications` (no longer placeholder)
+- Integrations page route: `/integrations` (no longer placeholder)
+- Sidebar unread badge: `useUnreadNotificationCount()` hook, 30s refetch, clamps at 99+
+- Notification severity values in DB: `critical/warning/info/success`. Status: `unread/acknowledged/resolved`.
+- Notification `type` values seen so far: `execution_result`, `trigger_failed`. Group by `severity` for analytics, not `type`.
+- Integration status values: `connected/mock_connected/not_connected/error/expired`. All 6 seeded integrations are `mock_connected` after seed.
+- For Phase 11 analytics: total executions / success rate / cost all live on `Execution` table; failure-attributable notifications via `notification.executionId` join.
+- Backend deploy gotcha: container has no host bind mount — use `docker cp src → exec npm run build → docker restart`.

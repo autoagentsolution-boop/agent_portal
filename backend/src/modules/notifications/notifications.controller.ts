@@ -8,8 +8,16 @@ export class NotificationsController {
   constructor(private readonly service: NotificationsService) {}
 
   @Get()
-  findAll(@Query() query: { status?: string; severity?: string }) {
+  findAll(
+    @Query()
+    query: { status?: string; severity?: string; agent_instance_id?: string; limit?: string },
+  ) {
     return this.service.findAll(WORKSPACE_ID, query);
+  }
+
+  @Get('count')
+  count(@Query() query: { status?: string }) {
+    return this.service.count(WORKSPACE_ID, query);
   }
 
   @Patch(':id/acknowledge')

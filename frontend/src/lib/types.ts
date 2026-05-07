@@ -40,7 +40,18 @@ export interface AgentTemplate {
   n8nWebhookPath: string;
 }
 
-export type IntegrationStatus = 'mock_connected' | 'connected' | 'not_connected' | 'error';
+export type IntegrationStatus =
+  | 'mock_connected'
+  | 'connected'
+  | 'not_connected'
+  | 'error'
+  | 'expired';
+
+export interface IntegrationTestResult {
+  status: 'success' | 'error';
+  message: string;
+  tested_at: string | null;
+}
 
 export interface Integration {
   id: string;
@@ -119,4 +130,22 @@ export interface AgentInstance {
 export interface RunResponse {
   execution_id: string;
   status: string;
+}
+
+export type NotificationSeverity = 'critical' | 'warning' | 'info' | 'success';
+export type NotificationStatus = 'unread' | 'acknowledged' | 'resolved';
+
+export interface Notification {
+  id: string;
+  workspaceId: string;
+  agentInstanceId: string | null;
+  executionId: string | null;
+  severity: NotificationSeverity;
+  type: string;
+  title: string;
+  message: string;
+  status: NotificationStatus;
+  createdAt: string;
+  updatedAt: string;
+  agentInstance?: { id: string; name: string; templateId: string } | null;
 }
