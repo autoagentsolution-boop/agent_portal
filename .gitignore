@@ -24,6 +24,9 @@ logs/
 coverage/
 *.tsbuildinfo
 
+# Speed-test runtime output
+backend/speed-test-results/
+
 # Claude Code session caches
 .claude/cache/
 .claude/.session/

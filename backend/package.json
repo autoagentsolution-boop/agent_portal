@@ -21,6 +21,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:demo-seed": "tsx prisma/demo-enrichment.ts",
     "prisma:studio": "prisma studio",
     "speed-test": "tsx src/scripts/speed-test.ts"
   },

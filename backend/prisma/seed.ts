@@ -165,20 +165,44 @@ async function main() {
 
   const adminEmail = 'admin@demo.local';
   const adminPassword = 'demo1234';
-  const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
+  const existing = await prisma.user.findUnique({
+    where: { email: adminEmail },
+    include: { accounts: true },
+  });
+  let userId: string;
   if (existing) {
-    await prisma.account.deleteMany({ where: { userId: existing.id } });
-    await prisma.session.deleteMany({ where: { userId: existing.id } });
-    await prisma.user.delete({ where: { id: existing.id } });
+    userId = existing.id;
+    const credAccount = existing.accounts.find((a) => a.providerId === 'credential');
+    if (!credAccount) {
+      const ctx = await auth.$context;
+      const hashed = await ctx.password.hash(adminPassword);
+      await prisma.account.create({
+        data: {
+          accountId: existing.id,
+          providerId: 'credential',
+          userId: existing.id,
+          password: hashed,
+        },
+      });
+      console.log('Restored missing credential account for:', adminEmail);
+    } else {
+      console.log('User exists, skipping signup:', adminEmail);
+    }
+    await prisma.user.update({
+      where: { id: userId },
+      data: { emailVerified: true },
+    });
+  } else {
+    const signUp = await auth.api.signUpEmail({
+      body: { email: adminEmail, password: adminPassword, name: 'Demo Admin' },
+    });
+    userId = signUp.user.id;
+    await prisma.user.update({
+      where: { id: userId },
+      data: { emailVerified: true },
+    });
+    console.log('User created:', adminEmail);
   }
-  const signUp = await auth.api.signUpEmail({
-    body: { email: adminEmail, password: adminPassword, name: 'Demo Admin' },
-  });
-  await prisma.user.update({
-    where: { id: signUp.user.id },
-    data: { emailVerified: true },
-  });
-  console.log('User:', signUp.user.email);
 
   for (const template of templates) {
     await prisma.agentTemplate.upsert({

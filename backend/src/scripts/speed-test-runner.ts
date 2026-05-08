@@ -66,7 +66,10 @@ function createApiClient(baseUrl: string): ApiClient {
   let cookieJar = '';
 
   const request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
-    const headers: Record<string, string> = { Accept: 'application/json' };
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      Origin: baseUrl,
+    };
     if (cookieJar) headers.Cookie = cookieJar;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     const res = await fetch(`${baseUrl}${path}`, {
