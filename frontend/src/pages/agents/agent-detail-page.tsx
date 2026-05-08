@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Play, Pause, PlayCircle, Archive } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs';
@@ -7,6 +8,7 @@ import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
 import { ErrorState } from '../../components/ui/error-state';
 import { ExecutionList } from '../../components/executions/execution-list';
+import { BusinessOutcomesPanel } from '../../components/analytics/business-outcomes-panel';
 import {
   useAgent,
   useArchiveAgent,
@@ -16,7 +18,7 @@ import {
 import { useExecutions } from '../../hooks/use-executions';
 import { useDocumentTitle } from '../../hooks/use-document-title';
 import { extractErrorMessage } from '../../lib/api-client';
-import type { AgentInstanceStatus } from '../../lib/types';
+import type { AgentInstanceStatus, OutcomeRange } from '../../lib/types';
 import { formatDateTime } from '../../lib/formatters';
 
 const STATUS_VARIANT: Record<AgentInstanceStatus, 'success' | 'warning' | 'danger' | 'default' | 'muted'> = {
@@ -34,6 +36,7 @@ export function AgentDetailPage() {
   const navigate = useNavigate();
   const agentQ = useAgent(id);
   const executionsQ = useExecutions({ agent_instance_id: id, limit: 50 });
+  const [outcomeRange, setOutcomeRange] = useState<OutcomeRange>('7d');
   const runMutation = useRunAgent();
   const statusMutation = useUpdateAgentStatus();
   const archiveMutation = useArchiveAgent();
@@ -140,8 +143,9 @@ export function AgentDetailPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs defaultValue="outcomes">
         <TabsList>
+          <TabsTrigger value="outcomes">Outcomes</TabsTrigger>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="config">Configuration</TabsTrigger>
           <TabsTrigger value="executions">
@@ -149,6 +153,18 @@ export function AgentDetailPage() {
           </TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="outcomes">
+          <Card>
+            <CardContent className="p-5">
+              <BusinessOutcomesPanel
+                agentInstanceId={agent.id}
+                range={outcomeRange}
+                onRangeChange={setOutcomeRange}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="overview">
           <Card>

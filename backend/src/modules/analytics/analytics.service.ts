@@ -1,7 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { getRegistryEntry } from './business-outcomes/registry.js';
 
 const TERMINAL_FAILURE_STATUSES = ['failed', 'warning'];
+const RANGE_DAYS: Record<string, number | null> = { '7d': 7, '30d': 30, all: null };
+const ALL_RANGE_EXEC_CAP = 1000;
+
+export type OutcomeRange = '7d' | '30d' | 'all';
 
 interface P95Row {
   p95: number | null;
@@ -188,6 +193,91 @@ export class AnalyticsService {
           finished_at: e.finishedAt,
           cost_usd: this.toNumber(e.estimatedCostUsd),
         })),
+      },
+    };
+  }
+
+  async getAgentBusinessOutcomes(
+    agentInstanceId: string,
+    workspaceId: string,
+    range: OutcomeRange = '7d',
+  ) {
+    const agent = await this.prisma.agentInstance.findFirst({
+      where: { id: agentInstanceId, workspaceId },
+      select: { id: true, name: true, templateId: true },
+    });
+    if (!agent) throw new NotFoundException(`Agent ${agentInstanceId} not found`);
+
+    const days = RANGE_DAYS[range] ?? null;
+    const since = days !== null ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : undefined;
+
+    const entry = getRegistryEntry(agent.templateId);
+    if (!entry) {
+      return {
+        data: {
+          agent_instance_id: agent.id,
+          name: agent.name,
+          template_id: agent.templateId,
+          range,
+          execution_count: 0,
+          headline_metric: null,
+          metrics: [],
+          estimated_hours_saved: 0,
+          estimated_basis: null,
+          unsupported: true,
+        },
+      };
+    }
+
+    const executions = await this.prisma.execution.findMany({
+      where: {
+        workspaceId,
+        agentInstanceId,
+        status: 'success',
+        ...(since ? { finishedAt: { gte: since } } : {}),
+      },
+      include: { output: true },
+      orderBy: { finishedAt: 'desc' },
+      take: days === null ? ALL_RANGE_EXEC_CAP : undefined,
+    });
+
+    const summed: Record<string, number> = {};
+    let totalItems = 0;
+    for (const exec of executions) {
+      if (!exec.output?.outputJson) continue;
+      const { items, metrics } = entry.extract(exec.output.outputJson);
+      totalItems += items;
+      for (const [k, v] of Object.entries(metrics)) {
+        summed[k] = (summed[k] ?? 0) + v;
+      }
+    }
+
+    const aggregated = entry.postAggregate(summed);
+    const hoursSaved = Number(((totalItems * entry.format.manualMinutesPerItem) / 60).toFixed(2));
+
+    const metricsList = Object.entries(entry.format.labels)
+      .filter(([key]) => aggregated[key] !== undefined)
+      .map(([key, label]) => ({
+        key,
+        label,
+        value: aggregated[key],
+        ...(entry.format.suffixes?.[key] ? { suffix: entry.format.suffixes[key] } : {}),
+      }));
+
+    const headlineMetric = metricsList.find((m) => m.key === entry.format.headlineKey) ?? metricsList[0] ?? null;
+
+    return {
+      data: {
+        agent_instance_id: agent.id,
+        name: agent.name,
+        template_id: agent.templateId,
+        range,
+        execution_count: executions.length,
+        headline_metric: headlineMetric,
+        metrics: metricsList,
+        estimated_hours_saved: hoursSaved,
+        estimated_basis: entry.format.basis,
+        unsupported: false,
       },
     };
   }

@@ -210,3 +210,25 @@ export interface AnalyticsAgentSummary {
   estimated_cost_usd: number;
   recent_executions: AnalyticsAgentRecentExecution[];
 }
+
+export type OutcomeRange = '7d' | '30d' | 'all';
+
+export interface BusinessMetric {
+  key: string;
+  label: string;
+  value: number;
+  suffix?: string;
+}
+
+export interface BusinessOutcomes {
+  agent_instance_id: string;
+  name: string;
+  template_id: string;
+  range: OutcomeRange;
+  execution_count: number;
+  headline_metric: BusinessMetric | null;
+  metrics: BusinessMetric[];
+  estimated_hours_saved: number;
+  estimated_basis: string | null;
+  unsupported: boolean;
+}
