@@ -1,7 +1,8 @@
+import { Activity } from 'lucide-react';
 import type { ExecutionRow as ExecutionRowData } from '../../lib/types';
-import { Skeleton } from '../ui/skeleton';
-import { Alert } from '../ui/alert';
-import { extractErrorMessage } from '../../lib/api-client';
+import { TableSkeleton } from '../ui/loading-skeleton';
+import { ErrorState } from '../ui/error-state';
+import { EmptyState } from '../ui/empty-state';
 import { ExecutionRow } from './execution-row';
 
 export interface ExecutionListProps {
@@ -10,6 +11,9 @@ export interface ExecutionListProps {
   error: unknown;
   showAgent?: boolean;
   emptyHint?: string;
+  emptyAction?: { label: string; onClick: () => void };
+  onRetry?: () => void;
+  isRetrying?: boolean;
 }
 
 export function ExecutionList({
@@ -18,29 +22,27 @@ export function ExecutionList({
   error,
   showAgent = false,
   emptyHint = 'No executions yet.',
+  emptyAction,
+  onRetry,
+  isRetrying,
 }: ExecutionListProps) {
   if (isLoading) {
-    return (
-      <div className="space-y-2">
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-12 w-full" />
-        ))}
-      </div>
-    );
+    return <TableSkeleton rows={6} cols={showAgent ? 7 : 6} />;
   }
 
   if (error) {
     return (
-      <Alert variant="destructive">{extractErrorMessage(error, 'Failed to load executions')}</Alert>
+      <ErrorState
+        title="Failed to load executions"
+        error={error}
+        onRetry={onRetry}
+        isRetrying={isRetrying}
+      />
     );
   }
 
   if (!executions || executions.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center">
-        <p className="text-sm text-gray-500">{emptyHint}</p>
-      </div>
-    );
+    return <EmptyState icon={Activity} title={emptyHint} action={emptyAction} />;
   }
 
   return (

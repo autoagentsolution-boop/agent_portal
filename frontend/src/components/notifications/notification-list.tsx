@@ -1,6 +1,7 @@
 import { Bell } from 'lucide-react';
-import { Skeleton } from '../ui/skeleton';
-import { extractErrorMessage } from '../../lib/api-client';
+import { RowSkeleton } from '../ui/loading-skeleton';
+import { ErrorState } from '../ui/error-state';
+import { EmptyState } from '../ui/empty-state';
 import { NotificationCard, type NotificationCardProps } from './notification-card';
 import type { Notification } from '../../lib/types';
 
@@ -13,6 +14,8 @@ export interface NotificationListProps {
   onAcknowledge?: NotificationCardProps['onAcknowledge'];
   onResolve?: NotificationCardProps['onResolve'];
   onRetry?: NotificationCardProps['onRetry'];
+  onRetryFetch?: () => void;
+  isRetryingFetch?: boolean;
 }
 
 export function NotificationList({
@@ -24,30 +27,30 @@ export function NotificationList({
   onAcknowledge,
   onResolve,
   onRetry,
+  onRetryFetch,
+  isRetryingFetch,
 }: NotificationListProps) {
   if (isLoading) {
     return (
       <div className="space-y-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-28 w-full rounded-lg" />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <RowSkeleton key={i} height="h-28" />
         ))}
       </div>
     );
   }
   if (error) {
     return (
-      <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-        {extractErrorMessage(error, 'Failed to load notifications.')}
-      </div>
+      <ErrorState
+        title="Failed to load notifications"
+        error={error}
+        onRetry={onRetryFetch}
+        isRetrying={isRetryingFetch}
+      />
     );
   }
   if (!notifications || notifications.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-        <Bell className="mx-auto h-6 w-6 text-gray-400" />
-        <p className="mt-2 text-sm text-gray-600">{emptyHint}</p>
-      </div>
-    );
+    return <EmptyState icon={Bell} title={emptyHint} />;
   }
   return (
     <div className="space-y-3">

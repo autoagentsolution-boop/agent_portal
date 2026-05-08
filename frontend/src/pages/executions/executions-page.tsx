@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { ExecutionList } from '../../components/executions/execution-list';
 import { useExecutions } from '../../hooks/use-executions';
 import { useAgents } from '../../hooks/use-agents';
+import { useDocumentTitle } from '../../hooks/use-document-title';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import type { ExecutionStatus } from '../../lib/types';
 
@@ -14,6 +15,7 @@ const STATUS_OPTIONS: Array<{ value: '' | ExecutionStatus; label: string }> = [
 ];
 
 export function ExecutionsPage() {
+  useDocumentTitle('Executions');
   const [status, setStatus] = useState<'' | ExecutionStatus>('');
   const [agentId, setAgentId] = useState<string>('');
 
@@ -77,6 +79,8 @@ export function ExecutionsPage() {
         error={executionsQ.error}
         showAgent
         emptyHint="No executions match the current filters."
+        onRetry={() => executionsQ.refetch()}
+        isRetrying={executionsQ.isFetching}
       />
     </div>
   );

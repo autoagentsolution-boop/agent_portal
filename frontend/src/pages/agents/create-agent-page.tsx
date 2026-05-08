@@ -13,6 +13,7 @@ import { StepTestRun } from '../../components/wizard/step-06-test-run';
 import { StepActivate } from '../../components/wizard/step-07-activate';
 import { useTemplate, useTemplates } from '../../hooks/use-templates';
 import { archiveAgentSilently, useUpdateAgentStatus } from '../../hooks/use-agents';
+import { useDocumentTitle } from '../../hooks/use-document-title';
 import { apiClient, extractErrorMessage } from '../../lib/api-client';
 
 const STEP_LABELS = [
@@ -26,6 +27,7 @@ const STEP_LABELS = [
 ];
 
 export function CreateAgentPage() {
+  useDocumentTitle('Create Agent');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [step, setStep] = useState(1);

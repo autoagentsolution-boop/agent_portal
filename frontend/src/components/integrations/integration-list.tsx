@@ -1,6 +1,7 @@
 import { Plug } from 'lucide-react';
-import { Skeleton } from '../ui/skeleton';
-import { extractErrorMessage } from '../../lib/api-client';
+import { RowSkeleton } from '../ui/loading-skeleton';
+import { ErrorState } from '../ui/error-state';
+import { EmptyState } from '../ui/empty-state';
 import { IntegrationCard, type IntegrationCardProps } from './integration-card';
 import type { Integration } from '../../lib/types';
 
@@ -14,6 +15,8 @@ export interface IntegrationListProps {
   onMockConnect: IntegrationCardProps['onMockConnect'];
   onTest: IntegrationCardProps['onTest'];
   onDisconnect: IntegrationCardProps['onDisconnect'];
+  onRetryFetch?: () => void;
+  isRetryingFetch?: boolean;
 }
 
 export function IntegrationList({
@@ -26,30 +29,30 @@ export function IntegrationList({
   onMockConnect,
   onTest,
   onDisconnect,
+  onRetryFetch,
+  isRetryingFetch,
 }: IntegrationListProps) {
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-44 w-full rounded-lg" />
+          <RowSkeleton key={i} height="h-44" />
         ))}
       </div>
     );
   }
   if (error) {
     return (
-      <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-        {extractErrorMessage(error, 'Failed to load integrations.')}
-      </div>
+      <ErrorState
+        title="Failed to load integrations"
+        error={error}
+        onRetry={onRetryFetch}
+        isRetrying={isRetryingFetch}
+      />
     );
   }
   if (!integrations || integrations.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-        <Plug className="mx-auto h-6 w-6 text-gray-400" />
-        <p className="mt-2 text-sm text-gray-600">{emptyHint}</p>
-      </div>
-    );
+    return <EmptyState icon={Plug} title={emptyHint} />;
   }
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

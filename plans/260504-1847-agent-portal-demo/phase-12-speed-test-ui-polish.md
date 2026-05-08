@@ -2,7 +2,7 @@
 
 **Day:** Day 13 (May 22, 2026)  
 **Priority:** Medium  
-**Status:** Pending
+**Status:** Implemented 2026-05-08 — pending live 50-run smoke test against running n8n
 
 ## Context Links
 - Plan: `plans/260504-1847-agent-portal-demo/plan.md`

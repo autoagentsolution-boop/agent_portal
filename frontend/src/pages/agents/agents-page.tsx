@@ -1,11 +1,13 @@
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { useDocumentTitle } from '../../hooks/use-document-title';
 import { TemplatesTab } from './templates-tab';
 import { MyAgentsTab } from './my-agents-tab';
 
 const VALID_TABS = new Set(['templates', 'my-agents']);
 
 export function AgentsPage() {
+  useDocumentTitle('Agents');
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = searchParams.get('tab');
   const activeTab = requested && VALID_TABS.has(requested) ? requested : 'templates';

@@ -1,11 +1,12 @@
 import { useNavigate } from 'react-router-dom';
+import { LayoutTemplate } from 'lucide-react';
 import { useTemplates } from '../../hooks/use-templates';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
-import { Skeleton } from '../../components/ui/skeleton';
-import { Alert } from '../../components/ui/alert';
-import { extractErrorMessage } from '../../lib/api-client';
+import { CardSkeleton } from '../../components/ui/loading-skeleton';
+import { EmptyState } from '../../components/ui/empty-state';
+import { ErrorState } from '../../components/ui/error-state';
 import type { AgentTemplate } from '../../lib/types';
 
 const costVariant: Record<string, 'success' | 'warning' | 'danger'> = {
@@ -15,34 +16,38 @@ const costVariant: Record<string, 'success' | 'warning' | 'danger'> = {
 };
 
 export function TemplatesTab() {
-  const { data, isLoading, error } = useTemplates();
+  const { data, isLoading, error, refetch, isFetching } = useTemplates();
   const navigate = useNavigate();
 
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {[0, 1, 2, 3].map((i) => (
-          <Card key={i}>
-            <CardHeader>
-              <Skeleton className="h-5 w-40" />
-              <Skeleton className="h-4 w-24" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-4 w-full mb-2" />
-              <Skeleton className="h-4 w-3/4" />
-            </CardContent>
-          </Card>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <CardSkeleton key={i} />
         ))}
       </div>
     );
   }
 
   if (error) {
-    return <Alert variant="destructive">{extractErrorMessage(error, 'Failed to load templates')}</Alert>;
+    return (
+      <ErrorState
+        title="Failed to load templates"
+        error={error}
+        onRetry={() => refetch()}
+        isRetrying={isFetching}
+      />
+    );
   }
 
   if (!data || data.length === 0) {
-    return <Alert>No templates available.</Alert>;
+    return (
+      <EmptyState
+        icon={LayoutTemplate}
+        title="No templates available"
+        description="Re-run the database seed to populate the demo templates."
+      />
+    );
   }
 
   return (

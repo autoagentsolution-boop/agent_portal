@@ -31,7 +31,7 @@
 | [09](phase-09-n8n-workflows-4-5-real-integration.md) | n8n Workflows #4+#5 + Real Integration ⭐ M6 | Day 10 | May 19 — done + E2E verified (May 7); real Slack deferred |
 | [10](phase-10-notifications.md) | Notifications + Integrations | Day 11 | May 20 — done + E2E verified (May 7) |
 | [11](phase-11-analytics-dashboard.md) | Analytics + Dashboard | Day 12 | May 21 — done + live FE verified (May 7) |
-| [12](phase-12-speed-test-ui-polish.md) | Speed Test + UI Polish | Day 13 | May 22 |
+| [12](phase-12-speed-test-ui-polish.md) | Speed Test + UI Polish | Day 13 | May 22 — done (May 8); awaits live 50-run smoke test |
 | [13](phase-13-demo-package.md) | Demo Package | Days 14–15 | May 23–26 |
 
 ## Critical Milestones

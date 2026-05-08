@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
-import { Alert } from '../../components/ui/alert';
+import { ErrorState } from '../../components/ui/error-state';
 import { ExecutionList } from '../../components/executions/execution-list';
 import {
   useAgent,
@@ -14,6 +14,7 @@ import {
   useUpdateAgentStatus,
 } from '../../hooks/use-agents';
 import { useExecutions } from '../../hooks/use-executions';
+import { useDocumentTitle } from '../../hooks/use-document-title';
 import { extractErrorMessage } from '../../lib/api-client';
 import type { AgentInstanceStatus } from '../../lib/types';
 import { formatDateTime } from '../../lib/formatters';
@@ -37,6 +38,8 @@ export function AgentDetailPage() {
   const statusMutation = useUpdateAgentStatus();
   const archiveMutation = useArchiveAgent();
 
+  useDocumentTitle(agentQ.data?.name ?? 'Agent');
+
   if (agentQ.isLoading && !agentQ.data) {
     return (
       <div className="space-y-4">
@@ -47,11 +50,18 @@ export function AgentDetailPage() {
   }
 
   if (agentQ.error) {
-    return <Alert variant="destructive">{extractErrorMessage(agentQ.error, 'Failed to load agent')}</Alert>;
+    return (
+      <ErrorState
+        title="Failed to load agent"
+        error={agentQ.error}
+        onRetry={() => agentQ.refetch()}
+        isRetrying={agentQ.isFetching}
+      />
+    );
   }
 
   const agent = agentQ.data;
-  if (!agent) return <Alert variant="destructive">Agent not found.</Alert>;
+  if (!agent) return <ErrorState title="Agent not found" />;
 
   async function onRun() {
     if (!agent) return;
@@ -198,6 +208,8 @@ export function AgentDetailPage() {
             isLoading={executionsQ.isLoading}
             error={executionsQ.error}
             emptyHint="This agent has no executions yet. Click Run Now to fire one."
+            onRetry={() => executionsQ.refetch()}
+            isRetrying={executionsQ.isFetching}
           />
         </TabsContent>
 

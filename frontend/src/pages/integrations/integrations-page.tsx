@@ -7,6 +7,7 @@ import {
   useMockConnectIntegration,
   useTestIntegration,
 } from '../../hooks/use-integrations';
+import { useDocumentTitle } from '../../hooks/use-document-title';
 import { extractErrorMessage } from '../../lib/api-client';
 import type { Integration, IntegrationStatus } from '../../lib/types';
 
@@ -25,6 +26,7 @@ type BusyAction = 'mock-connect' | 'test' | 'disconnect' | null;
 type TestResultMap = Record<string, { ok: boolean; message: string } | null>;
 
 export function IntegrationsPage() {
+  useDocumentTitle('Integrations');
   const [filter, setFilter] = useState<FilterValue>('all');
   const [testResults, setTestResults] = useState<TestResultMap>({});
   const [busy, setBusy] = useState<{ id: string | null; action: BusyAction }>({
@@ -117,6 +119,8 @@ export function IntegrationsPage() {
         onMockConnect={handleMockConnect}
         onTest={handleTest}
         onDisconnect={handleDisconnect}
+        onRetryFetch={() => listQ.refetch()}
+        isRetryingFetch={listQ.isFetching}
       />
     </div>
   );

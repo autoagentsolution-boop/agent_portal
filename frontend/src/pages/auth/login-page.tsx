@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/auth-context';
+import { useDocumentTitle } from '../../hooks/use-document-title';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -8,6 +9,7 @@ import { Alert } from '../../components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 
 export function LoginPage() {
+  useDocumentTitle('Sign in');
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();

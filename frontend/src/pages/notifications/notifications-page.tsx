@@ -8,6 +8,7 @@ import {
   useResolveNotification,
 } from '../../hooks/use-notifications';
 import { useRetryExecution } from '../../hooks/use-executions';
+import { useDocumentTitle } from '../../hooks/use-document-title';
 import type { NotificationSeverity, NotificationStatus } from '../../lib/types';
 
 type FilterValue =
@@ -39,6 +40,7 @@ function toQuery(value: FilterValue) {
 }
 
 export function NotificationsPage() {
+  useDocumentTitle('Notifications');
   const [activeId, setActiveId] = useState<string>('all');
   const active = FILTERS.find((f) => f.id === activeId) ?? FILTERS[0];
 
@@ -97,6 +99,8 @@ export function NotificationsPage() {
         onAcknowledge={(id) => acknowledgeM.mutate(id)}
         onResolve={(id) => resolveM.mutate(id)}
         onRetry={handleRetry}
+        onRetryFetch={() => listQ.refetch()}
+        isRetryingFetch={listQ.isFetching}
         emptyHint={
           active.value.kind === 'all'
             ? 'No notifications yet. Run a few agents to see them here.'

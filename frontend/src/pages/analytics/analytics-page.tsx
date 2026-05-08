@@ -1,13 +1,14 @@
 import { RefreshCw } from 'lucide-react';
-import { Alert } from '../../components/ui/alert';
+import { ErrorState } from '../../components/ui/error-state';
 import { MetricCard } from '../../components/analytics/metric-card';
 import { LatestFailuresList } from '../../components/analytics/latest-failures-list';
 import { TopAgentsList } from '../../components/analytics/top-agents-list';
 import { useAnalyticsSummary } from '../../hooks/use-analytics';
-import { extractErrorMessage } from '../../lib/api-client';
+import { useDocumentTitle } from '../../hooks/use-document-title';
 import { formatCost, formatDuration } from '../../lib/formatters';
 
 export function AnalyticsPage() {
+  useDocumentTitle('Analytics');
   const summaryQ = useAnalyticsSummary();
   const s = summaryQ.data;
   const isLoading = summaryQ.isLoading;
@@ -30,10 +31,13 @@ export function AnalyticsPage() {
       </div>
 
       {summaryQ.isError && (
-        <Alert variant="destructive">
-          <div className="font-semibold">Failed to load analytics</div>
-          <div className="mt-0.5">{extractErrorMessage(summaryQ.error)}</div>
-        </Alert>
+        <ErrorState
+          variant="inline"
+          title="Failed to load analytics"
+          error={summaryQ.error}
+          onRetry={() => summaryQ.refetch()}
+          isRetrying={summaryQ.isFetching}
+        />
       )}
 
       <section>

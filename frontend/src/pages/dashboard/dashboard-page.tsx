@@ -1,12 +1,14 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, RefreshCw } from 'lucide-react';
-import { Alert } from '../../components/ui/alert';
+import { ArrowRight, Bot, RefreshCw } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { EmptyState } from '../../components/ui/empty-state';
+import { ErrorState } from '../../components/ui/error-state';
+import { RowSkeleton } from '../../components/ui/loading-skeleton';
 import { MetricCard } from '../../components/analytics/metric-card';
 import { LatestFailuresList } from '../../components/analytics/latest-failures-list';
 import { useAnalyticsSummary } from '../../hooks/use-analytics';
 import { useExecutions } from '../../hooks/use-executions';
-import { extractErrorMessage } from '../../lib/api-client';
+import { useDocumentTitle } from '../../hooks/use-document-title';
 import { formatDuration, formatRelativeShort } from '../../lib/formatters';
 import type { ExecutionRow, ExecutionStatus } from '../../lib/types';
 
@@ -20,6 +22,7 @@ const STATUS_PILL: Record<ExecutionStatus, string> = {
 };
 
 export function DashboardPage() {
+  useDocumentTitle('Dashboard');
   const summaryQ = useAnalyticsSummary();
   const recentQ = useExecutions({ limit: 10 });
   const s = summaryQ.data;
@@ -43,10 +46,13 @@ export function DashboardPage() {
       </div>
 
       {summaryQ.isError && (
-        <Alert variant="destructive">
-          <div className="font-semibold">Failed to load summary</div>
-          <div className="mt-0.5">{extractErrorMessage(summaryQ.error)}</div>
-        </Alert>
+        <ErrorState
+          variant="inline"
+          title="Failed to load summary"
+          error={summaryQ.error}
+          onRetry={() => summaryQ.refetch()}
+          isRetrying={summaryQ.isFetching}
+        />
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -113,10 +119,22 @@ interface RecentExecutionsProps {
 
 function RecentExecutions({ executions, isLoading }: RecentExecutionsProps) {
   if (isLoading) {
-    return <div className="rounded-md border border-dashed border-gray-200 p-6 text-sm text-gray-500">Loading…</div>;
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <RowSkeleton key={i} height="h-11" />
+        ))}
+      </div>
+    );
   }
   if (!executions || executions.length === 0) {
-    return <div className="rounded-md border border-dashed border-gray-200 p-6 text-sm text-gray-500">No executions yet.</div>;
+    return (
+      <EmptyState
+        icon={Bot}
+        title="No executions yet"
+        description="Run an agent to see results land here."
+      />
+    );
   }
 
   return (

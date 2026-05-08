@@ -4,10 +4,12 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Alert } from '../../components/ui/alert';
+import { ErrorState } from '../../components/ui/error-state';
 import { ExecutionStatusBadge, isTerminal } from '../../components/executions/execution-status-badge';
 import { ExecutionOutputViewer } from '../../components/executions/execution-output-viewer';
 import { useExecution } from '../../hooks/use-execution';
 import { useRetryExecution } from '../../hooks/use-executions';
+import { useDocumentTitle } from '../../hooks/use-document-title';
 import { extractErrorMessage } from '../../lib/api-client';
 import {
   formatCost,
@@ -21,7 +23,8 @@ export function ExecutionDetailPage() {
   const navigate = useNavigate();
   const retry = useRetryExecution();
 
-  const { data, isLoading, error } = useExecution(id, { poll: true });
+  const { data, isLoading, error, refetch, isFetching } = useExecution(id, { poll: true });
+  useDocumentTitle(data ? `Execution · ${data.agentInstance?.name ?? shortId(data.id, 8)}` : 'Execution');
 
   async function onRetry() {
     if (!id) return;
@@ -44,11 +47,18 @@ export function ExecutionDetailPage() {
   }
 
   if (error) {
-    return <Alert variant="destructive">{extractErrorMessage(error, 'Failed to load execution')}</Alert>;
+    return (
+      <ErrorState
+        title="Failed to load execution"
+        error={error}
+        onRetry={() => refetch()}
+        isRetrying={isFetching}
+      />
+    );
   }
 
   if (!data) {
-    return <Alert variant="destructive">Execution not found.</Alert>;
+    return <ErrorState title="Execution not found" />;
   }
 
   const agentName = data.agentInstance?.name ?? '—';
