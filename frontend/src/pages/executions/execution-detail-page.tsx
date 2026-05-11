@@ -114,13 +114,12 @@ export function ExecutionDetailPage() {
           )}
           {canRerunWithOverrides && (
             <Button
-              variant="outline"
               size="sm"
               onClick={() => setRunModalOpen(true)}
               disabled={runMutation.isPending}
             >
               <Play className="h-3.5 w-3.5" />
-              Run again with these overrides
+              {runMutation.isPending ? 'Starting…' : 'Run again with these overrides'}
             </Button>
           )}
           {showRetry && (

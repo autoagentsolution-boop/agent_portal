@@ -3,8 +3,6 @@ import { Play } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
-import { useRunAgent } from '../../hooks/use-agents';
-import { extractErrorMessage } from '../../lib/api-client';
 import type { AgentInstance, AgentInstanceStatus } from '../../lib/types';
 
 const statusVariant: Record<AgentInstanceStatus, 'success' | 'warning' | 'danger' | 'default' | 'muted'> = {
@@ -17,15 +15,10 @@ const statusVariant: Record<AgentInstanceStatus, 'success' | 'warning' | 'danger
 
 export function AgentCard({ agent }: { agent: AgentInstance }) {
   const navigate = useNavigate();
-  const runMutation = useRunAgent();
+  const disabled = agent.status === 'archived' || agent.status === 'paused';
 
-  async function onRun() {
-    try {
-      const result = await runMutation.mutateAsync(agent.id);
-      navigate(`/executions/${result.execution_id}`);
-    } catch (err) {
-      window.alert(extractErrorMessage(err, 'Run failed'));
-    }
+  function onRun() {
+    navigate(`/agents/${agent.id}?run=1`);
   }
 
   return (
@@ -54,13 +47,9 @@ export function AgentCard({ agent }: { agent: AgentInstance }) {
         <Button variant="ghost" size="sm" onClick={() => navigate(`/agents/${agent.id}`)}>
           Details
         </Button>
-        <Button
-          size="sm"
-          onClick={onRun}
-          disabled={runMutation.isPending || agent.status === 'archived' || agent.status === 'paused'}
-        >
+        <Button size="sm" onClick={onRun} disabled={disabled}>
           <Play className="h-3.5 w-3.5" />
-          {runMutation.isPending ? 'Starting…' : 'Run Now'}
+          Run Now
         </Button>
       </CardFooter>
     </Card>

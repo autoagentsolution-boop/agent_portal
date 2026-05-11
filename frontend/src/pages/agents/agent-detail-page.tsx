@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Play, Pause, PlayCircle, Archive } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -35,6 +35,7 @@ const RUNNABLE: ReadonlySet<AgentInstanceStatus> = new Set(['draft', 'running', 
 export function AgentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const agentQ = useAgent(id);
   const executionsQ = useExecutions({ agent_instance_id: id, limit: 50 });
   const [outcomeRange, setOutcomeRange] = useState<OutcomeRange>('7d');
@@ -44,6 +45,15 @@ export function AgentDetailPage() {
   const archiveMutation = useArchiveAgent();
 
   useDocumentTitle(agentQ.data?.name ?? 'Agent');
+
+  useEffect(() => {
+    if (searchParams.get('run') === '1' && agentQ.data) {
+      setRunModalOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('run');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, agentQ.data]);
 
   if (agentQ.isLoading && !agentQ.data) {
     return (
@@ -210,9 +220,17 @@ export function AgentDetailPage() {
                   ))}
                 </dl>
               )}
-              <p className="text-xs text-gray-400 mt-4">
-                Editing config inline ships in a later phase.
-              </p>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-2">
+                <p className="text-xs text-gray-500">
+                  Saved defaults are read-only. Override parameters per run without changing these defaults.
+                </p>
+                {canRun && (
+                  <Button size="sm" variant="outline" onClick={() => setRunModalOpen(true)} disabled={runMutation.isPending}>
+                    <Play className="h-3.5 w-3.5" />
+                    Run with overrides
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
