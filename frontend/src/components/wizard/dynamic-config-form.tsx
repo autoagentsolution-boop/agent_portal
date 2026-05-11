@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { cn } from '../../lib/utils';
@@ -90,6 +90,15 @@ function FieldRow({ fieldKey, field, value, error, onChange }: FieldRowProps) {
           />
           <span className="text-xs text-gray-500">Enabled</span>
         </label>
+      ) : field.type === 'array' ? (
+        <ArrayInput
+          id={id}
+          value={Array.isArray(value) ? (value as Array<string | number>) : []}
+          itemType={field.itemType ?? 'string'}
+          maxItems={field.maxItems}
+          onChange={onChange}
+          error={Boolean(error)}
+        />
       ) : field.type === 'textarea' ? (
         <textarea
           id={id}
@@ -130,7 +139,113 @@ function FieldRow({ fieldKey, field, value, error, onChange }: FieldRowProps) {
           Range: {field.min ?? '−∞'} — {field.max ?? '∞'}
         </span>
       )}
+      {field.type === 'array' && (field.minItems !== undefined || field.maxItems !== undefined) && (
+        <span className="text-xs text-gray-400">
+          {field.minItems !== undefined && field.maxItems !== undefined
+            ? `${field.minItems}–${field.maxItems} items`
+            : field.minItems !== undefined
+              ? `Min ${field.minItems} item${field.minItems === 1 ? '' : 's'}`
+              : `Max ${field.maxItems} items`}
+        </span>
+      )}
       {error && <span className="text-xs text-red-600">{error}</span>}
+    </div>
+  );
+}
+
+interface ArrayInputProps {
+  id: string;
+  value: Array<string | number>;
+  itemType: 'string' | 'number';
+  maxItems?: number;
+  onChange: (next: Array<string | number>) => void;
+  error: boolean;
+}
+
+function ArrayInput({ id, value, itemType, maxItems, onChange, error }: ArrayInputProps) {
+  const [draft, setDraft] = useState('');
+  const atCapacity = maxItems !== undefined && value.length >= maxItems;
+
+  const add = () => {
+    if (atCapacity) return;
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    if (itemType === 'number') {
+      const num = Number(trimmed);
+      if (Number.isNaN(num)) return;
+      onChange([...value, num]);
+    } else {
+      if (value.includes(trimmed)) {
+        setDraft('');
+        return;
+      }
+      onChange([...value, trimmed]);
+    }
+    setDraft('');
+  };
+
+  const remove = (idx: number) => {
+    onChange(value.filter((_, i) => i !== idx));
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      add();
+    } else if (e.key === 'Backspace' && draft === '' && value.length > 0) {
+      e.preventDefault();
+      remove(value.length - 1);
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        'rounded-md border bg-white px-2 py-1.5 shadow-sm',
+        error ? 'border-red-400' : 'border-gray-300',
+      )}
+    >
+      {value.length > 0 && (
+        <div className="mb-1 flex flex-wrap gap-1.5">
+          {value.map((v, i) => (
+            <span
+              key={`${i}-${String(v)}`}
+              className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+            >
+              {String(v)}
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                aria-label={`Remove ${String(v)}`}
+                className="text-gray-400 hover:text-gray-900"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-1">
+        <input
+          id={id}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={add}
+          placeholder={atCapacity ? 'Max items reached' : 'Type and press Enter…'}
+          disabled={atCapacity}
+          className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400 disabled:cursor-not-allowed"
+          inputMode={itemType === 'number' ? 'decimal' : 'text'}
+        />
+        <button
+          type="button"
+          onClick={add}
+          disabled={atCapacity || draft.trim() === ''}
+          className="text-xs text-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:text-gray-300"
+        >
+          Add
+        </button>
+      </div>
     </div>
   );
 }

@@ -12,13 +12,16 @@ export interface SessionResponse {
 }
 
 export interface FieldSchema {
-  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea';
+  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea' | 'array';
   label: string;
   required?: boolean;
   default?: unknown;
   min?: number;
   max?: number;
   enum?: string[];
+  itemType?: 'string' | 'number';
+  minItems?: number;
+  maxItems?: number;
 }
 
 export type ConfigSchema = Record<string, FieldSchema>;

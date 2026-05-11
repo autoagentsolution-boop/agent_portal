@@ -1,7 +1,7 @@
 ---
 slug: array-config-field-type
 created: 2026-05-11
-status: pending
+status: completed
 branch: main
 budget: 2-3 hours
 related_brainstorm: plans/reports/brainstormer-260511-0825-runtime-parameter-override.md
@@ -43,7 +43,7 @@ Add `array` type to the config schema system so templates can declare list-value
 
 | # | Name | Status | Effort |
 |---|------|--------|--------|
-| [01](phase-01-array-type-implementation.md) | Schema + validator + form + seed migration + n8n workflow | pending | 2-3h |
+| [01](phase-01-array-type-implementation.md) | Schema + validator + form + seed migration + n8n workflow | completed | 2-3h |
 
 ## Critical decisions (locked)
 

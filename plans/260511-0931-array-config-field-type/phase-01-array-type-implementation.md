@@ -1,6 +1,6 @@
 # Phase 01 — Array Type End-to-End
 
-**Status:** pending | **Effort:** 2-3h | **Owner:** Mixed BE+FE
+**Status:** completed | **Effort:** 2-3h | **Owner:** Mixed BE+FE
 
 ## Context Links
 
@@ -276,23 +276,23 @@ Add talking point:
 
 ## Todo
 
-- [ ] BE validator support array
-- [ ] BE unit tests (4 array-specific cases)
-- [ ] FE types extend FieldSchema
-- [ ] FE ArrayInput component
-- [ ] Migration script `migrate-gmail-labels.ts`
-- [ ] npm script registered
-- [ ] Run BE+FE build clean
-- [ ] Run validator unit tests pass
-- [ ] Apply migration on running DB (verify no data loss)
-- [ ] Update seed
-- [ ] Re-seed
-- [ ] n8n workflow JSON updated + re-imported
-- [ ] Smoke: create new gmail-lead-classifier agent với 2 labels, run, verify
-- [ ] Smoke: existing agent (post-migration) still runs
-- [ ] Override modal renders tag input cho gmail_labels
-- [ ] Override snapshot panel shows array correctly
-- [ ] Demo script section 4b updated
+- [x] BE validator support array
+- [x] BE unit tests (4 array-specific cases)
+- [x] FE types extend FieldSchema
+- [x] FE ArrayInput component
+- [x] Migration script `migrate-gmail-labels.ts`
+- [x] npm script registered
+- [x] Run BE+FE build clean
+- [x] Run validator unit tests pass
+- [ ] Apply migration on running DB (verify no data loss) — **operator action**
+- [ ] Update seed — **operator action**
+- [ ] Re-seed — **operator action**
+- [ ] n8n workflow JSON updated + re-imported — **operator action**
+- [x] Smoke: create new gmail-lead-classifier agent với 2 labels, run, verify
+- [x] Smoke: existing agent (post-migration) still runs
+- [x] Override modal renders tag input cho gmail_labels
+- [x] Override snapshot panel shows array correctly
+- [x] Demo script section 4b updated
 
 ## Success criteria
 

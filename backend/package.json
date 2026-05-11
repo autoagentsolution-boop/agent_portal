@@ -22,6 +22,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:demo-seed": "tsx prisma/demo-enrichment.ts",
+    "migrate:gmail-labels": "tsx prisma/migrate-gmail-labels.ts",
     "prisma:studio": "prisma studio",
     "speed-test": "tsx src/scripts/speed-test.ts"
   },

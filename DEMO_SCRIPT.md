@@ -90,14 +90,16 @@ Talk through the dashboard tiles:
 
 1. Navigate **Agents → My Agents → Sales Lead Pipeline**.
 2. Click **Run Now** → **modal opens** with overridable fields:
+   - `gmail_labels` (default `["Inbound Leads"]`) — tag input
    - `lead_score_threshold` (default 70)
    - `notify_slack` (default off)
-3. Bump threshold from 70 → **85**. Click **Run Now**.
-4. Wait for completion → fewer hot leads vs the prior run.
+3. Bump threshold from 70 → **85**, then **add label "VIP"** in the tag input. Click **Run Now**.
+4. Wait for completion → fewer hot leads vs the prior run, expanded label set in summary.
 5. Open the new execution detail. Show the **Configuration applied** panel:
+   - field: `gmail_labels`, default `["Inbound Leads"]`, this run `["Inbound Leads","VIP"]`
    - field: `lead_score_threshold`, default `70`, this run `85`
-   - "Audit-ready: every run records which config produced the result."
-6. Click **Run again with these overrides** — modal opens prefilled with `85`.
+   - "Audit-ready: every run records which config produced the result — including the exact label set the filter ran against."
+6. Click **Run again with these overrides** — modal opens prefilled.
 7. Tweak `notify_slack` → on. Click **Run Now**. Compare 3 executions in agent history.
 
 **Demo point:** the agent's saved defaults never changed — overrides live on the execution row only. Schedule runs continue to use defaults; no risk of accidental drift.

@@ -1541,6 +1541,7 @@ number
 boolean
 select
 textarea
+array (string | number items; minItems, maxItems optional)
 ```
 
 ### Step 5 — Select Trigger Mode

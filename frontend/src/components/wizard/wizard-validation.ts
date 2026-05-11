@@ -15,7 +15,11 @@ export function validateConfigClient(
 
   for (const [key, field] of Object.entries(schema)) {
     const raw = config[key];
-    const hasValue = raw !== undefined && raw !== null && raw !== '';
+    const hasValue =
+      raw !== undefined &&
+      raw !== null &&
+      raw !== '' &&
+      !(Array.isArray(raw) && raw.length === 0);
     const effective = hasValue ? raw : field.default;
 
     if (field.required && !hasValue && field.default === undefined) {
@@ -40,6 +44,36 @@ export function validateConfigClient(
 
     if (field.type === 'boolean' && typeof effective !== 'boolean') {
       errors.push({ field: key, message: `${field.label} must be a boolean` });
+    }
+
+    if (field.type === 'array') {
+      if (!Array.isArray(effective)) {
+        errors.push({ field: key, message: `${field.label} must be an array` });
+        continue;
+      }
+      const itemType = field.itemType ?? 'string';
+      for (let i = 0; i < effective.length; i++) {
+        const item = effective[i];
+        if (itemType === 'string' && typeof item !== 'string') {
+          errors.push({ field: key, message: `${field.label}[${i}] must be a string` });
+        }
+        if (itemType === 'number' && typeof item !== 'number') {
+          errors.push({ field: key, message: `${field.label}[${i}] must be a number` });
+        }
+      }
+      if (field.minItems !== undefined && effective.length < field.minItems) {
+        errors.push({
+          field: key,
+          message: `${field.label} requires at least ${field.minItems} item${field.minItems === 1 ? '' : 's'}`,
+        });
+      }
+      if (field.maxItems !== undefined && effective.length > field.maxItems) {
+        errors.push({
+          field: key,
+          message: `${field.label} accepts at most ${field.maxItems} item${field.maxItems === 1 ? '' : 's'}`,
+        });
+      }
+      continue;
     }
 
     if (field.enum && !field.enum.includes(String(effective))) {

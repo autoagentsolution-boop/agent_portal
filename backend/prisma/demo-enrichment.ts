@@ -36,7 +36,7 @@ const AGENTS: AgentSpec[] = [
     name: 'Sales Lead Pipeline',
     status: 'running',
     selectedIntegrations: ['gmail', 'slack'],
-    config: { gmail_label: 'Inbound Leads', lead_score_threshold: 75, notify_slack: true },
+    config: { gmail_labels: ['Inbound Leads'], lead_score_threshold: 75, notify_slack: true },
     history: { success: 41, warning: 2, failed: 2 },
     avgDurationMs: 3800,
     costPerExec: 0.014,

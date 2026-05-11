@@ -35,11 +35,19 @@ const templates = [
     optionalIntegrationsJson: ['slack', 'google_sheet'],
     allowedTriggerModesJson: ['manual', 'schedule'],
     configSchemaJson: {
-      gmail_label: { type: 'string', label: 'Gmail Label', required: true, default: 'Leads' },
+      gmail_labels: {
+        type: 'array',
+        itemType: 'string',
+        label: 'Gmail Labels',
+        required: true,
+        default: ['Leads'],
+        minItems: 1,
+        maxItems: 10,
+      },
       lead_score_threshold: { type: 'number', label: 'Lead Score Threshold', required: true, default: 70, min: 0, max: 100 },
       notify_slack: { type: 'boolean', label: 'Notify Slack', required: false, default: false },
     },
-    overridableFieldsJson: ['lead_score_threshold', 'notify_slack'],
+    overridableFieldsJson: ['gmail_labels', 'lead_score_threshold', 'notify_slack'],
     outputContractJson: {
       items_processed: 'number',
       classifications: 'array',
