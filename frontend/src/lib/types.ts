@@ -96,6 +96,7 @@ export interface ExecutionRow {
   resultSummary: string | null;
   errorMessage: string | null;
   createdAt: string;
+  configOverrideJson?: Record<string, unknown> | null;
   agentInstance?: { id: string; name: string };
   template?: { id: string; name: string };
 }
@@ -111,7 +112,6 @@ export interface ExecutionDetail extends ExecutionRow {
   };
   template?: AgentTemplate;
   n8nExecutionId?: string | null;
-  configOverrideJson?: Record<string, unknown> | null;
   effectiveConfigJson?: Record<string, unknown> | null;
 }
 

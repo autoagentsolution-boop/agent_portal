@@ -106,6 +106,9 @@ export function AgentDetailPage() {
   }
 
   const canRun = RUNNABLE.has(agent.status);
+  const latestOverride =
+    executionsQ.data?.find((e) => e.configOverrideJson && Object.keys(e.configOverrideJson).length > 0)
+      ?.configOverrideJson ?? null;
   const canPause = agent.status === 'running';
   const canResume = agent.status === 'paused';
   const canArchive = agent.status !== 'archived';
@@ -261,6 +264,7 @@ export function AgentDetailPage() {
         agentConfig={config}
         templateSchema={agent.template?.configSchemaJson ?? {}}
         overridableFields={agent.template?.overridableFieldsJson ?? []}
+        defaultOverrides={latestOverride}
         isSubmitting={runMutation.isPending}
         onClose={() => setRunModalOpen(false)}
         onSubmit={onRunWithOverrides}

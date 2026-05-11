@@ -113,7 +113,9 @@ export function RunAgentModal(props: RunAgentModalProps) {
           <div>
             <h2 className="text-base font-semibold text-gray-900">Run {agentName}</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Tweak overridable parameters for this run only — agent defaults stay untouched.
+              {defaultOverrides && Object.keys(defaultOverrides).length > 0
+                ? 'Pre-filled from your last run with overrides. Reset all to start from agent defaults.'
+                : 'Tweak overridable parameters for this run only — agent defaults stay untouched.'}
             </p>
           </div>
           <Button
