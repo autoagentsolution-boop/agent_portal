@@ -34,6 +34,7 @@ export interface AgentTemplate {
   optionalIntegrationsJson: string[];
   allowedTriggerModesJson: string[];
   configSchemaJson?: ConfigSchema;
+  overridableFieldsJson?: string[];
   approvalRequired: boolean;
   costLevel: 'low' | 'medium' | 'high';
   status: string;
@@ -102,10 +103,13 @@ export interface ExecutionDetail extends ExecutionRow {
   agentInstance?: {
     id: string;
     name: string;
-    template?: { id: string; name: string; category: string };
+    configJson?: Record<string, unknown>;
+    template?: AgentTemplate;
   };
-  template?: { id: string; name: string; category: string };
+  template?: AgentTemplate;
   n8nExecutionId?: string | null;
+  configOverrideJson?: Record<string, unknown> | null;
+  effectiveConfigJson?: Record<string, unknown> | null;
 }
 
 export type AgentInstanceStatus =

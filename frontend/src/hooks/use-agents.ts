@@ -36,11 +36,18 @@ export function useAgent(id: string | null | undefined) {
   });
 }
 
+export interface RunAgentArgs {
+  id: string;
+  overrides?: Record<string, unknown>;
+}
+
 export function useRunAgent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiClient.post<RunResponse>(`/agent-instances/${id}/run`, {});
+    mutationFn: async (args: RunAgentArgs | string) => {
+      const { id, overrides } = typeof args === 'string' ? { id: args, overrides: undefined } : args;
+      const body = overrides && Object.keys(overrides).length > 0 ? { overrides } : {};
+      const res = await apiClient.post<RunResponse>(`/agent-instances/${id}/run`, body);
       return res.data;
     },
     onSuccess: () => {

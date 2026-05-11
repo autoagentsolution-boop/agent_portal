@@ -83,7 +83,11 @@ export class ExecutionsService {
   async retry(id: string, workspaceId: string) {
     const old = await this.prisma.execution.findFirst({ where: { id, workspaceId } });
     if (!old) throw new NotFoundException(`Execution ${id} not found`);
-    return this.agents.runAgent(old.agentInstanceId, workspaceId, { triggerType: 'retry' });
+    const overrides = (old.configOverrideJson as Record<string, unknown> | null) ?? undefined;
+    return this.agents.runAgent(old.agentInstanceId, workspaceId, {
+      triggerType: 'retry',
+      overrides,
+    });
   }
 
   async applyApproval(

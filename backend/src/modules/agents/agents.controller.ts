@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { AgentsService } from './agents.service.js';
 import { CreateAgentSchema, UpdateAgentSchema, UpdateStatusSchema } from './dto/create-agent.dto.js';
+import { RunAgentSchema } from './dto/run-agent.dto.js';
 
 const WORKSPACE_ID = 'workspace_demo';
 
@@ -43,7 +44,11 @@ export class AgentsController {
   }
 
   @Post(':id/run')
-  run(@Param('id') id: string) {
-    return this.service.runAgent(id, WORKSPACE_ID, { triggerType: 'manual' });
+  run(@Param('id') id: string, @Body() body: unknown) {
+    const dto = RunAgentSchema.parse(body ?? {});
+    return this.service.runAgent(id, WORKSPACE_ID, {
+      triggerType: 'manual',
+      overrides: dto.overrides,
+    });
   }
 }

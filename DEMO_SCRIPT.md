@@ -83,6 +83,27 @@ Talk through the dashboard tiles:
 
 ---
 
+## Act 4b — Iterative Tuning (1 min)
+
+> "Stakeholders often ask 'what if we make the agent stricter?' — they want to A/B test
+> without re-creating the agent. Per-run overrides do exactly that."
+
+1. Navigate **Agents → My Agents → Sales Lead Pipeline**.
+2. Click **Run Now** → **modal opens** with overridable fields:
+   - `lead_score_threshold` (default 70)
+   - `notify_slack` (default off)
+3. Bump threshold from 70 → **85**. Click **Run Now**.
+4. Wait for completion → fewer hot leads vs the prior run.
+5. Open the new execution detail. Show the **Configuration applied** panel:
+   - field: `lead_score_threshold`, default `70`, this run `85`
+   - "Audit-ready: every run records which config produced the result."
+6. Click **Run again with these overrides** — modal opens prefilled with `85`.
+7. Tweak `notify_slack` → on. Click **Run Now**. Compare 3 executions in agent history.
+
+**Demo point:** the agent's saved defaults never changed — overrides live on the execution row only. Schedule runs continue to use defaults; no risk of accidental drift.
+
+---
+
 ## Act 5 — Operations View (1 min)
 
 1. **Notifications**: 3 unread error notifications from seeded failures. "Each failed execution surfaces here automatically — type, severity, link to the run."

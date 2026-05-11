@@ -9,6 +9,7 @@ import { Skeleton } from '../../components/ui/skeleton';
 import { ErrorState } from '../../components/ui/error-state';
 import { ExecutionList } from '../../components/executions/execution-list';
 import { BusinessOutcomesPanel } from '../../components/analytics/business-outcomes-panel';
+import { RunAgentModal } from '../../components/agents/run-agent-modal';
 import {
   useAgent,
   useArchiveAgent,
@@ -37,6 +38,7 @@ export function AgentDetailPage() {
   const agentQ = useAgent(id);
   const executionsQ = useExecutions({ agent_instance_id: id, limit: 50 });
   const [outcomeRange, setOutcomeRange] = useState<OutcomeRange>('7d');
+  const [runModalOpen, setRunModalOpen] = useState(false);
   const runMutation = useRunAgent();
   const statusMutation = useUpdateAgentStatus();
   const archiveMutation = useArchiveAgent();
@@ -66,14 +68,11 @@ export function AgentDetailPage() {
   const agent = agentQ.data;
   if (!agent) return <ErrorState title="Agent not found" />;
 
-  async function onRun() {
+  async function onRunWithOverrides(overrides: Record<string, unknown>) {
     if (!agent) return;
-    try {
-      const result = await runMutation.mutateAsync(agent.id);
-      navigate(`/executions/${result.execution_id}`);
-    } catch (err) {
-      window.alert(extractErrorMessage(err, 'Run failed'));
-    }
+    const result = await runMutation.mutateAsync({ id: agent.id, overrides });
+    setRunModalOpen(false);
+    navigate(`/executions/${result.execution_id}`);
   }
 
   async function onTransition(next: AgentInstanceStatus) {
@@ -135,7 +134,7 @@ export function AgentDetailPage() {
             </Button>
           )}
           {canRun && (
-            <Button size="sm" onClick={onRun} disabled={runMutation.isPending}>
+            <Button size="sm" onClick={() => setRunModalOpen(true)} disabled={runMutation.isPending}>
               <Play className="h-3.5 w-3.5" />
               {runMutation.isPending ? 'Starting…' : 'Run Now'}
             </Button>
@@ -237,6 +236,17 @@ export function AgentDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <RunAgentModal
+        open={runModalOpen}
+        agentName={agent.name}
+        agentConfig={config}
+        templateSchema={agent.template?.configSchemaJson ?? {}}
+        overridableFields={agent.template?.overridableFieldsJson ?? []}
+        isSubmitting={runMutation.isPending}
+        onClose={() => setRunModalOpen(false)}
+        onSubmit={onRunWithOverrides}
+      />
     </div>
   );
 }

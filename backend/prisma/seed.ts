@@ -39,6 +39,7 @@ const templates = [
       lead_score_threshold: { type: 'number', label: 'Lead Score Threshold', required: true, default: 70, min: 0, max: 100 },
       notify_slack: { type: 'boolean', label: 'Notify Slack', required: false, default: false },
     },
+    overridableFieldsJson: ['lead_score_threshold', 'notify_slack'],
     outputContractJson: {
       items_processed: 'number',
       classifications: 'array',
@@ -62,6 +63,7 @@ const templates = [
       tone: { type: 'string', label: 'Reply Tone', required: true, default: 'professional', enum: ['professional', 'friendly', 'concise'] },
       max_length: { type: 'number', label: 'Max Reply Length (words)', required: false, default: 150, min: 50, max: 500 },
     },
+    overridableFieldsJson: ['tone', 'max_length'],
     outputContractJson: {
       items_processed: 'number',
       drafts: 'array',
@@ -85,6 +87,7 @@ const templates = [
       channel: { type: 'string', label: 'Slack Channel', required: true, default: 'general' },
       hours_back: { type: 'number', label: 'Hours to Look Back', required: true, default: 24, min: 1, max: 168 },
     },
+    overridableFieldsJson: ['hours_back'],
     outputContractJson: {
       items_processed: 'number',
       summary: 'string',
@@ -109,6 +112,7 @@ const templates = [
       sheet_id: { type: 'string', label: 'Sheet ID', required: true, default: '' },
       required_columns: { type: 'string', label: 'Required Columns (comma-separated)', required: true, default: 'name,email,phone' },
     },
+    overridableFieldsJson: ['required_columns'],
     outputContractJson: {
       rows_checked: 'number',
       invalid_rows: 'number',
@@ -133,6 +137,7 @@ const templates = [
       max_tickets: { type: 'number', label: 'Max Tickets per Run', required: true, default: 20, min: 1, max: 100 },
       priority_threshold: { type: 'string', label: 'Escalate Above Priority', required: false, default: 'high', enum: ['low', 'medium', 'high', 'critical'] },
     },
+    overridableFieldsJson: ['max_tickets', 'priority_threshold'],
     outputContractJson: {
       items_processed: 'number',
       tickets: 'array',

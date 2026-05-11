@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Bot, Loader2 } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Bot, Loader2, Play } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Skeleton } from '../../components/ui/skeleton';
@@ -7,8 +8,11 @@ import { Alert } from '../../components/ui/alert';
 import { ErrorState } from '../../components/ui/error-state';
 import { ExecutionStatusBadge, isTerminal } from '../../components/executions/execution-status-badge';
 import { ExecutionOutputViewer } from '../../components/executions/execution-output-viewer';
+import { ConfigAppliedPanel } from '../../components/executions/config-applied-panel';
+import { RunAgentModal } from '../../components/agents/run-agent-modal';
 import { useExecution } from '../../hooks/use-execution';
 import { useRetryExecution } from '../../hooks/use-executions';
+import { useRunAgent } from '../../hooks/use-agents';
 import { useDocumentTitle } from '../../hooks/use-document-title';
 import { extractErrorMessage } from '../../lib/api-client';
 import {
@@ -22,6 +26,8 @@ export function ExecutionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const retry = useRetryExecution();
+  const runMutation = useRunAgent();
+  const [runModalOpen, setRunModalOpen] = useState(false);
 
   const { data, isLoading, error, refetch, isFetching } = useExecution(id, { poll: true });
   useDocumentTitle(data ? `Execution · ${data.agentInstance?.name ?? shortId(data.id, 8)}` : 'Execution');
@@ -34,6 +40,13 @@ export function ExecutionDetailPage() {
     } catch (err) {
       window.alert(extractErrorMessage(err, 'Retry failed'));
     }
+  }
+
+  async function onRunWithOverrides(overrides: Record<string, unknown>) {
+    if (!data?.agentInstanceId) return;
+    const res = await runMutation.mutateAsync({ id: data.agentInstanceId, overrides });
+    setRunModalOpen(false);
+    navigate(`/executions/${res.execution_id}`);
   }
 
   if (isLoading && !data) {
@@ -67,6 +80,15 @@ export function ExecutionDetailPage() {
   const running = !isTerminal(data.status);
   const showRetry = data.status === 'failed' || data.status === 'warning';
 
+  const agentConfig = (data.agentInstance?.configJson ?? {}) as Record<string, unknown>;
+  const overrideConfig = data.configOverrideJson ?? null;
+  const template = data.agentInstance?.template ?? data.template;
+  const overridableFields = template?.overridableFieldsJson ?? [];
+  const templateSchema = template?.configSchemaJson ?? {};
+  const canRerunWithOverrides = Boolean(
+    data.agentInstanceId && overridableFields.length > 0 && overrideConfig,
+  );
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -88,6 +110,17 @@ export function ExecutionDetailPage() {
                 <Bot className="h-3.5 w-3.5" />
                 View Agent
               </Link>
+            </Button>
+          )}
+          {canRerunWithOverrides && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRunModalOpen(true)}
+              disabled={runMutation.isPending}
+            >
+              <Play className="h-3.5 w-3.5" />
+              Run again with these overrides
             </Button>
           )}
           {showRetry && (
@@ -130,6 +163,8 @@ export function ExecutionDetailPage() {
         </Alert>
       )}
 
+      <ConfigAppliedPanel defaultConfig={agentConfig} overrideConfig={overrideConfig} />
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Output</CardTitle>
@@ -152,6 +187,20 @@ export function ExecutionDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {canRerunWithOverrides && template && (
+        <RunAgentModal
+          open={runModalOpen}
+          agentName={agentName}
+          agentConfig={agentConfig}
+          templateSchema={templateSchema}
+          overridableFields={overridableFields}
+          defaultOverrides={overrideConfig}
+          isSubmitting={runMutation.isPending}
+          onClose={() => setRunModalOpen(false)}
+          onSubmit={onRunWithOverrides}
+        />
+      )}
     </div>
   );
 }

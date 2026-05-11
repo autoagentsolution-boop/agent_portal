@@ -111,6 +111,8 @@ export type ExecutionCountAggregateOutputType = {
   n8nExecutionId: number
   resultSummary: number
   errorMessage: number
+  configOverrideJson: number
+  effectiveConfigJson: number
   createdAt: number
   updatedAt: number
   _all: number
@@ -202,6 +204,8 @@ export type ExecutionCountAggregateInputType = {
   n8nExecutionId?: true
   resultSummary?: true
   errorMessage?: true
+  configOverrideJson?: true
+  effectiveConfigJson?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -312,6 +316,8 @@ export type ExecutionGroupByOutputType = {
   n8nExecutionId: string | null
   resultSummary: string | null
   errorMessage: string | null
+  configOverrideJson: runtime.JsonValue | null
+  effectiveConfigJson: runtime.JsonValue | null
   createdAt: Date
   updatedAt: Date
   _count: ExecutionCountAggregateOutputType | null
@@ -358,6 +364,8 @@ export type ExecutionWhereInput = {
   n8nExecutionId?: Prisma.StringNullableFilter<"Execution"> | string | null
   resultSummary?: Prisma.StringNullableFilter<"Execution"> | string | null
   errorMessage?: Prisma.StringNullableFilter<"Execution"> | string | null
+  configOverrideJson?: Prisma.JsonNullableFilter<"Execution">
+  effectiveConfigJson?: Prisma.JsonNullableFilter<"Execution">
   createdAt?: Prisma.DateTimeFilter<"Execution"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Execution"> | Date | string
   workspace?: Prisma.XOR<Prisma.WorkspaceScalarRelationFilter, Prisma.WorkspaceWhereInput>
@@ -386,6 +394,8 @@ export type ExecutionOrderByWithRelationInput = {
   n8nExecutionId?: Prisma.SortOrderInput | Prisma.SortOrder
   resultSummary?: Prisma.SortOrderInput | Prisma.SortOrder
   errorMessage?: Prisma.SortOrderInput | Prisma.SortOrder
+  configOverrideJson?: Prisma.SortOrderInput | Prisma.SortOrder
+  effectiveConfigJson?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   workspace?: Prisma.WorkspaceOrderByWithRelationInput
@@ -417,6 +427,8 @@ export type ExecutionWhereUniqueInput = Prisma.AtLeast<{
   n8nExecutionId?: Prisma.StringNullableFilter<"Execution"> | string | null
   resultSummary?: Prisma.StringNullableFilter<"Execution"> | string | null
   errorMessage?: Prisma.StringNullableFilter<"Execution"> | string | null
+  configOverrideJson?: Prisma.JsonNullableFilter<"Execution">
+  effectiveConfigJson?: Prisma.JsonNullableFilter<"Execution">
   createdAt?: Prisma.DateTimeFilter<"Execution"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Execution"> | Date | string
   workspace?: Prisma.XOR<Prisma.WorkspaceScalarRelationFilter, Prisma.WorkspaceWhereInput>
@@ -445,6 +457,8 @@ export type ExecutionOrderByWithAggregationInput = {
   n8nExecutionId?: Prisma.SortOrderInput | Prisma.SortOrder
   resultSummary?: Prisma.SortOrderInput | Prisma.SortOrder
   errorMessage?: Prisma.SortOrderInput | Prisma.SortOrder
+  configOverrideJson?: Prisma.SortOrderInput | Prisma.SortOrder
+  effectiveConfigJson?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.ExecutionCountOrderByAggregateInput
@@ -476,6 +490,8 @@ export type ExecutionScalarWhereWithAggregatesInput = {
   n8nExecutionId?: Prisma.StringNullableWithAggregatesFilter<"Execution"> | string | null
   resultSummary?: Prisma.StringNullableWithAggregatesFilter<"Execution"> | string | null
   errorMessage?: Prisma.StringNullableWithAggregatesFilter<"Execution"> | string | null
+  configOverrideJson?: Prisma.JsonNullableWithAggregatesFilter<"Execution">
+  effectiveConfigJson?: Prisma.JsonNullableWithAggregatesFilter<"Execution">
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Execution"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Execution"> | Date | string
 }
@@ -496,6 +512,8 @@ export type ExecutionCreateInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   workspace: Prisma.WorkspaceCreateNestedOneWithoutExecutionsInput
@@ -524,6 +542,8 @@ export type ExecutionUncheckedCreateInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   output?: Prisma.ExecutionOutputUncheckedCreateNestedOneWithoutExecutionInput
@@ -546,6 +566,8 @@ export type ExecutionUpdateInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   workspace?: Prisma.WorkspaceUpdateOneRequiredWithoutExecutionsNestedInput
@@ -574,6 +596,8 @@ export type ExecutionUncheckedUpdateInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   output?: Prisma.ExecutionOutputUncheckedUpdateOneWithoutExecutionNestedInput
@@ -599,6 +623,8 @@ export type ExecutionCreateManyInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -619,6 +645,8 @@ export type ExecutionUpdateManyMutationInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -642,6 +670,8 @@ export type ExecutionUncheckedUpdateManyInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -675,6 +705,8 @@ export type ExecutionCountOrderByAggregateInput = {
   n8nExecutionId?: Prisma.SortOrder
   resultSummary?: Prisma.SortOrder
   errorMessage?: Prisma.SortOrder
+  configOverrideJson?: Prisma.SortOrder
+  effectiveConfigJson?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -944,6 +976,8 @@ export type ExecutionCreateWithoutWorkspaceInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   agentInstance: Prisma.AgentInstanceCreateNestedOneWithoutExecutionsInput
@@ -970,6 +1004,8 @@ export type ExecutionUncheckedCreateWithoutWorkspaceInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   output?: Prisma.ExecutionOutputUncheckedCreateNestedOneWithoutExecutionInput
@@ -1024,6 +1060,8 @@ export type ExecutionScalarWhereInput = {
   n8nExecutionId?: Prisma.StringNullableFilter<"Execution"> | string | null
   resultSummary?: Prisma.StringNullableFilter<"Execution"> | string | null
   errorMessage?: Prisma.StringNullableFilter<"Execution"> | string | null
+  configOverrideJson?: Prisma.JsonNullableFilter<"Execution">
+  effectiveConfigJson?: Prisma.JsonNullableFilter<"Execution">
   createdAt?: Prisma.DateTimeFilter<"Execution"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Execution"> | Date | string
 }
@@ -1044,6 +1082,8 @@ export type ExecutionCreateWithoutTemplateInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   workspace: Prisma.WorkspaceCreateNestedOneWithoutExecutionsInput
@@ -1070,6 +1110,8 @@ export type ExecutionUncheckedCreateWithoutTemplateInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   output?: Prisma.ExecutionOutputUncheckedCreateNestedOneWithoutExecutionInput
@@ -1118,6 +1160,8 @@ export type ExecutionCreateWithoutAgentInstanceInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   workspace: Prisma.WorkspaceCreateNestedOneWithoutExecutionsInput
@@ -1144,6 +1188,8 @@ export type ExecutionUncheckedCreateWithoutAgentInstanceInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   output?: Prisma.ExecutionOutputUncheckedCreateNestedOneWithoutExecutionInput
@@ -1192,6 +1238,8 @@ export type ExecutionCreateWithoutOutputInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   workspace: Prisma.WorkspaceCreateNestedOneWithoutExecutionsInput
@@ -1219,6 +1267,8 @@ export type ExecutionUncheckedCreateWithoutOutputInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutExecutionInput
@@ -1256,6 +1306,8 @@ export type ExecutionUpdateWithoutOutputInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   workspace?: Prisma.WorkspaceUpdateOneRequiredWithoutExecutionsNestedInput
@@ -1283,6 +1335,8 @@ export type ExecutionUncheckedUpdateWithoutOutputInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   notifications?: Prisma.NotificationUncheckedUpdateManyWithoutExecutionNestedInput
@@ -1304,6 +1358,8 @@ export type ExecutionCreateWithoutNotificationsInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   workspace: Prisma.WorkspaceCreateNestedOneWithoutExecutionsInput
@@ -1331,6 +1387,8 @@ export type ExecutionUncheckedCreateWithoutNotificationsInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
   output?: Prisma.ExecutionOutputUncheckedCreateNestedOneWithoutExecutionInput
@@ -1368,6 +1426,8 @@ export type ExecutionUpdateWithoutNotificationsInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   workspace?: Prisma.WorkspaceUpdateOneRequiredWithoutExecutionsNestedInput
@@ -1395,6 +1455,8 @@ export type ExecutionUncheckedUpdateWithoutNotificationsInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   output?: Prisma.ExecutionOutputUncheckedUpdateOneWithoutExecutionNestedInput
@@ -1418,6 +1480,8 @@ export type ExecutionCreateManyWorkspaceInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1438,6 +1502,8 @@ export type ExecutionUpdateWithoutWorkspaceInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   agentInstance?: Prisma.AgentInstanceUpdateOneRequiredWithoutExecutionsNestedInput
@@ -1464,6 +1530,8 @@ export type ExecutionUncheckedUpdateWithoutWorkspaceInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   output?: Prisma.ExecutionOutputUncheckedUpdateOneWithoutExecutionNestedInput
@@ -1488,6 +1556,8 @@ export type ExecutionUncheckedUpdateManyWithoutWorkspaceInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1510,6 +1580,8 @@ export type ExecutionCreateManyTemplateInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1530,6 +1602,8 @@ export type ExecutionUpdateWithoutTemplateInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   workspace?: Prisma.WorkspaceUpdateOneRequiredWithoutExecutionsNestedInput
@@ -1556,6 +1630,8 @@ export type ExecutionUncheckedUpdateWithoutTemplateInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   output?: Prisma.ExecutionOutputUncheckedUpdateOneWithoutExecutionNestedInput
@@ -1580,6 +1656,8 @@ export type ExecutionUncheckedUpdateManyWithoutTemplateInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1602,6 +1680,8 @@ export type ExecutionCreateManyAgentInstanceInput = {
   n8nExecutionId?: string | null
   resultSummary?: string | null
   errorMessage?: string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1622,6 +1702,8 @@ export type ExecutionUpdateWithoutAgentInstanceInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   workspace?: Prisma.WorkspaceUpdateOneRequiredWithoutExecutionsNestedInput
@@ -1648,6 +1730,8 @@ export type ExecutionUncheckedUpdateWithoutAgentInstanceInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   output?: Prisma.ExecutionOutputUncheckedUpdateOneWithoutExecutionNestedInput
@@ -1672,6 +1756,8 @@ export type ExecutionUncheckedUpdateManyWithoutAgentInstanceInput = {
   n8nExecutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resultSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   errorMessage?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  configOverrideJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  effectiveConfigJson?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1726,6 +1812,8 @@ export type ExecutionSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   n8nExecutionId?: boolean
   resultSummary?: boolean
   errorMessage?: boolean
+  configOverrideJson?: boolean
+  effectiveConfigJson?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   workspace?: boolean | Prisma.WorkspaceDefaultArgs<ExtArgs>
@@ -1755,6 +1843,8 @@ export type ExecutionSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   n8nExecutionId?: boolean
   resultSummary?: boolean
   errorMessage?: boolean
+  configOverrideJson?: boolean
+  effectiveConfigJson?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   workspace?: boolean | Prisma.WorkspaceDefaultArgs<ExtArgs>
@@ -1781,6 +1871,8 @@ export type ExecutionSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   n8nExecutionId?: boolean
   resultSummary?: boolean
   errorMessage?: boolean
+  configOverrideJson?: boolean
+  effectiveConfigJson?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   workspace?: boolean | Prisma.WorkspaceDefaultArgs<ExtArgs>
@@ -1807,11 +1899,13 @@ export type ExecutionSelectScalar = {
   n8nExecutionId?: boolean
   resultSummary?: boolean
   errorMessage?: boolean
+  configOverrideJson?: boolean
+  effectiveConfigJson?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type ExecutionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "workspaceId" | "agentInstanceId" | "templateId" | "status" | "triggerType" | "startedAt" | "finishedAt" | "durationMs" | "inputCount" | "outputCount" | "errorCount" | "tokensInput" | "tokensOutput" | "estimatedCostUsd" | "n8nExecutionId" | "resultSummary" | "errorMessage" | "createdAt" | "updatedAt", ExtArgs["result"]["execution"]>
+export type ExecutionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "workspaceId" | "agentInstanceId" | "templateId" | "status" | "triggerType" | "startedAt" | "finishedAt" | "durationMs" | "inputCount" | "outputCount" | "errorCount" | "tokensInput" | "tokensOutput" | "estimatedCostUsd" | "n8nExecutionId" | "resultSummary" | "errorMessage" | "configOverrideJson" | "effectiveConfigJson" | "createdAt" | "updatedAt", ExtArgs["result"]["execution"]>
 export type ExecutionInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   workspace?: boolean | Prisma.WorkspaceDefaultArgs<ExtArgs>
   agentInstance?: boolean | Prisma.AgentInstanceDefaultArgs<ExtArgs>
@@ -1859,6 +1953,8 @@ export type $ExecutionPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     n8nExecutionId: string | null
     resultSummary: string | null
     errorMessage: string | null
+    configOverrideJson: runtime.JsonValue | null
+    effectiveConfigJson: runtime.JsonValue | null
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["execution"]>
@@ -2307,6 +2403,8 @@ export interface ExecutionFieldRefs {
   readonly n8nExecutionId: Prisma.FieldRef<"Execution", 'String'>
   readonly resultSummary: Prisma.FieldRef<"Execution", 'String'>
   readonly errorMessage: Prisma.FieldRef<"Execution", 'String'>
+  readonly configOverrideJson: Prisma.FieldRef<"Execution", 'Json'>
+  readonly effectiveConfigJson: Prisma.FieldRef<"Execution", 'Json'>
   readonly createdAt: Prisma.FieldRef<"Execution", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Execution", 'DateTime'>
 }

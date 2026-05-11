@@ -63,6 +63,7 @@ export type AgentTemplateCountAggregateOutputType = {
   optionalIntegrationsJson: number
   allowedTriggerModesJson: number
   configSchemaJson: number
+  overridableFieldsJson: number
   outputContractJson: number
   n8nWebhookPath: number
   approvalRequired: number
@@ -113,6 +114,7 @@ export type AgentTemplateCountAggregateInputType = {
   optionalIntegrationsJson?: true
   allowedTriggerModesJson?: true
   configSchemaJson?: true
+  overridableFieldsJson?: true
   outputContractJson?: true
   n8nWebhookPath?: true
   approvalRequired?: true
@@ -206,6 +208,7 @@ export type AgentTemplateGroupByOutputType = {
   optionalIntegrationsJson: runtime.JsonValue
   allowedTriggerModesJson: runtime.JsonValue
   configSchemaJson: runtime.JsonValue
+  overridableFieldsJson: runtime.JsonValue
   outputContractJson: runtime.JsonValue
   n8nWebhookPath: string
   approvalRequired: boolean
@@ -247,6 +250,7 @@ export type AgentTemplateWhereInput = {
   optionalIntegrationsJson?: Prisma.JsonFilter<"AgentTemplate">
   allowedTriggerModesJson?: Prisma.JsonFilter<"AgentTemplate">
   configSchemaJson?: Prisma.JsonFilter<"AgentTemplate">
+  overridableFieldsJson?: Prisma.JsonFilter<"AgentTemplate">
   outputContractJson?: Prisma.JsonFilter<"AgentTemplate">
   n8nWebhookPath?: Prisma.StringFilter<"AgentTemplate"> | string
   approvalRequired?: Prisma.BoolFilter<"AgentTemplate"> | boolean
@@ -269,6 +273,7 @@ export type AgentTemplateOrderByWithRelationInput = {
   optionalIntegrationsJson?: Prisma.SortOrder
   allowedTriggerModesJson?: Prisma.SortOrder
   configSchemaJson?: Prisma.SortOrder
+  overridableFieldsJson?: Prisma.SortOrder
   outputContractJson?: Prisma.SortOrder
   n8nWebhookPath?: Prisma.SortOrder
   approvalRequired?: Prisma.SortOrder
@@ -294,6 +299,7 @@ export type AgentTemplateWhereUniqueInput = Prisma.AtLeast<{
   optionalIntegrationsJson?: Prisma.JsonFilter<"AgentTemplate">
   allowedTriggerModesJson?: Prisma.JsonFilter<"AgentTemplate">
   configSchemaJson?: Prisma.JsonFilter<"AgentTemplate">
+  overridableFieldsJson?: Prisma.JsonFilter<"AgentTemplate">
   outputContractJson?: Prisma.JsonFilter<"AgentTemplate">
   n8nWebhookPath?: Prisma.StringFilter<"AgentTemplate"> | string
   approvalRequired?: Prisma.BoolFilter<"AgentTemplate"> | boolean
@@ -316,6 +322,7 @@ export type AgentTemplateOrderByWithAggregationInput = {
   optionalIntegrationsJson?: Prisma.SortOrder
   allowedTriggerModesJson?: Prisma.SortOrder
   configSchemaJson?: Prisma.SortOrder
+  overridableFieldsJson?: Prisma.SortOrder
   outputContractJson?: Prisma.SortOrder
   n8nWebhookPath?: Prisma.SortOrder
   approvalRequired?: Prisma.SortOrder
@@ -342,6 +349,7 @@ export type AgentTemplateScalarWhereWithAggregatesInput = {
   optionalIntegrationsJson?: Prisma.JsonWithAggregatesFilter<"AgentTemplate">
   allowedTriggerModesJson?: Prisma.JsonWithAggregatesFilter<"AgentTemplate">
   configSchemaJson?: Prisma.JsonWithAggregatesFilter<"AgentTemplate">
+  overridableFieldsJson?: Prisma.JsonWithAggregatesFilter<"AgentTemplate">
   outputContractJson?: Prisma.JsonWithAggregatesFilter<"AgentTemplate">
   n8nWebhookPath?: Prisma.StringWithAggregatesFilter<"AgentTemplate"> | string
   approvalRequired?: Prisma.BoolWithAggregatesFilter<"AgentTemplate"> | boolean
@@ -362,6 +370,7 @@ export type AgentTemplateCreateInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath: string
   approvalRequired?: boolean
@@ -384,6 +393,7 @@ export type AgentTemplateUncheckedCreateInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath: string
   approvalRequired?: boolean
@@ -406,6 +416,7 @@ export type AgentTemplateUpdateInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath?: Prisma.StringFieldUpdateOperationsInput | string
   approvalRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -428,6 +439,7 @@ export type AgentTemplateUncheckedUpdateInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath?: Prisma.StringFieldUpdateOperationsInput | string
   approvalRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -450,6 +462,7 @@ export type AgentTemplateCreateManyInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath: string
   approvalRequired?: boolean
@@ -470,6 +483,7 @@ export type AgentTemplateUpdateManyMutationInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath?: Prisma.StringFieldUpdateOperationsInput | string
   approvalRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -490,6 +504,7 @@ export type AgentTemplateUncheckedUpdateManyInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath?: Prisma.StringFieldUpdateOperationsInput | string
   approvalRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -510,6 +525,7 @@ export type AgentTemplateCountOrderByAggregateInput = {
   optionalIntegrationsJson?: Prisma.SortOrder
   allowedTriggerModesJson?: Prisma.SortOrder
   configSchemaJson?: Prisma.SortOrder
+  overridableFieldsJson?: Prisma.SortOrder
   outputContractJson?: Prisma.SortOrder
   n8nWebhookPath?: Prisma.SortOrder
   approvalRequired?: Prisma.SortOrder
@@ -591,6 +607,7 @@ export type AgentTemplateCreateWithoutAgentInstancesInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath: string
   approvalRequired?: boolean
@@ -612,6 +629,7 @@ export type AgentTemplateUncheckedCreateWithoutAgentInstancesInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath: string
   approvalRequired?: boolean
@@ -649,6 +667,7 @@ export type AgentTemplateUpdateWithoutAgentInstancesInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath?: Prisma.StringFieldUpdateOperationsInput | string
   approvalRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -670,6 +689,7 @@ export type AgentTemplateUncheckedUpdateWithoutAgentInstancesInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath?: Prisma.StringFieldUpdateOperationsInput | string
   approvalRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -691,6 +711,7 @@ export type AgentTemplateCreateWithoutExecutionsInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath: string
   approvalRequired?: boolean
@@ -712,6 +733,7 @@ export type AgentTemplateUncheckedCreateWithoutExecutionsInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath: string
   approvalRequired?: boolean
@@ -749,6 +771,7 @@ export type AgentTemplateUpdateWithoutExecutionsInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath?: Prisma.StringFieldUpdateOperationsInput | string
   approvalRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -770,6 +793,7 @@ export type AgentTemplateUncheckedUpdateWithoutExecutionsInput = {
   optionalIntegrationsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   allowedTriggerModesJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   configSchemaJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  overridableFieldsJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   outputContractJson?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   n8nWebhookPath?: Prisma.StringFieldUpdateOperationsInput | string
   approvalRequired?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -831,6 +855,7 @@ export type AgentTemplateSelect<ExtArgs extends runtime.Types.Extensions.Interna
   optionalIntegrationsJson?: boolean
   allowedTriggerModesJson?: boolean
   configSchemaJson?: boolean
+  overridableFieldsJson?: boolean
   outputContractJson?: boolean
   n8nWebhookPath?: boolean
   approvalRequired?: boolean
@@ -854,6 +879,7 @@ export type AgentTemplateSelectCreateManyAndReturn<ExtArgs extends runtime.Types
   optionalIntegrationsJson?: boolean
   allowedTriggerModesJson?: boolean
   configSchemaJson?: boolean
+  overridableFieldsJson?: boolean
   outputContractJson?: boolean
   n8nWebhookPath?: boolean
   approvalRequired?: boolean
@@ -874,6 +900,7 @@ export type AgentTemplateSelectUpdateManyAndReturn<ExtArgs extends runtime.Types
   optionalIntegrationsJson?: boolean
   allowedTriggerModesJson?: boolean
   configSchemaJson?: boolean
+  overridableFieldsJson?: boolean
   outputContractJson?: boolean
   n8nWebhookPath?: boolean
   approvalRequired?: boolean
@@ -894,6 +921,7 @@ export type AgentTemplateSelectScalar = {
   optionalIntegrationsJson?: boolean
   allowedTriggerModesJson?: boolean
   configSchemaJson?: boolean
+  overridableFieldsJson?: boolean
   outputContractJson?: boolean
   n8nWebhookPath?: boolean
   approvalRequired?: boolean
@@ -903,7 +931,7 @@ export type AgentTemplateSelectScalar = {
   updatedAt?: boolean
 }
 
-export type AgentTemplateOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "name" | "category" | "description" | "taskScope" | "limitationsJson" | "requiredIntegrationsJson" | "optionalIntegrationsJson" | "allowedTriggerModesJson" | "configSchemaJson" | "outputContractJson" | "n8nWebhookPath" | "approvalRequired" | "costLevel" | "status" | "createdAt" | "updatedAt", ExtArgs["result"]["agentTemplate"]>
+export type AgentTemplateOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "name" | "category" | "description" | "taskScope" | "limitationsJson" | "requiredIntegrationsJson" | "optionalIntegrationsJson" | "allowedTriggerModesJson" | "configSchemaJson" | "overridableFieldsJson" | "outputContractJson" | "n8nWebhookPath" | "approvalRequired" | "costLevel" | "status" | "createdAt" | "updatedAt", ExtArgs["result"]["agentTemplate"]>
 export type AgentTemplateInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   agentInstances?: boolean | Prisma.AgentTemplate$agentInstancesArgs<ExtArgs>
   executions?: boolean | Prisma.AgentTemplate$executionsArgs<ExtArgs>
@@ -929,6 +957,7 @@ export type $AgentTemplatePayload<ExtArgs extends runtime.Types.Extensions.Inter
     optionalIntegrationsJson: runtime.JsonValue
     allowedTriggerModesJson: runtime.JsonValue
     configSchemaJson: runtime.JsonValue
+    overridableFieldsJson: runtime.JsonValue
     outputContractJson: runtime.JsonValue
     n8nWebhookPath: string
     approvalRequired: boolean
@@ -1371,6 +1400,7 @@ export interface AgentTemplateFieldRefs {
   readonly optionalIntegrationsJson: Prisma.FieldRef<"AgentTemplate", 'Json'>
   readonly allowedTriggerModesJson: Prisma.FieldRef<"AgentTemplate", 'Json'>
   readonly configSchemaJson: Prisma.FieldRef<"AgentTemplate", 'Json'>
+  readonly overridableFieldsJson: Prisma.FieldRef<"AgentTemplate", 'Json'>
   readonly outputContractJson: Prisma.FieldRef<"AgentTemplate", 'Json'>
   readonly n8nWebhookPath: Prisma.FieldRef<"AgentTemplate", 'String'>
   readonly approvalRequired: Prisma.FieldRef<"AgentTemplate", 'Boolean'>

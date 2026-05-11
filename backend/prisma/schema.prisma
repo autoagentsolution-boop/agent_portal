@@ -82,6 +82,7 @@ model AgentTemplate {
   optionalIntegrationsJson Json            @default("[]")
   allowedTriggerModesJson  Json            @default("[]")
   configSchemaJson         Json            @default("{}")
+  overridableFieldsJson    Json            @default("[]")
   outputContractJson       Json            @default("{}")
   n8nWebhookPath           String
   approvalRequired         Boolean         @default(false)
@@ -159,6 +160,8 @@ model Execution {
   n8nExecutionId   String?
   resultSummary    String?
   errorMessage     String?
+  configOverrideJson  Json?
+  effectiveConfigJson Json?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   output           ExecutionOutput?

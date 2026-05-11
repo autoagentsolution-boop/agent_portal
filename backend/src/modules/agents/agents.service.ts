@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { validateConfig, ConfigSchema } from '../../utils/config-schema-validator.js';
+import { validateAndMergeOverrides } from '../../utils/overrides-validator.js';
 import { N8nService } from '../n8n/n8n.service.js';
 import type { N8nTriggerPayload } from '../n8n/dto/callback.dto.js';
 import { CreateAgentDto, UpdateAgentDto, UpdateStatusDto } from './dto/create-agent.dto.js';
@@ -156,7 +157,10 @@ export class AgentsService {
   async runAgent(
     agentId: string,
     workspaceId: string,
-    options: { triggerType?: 'manual' | 'retry' | 'schedule' } = {},
+    options: {
+      triggerType?: 'manual' | 'retry' | 'schedule';
+      overrides?: Record<string, unknown>;
+    } = {},
   ) {
     const agent = await this.prisma.agentInstance.findFirst({
       where: { id: agentId, workspaceId },
@@ -168,6 +172,16 @@ export class AgentsService {
     }
 
     const triggerType = options.triggerType ?? 'manual';
+
+    // Schedule never carries overrides — defaults only. Manual/retry can override.
+    const incomingOverrides = triggerType === 'schedule' ? undefined : options.overrides;
+    const { effective, snapshot } = validateAndMergeOverrides(
+      incomingOverrides,
+      agent.configJson as Record<string, unknown>,
+      agent.template.overridableFieldsJson as unknown as string[],
+      agent.template.configSchemaJson as unknown as ConfigSchema,
+    );
+
     const execution = await this.prisma.execution.create({
       data: {
         workspaceId,
@@ -176,6 +190,8 @@ export class AgentsService {
         status: 'running',
         triggerType,
         startedAt: new Date(),
+        configOverrideJson: (snapshot ?? undefined) as object | undefined,
+        effectiveConfigJson: effective as object,
       },
     });
 
@@ -184,7 +200,7 @@ export class AgentsService {
       agent_instance_id: agent.id,
       template_id: agent.templateId,
       workspace_id: workspaceId,
-      config: agent.configJson as Record<string, unknown>,
+      config: effective,
       selected_integrations: agent.integrations.map((ai) => ai.integration.integrationKey),
       input: { mode: 'test', items: [] },
       callback: {

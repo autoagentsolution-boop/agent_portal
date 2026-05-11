@@ -1496,6 +1496,7 @@ export const AgentTemplateScalarFieldEnum = {
   optionalIntegrationsJson: 'optionalIntegrationsJson',
   allowedTriggerModesJson: 'allowedTriggerModesJson',
   configSchemaJson: 'configSchemaJson',
+  overridableFieldsJson: 'overridableFieldsJson',
   outputContractJson: 'outputContractJson',
   n8nWebhookPath: 'n8nWebhookPath',
   approvalRequired: 'approvalRequired',
@@ -1570,6 +1571,8 @@ export const ExecutionScalarFieldEnum = {
   n8nExecutionId: 'n8nExecutionId',
   resultSummary: 'resultSummary',
   errorMessage: 'errorMessage',
+  configOverrideJson: 'configOverrideJson',
+  effectiveConfigJson: 'effectiveConfigJson',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const

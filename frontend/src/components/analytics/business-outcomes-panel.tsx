@@ -81,7 +81,7 @@ export function BusinessOutcomesPanel({ agentInstanceId, range, onRangeChange }:
                   isLoading={q.isLoading}
                 />
               ))}
-              {q.isLoading && (q.data?.metrics ?? []).length === 0 && (
+              {q.isLoading && (
                 <>
                   <MetricCard isLoading label="—" value="—" />
                   <MetricCard isLoading label="—" value="—" />
