@@ -1,4 +1,4 @@
-import { asRecord, safeArray, safeNumber, type Extractor } from '../types.js';
+import { safeArray, safeNumber, unwrapData, type Extractor } from '../types.js';
 
 interface Ticket {
   priority?: string;
@@ -6,7 +6,7 @@ interface Ticket {
 }
 
 export const extract: Extractor = (output) => {
-  const o = asRecord(output);
+  const o = unwrapData(output);
   const items = safeNumber(o.items_processed);
   const tickets = safeArray<Ticket>(o.tickets);
 

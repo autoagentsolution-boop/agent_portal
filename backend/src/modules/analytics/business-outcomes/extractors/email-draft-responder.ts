@@ -1,4 +1,4 @@
-import { asRecord, safeArray, safeNumber, type Extractor } from '../types.js';
+import { safeArray, safeNumber, unwrapData, type Extractor } from '../types.js';
 
 interface Draft {
   approval_status?: string;
@@ -7,7 +7,7 @@ interface Draft {
 }
 
 export const extract: Extractor = (output) => {
-  const o = asRecord(output);
+  const o = unwrapData(output);
   const items = safeNumber(o.items_processed);
   const drafts = safeArray<Draft>(o.drafts);
 

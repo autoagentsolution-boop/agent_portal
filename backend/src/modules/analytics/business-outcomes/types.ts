@@ -41,3 +41,13 @@ export function safeArray<T = unknown>(v: unknown): T[] {
 export function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
 }
+
+// n8n wraps execution output as `{ data: {...}, summary: "..." }` for most templates.
+// Some templates (slack-daily-summary) emit flat payloads. Unwrap when present, fall back to raw.
+export function unwrapData(v: unknown): Record<string, unknown> {
+  const raw = asRecord(v);
+  const inner = raw.data;
+  return inner && typeof inner === 'object' && !Array.isArray(inner)
+    ? (inner as Record<string, unknown>)
+    : raw;
+}

@@ -1,4 +1,4 @@
-import { asRecord, safeArray, safeNumber, type Extractor } from '../types.js';
+import { safeArray, safeNumber, unwrapData, type Extractor } from '../types.js';
 
 interface Classification {
   lead_type?: string;
@@ -6,7 +6,7 @@ interface Classification {
 }
 
 export const extract: Extractor = (output) => {
-  const o = asRecord(output);
+  const o = unwrapData(output);
   const items = safeNumber(o.items_processed);
   const classifications = safeArray<Classification>(o.classifications);
 
@@ -14,7 +14,7 @@ export const extract: Extractor = (output) => {
   let warm = 0;
   let cold = 0;
   for (const c of classifications) {
-    const t = (c?.lead_type ?? '').toString().toLowerCase();
+    const t = (c?.lead_type ?? '').toString().toLowerCase().replace(/_lead$/, '');
     if (t === 'hot') hot++;
     else if (t === 'warm') warm++;
     else if (t === 'cold') cold++;
