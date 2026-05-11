@@ -1,7 +1,7 @@
 # Business Outcome Analytics
 
 **Created:** 2026-05-08
-**Status:** in progress
+**Status:** complete (with post-ship hotfix 2026-05-11)
 **Branch:** main
 
 ## Goal
@@ -19,9 +19,13 @@ Surface per-agent business outcomes (leads classified, drafts approved, tickets 
 
 | # | Name | Status |
 |---|------|--------|
-| 01 | Backend extractors + endpoint + FE Outcomes tab | in progress |
+| 01 | Backend extractors + endpoint + FE Outcomes tab | complete |
 
 See `phase-01-business-outcome-analytics.md`.
+
+## Post-ship hotfix (2026-05-11)
+
+Extractors assumed top-level outputJson shape but n8n wraps payloads under `.data` for 4/5 templates → all metrics returned 0 in production. Fixed via shared `unwrapData()` helper. Bonus: gmail-lead-classifier `lead_type` matched on bare `hot`/`warm`/`cold` but DB stores `hot_lead`/`warm_lead` → strip `_lead` suffix before compare. See `docs/journals/2026-05-11-outcome-extractor-hotfix.md` + commit `594aa33`.
 
 ## Key decisions
 
