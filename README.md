@@ -43,6 +43,38 @@ docker compose restart n8n
 
 Then activate each workflow in the UI (http://localhost:5678 → toggle Active per workflow).
 
+## Updating Code (IMPORTANT)
+
+The `frontend` and `backend` containers **bake source code into the image at build time** — they do not bind-mount your working directory. Any code change (`git pull`, local edit, new phase) **will not appear in the running containers** until you rebuild.
+
+**Rule:** any time you `git pull`, edit a file under `frontend/src/` or `backend/src/`, run **one** of these:
+
+```bash
+# Frontend changes only (most common)
+docker compose up -d --build frontend
+
+# Backend changes only
+docker compose up -d --build backend
+
+# Both
+docker compose up -d --build frontend backend
+```
+
+After rebuild: hard-refresh the browser (**Ctrl+Shift+R** / **Cmd+Shift+R**) to bypass the JS bundle cache.
+
+If a backend code change requires a schema/seed change, also re-run:
+```bash
+docker compose exec backend npx prisma migrate deploy
+docker compose exec backend npm run prisma:seed
+```
+
+**Symptom that almost always means "stale container":**
+- A button click does nothing or runs the OLD behavior (e.g., Run Now skips the override modal and runs immediately)
+- New fields you added to a template/form don't render
+- An API endpoint returns 404 even though the route exists in source
+
+---
+
 ## Access
 
 | Service     | URL                                  | Credentials                    |
@@ -85,6 +117,9 @@ docker compose up --build -d
 | Login `MISSING_OR_NULL_ORIGIN`           | Custom client missing `Origin` header (browser/curl/UI fine)      |
 | Port 5432/5173/5678/4000 already in use  | Stop conflicting service or edit ports in `docker-compose.yml`    |
 | Auth fails after seed re-run             | Seed is idempotent — verify `BETTER_AUTH_SECRET` consistent in `.env` |
+| Run Now skips modal / runs immediately   | Frontend container running pre-Phase-15 build → `docker compose up -d --build frontend` + hard refresh |
+| Recent code change not visible in browser| Frontend image is stale — rebuild (see Updating Code section above)   |
+| New API field returns undefined          | Backend image is stale — `docker compose up -d --build backend`       |
 
 ## Tech Stack
 

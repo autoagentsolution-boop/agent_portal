@@ -12,8 +12,12 @@
 
 import * as process from 'node:process'
 import * as path from 'node:path'
-import { fileURLToPath } from 'node:url'
-globalThis['__dirname'] = path.dirname(fileURLToPath(import.meta.url))
+// PATCH: project is CJS (package.json type=commonjs); original line used
+// `import.meta.url` which Node's CJS loader rejects at parse time. Use the
+// CJS-injected `__filename` instead. If `prisma generate` is re-run, this
+// patch must be reapplied — see backend/README or scripts/postgenerate.
+declare const __filename: string;
+globalThis['__dirname'] = path.dirname(__filename);
 
 import * as runtime from "@prisma/client/runtime/client"
 import * as $Enums from "./enums.js"
