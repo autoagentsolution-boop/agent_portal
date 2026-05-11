@@ -34,7 +34,7 @@ Fixed with `unwrapData(v)`: returns `payload.data` when present as a record, els
 
 No unit tests on extractors — registry was wired in Phase 14, but tests only covered the analytics endpoint with mocked extractor return values. The shape mismatch only surfaces against real n8n output, which the demo seed produced after registry wiring shipped.
 
-**Action**: extractor unit tests are NOT in scope for hotfix (KISS for demo). Backlog: add fixture-driven test per template using a snapshot of real `outputJson` from `ExecutionOutput`.
+**Action**: fixture-driven extractor tests shipped same session — `backend/src/modules/analytics/business-outcomes/extractors.spec.ts` (21 cases covering wrapped + flat shape, lead_type normalize, fallback paths, postAggregate). Total backend suite now 37/37.
 
 ## Bug 1 — Parameter Override Persistence (NOT FIXED)
 
