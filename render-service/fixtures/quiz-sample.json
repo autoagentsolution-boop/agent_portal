@@ -1,0 +1,67 @@
+{
+  "title": "Đố Vui Địa Lý VN",
+  "channelName": "videofarm",
+  "variant": "dark",
+  "questions": [
+    {
+      "id": 1,
+      "question": "Thủ đô của Việt Nam là gì?",
+      "options": ["Hà Nội", "Đà Nẵng", "TP. Hồ Chí Minh", "Huế"],
+      "correctIndex": 0
+    },
+    {
+      "id": 2,
+      "question": "Sông nào dài nhất Việt Nam?",
+      "options": ["Sông Hồng", "Sông Mekong", "Sông Đà", "Sông Đồng Nai"],
+      "correctIndex": 1
+    },
+    {
+      "id": 3,
+      "question": "Đỉnh núi cao nhất Việt Nam?",
+      "options": ["Phan Xi Păng", "Bạch Mã", "Ngọc Linh", "Pu Si Lung"],
+      "correctIndex": 0
+    },
+    {
+      "id": 4,
+      "question": "Tỉnh nào có diện tích lớn nhất Việt Nam?",
+      "options": ["Đắk Lắk", "Nghệ An", "Gia Lai", "Sơn La"],
+      "correctIndex": 1
+    },
+    {
+      "id": 5,
+      "question": "Vịnh Hạ Long thuộc tỉnh nào?",
+      "options": ["Hải Phòng", "Quảng Ninh", "Nam Định", "Ninh Bình"],
+      "correctIndex": 1
+    },
+    {
+      "id": 6,
+      "question": "Đảo nào lớn nhất Việt Nam?",
+      "options": ["Phú Quốc", "Cát Bà", "Côn Đảo", "Lý Sơn"],
+      "correctIndex": 0
+    },
+    {
+      "id": 7,
+      "question": "Việt Nam có bao nhiêu tỉnh thành?",
+      "options": ["61", "63", "64", "65"],
+      "correctIndex": 1
+    },
+    {
+      "id": 8,
+      "question": "Thành phố nào được gọi là 'thành phố ngàn hoa'?",
+      "options": ["Đà Lạt", "Sa Pa", "Hà Giang", "Mộc Châu"],
+      "correctIndex": 0
+    },
+    {
+      "id": 9,
+      "question": "Hang động lớn nhất thế giới ở Việt Nam tên gì?",
+      "options": ["Phong Nha", "Sơn Đoòng", "Thiên Đường", "Tiên Sơn"],
+      "correctIndex": 1
+    },
+    {
+      "id": 10,
+      "question": "Cố đô Huế thuộc tỉnh nào hiện nay?",
+      "options": ["Quảng Trị", "Đà Nẵng", "Thừa Thiên Huế", "Quảng Nam"],
+      "correctIndex": 2
+    }
+  ]
+}
