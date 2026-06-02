@@ -1,0 +1,99 @@
+{
+  "name": "fb-token-refresh",
+  "active": false,
+  "settings": { "timezone": "Asia/Bangkok", "executionTimeout": 120 },
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 3 * * 0" }] } },
+      "id": "cron",
+      "name": "Sunday 03:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "if (!$env.FB_APP_ID || !$env.FB_APP_SECRET || !$env.FB_PAGE_ACCESS_TOKEN) throw new Error('fb_token_refresh: missing FB_APP_ID / FB_APP_SECRET / FB_PAGE_ACCESS_TOKEN env vars');\nreturn [{ json: { jobId: crypto.randomUUID(), startedAt: new Date().toISOString(), currentTokenLength: $env.FB_PAGE_ACCESS_TOKEN.length } }];"
+      },
+      "id": "preflight",
+      "name": "Preflight env check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 320]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.facebook.com/v18.0/oauth/access_token",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "grant_type", "value": "fb_exchange_token" },
+            { "name": "client_id", "value": "={{$env.FB_APP_ID}}" },
+            { "name": "client_secret", "value": "={{$env.FB_APP_SECRET}}" },
+            { "name": "fb_exchange_token", "value": "={{$env.FB_PAGE_ACCESS_TOKEN}}" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "exchange",
+      "name": "Exchange token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Preflight env check').first().json;\nconst resp = $json;\nif (!resp.access_token) throw new Error('fb_refresh_no_access_token in response');\nconst newToken = resp.access_token;\nconst expiresIn = resp.expires_in || null;\nreturn [{ json: { jobId: ctx.jobId, newTokenLength: newToken.length, expiresInSec: expiresIn, expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null, success: true } }];"
+      },
+      "id": "parse-token",
+      "name": "Parse new token (no value logged)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 320]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://localhost:5678/api/v1/credentials/{{$env.FB_CREDENTIAL_ID}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-N8N-API-KEY", "value": "={{$env.N8N_API_KEY}}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"data\": { \"accessToken\": {{ JSON.stringify($('Exchange token').first().json.access_token) }} } }",
+        "options": { "timeout": 10000 }
+      },
+      "id": "update-cred",
+      "name": "Update n8n credential",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO run_log (job_id, level, step, detail) VALUES (gen_random_uuid(), 'info', 'upload', $1::jsonb);",
+        "options": { "queryReplacement": "={{ JSON.stringify({ event: 'fb_token_refreshed', jobId: $('Preflight env check').first().json.jobId, newTokenLength: $('Parse new token (no value logged)').first().json.newTokenLength, expiresInSec: $('Parse new token (no value logged)').first().json.expiresInSec, expiresAt: $('Parse new token (no value logged)').first().json.expiresAt }) }}"
+        }
+      },
+      "id": "log-success",
+      "name": "Log refresh success",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, 320],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    }
+  ],
+  "connections": {
+    "Sunday 03:00": { "main": [[{ "node": "Preflight env check", "type": "main", "index": 0 }]] },
+    "Preflight env check": { "main": [[{ "node": "Exchange token", "type": "main", "index": 0 }]] },
+    "Exchange token": { "main": [[{ "node": "Parse new token (no value logged)", "type": "main", "index": 0 }]] },
+    "Parse new token (no value logged)": { "main": [[{ "node": "Update n8n credential", "type": "main", "index": 0 }]] },
+    "Update n8n credential": { "main": [[{ "node": "Log refresh success", "type": "main", "index": 0 }]] }
+  }
+}

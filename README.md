@@ -34,31 +34,33 @@ Personal automation: generate VN-language short-form video content (Quiz, News�
 
 ## Prerequisites
 
-- Docker Desktop (running)
+- Docker Desktop (running, WSL2 backend on Windows)
+- Node.js ≥ 20 (for `db` package + `scripts/status.ts`)
 - API keys (see [`.env.example`](.env.example))
 
 ## Quick Start
 
+End-to-end first-time setup is documented in [`docs/runbook-cold-start.md`](docs/runbook-cold-start.md) — target time to first uploaded video: **~90 minutes**.
+
+OAuth setup (the only manual step): [`docs/oauth-setup.md`](docs/oauth-setup.md).
+
+### Day-to-day commands
+
 ```bash
-cp .env.example .env
-# Fill required keys: GEMINI_API_KEY, PEXELS_API_KEY, YT_OAUTH_*, FB_PAGE_*
-
+cp .env.example .env                # fill credentials per docs/oauth-setup.md
 docker compose up -d postgres n8n
-# n8n UI: http://localhost:5678 (login from N8N_BASIC_AUTH_*)
-# Postgres: localhost:5432 (creds from POSTGRES_*)
-
-# Apply DB schema (Phase 01) — first run only, or after schema changes:
 npm --prefix db install
 npm --prefix db run migrate:deploy
+docker compose --profile render up -d --build render-service
 
-# Render service (added in Phase 02):
-docker compose --profile render up -d render-service
-# Health: curl http://localhost:7000/health
+curl http://localhost:7000/health   # render-service ready
+npx tsx scripts/status.ts           # last 24h status
+bash scripts/check-pipeline-health.sh 1
 ```
 
 ## Database
 
-Schema lives in [`db/prisma/schema.prisma`](db/prisma/schema.prisma). Prisma 7, ESM client generated into `db/generated/prisma/` (gitignored).
+Schema lives in [`db/prisma/schema.prisma`](db/prisma/schema.prisma). Prisma 7, ESM client generated into `db/generated/prisma/` (committed to git — see Trade-offs in `plans/260531-1755-video-content-farm-pivot/phase-02-render-service-scaffold.md`).
 
 ```bash
 # Edit schema, then:
@@ -94,6 +96,14 @@ AgentPortal/
 
 - **Active plan:** [`plans/260531-1755-video-content-farm-pivot/plan.md`](plans/260531-1755-video-content-farm-pivot/plan.md)
 - **Design rationale:** [`plans/reports/brainstorm-260531-1755-video-content-farm-pivot.md`](plans/reports/brainstorm-260531-1755-video-content-farm-pivot.md)
+
+## Docs
+
+- [`docs/runbook-cold-start.md`](docs/runbook-cold-start.md) — first-time setup from `git clone`
+- [`docs/oauth-setup.md`](docs/oauth-setup.md) — YouTube + Facebook OAuth procedure
+- [`docs/runbook-quiz-pipeline.md`](docs/runbook-quiz-pipeline.md) — M1 operator runbook + symptom triage
+- [`docs/troubleshooting.md`](docs/troubleshooting.md) — full symptom → fix table
+- [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md) — 5-act walkthrough for portfolio/showcase
 
 ## Archived
 
