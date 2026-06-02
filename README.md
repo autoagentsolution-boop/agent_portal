@@ -47,9 +47,24 @@ docker compose up -d postgres n8n
 # n8n UI: http://localhost:5678 (login from N8N_BASIC_AUTH_*)
 # Postgres: localhost:5432 (creds from POSTGRES_*)
 
+# Apply DB schema (Phase 01) — first run only, or after schema changes:
+npm --prefix db install
+npm --prefix db run migrate:deploy
+
 # Render service (added in Phase 02):
 docker compose --profile render up -d render-service
 # Health: curl http://localhost:7000/health
+```
+
+## Database
+
+Schema lives in [`db/prisma/schema.prisma`](db/prisma/schema.prisma). Prisma 7, ESM client generated into `db/generated/prisma/` (gitignored).
+
+```bash
+# Edit schema, then:
+npm --prefix db run migrate:dev      # interactive: creates + applies migration
+npm --prefix db run migrate:deploy   # production: applies pending migrations only
+npm --prefix db run studio           # GUI on http://localhost:5555
 ```
 
 ## Repo Layout

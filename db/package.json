@@ -1,0 +1,27 @@
+{
+  "name": "@videofarm/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Postgres schema + Prisma 7 client for Video Content Farm",
+  "type": "module",
+  "main": "./generated/prisma/client.js",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:status": "prisma migrate status",
+    "migrate:diff": "prisma migrate diff --from-empty --to-schema ./prisma/schema.prisma --script",
+    "studio": "prisma studio",
+    "format": "prisma format"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "dotenv": "^17.4.2",
+    "prisma": "^7.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.0.0"
+  }
+}

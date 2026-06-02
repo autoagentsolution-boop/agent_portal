@@ -1,0 +1,126 @@
+// Video Content Farm — Postgres schema
+// See plans/260531-1755-video-content-farm-pivot/phase-01-postgres-schema.md
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+  runtime  = "nodejs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Pipeline {
+  quiz
+  news_comic
+  life_hacks
+}
+
+enum JobStatus {
+  queued
+  generating
+  rendering
+  uploading
+  done
+  failed
+}
+
+enum AssetKind {
+  image
+  audio
+  video_clip
+}
+
+enum Platform {
+  youtube
+  facebook
+}
+
+enum UploadStatus {
+  pending
+  uploaded
+  failed
+}
+
+enum LogLevel {
+  info
+  warn
+  error
+}
+
+enum LogStep {
+  script
+  image
+  tts
+  render
+  upload
+}
+
+// 1 row = 1 video plan; orchestration record
+model VideoJob {
+  id         String    @id @default(uuid()) @db.Uuid
+  pipeline   Pipeline
+  niche      String?
+  status     JobStatus @default(queued)
+  script     Json?
+  videoPath  String?   @map("video_path")
+  costUsd    Decimal?  @map("cost_usd") @db.Decimal(10, 4)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt  DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+  error      String?
+
+  uploads UploadTarget[]
+  logs    RunLog[]
+
+  @@index([status], name: "ix_job_status")
+  @@index([pipeline, createdAt(sort: Desc)], name: "ix_job_pipeline_created")
+  @@map("video_job")
+}
+
+// Idempotent cache keyed by hash(provider + prompt + params).
+// Prevents re-spending on Nano Banana / TTS when the same prompt comes back.
+model Asset {
+  hash      String    @id
+  kind      AssetKind
+  provider  String
+  path      String
+  bytes     BigInt
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([kind], name: "ix_asset_kind")
+  @@map("asset")
+}
+
+// Per-platform upload outcome; 1 video may publish to multiple platforms.
+model UploadTarget {
+  id         String       @id @default(uuid()) @db.Uuid
+  jobId      String       @map("job_id") @db.Uuid
+  platform   Platform
+  status     UploadStatus @default(pending)
+  externalId String?      @map("external_id")
+  url        String?
+  uploadedAt DateTime?    @map("uploaded_at") @db.Timestamptz(6)
+  error      String?
+
+  job VideoJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId], name: "ix_upload_job")
+  @@map("upload_target")
+}
+
+// Chronological audit log; detail is free-form JSON.
+model RunLog {
+  id        BigInt   @id @default(autoincrement())
+  jobId     String   @map("job_id") @db.Uuid
+  level     LogLevel
+  step      LogStep
+  detail    Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  job VideoJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt(sort: Desc)], name: "ix_log_job_created")
+  @@map("run_log")
+}

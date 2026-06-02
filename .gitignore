@@ -24,8 +24,11 @@ logs/
 coverage/
 *.tsbuildinfo
 
-# Speed-test runtime output
-backend/speed-test-results/
+# Prisma generated client (regenerated via `npm --prefix db run generate`)
+db/generated/
+
+# Render service runtime output
+render-service/output/
 
 # Claude Code session caches
 .claude/cache/
