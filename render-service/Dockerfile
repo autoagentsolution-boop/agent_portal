@@ -3,10 +3,14 @@ FROM node:20-bullseye-slim AS base
 # Chromium runtime libs required by Remotion + ffmpeg for encoding
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg \
+      python3 python3-pip python3-venv \
       libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libxcomposite1 \
       libxdamage1 libxfixes3 libxrandr2 libgbm1 libxkbcommon0 libpango-1.0-0 \
       libcairo2 libasound2 fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m venv /opt/edge-tts \
+    && /opt/edge-tts/bin/pip install --no-cache-dir edge-tts \
+    && ln -s /opt/edge-tts/bin/edge-tts /usr/local/bin/edge-tts
 
 WORKDIR /app
 

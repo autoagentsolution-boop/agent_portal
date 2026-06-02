@@ -1,0 +1,201 @@
+{
+  "name": "quiz-pipeline",
+  "active": false,
+  "settings": { "timezone": "Asia/Bangkok", "executionTimeout": 600 },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }] }
+      },
+      "id": "cron-trigger",
+      "name": "Daily 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const niches = $('Read niches').first().json.data;\nconst weekday = new Date().getDay();\nconst pick = niches.find(n => n.weekday === weekday) || niches[0];\nreturn [{ json: { ...pick, jobId: crypto.randomUUID(), createdAt: new Date().toISOString() } }];"
+      },
+      "id": "pick-niche",
+      "name": "Pick niche + jobId",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 320]
+    },
+    {
+      "parameters": {
+        "fileSelector": "/workflows/niches.json",
+        "options": { "encoding": "utf8" }
+      },
+      "id": "read-niches",
+      "name": "Read niches",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [460, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-goog-api-key", "value": "={{$env.GEMINI_API_KEY}}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{ \"parts\": [{ \"text\": \"Bạn là creator quiz video. Sinh CHÍNH XÁC 10 câu hỏi trắc nghiệm về chủ đề: \\\"{{ $json.niche }}\\\". Mỗi câu 4 lựa chọn, 1 đáp án đúng. Câu hỏi ngắn (<15 từ), thú vị, không quá dễ. Trả về JSON đúng schema: {\\\"title\\\":\\\"...\\\",\\\"questions\\\":[{\\\"question\\\":\\\"...\\\",\\\"options\\\":[\\\"A\\\",\\\"B\\\",\\\"C\\\",\\\"D\\\"],\\\"correctIndex\\\":0}]}. KHÔNG markdown, KHÔNG comment, JSON thuần.\" }] }],\n  \"generationConfig\": { \"responseMimeType\": \"application/json\", \"temperature\": 0.8 }\n}",
+        "options": { "timeout": 60000, "response": { "response": { "fullResponse": false } } }
+      },
+      "id": "gemini-gen",
+      "name": "Gemini generate quiz",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.candidates[0].content.parts[0].text.replace(/^```json\\n?|```$/g, '').trim();\nconst parsed = JSON.parse(raw);\nif (!Array.isArray(parsed.questions) || parsed.questions.length < 5) throw new Error('quiz_schema_invalid: questions count');\nfor (const q of parsed.questions) {\n  if (!Array.isArray(q.options) || q.options.length !== 4) throw new Error('quiz_schema_invalid: options');\n  if (typeof q.correctIndex !== 'number' || q.correctIndex < 0 || q.correctIndex > 3) throw new Error('quiz_schema_invalid: correctIndex');\n}\nconst ctx = $('Pick niche + jobId').first().json;\nreturn [{ json: { ...ctx, title: parsed.title, questions: parsed.questions.map((q, i) => ({ id: i + 1, ...q })) } }];"
+      },
+      "id": "parse-quiz",
+      "name": "Parse + validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO video_job (id, pipeline, niche, status, script, created_at, started_at) VALUES ($1, 'quiz', $2, 'generating', $3::jsonb, now(), now()) RETURNING id;",
+        "options": { "queryReplacement": "={{ $json.jobId }},{{ $json.niche }},{{ JSON.stringify({ title: $json.title, questions: $json.questions }) }}" }
+      },
+      "id": "insert-job",
+      "name": "INSERT video_job",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 320],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Parse + validate').first().json;\nconst tasks = [];\nfor (const q of data.questions) {\n  tasks.push({ jobId: data.jobId, questionId: q.id, kind: 'question', text: q.question, voice: 'vi-VN-HoaiMyNeural' });\n  tasks.push({ jobId: data.jobId, questionId: q.id, kind: 'reveal', text: `Đáp án đúng là ${String.fromCharCode(65 + q.correctIndex)}: ${q.options[q.correctIndex]}`, voice: 'vi-VN-NamMinhNeural' });\n}\nreturn tasks.map(t => ({ json: t }));"
+      },
+      "id": "build-tts-tasks",
+      "name": "Build TTS tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://render-service:7000/tts/edge",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-internal-secret", "value": "={{$env.RENDER_SECRET}}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": {{ JSON.stringify($json.text) }},\n  \"voice\": {{ JSON.stringify($json.voice) }}\n}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "tts-call",
+      "name": "Edge TTS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tasks = $('Build TTS tasks').all().map(i => i.json);\nconst results = $('Edge TTS').all().map(i => i.json);\nconst data = $('Parse + validate').first().json;\nconst byQ = new Map();\nfor (let i = 0; i < tasks.length; i++) {\n  const t = tasks[i];\n  const r = results[i];\n  const entry = byQ.get(t.questionId) || {};\n  if (t.kind === 'question') entry.questionAudioPath = r.audioPath;\n  if (t.kind === 'reveal') entry.revealAudioPath = r.audioPath;\n  byQ.set(t.questionId, entry);\n}\nconst questions = data.questions.map(q => ({ ...q, ...(byQ.get(q.id) || {}) }));\nreturn [{ json: { jobId: data.jobId, niche: data.niche, props: { title: data.title, channelName: 'videofarm', variant: new Date().getDate() % 2 === 0 ? 'dark' : 'light', questions } } }];"
+      },
+      "id": "aggregate-audio",
+      "name": "Aggregate audio → props",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://render-service:7000/render",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-internal-secret", "value": "={{$env.RENDER_SECRET}}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"template\": \"QuizCountdown\",\n  \"jobId\": {{ JSON.stringify($json.jobId) }},\n  \"props\": {{ JSON.stringify($json.props) }}\n}",
+        "options": { "timeout": 300000 }
+      },
+      "id": "render-call",
+      "name": "POST /render",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE video_job SET status='rendered', video_path=$1, finished_at=now() WHERE id=$2;",
+        "options": { "queryReplacement": "={{ $json.videoPath }},{{ $('Aggregate audio → props').first().json.jobId }}" }
+      },
+      "id": "mark-rendered",
+      "name": "Mark rendered",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2440, 320],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "upload-to-platforms", "mode": "name" },
+        "workflowInputs": {
+          "value": {
+            "jobId": "={{ $('Aggregate audio → props').first().json.jobId }}",
+            "videoPath": "={{ $('POST /render').first().json.videoPath }}",
+            "title": "={{ $('Parse + validate').first().json.title }} #Shorts",
+            "description": "={{ $('Parse + validate').first().json.title }} | Quiz hôm nay: {{ $('Pick niche + jobId').first().json.niche }} #Shorts #Reels #Quiz",
+            "tags": "={{ [$('Pick niche + jobId').first().json.niche, 'quiz', 'shorts'] }}",
+            "ytCategoryId": "={{ $('Pick niche + jobId').first().json.categoryYt }}"
+          }
+        }
+      },
+      "id": "upload-sub",
+      "name": "Execute upload sub-workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2660, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO run_log (job_id, level, step, detail) VALUES ($1, 'error', 'script', $2::jsonb); UPDATE video_job SET status='failed', error=$3, finished_at=now() WHERE id=$1;",
+        "options": { "queryReplacement": "={{ $json.jobId || $('Pick niche + jobId').first().json.jobId }},{{ JSON.stringify({ error: $json.error || $json.message, stack: $json.stack }) }},{{ ($json.error || $json.message || 'unknown').toString().slice(0,500) }}" }
+      },
+      "id": "error-log",
+      "name": "Error → run_log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 540],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    }
+  ],
+  "connections": {
+    "Daily 08:00": { "main": [[{ "node": "Read niches", "type": "main", "index": 0 }]] },
+    "Read niches": { "main": [[{ "node": "Pick niche + jobId", "type": "main", "index": 0 }]] },
+    "Pick niche + jobId": { "main": [[{ "node": "Gemini generate quiz", "type": "main", "index": 0 }]] },
+    "Gemini generate quiz": { "main": [[{ "node": "Parse + validate", "type": "main", "index": 0 }]] },
+    "Parse + validate": { "main": [[{ "node": "INSERT video_job", "type": "main", "index": 0 }]] },
+    "INSERT video_job": { "main": [[{ "node": "Build TTS tasks", "type": "main", "index": 0 }]] },
+    "Build TTS tasks": { "main": [[{ "node": "Edge TTS", "type": "main", "index": 0 }]] },
+    "Edge TTS": { "main": [[{ "node": "Aggregate audio → props", "type": "main", "index": 0 }]] },
+    "Aggregate audio → props": { "main": [[{ "node": "POST /render", "type": "main", "index": 0 }]] },
+    "POST /render": { "main": [[{ "node": "Mark rendered", "type": "main", "index": 0 }]] },
+    "Mark rendered": { "main": [[{ "node": "Execute upload sub-workflow", "type": "main", "index": 0 }]] }
+  }
+}

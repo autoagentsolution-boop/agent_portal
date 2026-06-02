@@ -8,6 +8,7 @@ import { logger } from './logger.ts';
 import { serialize } from './queue.ts';
 import { logRun, markJobRendered } from './db.ts';
 import { KNOWN_TEMPLATES, render, warmBundle } from './render.ts';
+import { ttsRouter } from './routes/tts.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_DIR = path.resolve(__dirname, '..', 'output');
@@ -36,6 +37,11 @@ const requireSecret = (req: Request, res: Response): boolean => {
 const app = express();
 app.use(express.json({ limit: '256kb' }));
 app.use('/files', express.static(OUTPUT_DIR, { fallthrough: false }));
+
+const requireSecretMw = (req: Request, res: Response, next: () => void): void => {
+  if (requireSecret(req, res)) next();
+};
+app.use('/tts', requireSecretMw, ttsRouter);
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, bundleReady: false });
