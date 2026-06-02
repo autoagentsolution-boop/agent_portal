@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '../logger.ts';
 import { prisma } from '../db.ts';
+import { withRetry } from '../util/retry.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_DIR = path.resolve(__dirname, '..', '..', 'output', 'images');
@@ -88,7 +89,7 @@ export const generate = async (req: ImageRequest): Promise<ImageResult> => {
   }
 
   const started = Date.now();
-  const png = await callNanoBanana(req);
+  const png = await withRetry(() => callNanoBanana(req), { label: 'nano_banana' });
   await writeFile(outputFile, png);
   const durationMs = Date.now() - started;
 

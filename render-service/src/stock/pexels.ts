@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '../logger.ts';
 import { prisma } from '../db.ts';
+import { withRetry } from '../util/retry.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_DIR = path.resolve(__dirname, '..', '..', 'output', 'stock');
@@ -90,7 +91,7 @@ export const searchAndDownload = async (
 
   let video: PexelsVideo | null = null;
   for (const k of keywords) {
-    video = await searchPexels(k, orientation);
+    video = await withRetry(() => searchPexels(k, orientation), { label: `pexels_search:${k}` });
     if (video) break;
   }
   if (!video) throw new Error(`pexels_no_match: ${keywords.join('|')}`);
@@ -108,7 +109,7 @@ export const searchAndDownload = async (
     return { clipPath, outputFile, durationSec: video.duration, width: file.width, height: file.height, source: 'pexels', cached: true };
   }
 
-  const bytes = await downloadFile(file.link, outputFile);
+  const bytes = await withRetry(() => downloadFile(file.link, outputFile), { label: 'pexels_download' });
   await prisma.asset.upsert({
     where: { hash },
     update: {},
