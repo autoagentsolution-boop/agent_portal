@@ -1,0 +1,72 @@
+{
+  "dishName": "Phở Bò",
+  "subtitle": "Tạo nên tô phở bò",
+  "tagline": "Tinh hoa ẩm thực Việt Nam",
+  "channelName": "videofarm",
+  "variant": "dark",
+  "style": "vertical",
+  "bowlColor": "#8B4513",
+  "steamColor": "#FBBF24",
+  "steps": [
+    {
+      "index": 1,
+      "title": "Xương bò",
+      "instruction": "Rửa sạch, chần sơ, hầm nhiều giờ lấy vị ngọt",
+      "ingredients": [
+        { "id": 1, "name": "Xương ống", "amount": "1.5kg", "color": "#7C2D12" },
+        { "id": 2, "name": "Xương sườn", "amount": "500g", "color": "#92400E" }
+      ]
+    },
+    {
+      "index": 2,
+      "title": "Gừng & Hành nướng",
+      "instruction": "Nướng thơm, giúp nước dùng dậy mùi",
+      "ingredients": [
+        { "id": 3, "name": "Gừng", "amount": "1 củ", "color": "#FDE68A" },
+        { "id": 4, "name": "Hành tây", "amount": "1 củ", "color": "#A78BFA" }
+      ]
+    },
+    {
+      "index": 3,
+      "title": "Gia vị phở",
+      "instruction": "Rang nhẹ, cho vào túi lọc, nấu cùng nước dùng",
+      "ingredients": [
+        { "id": 5, "name": "Quế", "amount": "2 thanh", "color": "#92400E" },
+        { "id": 6, "name": "Hồi", "amount": "3 cánh", "color": "#9A3412" },
+        { "id": 7, "name": "Thảo quả", "amount": "2 quả", "color": "#78350F" },
+        { "id": 8, "name": "Đinh hương", "amount": "5 nụ", "color": "#451A03" }
+      ]
+    },
+    {
+      "index": 4,
+      "title": "Nêm nước dùng",
+      "instruction": "Hớt bọt, lọc cặn, nêm muối, đường phèn, nước mắm",
+      "ingredients": [
+        { "id": 9, "name": "Muối", "amount": "1 thìa", "color": "#E5E7EB" },
+        { "id": 10, "name": "Đường phèn", "amount": "1 thìa", "color": "#FEF3C7" },
+        { "id": 11, "name": "Nước mắm", "amount": "2 thìa", "color": "#F59E0B" }
+      ]
+    },
+    {
+      "index": 5,
+      "title": "Bánh phở & Thịt bò",
+      "instruction": "Trụng bánh phở, thái thịt mỏng, chuẩn bị xếp tô",
+      "ingredients": [
+        { "id": 12, "name": "Bánh phở", "amount": "400g", "color": "#FBBF24" },
+        { "id": 13, "name": "Thịt bò", "amount": "300g", "color": "#B91C1C" }
+      ]
+    },
+    {
+      "index": 6,
+      "title": "Rau thơm & gia vị tươi",
+      "instruction": "Sơ chế sạch, cắt gọn, dùng khi hoàn thiện tô phở",
+      "ingredients": [
+        { "id": 14, "name": "Hành lá", "amount": "3 nhánh", "color": "#16A34A" },
+        { "id": 15, "name": "Rau mùi", "amount": "1 nắm", "color": "#22C55E" },
+        { "id": 16, "name": "Giá", "amount": "100g", "color": "#FEF3C7" },
+        { "id": 17, "name": "Chanh", "amount": "1 quả", "color": "#84CC16" },
+        { "id": 18, "name": "Ớt", "amount": "2 quả", "color": "#DC2626" }
+      ]
+    }
+  ]
+}

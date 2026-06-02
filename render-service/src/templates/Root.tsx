@@ -12,6 +12,8 @@ import { NewsComic } from './news-comic/NewsComic.tsx';
 import { computeNewsComicDurationInFrames, type NewsComicProps } from './news-comic/types.ts';
 import { HacksList } from './hacks-list/HacksList.tsx';
 import { computeHacksDurationInFrames, type HacksListProps } from './hacks-list/types.ts';
+import { CookingExplosion } from './cooking-explosion/CookingExplosion.tsx';
+import { computeCookingDurationInFrames, type CookingExplosionProps } from './cooking-explosion/types.ts';
 
 const PlaceholderComposition: React.FC<{ message: string }> = ({ message }) => (
   <AbsoluteFill
@@ -27,6 +29,25 @@ const PlaceholderComposition: React.FC<{ message: string }> = ({ message }) => (
     <div style={{ fontFamily: 'sans-serif', fontSize: 64, lineHeight: 1.2 }}>{message}</div>
   </AbsoluteFill>
 );
+
+const COOKING_DEFAULT_PROPS: CookingExplosionProps = {
+  dishName: 'Phở Bò',
+  subtitle: 'Tạo nên tô phở bò',
+  tagline: 'Tinh hoa ẩm thực Việt Nam',
+  channelName: 'videofarm',
+  variant: 'dark',
+  style: 'vertical',
+  bowlColor: '#8B4513',
+  steamColor: '#FBBF24',
+  steps: [
+    {
+      index: 1,
+      title: 'Xương bò',
+      instruction: 'Hầm nhiều giờ lấy vị ngọt',
+      ingredients: [{ id: 1, name: 'Xương', amount: '1kg', color: '#7C2D12' }],
+    },
+  ],
+};
 
 const HACKS_DEFAULT_PROPS: HacksListProps = {
   topic: 'Mẹo nhà bếp',
@@ -95,6 +116,18 @@ export const RemotionRoot: React.FC = () => (
       durationInFrames={computeNewsComicDurationInFrames(NEWS_COMIC_DEFAULT_PROPS.panels.length)}
       calculateMetadata={({ props }) => ({
         durationInFrames: computeNewsComicDurationInFrames(props.panels.length),
+      })}
+    />
+    <Composition
+      id="CookingExplosion"
+      component={CookingExplosion}
+      fps={FPS}
+      width={WIDTH}
+      height={HEIGHT}
+      defaultProps={COOKING_DEFAULT_PROPS}
+      durationInFrames={computeCookingDurationInFrames(COOKING_DEFAULT_PROPS.steps.length)}
+      calculateMetadata={({ props }) => ({
+        durationInFrames: computeCookingDurationInFrames(props.steps.length),
       })}
     />
     <Composition
