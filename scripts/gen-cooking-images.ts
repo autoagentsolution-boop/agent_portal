@@ -1,16 +1,48 @@
 #!/usr/bin/env node
 // Generate real food photos via Nano Banana (Gemini Image API) for a cooking fixture.
-// Reads the fixture, gens dish hero + per-ingredient images, saves to public/, patches fixture imagePaths in place.
+// Reads the fixture, gens dish hero + per-ingredient images, saves to a SHARED asset dir
+// so the same ingredient (e.g. "Thịt bò") used across multiple fixtures is generated ONCE.
+//
+// Asset layout (shared across all cooking fixtures):
+//   render-service/public/cooking-assets/dishes/<dish-slug>.png       — one per dish
+//   render-service/public/cooking-assets/ingredients/<ing-slug>.png   — one per unique ingredient name
+//
+// Filename = pure kebab-case slug (no hash). Same Vietnamese ingredient name → same file.
+// User: pick consistent names across fixtures to maximize cache reuse.
 //
 // Usage:
-//   GEMINI_API_KEY=AIza... npx tsx scripts/gen-cooking-images.ts <fixture.json> [out-dir]
+//   GEMINI_API_KEY=AIza... npx tsx scripts/gen-cooking-images.ts <fixture.json>
 //
-// Idempotent: skips images that already exist on disk.
+// Idempotent: skips images that already exist on disk (in shared dir).
 
-import 'dotenv/config';
-import { createHash } from 'node:crypto';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+
+// Minimal .env loader (avoids dotenv dep so script runs from any cwd without npm install).
+const loadEnvFile = async (envPath: string): Promise<void> => {
+  try {
+    const content = await readFile(envPath, 'utf8');
+    for (const line of content.split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!m) continue;
+      const key = m[1]!;
+      let value = m[2] ?? '';
+      // strip optional surrounding quotes
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      if (!(key in process.env)) process.env[key] = value;
+    }
+  } catch {
+    // .env missing is OK; user may set vars in shell
+  }
+};
+
+const PUBLIC_ROOT = path.resolve('render-service/public');
+const DISH_DIR = path.join(PUBLIC_ROOT, 'cooking-assets/dishes');
+const ING_DIR = path.join(PUBLIC_ROOT, 'cooking-assets/ingredients');
+const DISH_REL = 'cooking-assets/dishes';
+const ING_REL = 'cooking-assets/ingredients';
 
 const MODEL = 'gemini-2.5-flash-image-preview';
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
@@ -72,6 +104,7 @@ interface Fixture {
 }
 
 const main = async (): Promise<void> => {
+  await loadEnvFile(path.resolve('.env'));
   const apiKey = process.env.GEMINI_API_KEY ?? process.env.NANO_BANANA_API_KEY;
   if (!apiKey) {
     console.error('Set GEMINI_API_KEY env var (or NANO_BANANA_API_KEY).');
@@ -80,87 +113,84 @@ const main = async (): Promise<void> => {
 
   const fixturePath = process.argv[2];
   if (!fixturePath) {
-    console.error('Usage: tsx scripts/gen-cooking-images.ts <fixture.json> [out-dir]');
+    console.error('Usage: tsx scripts/gen-cooking-images.ts <fixture.json>');
     process.exit(1);
   }
 
-  const outDirArg = process.argv[3];
-  const fixtureBase = path.basename(fixturePath, '.json');
-  const outDirAbs = path.resolve(outDirArg ?? `render-service/public/${fixtureBase}`);
-  const outDirRel = path.relative(path.resolve('render-service/public'), outDirAbs).replace(/\\/g, '/');
-
-  await mkdir(outDirAbs, { recursive: true });
+  await mkdir(DISH_DIR, { recursive: true });
+  await mkdir(ING_DIR, { recursive: true });
 
   const fixture = JSON.parse(await readFile(fixturePath, 'utf8')) as Fixture;
+  let gens = 0;
+  let reuses = 0;
 
-  // ---- Dish hero ----
-  const dishFile = path.join(outDirAbs, 'dish-hero.png');
-  const dishPath = `${outDirRel}/dish-hero.png`;
+  // ---- Dish hero (unique per dish) ----
+  const dishSlug = slug(fixture.dishName);
+  const dishFile = path.join(DISH_DIR, `${dishSlug}.png`);
+  const dishRel = `${DISH_REL}/${dishSlug}.png`;
   if (await fileExists(dishFile)) {
-    console.log(`[skip] dish hero exists: ${dishFile}`);
+    console.log(`[reuse] dish: ${dishRel}`);
+    reuses++;
   } else {
-    console.log('[gen]  dish hero...');
+    console.log(`[gen]   dish: ${fixture.dishName}...`);
     const buf = await callNanoBanana(buildDishPrompt(fixture.dishName), apiKey);
     await writeFile(dishFile, buf);
-    console.log(`[ok]   wrote ${dishFile} (${(buf.byteLength / 1024).toFixed(0)} KB)`);
+    console.log(`[ok]    dish → ${dishRel} (${(buf.byteLength / 1024).toFixed(0)} KB)`);
+    gens++;
   }
-  fixture.dishImagePath = dishPath;
+  fixture.dishImagePath = dishRel;
 
-  // ---- Ingredients (parallel batches of 4) ----
+  // ---- Ingredients (dedup by NAME — share across fixtures) ----
   const allIngredients = fixture.steps.flatMap((step) => step.ingredients);
-  const seenIds = new Set<number>();
-  const uniqueIngredients = allIngredients.filter((ing) => {
-    if (seenIds.has(ing.id)) return false;
-    seenIds.add(ing.id);
-    return true;
-  });
-
-  const slugMap = new Map<number, string>();
-  for (const ing of uniqueIngredients) {
-    const key = `${slug(ing.name)}-${createHash('md5').update(ing.name).digest('hex').slice(0, 4)}`;
-    slugMap.set(ing.id, key);
+  const uniqueByName = new Map<string, { name: string; amount?: string; slug: string }>();
+  for (const ing of allIngredients) {
+    const s = slug(ing.name);
+    if (!uniqueByName.has(s)) uniqueByName.set(s, { name: ing.name, amount: ing.amount, slug: s });
   }
 
   const BATCH = 4;
-  for (let i = 0; i < uniqueIngredients.length; i += BATCH) {
-    const batch = uniqueIngredients.slice(i, i + BATCH);
+  const tasks = [...uniqueByName.values()];
+  for (let i = 0; i < tasks.length; i += BATCH) {
+    const batch = tasks.slice(i, i + BATCH);
     await Promise.all(
-      batch.map(async (ing) => {
-        const key = slugMap.get(ing.id)!;
-        const outFile = path.join(outDirAbs, `${key}.png`);
-        const relPath = `${outDirRel}/${key}.png`;
+      batch.map(async (t) => {
+        const outFile = path.join(ING_DIR, `${t.slug}.png`);
+        const relPath = `${ING_REL}/${t.slug}.png`;
         if (await fileExists(outFile)) {
-          console.log(`[skip] ${ing.name} → ${relPath}`);
+          console.log(`[reuse] ${t.name} → ${relPath}`);
+          reuses++;
           return;
         }
         try {
-          console.log(`[gen]  ${ing.name}...`);
-          const buf = await callNanoBanana(buildIngredientPrompt(ing.name, ing.amount), apiKey);
+          console.log(`[gen]   ${t.name}...`);
+          const buf = await callNanoBanana(buildIngredientPrompt(t.name, t.amount), apiKey);
           await writeFile(outFile, buf);
-          console.log(`[ok]   ${ing.name} → ${outFile} (${(buf.byteLength / 1024).toFixed(0)} KB)`);
+          console.log(`[ok]    ${t.name} → ${relPath} (${(buf.byteLength / 1024).toFixed(0)} KB)`);
+          gens++;
         } catch (err) {
-          console.error(`[fail] ${ing.name}: ${String(err).slice(0, 200)}`);
+          console.error(`[fail]  ${t.name}: ${String(err).slice(0, 200)}`);
         }
       }),
     );
   }
 
-  // Patch fixture: set imagePath on every ingredient occurrence (handles re-use across steps)
+  // Patch fixture: every ingredient occurrence gets its slug path (if file exists)
   for (const step of fixture.steps) {
     for (const ing of step.ingredients) {
-      const key = slugMap.get(ing.id);
-      if (!key) continue;
-      const outFile = path.join(outDirAbs, `${key}.png`);
+      const s = slug(ing.name);
+      const outFile = path.join(ING_DIR, `${s}.png`);
       if (await fileExists(outFile)) {
-        ing.imagePath = `${outDirRel}/${key}.png`;
+        ing.imagePath = `${ING_REL}/${s}.png`;
       }
     }
   }
 
   await writeFile(fixturePath, JSON.stringify(fixture, null, 2) + '\n', 'utf8');
+  const estCost = (gens * 0.039).toFixed(2);
   console.log(`\n[done] Patched fixture: ${fixturePath}`);
-  console.log(`[done] Images in: ${outDirAbs}`);
-  console.log('Now re-render: npx remotion render src/templates/index.tsx CookingExplosion out/cooking-real.mp4 --props=' + fixturePath);
+  console.log(`[done] Gens: ${gens} new · Reuses: ${reuses} cached · Est cost: $${estCost}`);
+  console.log(`[done] Shared assets: ${DISH_DIR}, ${ING_DIR}`);
+  console.log('\nRe-render with: npx remotion render src/templates/index.tsx CookingExplosion out/cooking-real.mp4 --props=' + fixturePath);
 };
 
 main().catch((err: unknown) => {
