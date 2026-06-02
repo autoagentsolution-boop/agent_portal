@@ -1,0 +1,186 @@
+{
+  "name": "life-hacks-pipeline",
+  "active": false,
+  "settings": { "timezone": "Asia/Bangkok", "executionTimeout": 600 },
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 18 * * *" }] } },
+      "id": "cron",
+      "name": "Daily 18:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 320]
+    },
+    {
+      "parameters": { "fileSelector": "/workflows/topics-hacks.json", "options": { "encoding": "utf8" } },
+      "id": "read-topics",
+      "name": "Read topics",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [420, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const topics = $('Read topics').first().json.data;\nconst weekday = new Date().getDay();\nconst pick = topics.find(t => t.weekday === weekday) || topics[0];\nreturn [{ json: { ...pick, jobId: crypto.randomUUID(), createdAt: new Date().toISOString() } }];"
+      },
+      "id": "pick-topic",
+      "name": "Pick topic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-goog-api-key", "value": "={{$env.GEMINI_API_KEY}}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{ \"parts\": [{ \"text\": \"Sinh 5 mẹo thực tế về chủ đề: \\\"{{ $json.topic }}\\\". Mỗi mẹo NGẮN GỌN, HÀNH ĐỘNG được, viết tiếng Việt. JSON schema: {\\\"topic\\\":\\\"...\\\",\\\"intro\\\":\\\"<=60 ký tự\\\",\\\"outro\\\":\\\"<=60 ký tự\\\",\\\"hacks\\\":[{\\\"id\\\":1,\\\"title\\\":\\\"<=40 ký tự\\\",\\\"details\\\":\\\"1-2 câu, <=180 ký tự\\\",\\\"search_keywords\\\":[\\\"english keyword 1\\\",\\\"english keyword 2\\\"]}]}. KHÔNG markdown.\" }] }],\n  \"generationConfig\": { \"responseMimeType\": \"application/json\", \"temperature\": 0.85 }\n}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "gemini",
+      "name": "Gemini 5 hacks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Pick topic').first().json;\nconst raw = $json.candidates[0].content.parts[0].text.replace(/^```json\\n?|```$/g, '').trim();\nconst parsed = JSON.parse(raw);\nif (!Array.isArray(parsed.hacks) || parsed.hacks.length !== 5) throw new Error('hacks_schema_invalid: count != 5');\nfor (const h of parsed.hacks) {\n  if (!Array.isArray(h.search_keywords) || !h.search_keywords.length) throw new Error('hacks_schema_invalid: search_keywords');\n}\nreturn [{ json: { jobId: ctx.jobId, topic: parsed.topic, intro: parsed.intro, outro: parsed.outro, categoryYt: ctx.categoryYt, hacks: parsed.hacks } }, ...parsed.hacks.map(h => ({ json: { jobId: ctx.jobId, hackId: h.id, title: h.title, details: h.details, keywords: h.search_keywords } }))];"
+      },
+      "id": "parse",
+      "name": "Parse + validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO video_job (id, pipeline, niche, status, script, created_at, started_at) VALUES ($1, 'life_hacks', $2, 'generating', $3::jsonb, now(), now());",
+        "options": { "queryReplacement": "={{ $('Parse + validate').first().json.jobId }},{{ $('Parse + validate').first().json.topic }},{{ JSON.stringify($('Parse + validate').first().json) }}" }
+      },
+      "id": "insert-job",
+      "name": "INSERT video_job",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, 320],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://render-service:7000/stock/pexels",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-internal-secret", "value": "={{$env.RENDER_SECRET}}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"keywords\": {{ JSON.stringify($json.keywords) }}, \"orientation\": \"portrait\" }",
+        "options": { "timeout": 60000 }
+      },
+      "id": "stock-fetch",
+      "name": "Pexels per hack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://render-service:7000/tts/edge",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-internal-secret", "value": "={{$env.RENDER_SECRET}}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"text\": {{ JSON.stringify($json.title + '. ' + $json.details) }}, \"voice\": \"vi-VN-HoaiMyNeural\" }",
+        "options": { "timeout": 30000 }
+      },
+      "id": "tts-per-hack",
+      "name": "TTS per hack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse + validate').first().json;\nconst hackInputs = $('Parse + validate').all().slice(1).map(i => i.json);\nconst stocks = $('Pexels per hack').all().map(i => i.json);\nconst tts = $('TTS per hack').all().map(i => i.json);\nconst hacks = hackInputs.map((h, idx) => ({\n  id: h.hackId,\n  title: h.title,\n  details: h.details,\n  clipPath: stocks[idx].clipPath,\n  narrationAudioPath: tts[idx].audioPath\n}));\nreturn [{ json: { jobId: ctx.jobId, props: { topic: ctx.topic, intro: ctx.intro, outro: ctx.outro, channelName: 'videofarm', variant: new Date().getDate() % 2 === 0 ? 'dark' : 'light', hacks }, categoryYt: ctx.categoryYt } }];"
+      },
+      "id": "build-props",
+      "name": "Build HacksList props",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1740, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://render-service:7000/render",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-internal-secret", "value": "={{$env.RENDER_SECRET}}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"template\": \"HacksList\", \"jobId\": {{ JSON.stringify($json.jobId) }}, \"props\": {{ JSON.stringify($json.props) }} }",
+        "options": { "timeout": 360000 }
+      },
+      "id": "render",
+      "name": "POST /render HacksList",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1960, 400]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "upload-to-platforms", "mode": "name" },
+        "workflowInputs": {
+          "value": {
+            "jobId": "={{ $('Build HacksList props').first().json.jobId }}",
+            "videoPath": "={{ $('POST /render HacksList').first().json.videoPath }}",
+            "title": "={{ $('Build HacksList props').first().json.props.intro }} #Shorts",
+            "description": "={{ $('Build HacksList props').first().json.props.topic }} — 5 mẹo hữu ích. Stock from Pexels. #lifehacks #shorts #meo",
+            "tags": "={{ ['lifehacks','meo','shorts'] }}",
+            "ytCategoryId": "={{ $('Build HacksList props').first().json.categoryYt }}"
+          }
+        }
+      },
+      "id": "upload-sub",
+      "name": "Upload sub-workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2180, 400]
+    }
+  ],
+  "connections": {
+    "Daily 18:00": { "main": [[{ "node": "Read topics", "type": "main", "index": 0 }]] },
+    "Read topics": { "main": [[{ "node": "Pick topic", "type": "main", "index": 0 }]] },
+    "Pick topic": { "main": [[{ "node": "Gemini 5 hacks", "type": "main", "index": 0 }]] },
+    "Gemini 5 hacks": { "main": [[{ "node": "Parse + validate", "type": "main", "index": 0 }]] },
+    "Parse + validate": {
+      "main": [[
+        { "node": "INSERT video_job", "type": "main", "index": 0 },
+        { "node": "Pexels per hack", "type": "main", "index": 0 },
+        { "node": "TTS per hack", "type": "main", "index": 0 }
+      ]]
+    },
+    "Pexels per hack": { "main": [[{ "node": "Build HacksList props", "type": "main", "index": 0 }]] },
+    "TTS per hack": { "main": [[{ "node": "Build HacksList props", "type": "main", "index": 0 }]] },
+    "Build HacksList props": { "main": [[{ "node": "POST /render HacksList", "type": "main", "index": 0 }]] },
+    "POST /render HacksList": { "main": [[{ "node": "Upload sub-workflow", "type": "main", "index": 0 }]] }
+  }
+}

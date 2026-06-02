@@ -10,6 +10,7 @@ import { logRun, markJobRendered } from './db.ts';
 import { KNOWN_TEMPLATES, render, warmBundle } from './render.ts';
 import { ttsRouter } from './routes/tts.ts';
 import { imageRouter } from './routes/image.ts';
+import { stockRouter } from './routes/stock.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_DIR = path.resolve(__dirname, '..', 'output');
@@ -44,6 +45,7 @@ const requireSecretMw = (req: Request, res: Response, next: () => void): void =>
 };
 app.use('/tts', requireSecretMw, ttsRouter);
 app.use('/image', requireSecretMw, imageRouter);
+app.use('/stock', requireSecretMw, stockRouter);
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, bundleReady: false });

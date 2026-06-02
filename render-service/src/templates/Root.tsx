@@ -10,6 +10,8 @@ import {
 } from './quiz/types.ts';
 import { NewsComic } from './news-comic/NewsComic.tsx';
 import { computeNewsComicDurationInFrames, type NewsComicProps } from './news-comic/types.ts';
+import { HacksList } from './hacks-list/HacksList.tsx';
+import { computeHacksDurationInFrames, type HacksListProps } from './hacks-list/types.ts';
 
 const PlaceholderComposition: React.FC<{ message: string }> = ({ message }) => (
   <AbsoluteFill
@@ -25,6 +27,22 @@ const PlaceholderComposition: React.FC<{ message: string }> = ({ message }) => (
     <div style={{ fontFamily: 'sans-serif', fontSize: 64, lineHeight: 1.2 }}>{message}</div>
   </AbsoluteFill>
 );
+
+const HACKS_DEFAULT_PROPS: HacksListProps = {
+  topic: 'Mẹo nhà bếp',
+  intro: '5 mẹo dọn nhanh!',
+  outro: 'Follow để xem thêm!',
+  channelName: 'videofarm',
+  variant: 'dark',
+  hacks: [
+    {
+      id: 1,
+      title: 'Vỏ chanh khử mùi',
+      details: 'Cho vỏ chanh vào máy xay rác chạy 30 giây để khử mùi hôi.',
+      clipPath: '/files/stock/placeholder.mp4',
+    },
+  ],
+};
 
 const NEWS_COMIC_DEFAULT_PROPS: NewsComicProps = {
   title: 'Tin Công Nghệ Hôm Nay',
@@ -81,12 +99,15 @@ export const RemotionRoot: React.FC = () => (
     />
     <Composition
       id="HacksList"
-      component={PlaceholderComposition}
-      durationInFrames={150}
+      component={HacksList}
       fps={FPS}
       width={WIDTH}
       height={HEIGHT}
-      defaultProps={{ message: 'HacksList placeholder — Phase 08' }}
+      defaultProps={HACKS_DEFAULT_PROPS}
+      durationInFrames={computeHacksDurationInFrames(HACKS_DEFAULT_PROPS.hacks.length)}
+      calculateMetadata={({ props }) => ({
+        durationInFrames: computeHacksDurationInFrames(props.hacks.length),
+      })}
     />
   </>
 );

@@ -1,0 +1,9 @@
+[
+  { "weekday": 0, "topic": "Mẹo làm đẹp tại nhà", "categoryYt": "26" },
+  { "weekday": 1, "topic": "Mẹo dọn dẹp nhà bếp", "categoryYt": "26" },
+  { "weekday": 2, "topic": "Mẹo nấu ăn nhanh", "categoryYt": "26" },
+  { "weekday": 3, "topic": "Mẹo tiết kiệm tiền", "categoryYt": "22" },
+  { "weekday": 4, "topic": "Mẹo sức khỏe ngày làm việc", "categoryYt": "26" },
+  { "weekday": 5, "topic": "Mẹo công nghệ hữu ích", "categoryYt": "28" },
+  { "weekday": 6, "topic": "Mẹo du lịch nhẹ nhàng", "categoryYt": "19" }
+]
