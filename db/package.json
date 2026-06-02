@@ -4,7 +4,12 @@
   "private": true,
   "description": "Postgres schema + Prisma 7 client for Video Content Farm",
   "type": "module",
-  "main": "./generated/prisma/client.js",
+  "main": "./generated/prisma/client.ts",
+  "exports": {
+    ".": "./generated/prisma/client.ts",
+    "./browser": "./generated/prisma/browser.ts",
+    "./enums": "./generated/prisma/enums.ts"
+  },
   "scripts": {
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",

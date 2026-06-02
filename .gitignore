@@ -24,10 +24,7 @@ logs/
 coverage/
 *.tsbuildinfo
 
-# Prisma generated client (regenerated via `npm --prefix db run generate`)
-db/generated/
-
-# Render service runtime output
+# Render service runtime output (rendered mp4s)
 render-service/output/
 
 # Claude Code session caches
