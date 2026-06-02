@@ -1,55 +1,71 @@
-version: '3.8'
-
 services:
   postgres:
-    image: postgres:15
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: agent_portal
+      POSTGRES_USER: ${POSTGRES_USER:-videofarm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-videofarm}
+      POSTGRES_DB: ${POSTGRES_DB:-videofarm}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-videofarm} -d ${POSTGRES_DB:-videofarm}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   n8n:
-    image: n8nio/n8n
+    image: n8nio/n8n:latest
     restart: unless-stopped
     ports:
       - "5678:5678"
     environment:
       - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=admin
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-admin}
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - GENERIC_TIMEZONE=Asia/Ho_Chi_Minh
+      - N8N_RUNNERS_ENABLED=true
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-videofarm}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER:-videofarm}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:-videofarm}
+      - DB_POSTGRESDB_SCHEMA=n8n
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./n8n-workflows:/workflows:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
 
-  backend:
+  render-service:
     build:
-      context: ./backend
+      context: ./render-service
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      - "7000:7000"
+    environment:
+      - NODE_ENV=production
+      - PORT=7000
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-videofarm}:${POSTGRES_PASSWORD:-videofarm}@postgres:5432/${POSTGRES_DB:-videofarm}
     env_file:
       - .env
     depends_on:
-      - postgres
-    environment:
-      - NODE_ENV=development
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/agent_portal
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    ports:
-      - "5173:5173"
-    depends_on:
-      - backend
+      postgres:
+        condition: service_healthy
+    profiles:
+      - render
+    volumes:
+      - render_output:/app/output
 
 volumes:
   pgdata:
   n8n_data:
+  render_output:

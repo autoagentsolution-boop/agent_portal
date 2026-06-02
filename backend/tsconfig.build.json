@@ -1,4 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "prisma/seed.ts", "prisma/demo-enrichment.ts", "prisma/migrate-gmail-labels.ts", "prisma.config.ts", "src/generated/**", "src/scripts/**"]
-}
