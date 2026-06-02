@@ -1,0 +1,26 @@
+{
+  "narrators": [
+    "gcloud:vi-VN-Neural2-A",
+    "gcloud:vi-VN-Neural2-D",
+    "edge:vi-VN-HoaiMyNeural",
+    "edge:vi-VN-NamMinhNeural"
+  ],
+  "host_female": [
+    "edge:vi-VN-HoaiMyNeural",
+    "gcloud:vi-VN-Wavenet-A",
+    "gcloud:vi-VN-Neural2-A"
+  ],
+  "host_male": [
+    "edge:vi-VN-NamMinhNeural",
+    "gcloud:vi-VN-Wavenet-B",
+    "gcloud:vi-VN-Neural2-D"
+  ],
+  "character_a": [
+    "edge:vi-VN-NamMinhNeural",
+    "gcloud:vi-VN-Wavenet-B"
+  ],
+  "character_b": [
+    "gcloud:vi-VN-Neural2-D",
+    "edge:vi-VN-HoaiMyNeural"
+  ]
+}
