@@ -1,0 +1,188 @@
+{
+  "name": "upload-to-platforms",
+  "active": false,
+  "settings": { "timezone": "Asia/Bangkok", "executionTimeout": 600 },
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"jobId\": \"00000000-0000-0000-0000-000000000000\",\n  \"videoPath\": \"/files/<jobId>.mp4\",\n  \"title\": \"Quiz hôm nay #Shorts\",\n  \"description\": \"Mô tả ngắn cho video\",\n  \"tags\": [\"quiz\", \"shorts\"],\n  \"ytCategoryId\": \"22\"\n}"
+      },
+      "id": "input-trigger",
+      "name": "Input from caller",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 320]
+    },
+    {
+      "parameters": {
+        "url": "=http://render-service:7000{{ $json.videoPath }}",
+        "options": {
+          "response": { "response": { "responseFormat": "file" } },
+          "timeout": 120000
+        },
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-internal-secret", "value": "={{$env.RENDER_SECRET}}" }] }
+      },
+      "id": "download-video",
+      "name": "Download video binary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 320]
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $('Input from caller').first().json.title }}",
+        "categoryId": "={{ $('Input from caller').first().json.ytCategoryId || '22' }}",
+        "binaryData": true,
+        "binaryProperty": "data",
+        "additionalFields": {
+          "description": "={{ $('Input from caller').first().json.description }}",
+          "privacyStatus": "public",
+          "tags": "={{ ($('Input from caller').first().json.tags || []).join(',') }}"
+        }
+      },
+      "id": "yt-upload",
+      "name": "YouTube upload",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [680, 200],
+      "credentials": { "youTubeOAuth2Api": { "id": "yt-oauth", "name": "YouTube OAuth2" } },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO upload_target (id, job_id, platform, status, external_id, url, uploaded_at) VALUES (gen_random_uuid(), $1, 'youtube', 'uploaded', $2, $3, now());",
+        "options": { "queryReplacement": "={{ $('Input from caller').first().json.jobId }},{{ $json.id }},https://youtube.com/shorts/{{ $json.id }}" }
+      },
+      "id": "yt-log",
+      "name": "Log YT upload",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [920, 200],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO upload_target (id, job_id, platform, status, error) VALUES (gen_random_uuid(), $1, 'youtube', 'failed', $2);",
+        "options": { "queryReplacement": "={{ $('Input from caller').first().json.jobId }},{{ ($json.error || $json.message || 'unknown').toString().slice(0,500) }}" }
+      },
+      "id": "yt-fail",
+      "name": "Log YT failure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [920, 320],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/{{$env.FB_PAGE_ID}}/video_reels",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "upload_phase", "value": "start" },
+            { "name": "access_token", "value": "={{$env.FB_PAGE_ACCESS_TOKEN}}" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "fb-init",
+      "name": "FB init Reels upload",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 480],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.upload_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=OAuth {{$env.FB_PAGE_ACCESS_TOKEN}}" },
+            { "name": "file_url", "value": "=http://render-service:7000{{ $('Input from caller').first().json.videoPath }}" }
+          ]
+        },
+        "options": { "timeout": 300000 }
+      },
+      "id": "fb-upload",
+      "name": "FB upload binary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 480]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/{{$env.FB_PAGE_ID}}/video_reels",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "upload_phase", "value": "finish" },
+            { "name": "video_id", "value": "={{ $('FB init Reels upload').first().json.video_id }}" },
+            { "name": "video_state", "value": "PUBLISHED" },
+            { "name": "description", "value": "={{ $('Input from caller').first().json.description }}" },
+            { "name": "access_token", "value": "={{$env.FB_PAGE_ACCESS_TOKEN}}" }
+          ]
+        },
+        "options": { "timeout": 60000 }
+      },
+      "id": "fb-publish",
+      "name": "FB publish Reel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1160, 480]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO upload_target (id, job_id, platform, status, external_id, url, uploaded_at) VALUES (gen_random_uuid(), $1, 'facebook', 'uploaded', $2, $3, now());",
+        "options": { "queryReplacement": "={{ $('Input from caller').first().json.jobId }},{{ $('FB init Reels upload').first().json.video_id }},https://facebook.com/reel/{{ $('FB init Reels upload').first().json.video_id }}" }
+      },
+      "id": "fb-log",
+      "name": "Log FB upload",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1400, 480],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO upload_target (id, job_id, platform, status, error) VALUES (gen_random_uuid(), $1, 'facebook', 'failed', $2);",
+        "options": { "queryReplacement": "={{ $('Input from caller').first().json.jobId }},{{ ($json.error || $json.message || 'unknown').toString().slice(0,500) }}" }
+      },
+      "id": "fb-fail",
+      "name": "Log FB failure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [920, 620],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    }
+  ],
+  "connections": {
+    "Input from caller": { "main": [[{ "node": "Download video binary", "type": "main", "index": 0 }]] },
+    "Download video binary": {
+      "main": [[
+        { "node": "YouTube upload", "type": "main", "index": 0 },
+        { "node": "FB init Reels upload", "type": "main", "index": 0 }
+      ]]
+    },
+    "YouTube upload": {
+      "main": [[{ "node": "Log YT upload", "type": "main", "index": 0 }]],
+      "error": [[{ "node": "Log YT failure", "type": "main", "index": 0 }]]
+    },
+    "FB init Reels upload": {
+      "main": [[{ "node": "FB upload binary", "type": "main", "index": 0 }]],
+      "error": [[{ "node": "Log FB failure", "type": "main", "index": 0 }]]
+    },
+    "FB upload binary": { "main": [[{ "node": "FB publish Reel", "type": "main", "index": 0 }]] },
+    "FB publish Reel": { "main": [[{ "node": "Log FB upload", "type": "main", "index": 0 }]] }
+  }
+}
