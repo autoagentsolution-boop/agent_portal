@@ -1,0 +1,199 @@
+{
+  "name": "news-comic-pipeline",
+  "active": false,
+  "settings": { "timezone": "Asia/Bangkok", "executionTimeout": 900 },
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 12 * * *" }] } },
+      "id": "cron",
+      "name": "Daily 12:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 320]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss",
+        "options": { "timeout": 30000, "response": { "response": { "responseFormat": "text" } } }
+      },
+      "id": "rss-vnexpress",
+      "name": "RSS vnexpress",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [420, 320]
+    },
+    {
+      "parameters": { "mode": "xml" },
+      "id": "xml-parse",
+      "name": "Parse XML",
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1.2,
+      "position": [640, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const denylist = ['tang lễ', 'vụ án', 'scandal', 'chính trị', 'án mạng', 'tử vong'];\nconst items = $json.rss?.channel?.item || $json.channel?.item || [];\nconst filtered = items.filter(it => {\n  const text = `${it.title} ${it.description || ''}`.toLowerCase();\n  return !denylist.some(b => text.includes(b));\n});\nif (!filtered.length) throw new Error('news_no_safe_items');\nconst pick = filtered[0];\nreturn [{ json: {\n  jobId: crypto.randomUUID(),\n  newsTitle: pick.title,\n  newsBody: (pick.description || '').replace(/<[^>]+>/g, '').slice(0, 1500),\n  newsLink: pick.link,\n  createdAt: new Date().toISOString()\n} }];"
+      },
+      "id": "pick-news",
+      "name": "Filter + pick news",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO video_job (id, pipeline, niche, status, script, created_at, started_at) VALUES ($1, 'news_comic', $2, 'generating', $3::jsonb, now(), now());",
+        "options": { "queryReplacement": "={{ $json.jobId }},{{ $json.newsTitle.slice(0,100) }},{{ JSON.stringify({ newsTitle: $json.newsTitle, newsBody: $json.newsBody, newsLink: $json.newsLink }) }}" }
+      },
+      "id": "insert-job",
+      "name": "INSERT video_job",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1080, 320],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "x-goog-api-key", "value": "={{$env.GEMINI_API_KEY}}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{ \"parts\": [{ \"text\": \"Bạn là creator video hài tóm tắt tin tức. Tóm tắt tin sau thành kịch bản comic 6 panel NGẮN GỌN, HÀI HƯỚC, KHÔNG sao chép câu gốc. Character: A young Vietnamese journalist mascot with round glasses, brown hair, casual blue shirt. Mỗi panel có caption (lời dẫn tiếng Việt 1-2 câu, <80 ký tự) và image_prompt (mô tả tiếng Anh cho AI image gen, vibrant comic panel style, character consistent với mô tả trên). Trả về JSON: {\\\"title\\\":\\\"<=60 ký tự\\\",\\\"character_setup\\\":\\\"...\\\",\\\"panels\\\":[{\\\"panel\\\":1,\\\"caption\\\":\\\"...\\\",\\\"image_prompt\\\":\\\"...\\\",\\\"character_present\\\":true}]}. KHÔNG markdown.\\n\\nTin:\\nTiêu đề: {{ $('Filter + pick news').first().json.newsTitle }}\\nNội dung: {{ $('Filter + pick news').first().json.newsBody }}\" }] }],\n  \"generationConfig\": { \"responseMimeType\": \"application/json\", \"temperature\": 0.9 }\n}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "gemini-comic",
+      "name": "Gemini comic script",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Filter + pick news').first().json;\nconst raw = $json.candidates[0].content.parts[0].text.replace(/^```json\\n?|```$/g, '').trim();\nconst parsed = JSON.parse(raw);\nif (!Array.isArray(parsed.panels) || parsed.panels.length < 4) throw new Error('comic_schema_invalid');\nconst tasks = parsed.panels.map(p => ({\n  jobId: ctx.jobId,\n  panel: p.panel,\n  caption: p.caption,\n  imagePrompt: p.image_prompt,\n  characterPresent: !!p.character_present\n}));\nreturn [{ json: { jobId: ctx.jobId, title: parsed.title, panelTasks: tasks } }, ...tasks.map(t => ({ json: t }))];"
+      },
+      "id": "parse-comic",
+      "name": "Parse comic script",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://render-service:7000/image/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-internal-secret", "value": "={{$env.RENDER_SECRET}}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"prompt\": {{ JSON.stringify($json.imagePrompt) }},\n  \"mode\": \"{{ $json.characterPresent ? 'edit' : 'text-to-image' }}\",\n  \"referenceImage\": \"{{ $json.characterPresent ? 'journalist-mascot.png' : '' }}\"\n}",
+        "options": { "timeout": 90000 }
+      },
+      "id": "image-gen",
+      "name": "Nano Banana per panel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1740, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://render-service:7000/tts/edge",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-internal-secret", "value": "={{$env.RENDER_SECRET}}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"text\": {{ JSON.stringify($json.caption) }}, \"voice\": \"vi-VN-HoaiMyNeural\" }",
+        "options": { "timeout": 30000 }
+      },
+      "id": "tts-gen",
+      "name": "TTS per panel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1740, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse comic script').first().json;\nconst tasks = $('Parse comic script').all().slice(1).map(i => i.json);\nconst images = $('Nano Banana per panel').all().map(i => i.json);\nconst tts = $('TTS per panel').all().map(i => i.json);\nconst panels = tasks.map((t, idx) => ({\n  panel: t.panel,\n  caption: t.caption,\n  imagePath: images[idx].imagePath,\n  captionAudioPath: tts[idx].audioPath\n}));\nreturn [{ json: { jobId: ctx.jobId, props: { title: ctx.title, channelName: 'videofarm', variant: 'dark', panels } } }];"
+      },
+      "id": "build-props",
+      "name": "Build NewsComic props",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://render-service:7000/render",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-internal-secret", "value": "={{$env.RENDER_SECRET}}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"template\": \"NewsComic\", \"jobId\": {{ JSON.stringify($json.jobId) }}, \"props\": {{ JSON.stringify($json.props) }} }",
+        "options": { "timeout": 480000 }
+      },
+      "id": "render",
+      "name": "POST /render NewsComic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2180, 400]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "upload-to-platforms", "mode": "name" },
+        "workflowInputs": {
+          "value": {
+            "jobId": "={{ $('Build NewsComic props').first().json.jobId }}",
+            "videoPath": "={{ $('POST /render NewsComic').first().json.videoPath }}",
+            "title": "={{ $('Build NewsComic props').first().json.props.title }} #Shorts",
+            "description": "Tin tóm tắt: {{ $('Filter + pick news').first().json.newsTitle }}. Nguồn: {{ $('Filter + pick news').first().json.newsLink }} #tintức #shorts",
+            "tags": "={{ ['tintức','tomtat','shorts'] }}",
+            "ytCategoryId": "25"
+          }
+        }
+      },
+      "id": "upload-sub",
+      "name": "Upload sub-workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2400, 400]
+    }
+  ],
+  "connections": {
+    "Daily 12:00": { "main": [[{ "node": "RSS vnexpress", "type": "main", "index": 0 }]] },
+    "RSS vnexpress": { "main": [[{ "node": "Parse XML", "type": "main", "index": 0 }]] },
+    "Parse XML": { "main": [[{ "node": "Filter + pick news", "type": "main", "index": 0 }]] },
+    "Filter + pick news": { "main": [[{ "node": "INSERT video_job", "type": "main", "index": 0 }]] },
+    "INSERT video_job": { "main": [[{ "node": "Gemini comic script", "type": "main", "index": 0 }]] },
+    "Gemini comic script": { "main": [[{ "node": "Parse comic script", "type": "main", "index": 0 }]] },
+    "Parse comic script": {
+      "main": [[
+        { "node": "Nano Banana per panel", "type": "main", "index": 0 },
+        { "node": "TTS per panel", "type": "main", "index": 0 }
+      ]]
+    },
+    "Nano Banana per panel": { "main": [[{ "node": "Build NewsComic props", "type": "main", "index": 0 }]] },
+    "TTS per panel": { "main": [[{ "node": "Build NewsComic props", "type": "main", "index": 0 }]] },
+    "Build NewsComic props": { "main": [[{ "node": "POST /render NewsComic", "type": "main", "index": 0 }]] },
+    "POST /render NewsComic": { "main": [[{ "node": "Upload sub-workflow", "type": "main", "index": 0 }]] }
+  }
+}

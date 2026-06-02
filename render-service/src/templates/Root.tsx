@@ -8,6 +8,8 @@ import {
   computeDurationInFrames,
   type QuizProps,
 } from './quiz/types.ts';
+import { NewsComic } from './news-comic/NewsComic.tsx';
+import { computeNewsComicDurationInFrames, type NewsComicProps } from './news-comic/types.ts';
 
 const PlaceholderComposition: React.FC<{ message: string }> = ({ message }) => (
   <AbsoluteFill
@@ -23,6 +25,19 @@ const PlaceholderComposition: React.FC<{ message: string }> = ({ message }) => (
     <div style={{ fontFamily: 'sans-serif', fontSize: 64, lineHeight: 1.2 }}>{message}</div>
   </AbsoluteFill>
 );
+
+const NEWS_COMIC_DEFAULT_PROPS: NewsComicProps = {
+  title: 'Tin Công Nghệ Hôm Nay',
+  channelName: 'videofarm',
+  variant: 'dark',
+  panels: [
+    {
+      panel: 1,
+      caption: 'Một tin nóng vừa xảy ra trong ngành công nghệ...',
+      imagePath: '/files/images/placeholder.png',
+    },
+  ],
+};
 
 const QUIZ_DEFAULT_PROPS: QuizProps = {
   title: 'Quiz Vui',
@@ -54,12 +69,15 @@ export const RemotionRoot: React.FC = () => (
     />
     <Composition
       id="NewsComic"
-      component={PlaceholderComposition}
-      durationInFrames={150}
+      component={NewsComic}
       fps={FPS}
       width={WIDTH}
       height={HEIGHT}
-      defaultProps={{ message: 'NewsComic placeholder — Phase 07' }}
+      defaultProps={NEWS_COMIC_DEFAULT_PROPS}
+      durationInFrames={computeNewsComicDurationInFrames(NEWS_COMIC_DEFAULT_PROPS.panels.length)}
+      calculateMetadata={({ props }) => ({
+        durationInFrames: computeNewsComicDurationInFrames(props.panels.length),
+      })}
     />
     <Composition
       id="HacksList"
