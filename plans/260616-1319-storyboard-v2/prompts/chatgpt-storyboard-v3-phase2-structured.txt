@@ -1,0 +1,101 @@
+Now produce sections G, H, and I based on the storyboard you generated in your previous message. Do not regenerate sections A through F.
+
+G. STRUCTURED JSON OUTPUT (storyboard.json)
+Output a single JSON object inside a ```json fenced code block.
+The JSON must be valid, parseable, and use Unicode for Vietnamese (no escape sequences).
+The JSON consolidates the breakdown table B + image prompts D + video motion E into machine-readable form for the rendering pipeline.
+
+Schema:
+
+{
+  "schemaVersion": "v2",
+  "dishName": string,
+  "dishSlug": string,                   // kebab-case ASCII slug, e.g. "bun-cha"
+  "servingSize": string,
+  "cuisineStyle": string,
+  "totalDurationSec": number,
+  "musicMood": string,                  // for music selection, e.g. "warm cinematic Vietnamese folk"
+  "panels": [
+    {
+      "index": number,                  // 1-based, sequential
+      "kind": "intro" | "step" | "outro",
+      "imageTextLabel": {
+        "line1": string,                // ALL-CAPS Vietnamese title, e.g. "RANG GIA VỊ"
+        "line2": string | null,         // ingredients + quantity inline
+        "line3": string | null          // preparation method or time
+      },
+      "ingredients": [
+        { "name": string, "amount": string }
+      ],
+      "preparation": string,
+      "purpose": string,
+      "visualContent": string,          // scene description from table column 6
+      "imagePrompt": string,            // FULL standalone prompt from section D
+      "motionDirection": string,        // from section E, English preferred for Veo
+      "narrationVi": string,            // Vietnamese voiceover from table, 1-2 sentences (5-7s spoken)
+      "onScreenTextVi": string,         // text overlay if different from imageTextLabel
+      "durationSec": number,            // MUST be 4, 6, or 8 (Veo 3.1 lite constraint, NO 5 or 7)
+      "transition": "cut" | "fade" | "zoom" | "swipe"
+    }
+  ]
+}
+
+Rules for JSON:
+- panels.length must be between 9 and 14 inclusive
+- panels[0].kind === "intro" with imageTextLabel.line1 = dish name only, line2/line3 = null
+- panels[last].kind === "outro" with imageTextLabel.line1 = dish name + " HOÀN THIỆN"
+- All other panels have kind === "step"
+- Each durationSec MUST be exactly 4, 6, or 8 (no 5 or 7 — Veo API rejects them)
+- Sum of all durationSec must equal totalDurationSec
+- dishSlug must be ASCII kebab-case (e.g. "Phở Bò" → "pho-bo", "Bò Kho" → "bo-kho")
+- Use Unicode for Vietnamese (no escape sequences)
+- Do not omit or rename fields. Do not add extra fields.
+
+H. YOUTUBE METADATA (metadata.yaml)
+Output a single YAML block inside a ```yaml fenced code block, ready to save as metadata.yaml.
+
+Required fields:
+
+```yaml
+title: string              # ≤100 chars, VN-first, attention-grabbing, include dish name + key hook
+                           # Example: "Bò Kho tan trong miệng — Bí quyết quán Sài Gòn 30 năm 🥢"
+descriptionVi: |
+  string                   # 200-500 words. Open with hook (1-2 sentences). List nguyên liệu chính.
+                           # Tóm tắt cách làm 5-8 bullets. Kết bằng CTA subscribe.
+                           # Add timestamps if applicable.
+                           # End with hashtags-as-text 3-5 lines.
+descriptionEn: |
+  string                   # 100-200 words English summary for international viewers.
+tags:                      # 8-15 YouTube tags, mix VN + EN, single words + phrases
+  - "bò kho"
+  - "Vietnamese beef stew"
+  - "công thức bò kho"
+  - "Vietnamese cooking"
+  # etc.
+category: "Howto & Style"  # YouTube category — usually this one for cooking
+defaultLanguage: "vi"
+thumbnailPrompt: string    # OPTIONAL: DALL-E prompt for 1280x720 thumbnail if you want custom
+                           # If empty, pipeline uses panel-01.png cropped.
+hashtags:                  # 3 hashtags ONLY (max 3 indexed by YouTube) — chosen for best CTR
+  - "#vietnamesefood"
+  - "#bokho"
+  - "#cookingshorts"
+publishMode: "private"     # ALWAYS private for now — n8n uploads private + emails link for review.
+                           # You manually flip to public after viewing.
+```
+
+I. FOLDER BUNDLE INSTRUCTIONS (printed for human, not consumed by pipeline)
+Print this checklist verbatim at the very end:
+
+```
+✅ DONE. Save the following to inbox/<TODAY-YYYYMMDD>-<dishSlug>/:
+
+[ ] storyboard.json   ← from section G ```json block
+[ ] metadata.yaml     ← from section H ```yaml block
+[ ] panels/panel-01.png through panel-NN.png
+      ← run each prompt from section D in ChatGPT image mode (or DALL-E/Nano-Banana)
+      ← download, rename to panel-01.png, panel-02.png, ...
+      ← all 9:16 vertical (1080×1920), PNG, < 5MB each
+
+When folder is ready, n8n cron will pick it up automatically next Tue/Fri at 9am Asia/Bangkok.
+```
