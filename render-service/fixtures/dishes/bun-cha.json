@@ -1,0 +1,36 @@
+{
+  "dish_name": "Bún chả Hà Nội",
+  "dish_name_display": "BÚN CHẢ",
+  "tagline": "HƯƠNG VỊ HÀ NỘI TRĂM NĂM",
+  "serving_vessel_style": "a hero ceramic dipping bowl filled with golden fish-sauce broth, grilled pork pieces and pickled papaya floating in it, beside a small platter of fresh white vermicelli and a side plate of fresh herbs",
+  "table_material": "a rustic wooden table with a bamboo mat",
+  "background_style": "dark moody background with warm tungsten golden lighting and faint charcoal smoke",
+  "core_visual_flow": "a swirling vortex of golden dipping sauce mixed with charcoal smoke and steam",
+  "final_dish_description": "a complete bún chả serving — a ceramic bowl of warm fish-sauce dipping broth with grilled pork patties, grilled pork belly slices, and pickled green papaya and carrot floating in it; alongside a plate of fresh white vermicelli and a bouquet of fresh herbs",
+  "finish_step": {
+    "label": "HOÀN THIỆN",
+    "prep": "Nhúng bún + chả vào nước chấm",
+    "qty": "Ăn nóng"
+  },
+  "ingredients": [
+    { "id": "tieu_den", "label": "TIÊU ĐEN", "prep": "Giã dập", "qty": "1/2 thìa cà phê", "visual": "a small pile of cracked black peppercorns", "group": "marinade", "order": 1 },
+    { "id": "duong", "label": "ĐƯỜNG", "prep": "Hoà tan", "qty": "2 thìa canh", "visual": "a small pile of fine white sugar", "group": "sauce", "order": 2 },
+    { "id": "giam_gao", "label": "GIẤM GẠO", "prep": "Hoà tan", "qty": "2 thìa canh", "visual": "a small glass cruet of clear rice vinegar", "group": "sauce", "order": 3 },
+    { "id": "nuoc_mam", "label": "NƯỚC MẮM", "prep": "Pha loãng", "qty": "3 thìa canh", "visual": "a small dipping bowl of amber fish sauce", "group": "sauce", "order": 4 },
+    { "id": "toi_bam", "label": "TỎI BĂM", "prep": "Bóc, băm nhỏ", "qty": "2 tép", "visual": "a small pile of finely minced raw garlic", "group": "sauce", "order": 5 },
+    { "id": "hanh_kho_bam", "label": "HÀNH KHÔ BĂM", "prep": "Bóc, băm nhỏ", "qty": "2 củ nhỏ", "visual": "a small pile of finely minced dried shallot", "group": "marinade", "order": 6 },
+    { "id": "mat_ong", "label": "MẬT ONG", "prep": "Phết khi nướng", "qty": "1 thìa canh", "visual": "a small jar of golden honey with a drizzle", "group": "marinade", "order": 7 },
+    { "id": "nuoc_cham", "label": "NƯỚC CHẤM", "prep": "Đun ấm 40°C", "qty": "300ml", "visual": "a small ceramic bowl half-full of clear golden warm dipping sauce", "group": "sauce", "order": 8 },
+    { "id": "du_du_xanh", "label": "ĐU ĐỦ XANH", "prep": "Thái lát mỏng, ngâm muối", "qty": "100g", "visual": "thin translucent slices of pickled green papaya", "group": "pickle", "order": 9 },
+    { "id": "ca_rot", "label": "CÀ RỐT", "prep": "Thái lát, ngâm muối", "qty": "50g", "visual": "thin orange slices of pickled carrot", "group": "pickle", "order": 10 },
+    { "id": "cha_mieng", "label": "CHẢ MIẾNG", "prep": "Nướng than hoa", "qty": "150g", "visual": "two grilled flat pork patties with charred edges", "group": "protein", "order": 11 },
+    { "id": "cha_roi", "label": "CHẢ RỌI", "prep": "Ướp, nướng than", "qty": "150g", "visual": "three slices of charred grilled pork belly with golden caramelization", "group": "protein", "order": 12 },
+    { "id": "bun_tuoi", "label": "BÚN TƯƠI", "prep": "Trụng nóng, để nguội", "qty": "200g", "visual": "a single neat bundle of fresh white rice vermicelli", "group": "main", "order": 13 },
+    { "id": "rau_xa_lach", "label": "RAU XÀ LÁCH", "prep": "Rửa, để ráo", "qty": "1 nắm", "visual": "a few crisp green lettuce leaves", "group": "herb", "order": 14 },
+    { "id": "rau_mui", "label": "RAU MÙI", "prep": "Rửa, cắt khúc", "qty": "1 nắm nhỏ", "visual": "a small bunch of fresh cilantro sprigs", "group": "herb", "order": 15 },
+    { "id": "kinh_gioi", "label": "KINH GIỚI", "prep": "Rửa sạch", "qty": "1 nắm nhỏ", "visual": "a small bunch of Vietnamese lemon balm leaves with serrated edges", "group": "herb", "order": 16 },
+    { "id": "tia_to", "label": "TÍA TÔ", "prep": "Rửa sạch", "qty": "1 nắm nhỏ", "visual": "a few purple-backed perilla leaves", "group": "herb", "order": 17 },
+    { "id": "chanh", "label": "CHANH", "prep": "Cắt múi cau", "qty": "1 quả", "visual": "one lime wedge", "group": "garnish", "order": 18 },
+    { "id": "ot", "label": "ỚT", "prep": "Thái lát", "qty": "2 quả", "visual": "a few slices of fresh red chili", "group": "garnish", "order": 19 }
+  ]
+}

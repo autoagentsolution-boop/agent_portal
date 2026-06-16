@@ -23,10 +23,26 @@ const extractStatus = (err: unknown): number | undefined => {
   return undefined;
 };
 
+const TRANSIENT_NETWORK_CODES = new Set([
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'ECONNREFUSED',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_TIMEOUT',
+]);
+
+const extractCode = (err: unknown): string | undefined => {
+  if (typeof err !== 'object' || err === null) return undefined;
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e.code ?? e.cause?.code;
+};
+
 const isNetworkError = (err: unknown): boolean => {
-  if (typeof err !== 'object' || err === null) return false;
-  const code = (err as { code?: string }).code;
-  return code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'ENOTFOUND' || code === 'ECONNREFUSED';
+  const code = extractCode(err);
+  return code !== undefined && TRANSIENT_NETWORK_CODES.has(code);
 };
 
 export const withRetry = async <T>(fn: () => Promise<T>, opts: RetryOptions = {}): Promise<T> => {

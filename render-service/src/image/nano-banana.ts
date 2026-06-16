@@ -8,7 +8,7 @@ import { withRetry } from '../util/retry.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_DIR = path.resolve(__dirname, '..', '..', 'output', 'images');
-const MODEL = 'gemini-2.5-flash-image-preview';
+const MODEL = 'gemini-2.5-flash-image';
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 export type ImageMode = 'text-to-image' | 'edit';

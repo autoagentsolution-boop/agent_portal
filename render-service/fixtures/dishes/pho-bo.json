@@ -1,0 +1,40 @@
+{
+  "dish_name": "Phở bò",
+  "dish_name_display": "PHỞ BÒ",
+  "tagline": "TINH HOA ẨM THỰC VIỆT",
+  "serving_vessel_style": "a traditional Vietnamese ceramic bowl with simple cream and blue rim, hand-thrown look",
+  "table_material": "a rustic dark wooden table",
+  "background_style": "dark moody background with warm tungsten golden lighting and subtle smoke",
+  "core_visual_flow": "a swirling vertical vortex of clear golden bone broth with droplets and rising steam",
+  "final_dish_description": "a premium finished bowl of Vietnamese pho bo with clear golden broth, white rice noodles, fanned slices of medium-rare beef and well-done brisket, scattered Thai basil and cilantro, bean sprouts on the side, lime wedge, sliced red chili, with chopsticks resting on the rim",
+  "finish_step": {
+    "label": "HOÀN THIỆN",
+    "prep": "Chan nước dùng nóng",
+    "qty": "Thưởng thức ngay"
+  },
+  "ingredients": [
+    { "id": "muoi", "label": "MUỐI", "prep": "Nêm vừa", "qty": "1/2 thìa cà phê", "visual": "a small pile of coarse white salt crystals", "group": "seasoning", "order": 1 },
+    { "id": "duong_phen", "label": "ĐƯỜNG PHÈN", "prep": "Đập nhỏ", "qty": "1 thìa canh", "visual": "chunks of pale rock sugar crystals", "group": "seasoning", "order": 2 },
+    { "id": "nuoc_mam", "label": "NƯỚC MẮM", "prep": "Cho cuối", "qty": "2 thìa canh", "visual": "a small dipping bowl of amber fish sauce", "group": "seasoning", "order": 3 },
+    { "id": "xuong_ong", "label": "XƯƠNG ỐNG", "prep": "Chặt 5cm, chần sôi", "qty": "1.5kg", "visual": "a chunk of raw beef marrow bone, cross-section visible", "group": "broth", "order": 4 },
+    { "id": "xuong_suon", "label": "XƯƠNG SƯỜN", "prep": "Chặt 4cm, chần sơ", "qty": "500g", "visual": "raw beef rib bones with meat still attached", "group": "broth", "order": 5 },
+    { "id": "nuoc_dung", "label": "NƯỚC DÙNG", "prep": "Hầm 6 giờ", "qty": "2 lít", "visual": "a small bowl of clear golden bone broth", "group": "broth", "order": 6 },
+    { "id": "dinh_huong", "label": "ĐINH HƯƠNG", "prep": "Rang thơm", "qty": "5 nụ", "visual": "a small cluster of dried clove buds", "group": "spice", "order": 7 },
+    { "id": "thao_qua", "label": "THẢO QUẢ", "prep": "Đập vỏ, rang", "qty": "2 quả", "visual": "two dried black cardamom pods", "group": "spice", "order": 8 },
+    { "id": "que", "label": "QUẾ", "prep": "Rang nhẹ", "qty": "2 thanh", "visual": "two cinnamon bark sticks", "group": "spice", "order": 9 },
+    { "id": "hoa_hoi", "label": "HOA HỒI", "prep": "Rang thơm", "qty": "3 cánh", "visual": "three star anise pods, perfect star shape", "group": "spice", "order": 10 },
+    { "id": "tieu_den", "label": "TIÊU ĐEN", "prep": "Giã dập", "qty": "1/2 thìa cà phê", "visual": "a small pile of whole black peppercorns", "group": "spice", "order": 11 },
+    { "id": "hanh_tay_nuong", "label": "HÀNH TÂY NƯỚNG", "prep": "Nướng vàng cháy", "qty": "1 củ", "visual": "one charred whole onion, blackened skin", "group": "aromatic", "order": 12 },
+    { "id": "gung_nuong", "label": "GỪNG NƯỚNG", "prep": "Đập dập, nướng", "qty": "1 củ", "visual": "a knob of charred ginger root", "group": "aromatic", "order": 13 },
+    { "id": "hanh_tim", "label": "HÀNH TÍM", "prep": "Bóc vỏ", "qty": "3 củ nhỏ", "visual": "three small purple shallots, peeled", "group": "aromatic", "order": 14 },
+    { "id": "banh_pho", "label": "BÁNH PHỞ", "prep": "Trụng nóng", "qty": "400g", "visual": "a single neat bundle of fresh white rice noodles", "group": "main", "order": 15 },
+    { "id": "thit_bo_tai", "label": "THỊT BÒ TÁI", "prep": "Thái mỏng 2mm", "qty": "150g", "visual": "thin paper-thin slices of raw medium-rare beef tenderloin", "group": "protein", "order": 16 },
+    { "id": "thit_bo_chin", "label": "THỊT BÒ CHÍN", "prep": "Luộc, thái mỏng", "qty": "150g", "visual": "thin slices of well-cooked beef brisket", "group": "protein", "order": 17 },
+    { "id": "gia_do", "label": "GIÁ ĐỖ", "prep": "Rửa sạch", "qty": "100g", "visual": "a small pile of fresh white mung bean sprouts", "group": "garnish", "order": 18 },
+    { "id": "hanh_la", "label": "HÀNH LÁ", "prep": "Cắt nhỏ", "qty": "3 nhánh", "visual": "a few chopped green scallion rings", "group": "garnish", "order": 19 },
+    { "id": "ngo_gai", "label": "NGÒ GAI", "prep": "Cắt khúc", "qty": "1 nắm nhỏ", "visual": "a small bunch of sawtooth coriander leaves", "group": "garnish", "order": 20 },
+    { "id": "rau_que", "label": "RAU QUẾ", "prep": "Rửa sạch", "qty": "1 nắm", "visual": "a small bunch of fresh Thai basil leaves", "group": "garnish", "order": 21 },
+    { "id": "chanh", "label": "CHANH", "prep": "Cắt múi cau", "qty": "1 quả", "visual": "one lime wedge cut", "group": "garnish", "order": 22 },
+    { "id": "ot", "label": "ỚT", "prep": "Thái lát", "qty": "2 quả", "visual": "a few slices of fresh red chili", "group": "garnish", "order": 23 }
+  ]
+}

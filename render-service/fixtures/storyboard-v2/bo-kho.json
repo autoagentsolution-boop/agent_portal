@@ -1,0 +1,271 @@
+{
+  "schemaVersion": "v2",
+  "dishName": "Bò Kho",
+  "dishSlug": "bo-kho",
+  "servingSize": "4 phần",
+  "cuisineStyle": "Vietnamese",
+  "totalDurationSec": 69,
+  "musicMood": "warm cinematic Vietnamese folk with slow tempo",
+  "panels": [
+    {
+      "index": 1,
+      "kind": "intro",
+      "imageTextLabel": { "line1": "BÒ KHO", "line2": null, "line3": null },
+      "ingredients": [],
+      "preparation": "Mở đầu bằng tô bò kho hoàn chỉnh",
+      "purpose": "Hook người xem với thành phẩm hấp dẫn",
+      "visualContent": "Tô bò kho đỏ nâu, bò mềm, cà rốt, rau thơm, bánh mì bên cạnh",
+      "imagePrompt": "Premium CGI 3D stop-motion hero shot of finished Vietnamese Bò Kho beef stew in ceramic bowl, deep red-brown sauce, tender beef, carrots, fresh herbs, French bread on side, dark moody background, warm golden lighting, steam rising, baked Vietnamese text BÒ KHO at top",
+      "motionDirection": "Subtle steam rising gently from bowl, sauce glistens with light catching, very slow 5 percent camera push-in over 4 seconds, cinematic slow-motion",
+      "narrationVi": "Hôm nay chúng ta sẽ cùng nhau nấu món bò kho thơm ngon đậm đà.",
+      "onScreenTextVi": "",
+      "durationSec": 4,
+      "transition": "fade"
+    },
+    {
+      "index": 2,
+      "kind": "step",
+      "imageTextLabel": {
+        "line1": "NGUYÊN LIỆU CHÍNH",
+        "line2": "Bò 1kg · Cà rốt 500g",
+        "line3": "Sả · Hành · Gừng · Gia vị"
+      },
+      "ingredients": [
+        { "name": "Bò", "amount": "1kg" },
+        { "name": "Cà rốt", "amount": "500g" },
+        { "name": "Sả", "amount": "4 cây" },
+        { "name": "Hành tím", "amount": "50g" },
+        { "name": "Gừng", "amount": "20g" }
+      ],
+      "preparation": "Bày nguyên liệu sạch trên bàn gỗ",
+      "purpose": "Giúp người xem nắm tổng quan nguyên liệu",
+      "visualContent": "Nguyên liệu xếp gọn trên bàn gỗ, ánh sáng vàng ấm",
+      "imagePrompt": "Premium CGI overhead arrangement of Bò Kho ingredients on rustic wooden table: raw beef chunks, orange carrots, lemongrass stalks, shallots, ginger root, annatto spice, baked Vietnamese label NGUYÊN LIỆU CHÍNH at top",
+      "motionDirection": "Cinematic overhead reveal: each ingredient drops down softly onto the wooden table one after another in rapid sequence — beef chunks land with a small bounce, carrot chunks tumble in, lemongrass stalks roll into place, shallots and ginger settle last. Golden dust motes drift through warm sunlight, very slow camera push-in 3 percent over 6 seconds. Slow-motion food cinematography, dark moody background, NO new ingredients appearing, preserve Vietnamese label NGUYÊN LIỆU CHÍNH exactly.",
+      "narrationVi": "Trước hết hãy chuẩn bị đầy đủ nguyên liệu chính cho món bò kho.",
+      "onScreenTextVi": "",
+      "durationSec": 6,
+      "transition": "fade"
+    },
+    {
+      "index": 3,
+      "kind": "step",
+      "imageTextLabel": {
+        "line1": "LÀM SẠCH BÒ",
+        "line2": "Bò 1kg · Gừng 20g",
+        "line3": "Chà muối · Rửa sạch"
+      },
+      "ingredients": [
+        { "name": "Bò", "amount": "1kg" },
+        { "name": "Gừng", "amount": "20g" },
+        { "name": "Muối", "amount": "1 thìa canh" }
+      ],
+      "preparation": "Chà bò với muối và gừng đập dập, rửa sạch",
+      "purpose": "Khử mùi tanh, làm sạch thịt",
+      "visualContent": "Miếng bò đỏ tươi, gừng thái lát, muối hạt",
+      "imagePrompt": "Premium CGI close-up of raw beef being rubbed with crushed ginger and coarse salt, droplets of water washing over, baked Vietnamese label LÀM SẠCH BÒ at top",
+      "motionDirection": "Salt grains fall gently onto the beef, ginger slices rotate slowly around the meat, water droplets glisten",
+      "narrationVi": "Chà bò với muối và gừng đập dập rồi rửa sạch để khử mùi.",
+      "onScreenTextVi": "",
+      "durationSec": 6,
+      "transition": "cut"
+    },
+    {
+      "index": 4,
+      "kind": "step",
+      "imageTextLabel": {
+        "line1": "CẮT VÀ ƯỚP BÒ",
+        "line2": "Bò · Bột bò kho 25g",
+        "line3": "Ướp 30–45 phút"
+      },
+      "ingredients": [
+        { "name": "Bò", "amount": "1kg" },
+        { "name": "Bột bò kho", "amount": "25g" },
+        { "name": "Nước mắm", "amount": "15ml" },
+        { "name": "Dầu điều", "amount": "20ml" }
+      ],
+      "preparation": "Cắt bò 3 đến 4cm, trộn gia vị, ướp 30 đến 45 phút",
+      "purpose": "Làm bò thấm vị trước khi nấu",
+      "visualContent": "Khối bò phủ màu đỏ cam của dầu điều",
+      "imagePrompt": "Premium CGI close-up of beef chunks being coated with red-orange annatto oil and Vietnamese spice blend, tossed gently, vibrant red color, baked Vietnamese label CẮT VÀ ƯỚP BÒ at top",
+      "motionDirection": "Spices sprinkle down onto the beef in slow motion, beef chunks tumble gently as they get coated",
+      "narrationVi": "Cắt bò thành miếng vừa ăn, trộn cùng bột bò kho và dầu điều, ướp ba mươi đến bốn lăm phút.",
+      "onScreenTextVi": "",
+      "durationSec": 6,
+      "transition": "fade"
+    },
+    {
+      "index": 5,
+      "kind": "step",
+      "imageTextLabel": {
+        "line1": "RANG GIA VỊ",
+        "line2": "Quế 1 thanh · Hồi 3 cánh",
+        "line3": "Rang khô 2 phút"
+      },
+      "ingredients": [
+        { "name": "Quế", "amount": "1 thanh" },
+        { "name": "Hồi", "amount": "3 cánh" }
+      ],
+      "preparation": "Rang khô quế và hồi trên chảo",
+      "purpose": "Đánh thức mùi thơm nền của bò kho",
+      "visualContent": "Chảo gang nhỏ, quế hồi tỏa khói thơm",
+      "imagePrompt": "Premium CGI close-up of cinnamon stick and star anise pods toasting on small cast-iron pan, fragrant smoke rising, dark moody background, baked Vietnamese label RANG GIA VỊ at top",
+      "motionDirection": "Cinnamon and star anise bounce gently on the hot pan, aromatic smoke spirals upward in slow motion",
+      "narrationVi": "Quế và hồi rang khô hai phút trên chảo để dậy mùi thơm.",
+      "onScreenTextVi": "",
+      "durationSec": 6,
+      "transition": "cut"
+    },
+    {
+      "index": 6,
+      "kind": "step",
+      "imageTextLabel": {
+        "line1": "PHI NỀN THƠM",
+        "line2": "Sả 4 cây · Tỏi hành 50g",
+        "line3": "Phi dầu điều 3 phút"
+      },
+      "ingredients": [
+        { "name": "Sả", "amount": "4 cây" },
+        { "name": "Tỏi", "amount": "20g" },
+        { "name": "Hành tím", "amount": "30g" },
+        { "name": "Dầu điều", "amount": "30ml" }
+      ],
+      "preparation": "Phi thơm đến vàng nhẹ",
+      "purpose": "Tạo nền mùi sả hành đặc trưng",
+      "visualContent": "Nồi đất, dầu điều đỏ óng, sả hành tỏi xoáy",
+      "imagePrompt": "Premium CGI close-up of lemongrass, garlic, shallots sizzling in red annatto oil inside clay pot, deep red-orange color, steam rising, baked Vietnamese label PHI NỀN THƠM at top",
+      "motionDirection": "Lemongrass and shallots swirl into the bubbling red oil in slow motion, fragrant steam rises",
+      "narrationVi": "Phi sả tỏi hành tím cùng dầu điều cho thật vàng và thơm.",
+      "onScreenTextVi": "",
+      "durationSec": 6,
+      "transition": "fade"
+    },
+    {
+      "index": 7,
+      "kind": "step",
+      "imageTextLabel": {
+        "line1": "XÀO SĂN BÒ",
+        "line2": "Bò đã ướp 1kg",
+        "line3": "Xào lửa lớn 5 phút"
+      },
+      "ingredients": [
+        { "name": "Bò đã ướp", "amount": "1kg" }
+      ],
+      "preparation": "Xào đến khi thịt săn",
+      "purpose": "Khoá vị, làm thịt thơm hơn",
+      "visualContent": "Bò chuyển màu nâu đỏ, sốt bám đều",
+      "imagePrompt": "Premium CGI close-up of marinated beef chunks searing in clay pot with red sauce coating each piece, slight smoke, sizzling, baked Vietnamese label XÀO SĂN BÒ at top",
+      "motionDirection": "Beef chunks jump slightly as they sear, sauce droplets splash up in slow motion, smoke rises",
+      "narrationVi": "Cho bò đã ướp vào xào lửa lớn năm phút đến khi thịt săn lại.",
+      "onScreenTextVi": "",
+      "durationSec": 6,
+      "transition": "cut"
+    },
+    {
+      "index": 8,
+      "kind": "step",
+      "imageTextLabel": {
+        "line1": "HẦM BÒ",
+        "line2": "Nước dừa 500ml · Nước 1.2L",
+        "line3": "Hầm 70–90 phút"
+      },
+      "ingredients": [
+        { "name": "Nước dừa", "amount": "500ml" },
+        { "name": "Nước lọc", "amount": "1.2L" }
+      ],
+      "preparation": "Hầm nhỏ lửa 70 đến 90 phút",
+      "purpose": "Làm bò mềm, nước kho đậm vị",
+      "visualContent": "Nồi bò kho sôi liu riu, hơi nước thanh",
+      "imagePrompt": "Premium CGI close-up of clay pot with beef stew simmering, coconut milk and water being poured in slowly from above, gentle bubbles, baked Vietnamese label HẦM BÒ at top",
+      "motionDirection": "Coconut milk pours from one side and water pours from the other side in slow motion, both streams meeting in the pot, gentle bubbles rise",
+      "narrationVi": "Thêm nước dừa và nước lọc, hầm lửa nhỏ bảy mươi đến chín mươi phút.",
+      "onScreenTextVi": "",
+      "durationSec": 6,
+      "transition": "fade"
+    },
+    {
+      "index": 9,
+      "kind": "step",
+      "imageTextLabel": {
+        "line1": "NẤU CÀ RỐT",
+        "line2": "Cà rốt 500g",
+        "line3": "Nấu mềm 15–20 phút"
+      },
+      "ingredients": [
+        { "name": "Cà rốt", "amount": "500g" }
+      ],
+      "preparation": "Cho vào sau khi bò gần mềm",
+      "purpose": "Giữ cà rốt ngọt, không bị nát",
+      "visualContent": "Cà rốt cam nổi trong nước bò kho đỏ nâu",
+      "imagePrompt": "Premium CGI close-up of orange carrot chunks dropping into red-brown beef stew, splash, surface ripples, baked Vietnamese label NẤU CÀ RỐT at top",
+      "motionDirection": "Carrot chunks drop into the stew one by one in slow motion, creating small splashes and ripples",
+      "narrationVi": "Khi bò gần mềm cho cà rốt vào nấu thêm mười lăm đến hai mươi phút.",
+      "onScreenTextVi": "",
+      "durationSec": 6,
+      "transition": "cut"
+    },
+    {
+      "index": 10,
+      "kind": "step",
+      "imageTextLabel": {
+        "line1": "CHỈNH VỊ",
+        "line2": "Mắm 15ml · Đường 10g",
+        "line3": "Nêm vừa miệng"
+      },
+      "ingredients": [
+        { "name": "Nước mắm", "amount": "15ml" },
+        { "name": "Đường", "amount": "10g" },
+        { "name": "Muối", "amount": "1 thìa cà phê" },
+        { "name": "Tiêu", "amount": "1g" }
+      ],
+      "preparation": "Nêm lại cuối cùng",
+      "purpose": "Cân bằng mặn ngọt thơm",
+      "visualContent": "Muỗng gia vị nhỏ trên mặt nồi sôi nhẹ",
+      "imagePrompt": "Premium CGI close-up of seasoning spoon hovering over simmering beef stew, fish sauce and sugar dissolving as golden streaks in the broth, baked Vietnamese label CHỈNH VỊ at top",
+      "motionDirection": "Seasoning sprinkles down from the spoon and dissolves into golden streaks across the stew surface",
+      "narrationVi": "Nêm nước mắm đường muối tiêu cho vừa miệng, cân bằng vị.",
+      "onScreenTextVi": "",
+      "durationSec": 6,
+      "transition": "fade"
+    },
+    {
+      "index": 11,
+      "kind": "step",
+      "imageTextLabel": {
+        "line1": "CHUẨN BỊ ĂN KÈM",
+        "line2": "Rau quế · Ngò gai · Bánh mì",
+        "line3": "Rửa · Cắt sẵn"
+      },
+      "ingredients": [
+        { "name": "Rau quế", "amount": "1 nắm" },
+        { "name": "Ngò gai", "amount": "1 nắm" },
+        { "name": "Hành lá", "amount": "3 nhánh" },
+        { "name": "Bánh mì", "amount": "2 ổ" }
+      ],
+      "preparation": "Rửa rau, cắt hành, nướng bánh mì nhẹ",
+      "purpose": "Chuẩn bị phần ăn kèm",
+      "visualContent": "Rau xanh tươi, bánh mì vàng giòn",
+      "imagePrompt": "Premium CGI close-up of fresh Thai basil, sawtooth coriander, scallions arranged next to golden crusty French bread on wooden board, baked Vietnamese label CHUẨN BỊ ĂN KÈM at top",
+      "motionDirection": "Fresh Thai basil and sawtooth coriander leaves float gently down onto the wooden board, scallions sway softly in steam rising from a warm golden-crusted French bread loaf placed intact on the side. Steam ribbons drift upward in slow motion, warm golden lighting. Bread stays whole — DO NOT break, tear, or scatter crumbs. Cinematic slow-motion food shot, preserve Vietnamese label CHUẨN BỊ ĂN KÈM exactly.",
+      "narrationVi": "Rửa rau quế ngò gai, cắt hành, nướng bánh mì giòn rụm.",
+      "onScreenTextVi": "",
+      "durationSec": 6,
+      "transition": "cut"
+    },
+    {
+      "index": 12,
+      "kind": "outro",
+      "imageTextLabel": { "line1": "BÒ KHO HOÀN THIỆN", "line2": null, "line3": null },
+      "ingredients": [],
+      "preparation": "Múc bò, cà rốt, nước kho, thêm rau",
+      "purpose": "Thành phẩm cuối cùng",
+      "visualContent": "Tô bò kho nóng, nước đỏ nâu bóng, bò mềm, cà rốt đẹp",
+      "imagePrompt": "Premium CGI final hero shot of completed Bò Kho in ceramic bowl, all components beautifully assembled, steam rising, golden cinematic lighting, baked Vietnamese label BÒ KHO HOÀN THIỆN at top",
+      "motionDirection": "All components come together, steam swirls upward, slow 5 percent camera pull-back to reveal the full plated dish",
+      "narrationVi": "Vậy là chúng ta đã có món bò kho hoàn thiện, chúc cả nhà ngon miệng.",
+      "onScreenTextVi": "",
+      "durationSec": 5,
+      "transition": "fade"
+    }
+  ]
+}

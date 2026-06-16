@@ -13,7 +13,12 @@ import { computeNewsComicDurationInFrames, type NewsComicProps } from './news-co
 import { HacksList } from './hacks-list/HacksList.tsx';
 import { computeHacksDurationInFrames, type HacksListProps } from './hacks-list/types.ts';
 import { CookingExplosion } from './cooking-explosion/CookingExplosion.tsx';
-import { computeCookingDurationInFrames, type CookingExplosionProps } from './cooking-explosion/types.ts';
+import {
+  computeCookingDurationInFrames,
+  computeCookingV2DurationInFrames,
+  isV2Props,
+  type CookingExplosionProps,
+} from './cooking-explosion/types.ts';
 
 const PlaceholderComposition: React.FC<{ message: string }> = ({ message }) => (
   <AbsoluteFill
@@ -127,7 +132,9 @@ export const RemotionRoot: React.FC = () => (
       defaultProps={COOKING_DEFAULT_PROPS}
       durationInFrames={computeCookingDurationInFrames(COOKING_DEFAULT_PROPS.steps.length)}
       calculateMetadata={({ props }) => ({
-        durationInFrames: computeCookingDurationInFrames(props.steps.length),
+        durationInFrames: isV2Props(props)
+          ? computeCookingV2DurationInFrames(props.panels)
+          : computeCookingDurationInFrames(props.steps.length),
       })}
     />
     <Composition

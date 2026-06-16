@@ -16,10 +16,14 @@ import {
   INTRO_FRAMES,
   STEP_REVEAL_FRAMES,
   WIDTH,
+  isV2Props,
+  type CookingExplosionAnyProps,
   type CookingExplosionProps,
+  type CookingExplosionV2Props,
   type CookingStep,
   type StepIngredient,
 } from './types.ts';
+import { PanelSequence } from './panel-sequence.tsx';
 
 const CENTER_X = WIDTH / 2;
 const BOWL_SIZE = 560;
@@ -35,7 +39,8 @@ const resolveSrc = (p?: string): string | undefined => {
 
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 
-const ingredientChipSize = (count: number): number => (count === 1 ? 150 : count <= 4 ? 110 : 88);
+const ingredientChipSize = (count: number): number =>
+  count === 1 ? 130 : count <= 3 ? 100 : count === 4 ? 88 : 72;
 
 // ---- Cinematic primitives ----
 
@@ -220,53 +225,6 @@ const Bowl: React.FC<{ scale: number; dishImagePath?: string; bowlColor: string;
   );
 };
 
-const SteamRibbon: React.FC<{ progress: number; color: string }> = ({ progress, color }) => {
-  // Two ribbons (soft glow + crisp core) snaking up through frame
-  const pathD = `
-    M ${CENTER_X} ${BOWL_TOP_Y}
-    C ${CENTER_X + 220} ${BOWL_TOP_Y - 200}, ${CENTER_X - 200} ${LAYERS_BOTTOM - 200}, ${CENTER_X + 60} ${LAYERS_BOTTOM - 400}
-    C ${CENTER_X + 240} ${LAYERS_BOTTOM - 600}, ${CENTER_X - 240} ${LAYERS_BOTTOM - 800}, ${CENTER_X - 40} ${LAYERS_BOTTOM - 1000}
-    C ${CENTER_X + 180} ${LAYERS_TOP + 150}, ${CENTER_X - 180} ${LAYERS_TOP + 60}, ${CENTER_X} ${LAYERS_TOP - 40}
-  `;
-  const pathLength = 2400;
-  const dashOffset = pathLength * (1 - progress);
-
-  return (
-    <svg width={WIDTH} height={HEIGHT} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-      <defs>
-        <linearGradient id="steam-grad" x1="0" y1="1" x2="0" y2="0">
-          <stop offset="0%" stopColor={color} stopOpacity="0.95" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.35" />
-        </linearGradient>
-        <filter id="steam-blur" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="18" />
-        </filter>
-      </defs>
-      <path
-        d={pathD}
-        stroke="url(#steam-grad)"
-        strokeWidth={70}
-        strokeLinecap="round"
-        fill="none"
-        strokeDasharray={pathLength}
-        strokeDashoffset={dashOffset}
-        filter="url(#steam-blur)"
-        opacity={0.85}
-      />
-      <path
-        d={pathD}
-        stroke="url(#steam-grad)"
-        strokeWidth={32}
-        strokeLinecap="round"
-        fill="none"
-        strokeDasharray={pathLength}
-        strokeDashoffset={dashOffset}
-        opacity={0.95}
-      />
-    </svg>
-  );
-};
-
 const StepLayer: React.FC<{
   step: CookingStep;
   layerY: number;
@@ -288,8 +246,8 @@ const StepLayer: React.FC<{
 
   const ingCount = step.ingredients.length;
   const chipSize = ingredientChipSize(ingCount);
-  const rightAreaLeft = 580;
-  const rightAreaWidth = WIDTH - rightAreaLeft - 60;
+  const rightAreaLeft = 700;
+  const rightAreaWidth = WIDTH - rightAreaLeft - 40;
   const spacing = rightAreaWidth / ingCount;
 
   return (
@@ -333,10 +291,10 @@ const StepLayer: React.FC<{
         {step.index}
       </div>
 
-      {/* Title + instruction stacked */}
+      {/* Title + instruction + prep list stacked */}
       <div
         style={{
-          width: 360,
+          width: 460,
           color: '#fff',
           fontFamily: fontStack,
           flexShrink: 0,
@@ -345,7 +303,7 @@ const StepLayer: React.FC<{
         <div
           style={{
             color: theme.primary,
-            fontSize: 32,
+            fontSize: 30,
             fontWeight: 900,
             textTransform: 'uppercase',
             letterSpacing: 1,
@@ -358,15 +316,38 @@ const StepLayer: React.FC<{
         <div
           style={{
             color: '#fff',
-            fontSize: 24,
+            fontSize: 19,
             fontWeight: 500,
-            marginTop: 8,
-            lineHeight: 1.25,
+            marginTop: 6,
+            lineHeight: 1.2,
             textShadow: '0 2px 6px rgba(0,0,0,0.85)',
-            opacity: 0.92,
+            opacity: 0.85,
           }}
         >
           {step.instruction}
+        </div>
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {step.ingredients.map((ing) => (
+            <div
+              key={ing.id}
+              style={{
+                color: '#fff',
+                fontSize: 17,
+                fontWeight: 500,
+                lineHeight: 1.2,
+                textShadow: '0 2px 6px rgba(0,0,0,0.9)',
+                opacity: 0.95,
+              }}
+            >
+              <span style={{ color: theme.primary, fontWeight: 800 }}>• {ing.name}</span>
+              {ing.amount && (
+                <span style={{ opacity: 0.75, fontWeight: 600 }}> ({ing.amount})</span>
+              )}
+              {ing.prep && (
+                <span style={{ opacity: 0.85 }}> — {ing.prep}</span>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -423,14 +404,6 @@ const VerticalScene: React.FC<{ frame: number; props: CookingExplosionProps }> =
   const holdEnd = stepsEnd + HOLD_FRAMES;
   const collapseEnd = holdEnd + COLLAPSE_FRAMES;
 
-  // Ribbon draws across step reveal + hold phases
-  const ribbonStart = INTRO_FRAMES;
-  const ribbonEnd = holdEnd;
-  const ribbonProgress = interpolate(frame, [ribbonStart, ribbonEnd], [0, 1], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  });
-
   // Collapse phase
   const inCollapse = frame >= holdEnd && frame < collapseEnd;
   const collapseT = inCollapse
@@ -453,9 +426,6 @@ const VerticalScene: React.FC<{ frame: number; props: CookingExplosionProps }> =
 
   return (
     <>
-      {/* Steam ribbon behind everything but above bg */}
-      <SteamRibbon progress={ribbonProgress} color={props.steamColor} />
-
       {/* Step layers, reveal sequentially */}
       {!inFinal &&
         props.steps.map((step, idx) => {
@@ -496,19 +466,24 @@ const VerticalScene: React.FC<{ frame: number; props: CookingExplosionProps }> =
         dishRevealT={dishRevealT}
       />
 
-      {/* Title at top */}
+      {/* Title at top — fades out once steps start revealing */}
       {!inFinal && (
         <div
           style={{
             position: 'absolute',
             left: 0,
             right: 0,
-            top: 100,
+            top: 60,
             textAlign: 'center',
             color: '#fff',
             fontFamily: fontStack,
             pointerEvents: 'none',
-            opacity: introT,
+            opacity: introT * interpolate(
+              frame,
+              [stepsStart + STEP_REVEAL_FRAMES * 4, stepsStart + STEP_REVEAL_FRAMES * 5.5],
+              [1, 0],
+              { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
+            ),
           }}
         >
           <div
@@ -594,7 +569,7 @@ const VerticalScene: React.FC<{ frame: number; props: CookingExplosionProps }> =
 // ---- Smash layout (placeholder — falls through to vertical for v1) ----
 // TODO: ingredients scattered, all converge into bowl at end
 
-export const CookingExplosion: React.FC<CookingExplosionProps> = (props) => {
+const CookingExplosionV1: React.FC<CookingExplosionProps> = (props) => {
   const frame = useCurrentFrame();
   const theme = themes[props.variant];
 
@@ -675,4 +650,20 @@ export const CookingExplosion: React.FC<CookingExplosionProps> = (props) => {
       {props.narrationPath && <Audio src={resolveSrc(props.narrationPath)!} volume={1.0} />}
     </AbsoluteFill>
   );
+};
+
+const CookingExplosionV2: React.FC<CookingExplosionV2Props> = (props) => {
+  return (
+    <AbsoluteFill style={{ background: '#000', overflow: 'hidden' }}>
+      <PanelSequence panels={props.panels} />
+      {props.bgMusicPath && <Audio src={resolveSrc(props.bgMusicPath)!} volume={0.22} />}
+    </AbsoluteFill>
+  );
+};
+
+export const CookingExplosion: React.FC<CookingExplosionAnyProps> = (props) => {
+  if (isV2Props(props)) {
+    return <CookingExplosionV2 {...props} />;
+  }
+  return <CookingExplosionV1 {...props} />;
 };

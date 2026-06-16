@@ -44,11 +44,13 @@ const ING_DIR = path.join(PUBLIC_ROOT, 'cooking-assets/ingredients');
 const DISH_REL = 'cooking-assets/dishes';
 const ING_REL = 'cooking-assets/ingredients';
 
-const MODEL = 'gemini-2.5-flash-image-preview';
+const MODEL = 'gemini-2.5-flash-image';
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 const slug = (s: string): string =>
   s
+    .replace(/[Đ]/g, 'D')
+    .replace(/[đ]/g, 'd')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()

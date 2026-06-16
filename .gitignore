@@ -26,6 +26,25 @@ coverage/
 
 # Render service runtime output (rendered mp4s)
 render-service/output/
+render-service/public/explode-cache/
+render-service/out/
+out/
+
+# Storyboard v2 generated assets (regenerable via scripts/run-storyboard-v2.ts; cache-cheap)
+render-service/public/storyboard-v2/*/motion-*.mp4
+render-service/public/storyboard-v2/*/narration-*.mp3
+render-service/public/storyboard-v2/*/music.mp3
+render-service/temp/
+.remotion/
+
+# Local reference / scratch dirs (large, user-personal)
+Bokho/
+ReferenceVideoType/
+screenshot/
+
+# Claude session state (rotates frequently, not useful in repo)
+.claude/session-state/
+.claude/chrome-devtools/
 
 # Claude Code session caches
 .claude/cache/

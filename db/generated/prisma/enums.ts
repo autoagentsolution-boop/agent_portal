@@ -12,7 +12,8 @@
 export const Pipeline = {
   quiz: 'quiz',
   news_comic: 'news_comic',
-  life_hacks: 'life_hacks'
+  life_hacks: 'life_hacks',
+  cooking_explode: 'cooking_explode'
 } as const
 
 export type Pipeline = (typeof Pipeline)[keyof typeof Pipeline]
@@ -70,7 +71,10 @@ export const LogStep = {
   image: 'image',
   tts: 'tts',
   render: 'render',
-  upload: 'upload'
+  upload: 'upload',
+  motion: 'motion',
+  music: 'music',
+  verify: 'verify'
 } as const
 
 export type LogStep = (typeof LogStep)[keyof typeof LogStep]

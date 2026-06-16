@@ -8,8 +8,8 @@
  *
  * 🟢 You can import this file directly.
  */
-export type * from './models/VideoJob.ts'
-export type * from './models/Asset.ts'
-export type * from './models/UploadTarget.ts'
-export type * from './models/RunLog.ts'
-export type * from './commonInputTypes.ts'
+export type * from './models/VideoJob.js'
+export type * from './models/Asset.js'
+export type * from './models/UploadTarget.js'
+export type * from './models/RunLog.js'
+export type * from './commonInputTypes.js'

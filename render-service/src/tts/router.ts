@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '../logger.ts';
@@ -43,11 +44,16 @@ export const selectVoice = (jobId: string, role: Role): string => {
   return pool[idx]!;
 };
 
-const synthesizeEdge = (voice: string, text: string, outFile: string): Promise<Buffer> =>
+const EDGE_TTS_ATTEMPTS = 4;
+const EDGE_TTS_BASE_BACKOFF_MS = 2000;
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+const callEdgeTts = (voice: string, textFile: string, outFile: string): Promise<Buffer> =>
   new Promise((resolve, reject) => {
     const proc = spawn(
       'edge-tts',
-      ['--voice', voice, '--text', text, '--write-media', outFile],
+      ['--voice', voice, '--file', textFile, '--write-media', outFile],
       { stdio: ['ignore', 'ignore', 'pipe'] },
     );
     let stderr = '';
@@ -68,6 +74,36 @@ const synthesizeEdge = (voice: string, text: string, outFile: string): Promise<B
       }
     });
   });
+
+const isEdgeTransientError = (err: unknown): boolean => {
+  if (typeof err !== 'object' || err === null) return false;
+  const msg = (err as { message?: string }).message ?? '';
+  return /NoAudioReceived|TimeoutError|ConnectionError|websocket|ResetError/i.test(msg);
+};
+
+const synthesizeEdge = async (voice: string, text: string, outFile: string): Promise<Buffer> => {
+  // Write text to temp file and use --file to avoid argv length/escaping issues
+  // with long Vietnamese text containing colons + diacritics on Windows.
+  const textFile = path.join(tmpdir(), `edge-tts-${createHash('sha256').update(`${voice}::${text}`).digest('hex').slice(0, 12)}.txt`);
+  await writeFile(textFile, text, 'utf8');
+  try {
+    for (let attempt = 1; attempt <= EDGE_TTS_ATTEMPTS; attempt++) {
+      try {
+        return await callEdgeTts(voice, textFile, outFile);
+      } catch (err) {
+        const last = attempt === EDGE_TTS_ATTEMPTS;
+        const transient = isEdgeTransientError(err);
+        if (last || !transient) throw err;
+        const delay = EDGE_TTS_BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
+        logger.warn('edge_tts_retry', { voice, attempt, delay, error: String(err).slice(0, 200) });
+        await sleep(delay);
+      }
+    }
+    throw new Error('edge_tts_unreachable');
+  } finally {
+    await rm(textFile, { force: true });
+  }
+};
 
 const fallbackEdgeForGCloudFemale = 'vi-VN-HoaiMyNeural';
 const fallbackEdgeForGCloudMale = 'vi-VN-NamMinhNeural';
