@@ -6,8 +6,8 @@ Dish: [TÊN MÓN]
 Serving size: [SỐ PHẦN ĂN / SỐ TÔ / SỐ NGƯỜI]
 Cuisine style: [ẨM THỰC]
 Main ingredients: [DANH SÁCH NGUYÊN LIỆU, NẾU CÓ]
-Target audience: VN home cooks 25-45
-YouTube channel niche: Vietnamese cooking shorts, premium cinematic style
+Target audience: [VN home cooks 25-45, hoặc tuỳ chỉnh]
+YouTube channel niche: [ví dụ: "Vietnamese cooking shorts, premium cinematic style"]
 
 If ingredients or quantities are missing, infer a realistic standard recipe for the selected serving size.
 
@@ -19,7 +19,8 @@ The image must show a logical cooking process from ingredients to finished dish.
 
 IMPORTANT TEXT RULE:
 Do not render technical production words inside the image.
-Do not put these words in the image: "hero shot", "visual direction", "camera", "panel", "scene", "instruction", "comment", "CGI", "stop motion", "exploded view", "final hero".
+Do not put these words in the image:
+"hero shot", "visual direction", "camera", "panel", "scene", "instruction", "comment", "CGI", "stop motion", "exploded view", "final hero".
 
 Text inside the image must only be useful cooking information for viewers.
 
@@ -28,158 +29,245 @@ Line 1: short Vietnamese cooking step title (ALL CAPS)
 Line 2: key ingredients + quantity
 Line 3: short preparation method or cooking time
 
-For the first and final dish image, use only the dish name. Example: "BÒ KHO" or "BÒ KHO HOÀN THIỆN".
+For the first and final dish image:
+Use only the dish name or a simple food title.
+Do not write "hero shot".
+Example:
+"BÒ KHO"
+or
+"BÒ KHO HOÀN THIỆN"
 
-COOKING LOGIC (in order):
-- ingredient overview
-- washing / cleaning / cutting / soaking / slicing
-- roasting aromatics or spices
-- preparing broth / sauce / marinade / seasoning base
-- cooking main components
-- preparing noodles / rice / starch / vegetables / toppings
-- assembling into bowl / plate / pot / pan
-- adding broth / sauce / garnish / herbs / toppings
-- final completed dish using only a simple food title
+Good label examples:
+"CHẦN XƯƠNG"
+"Xương bò 1.5kg"
+"Chần 5 phút · Rửa sạch"
 
-Do not skip important cooking stages. Do not merge different techniques into one panel. Each panel must be visually clear and logically connected to the next.
+"RANG GIA VỊ"
+"Quế 2 thanh · Hồi 3 cánh"
+"Rang khô 2–3 phút"
+
+"HẦM NƯỚC DÙNG"
+"Xương · Hành · Gừng · Gia vị"
+"Hầm 3–4 giờ"
+
+Bad label examples:
+"HERO SHOT"
+"Visual direction"
+"Camera orbit"
+"Show ingredients"
+"Final hero"
+"CGI stop motion"
+
+COOKING LOGIC:
+Start with a finished dish preview using only the dish name as text.
+Then show the real preparation process in order:
+
+* ingredient overview
+* washing / cleaning / cutting / soaking / slicing
+* roasting aromatics or spices
+* preparing broth / sauce / marinade / seasoning base
+* cooking main components
+* preparing noodles / rice / starch / vegetables / toppings
+* assembling into bowl / plate / pot / pan
+* adding broth / sauce / garnish / herbs / toppings
+* final completed dish using only a simple food title
+
+Do not skip important cooking stages.
+Do not merge different cooking techniques into one panel.
+Do not overload one panel with too many actions.
+Each panel must be visually clear and logically connected to the next one.
 
 IMAGE STYLE:
-Premium high-end CGI visual quality. 3D stop-motion food commercial style. Handcrafted claymation-inspired food texture. Cinematic warm golden lighting. Dark smoky background. Rustic wooden table. Shallow depth of field. Elegant steam. Subtle golden motion trails. Clean luxury Vietnamese culinary presentation. Consistent bowl, pot, plate, lighting, color grading, and background across all panels. 9:16 vertical aspect ratio (1080×1920).
+Premium high-end CGI visual quality.
+3D stop-motion food commercial style.
+Handcrafted claymation-inspired food texture.
+Cinematic warm golden lighting.
+Dark smoky background.
+Rustic wooden table.
+Shallow depth of field.
+Elegant steam.
+Subtle golden motion trails.
+Ingredients floating, falling, jumping, or swirling naturally.
+Clean luxury Vietnamese culinary presentation.
+Consistent bowl, pot, plate, lighting, color grading, and background across all panels.
 
-VISUAL CONSTRAINTS (DO NOT):
-No messy layout, chaotic composition, wrong/duplicated/morphing ingredients. No distorted bowls, deformed food, random text, unreadable Vietnamese, overly long labels. No technical production terms inside the image. No ramen/udon/spaghetti unless dish requires them. No plastic-looking food, flat lighting, low-quality rendering, excessive splash.
+STORYBOARD LAYOUT:
+Create a clean multi-panel storyboard.
+The number of panels must be at least 9 and at most 14.
+The layout must adapt to the selected number of panels.
+Each panel must be clearly separated.
+Each panel must contain only the compact Vietnamese cooking label.
+Do not include technical notes, camera notes, comments, or production instructions inside the image.
 
-============================================================
-REQUIRED OUTPUT — print all sections A through I in order:
-============================================================
+VISUAL CONSTRAINTS:
+No messy layout.
+No chaotic composition.
+No wrong ingredients.
+No duplicated major ingredients.
+No distorted bowls, pots, plates, or utensils.
+No deformed food.
+No random text.
+No unreadable Vietnamese text.
+No overly long labels.
+No technical production terms inside the image.
+No Westernized version unless requested.
+No ramen, udon, spaghetti, or unrelated ingredients unless the dish requires them.
+No plastic-looking food.
+No flat lighting.
+No low-quality rendering.
+No excessive splash.
+No ingredient morphing.
+
+REQUIRED OUTPUT:
 
 A. RECIPE & PANEL STRATEGY
-Explain panel count and why.
+Explain how many panels are needed and why.
+Minimum panel count is 9. Maximum is 14.
 
 B. COOKING STEP BREAKDOWN TABLE
-Columns: Step number | Image text label | Ingredients & quantity | Preparation method | Cooking purpose | Visual content | Video motion direction
+Create a table with:
+Step number | Image text label | Ingredients & quantity | Preparation method | Cooking purpose | Visual content | Video motion direction
 
-C. (skip)
+C. FULL STORYBOARD IMAGE PROMPT
+Write one complete image generation prompt for the full multi-panel storyboard.
+The image prompt must include the exact cooking labels to appear in the image.
+The image prompt must not allow technical production words to appear in the image.
 
 D. INDIVIDUAL PANEL IMAGE PROMPTS
-Write one standalone image prompt for each panel, ordered 1 through N.
-Each prompt MUST include:
-- exact 3-line Vietnamese label baked into the image
-- ingredients + quantity visible
-- preparation method visual hint
-- premium cinematic 3D stop-motion food style
-- consistent lighting + background with previous panels
-- 9:16 vertical aspect ratio (1080×1920)
+Write one standalone image prompt for each panel.
+Each prompt must include:
 
-Format each prompt as:
+* panel number
+* exact Vietnamese image label
+* ingredients and quantity
+* preparation method
+* visual composition
+* premium cinematic 3D food style
+* 9:16 vertical aspect ratio (1080×1920)
+* consistent lighting + background with previous panels
+
+Format each prompt as follows (use triple-backtick code blocks so I can copy each one directly into ChatGPT image generation):
+
+```
 PANEL n image prompt:
-<full prompt text on next lines>
+<the full prompt text on the next lines, multi-line OK>
+```
 
-E. VIDEO MOTION (consumed inside section G JSON)
-For each panel, the JSON in section G must specify:
-- visual action
-- camera movement
-- object movement
-- Vietnamese narration (~5-7s spoken, 15-25 words)
-- transition (cut | fade | zoom | swipe)
-- durationSec MUST be exactly 4, 6, or 8 — Veo 3.1 lite/fast rejects 5 or 7
+E. VIDEO GENERATION SCRIPT
+Write a complete scene-by-scene video script for Veo 3.1.
+The video script must include:
 
-F. (skip)
+* total video duration (seconds)
+* timeline (per-scene start/end in seconds)
+* visual action
+* camera movement
+* object movement
+* Vietnamese narration (1-2 sentences per scene, 5-7 seconds spoken, ≈15-25 words)
+* on-screen Vietnamese text
+* sound design
+* transition to next scene (cut | fade | zoom | swipe)
+* durationSec per panel — MUST be exactly 4, 6, or 8 seconds (Veo 3.1 lite/fast rejects 5 or 7)
 
-G. STRUCTURED JSON OUTPUT — storyboard.json
-After all markdown sections above, output a single JSON object inside a triple-backtick json fenced code block, like this:
+F. MASTER VIDEO PROMPT
+Write one complete video generation prompt based on the storyboard.
+The video prompt can contain camera, CGI, stop-motion, clockwise orbit, and motion instructions.
+These technical words are allowed in the video prompt, but not inside the generated image text.
 
-```json
+G. STRUCTURED JSON OUTPUT
+After all markdown sections above, output a single JSON object inside a ```json fenced code block.
+The JSON must be valid, parseable, and use Unicode for Vietnamese (no escape sequences).
+The JSON consolidates sections B, D, and E into machine-readable form for the rendering pipeline.
+
+Schema:
+
 {
   "schemaVersion": "v2",
-  "dishName": "...",
-  "dishSlug": "kebab-case-ascii",
-  "servingSize": "...",
-  "cuisineStyle": "...",
-  "totalDurationSec": 0,
-  "musicMood": "...",
+  "dishName": string,
+  "dishSlug": string,                   // kebab-case ASCII slug, e.g. "bun-cha"
+  "servingSize": string,
+  "cuisineStyle": string,
+  "totalDurationSec": number,
+  "musicMood": string,                  // for music selection, e.g. "warm cinematic Vietnamese folk"
   "panels": [
     {
-      "index": 1,
-      "kind": "intro",
-      "imageTextLabel": { "line1": "DISH NAME", "line2": null, "line3": null },
-      "ingredients": [],
-      "preparation": "...",
-      "purpose": "...",
-      "visualContent": "...",
-      "imagePrompt": "...",
-      "motionDirection": "English description for Veo",
-      "narrationVi": "...",
-      "onScreenTextVi": "",
-      "durationSec": 4,
-      "transition": "fade"
+      "index": number,                  // 1-based, sequential
+      "kind": "intro" | "step" | "outro",
+      "imageTextLabel": {
+        "line1": string,                // ALL-CAPS Vietnamese title, e.g. "RANG GIA VỊ"
+        "line2": string | null,         // ingredients + quantity inline
+        "line3": string | null          // preparation method or time
+      },
+      "ingredients": [
+        { "name": string, "amount": string }
+      ],
+      "preparation": string,
+      "purpose": string,
+      "visualContent": string,          // scene description from table column 6
+      "imagePrompt": string,            // FULL standalone prompt from section D
+      "motionDirection": string,        // from table column 7, English preferred for Veo
+      "narrationVi": string,            // Vietnamese voiceover, 1-2 sentences (5-7s spoken)
+      "onScreenTextVi": string,         // text overlay if different from imageTextLabel
+      "durationSec": number,            // MUST be 4, 6, or 8 (Veo 3.1 lite constraint, NO 5 or 7)
+      "transition": "cut" | "fade" | "zoom" | "swipe"
     }
   ]
 }
-```
 
-JSON RULES:
-- panels.length between 9 and 14 inclusive
-- panels[0].kind = "intro" with imageTextLabel.line1 = dish name only, line2 and line3 null
-- panels[last].kind = "outro" with imageTextLabel.line1 = dish name + " HOÀN THIỆN"
-- All middle panels kind = "step"
-- Each durationSec MUST be 4, 6, or 8 (no 5 or 7)
-- Sum of all durationSec MUST equal totalDurationSec
-- dishSlug must be ASCII kebab-case (e.g. "Bún Chả" -> "bun-cha")
+Rules for JSON:
+- panels.length must be between 9 and 14 inclusive
+- panels[0].kind === "intro" with imageTextLabel.line1 = dish name only, line2/line3 = null
+- panels[last].kind === "outro" with imageTextLabel.line1 = dish name + " HOÀN THIỆN"
+- All other panels have kind === "step"
+- Each durationSec MUST be exactly 4, 6, or 8 (no 5 or 7 — Veo API rejects them)
+- Sum of all durationSec must equal totalDurationSec
+- dishSlug must be ASCII kebab-case (e.g. "Phở Bò" → "pho-bo", "Bò Kho" → "bo-kho")
 - Use Unicode for Vietnamese (no escape sequences)
 - Do not omit or rename fields. Do not add extra fields.
 
-H. YOUTUBE METADATA — metadata.yaml
-After the JSON block, output a single YAML inside a triple-backtick yaml fenced code block, like this:
+H. YOUTUBE METADATA (metadata.yaml)
+Output a single YAML block inside a ```yaml fenced code block, ready to save as metadata.yaml.
 
+Required fields:
 ```yaml
-title: "..."
+title: string              # ≤100 chars, VN-first, attention-grabbing, include dish name + key hook
+                           # Example: "Bò Kho tan trong miệng — Bí quyết quán Sài Gòn 30 năm 🥢"
 descriptionVi: |
-  Mở đầu hook 1-2 câu.
-
-  Nguyên liệu chính:
-  - ...
-
-  Cách làm:
-  - Bước 1: ...
-  - Bước 2: ...
-
-  Subscribe để xem thêm các món Việt Nam premium!
-
-  #vietnamesefood #monvn #cookingshorts
+  string                   # 200-500 words. Open with hook (1-2 sentences). List nguyên liệu chính.
+                           # Tóm tắt cách làm 5-8 bullets. Kết bằng CTA subscribe.
+                           # Add timestamps if applicable.
+                           # End with hashtags-as-text 3-5 lines.
 descriptionEn: |
-  English summary in 100-200 words.
-tags:
-  - "..."
-  - "..."
-category: "Howto & Style"
+  string                   # 100-200 words English summary for international viewers.
+tags:                      # 8-15 YouTube tags, mix VN + EN, single words + phrases
+  - "bò kho"
+  - "Vietnamese beef stew"
+  - "công thức bò kho"
+  - "Vietnamese cooking"
+  # etc.
+category: "Howto & Style"  # YouTube category — usually this one for cooking
 defaultLanguage: "vi"
-thumbnailPrompt: ""
-hashtags:
+thumbnailPrompt: string    # OPTIONAL: DALL-E prompt for 1280x720 thumbnail if you want custom
+                           # If empty, pipeline uses panel-01.png cropped.
+hashtags:                  # 3 hashtags ONLY (max 3 indexed by YouTube) — chosen for best CTR
   - "#vietnamesefood"
-  - "#dishslug"
+  - "#bokho"
   - "#cookingshorts"
-publishMode: "private"
+publishMode: "private"     # ALWAYS private for now — n8n uploads private + emails link for review.
+                           # You manually flip to public after viewing.
 ```
 
-YAML RULES:
-- title <= 100 chars, VN first, include dish name + hook, can have one emoji
-- descriptionVi: 200-500 words, hook first, ingredients, steps, CTA
-- descriptionEn: 100-200 words summary
-- tags: 8-15 entries, mix VN + EN, single words OR short phrases
-- hashtags: exactly 3 (YouTube only indexes 3)
-- publishMode: always "private" for now
+I. FOLDER BUNDLE INSTRUCTIONS (printed for human, not consumed by pipeline)
+Print this checklist verbatim at the very end:
 
-I. FOLDER BUNDLE INSTRUCTIONS (printed verbatim at very end)
-Print this checklist exactly as below for the human user:
+```
+✅ DONE. Save the following to inbox/<TODAY-YYYYMMDD>-<dishSlug>/:
 
-DONE. Save the following to inbox/YYYYMMDD-{dishSlug}/ where YYYYMMDD is today's date:
+[ ] storyboard.json   ← from section G ```json block
+[ ] metadata.yaml     ← from section H ```yaml block
+[ ] panels/panel-01.png through panel-NN.png
+      ← run each prompt from section D in ChatGPT image mode (or DALL-E/Nano-Banana)
+      ← download, rename to panel-01.png, panel-02.png, ...
+      ← all 9:16 vertical (1080×1920), PNG, < 5MB each
 
-1. storyboard.json   <- copy the JSON block from section G
-2. metadata.yaml     <- copy the YAML block from section H
-3. panels/panel-01.png through panel-NN.png
-     - run each prompt from section D in ChatGPT image mode (or DALL-E)
-     - download, rename to panel-01.png, panel-02.png, ...
-     - all 9:16 vertical (1080x1920), PNG, < 5MB each
-
-When folder is ready, n8n cron picks it up next Tuesday or Friday at 9am Asia/Bangkok.
+When folder is ready, n8n cron will pick it up automatically next Tue/Fri at 9am Asia/Bangkok.
+```
