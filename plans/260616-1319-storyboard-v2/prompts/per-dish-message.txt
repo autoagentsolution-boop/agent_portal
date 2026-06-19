@@ -1,0 +1,89 @@
+USAGE
+-----
+After pasting `chatgpt-project-instructions.md` into ChatGPT Project Instructions once,
+send TWO messages per dish in the same Project chat:
+
+  MESSAGE 1 — Dish brief (template below). ChatGPT replies with 2 ```json blocks.
+              Save those as storyboard.json + metadata.json into
+              inbox/<YYYYMMDD>-<dishSlug>/.
+              REVIEW the JSON before paying for image gen (verify duration, CTA, panel count).
+
+  MESSAGE 2 — Image gen trigger. Send one of: "generate panels", "gen images",
+              "tạo ảnh", "OK render". ChatGPT iterates panels in order, generates
+              one image per panel with header "PANEL NN — save as panel-NN.png".
+              Download each image, rename to match header, drop all into
+              inbox/<YYYYMMDD>-<dishSlug>/panels/.
+
+n8n cron Tue+Fri 9am picks up the folder, validates, renders, uploads YouTube private,
+emails review link.
+
+
+TEMPLATE (copy + fill, send as a single message)
+------------------------------------------------
+Dish: <TÊN MÓN>
+Serving: <SỐ PHẦN / SỐ TÔ / SỐ NGƯỜI>
+Cuisine: <ẨM THỰC vùng miền, ví dụ: Hà Nội, Sài Gòn, Huế, miền Tây>
+Ingredients (optional): <danh sách nguyên liệu chính, để trống nếu muốn ChatGPT suy luận>
+Mood (optional): <"warm cinematic", "rustic countryside", "luxe street food", ...>
+
+
+EXAMPLES
+--------
+
+# Bún Chả Hà Nội
+Dish: Bún Chả Hà Nội
+Serving: 2 phần
+Cuisine: Hà Nội truyền thống
+Ingredients: thịt ba chỉ, thịt nạc vai, nước mắm, đường, hành tỏi, bún tươi, rau sống, đu đủ xanh, cà rốt
+Mood: warm cinematic, charcoal smoke
+
+
+# Cơm Tấm Sườn Bì Chả
+Dish: Cơm Tấm Sườn Bì Chả
+Serving: 2 dĩa
+Cuisine: Sài Gòn
+Ingredients:
+Mood: luxe street food, golden hour
+
+
+# Cá Kho Tộ
+Dish: Cá Kho Tộ
+Serving: 1 tộ cho 3 người ăn
+Cuisine: miền Tây
+Ingredients: cá basa, nước màu, nước mắm, tiêu, ớt, hành lá
+Mood: rustic countryside, smoky clay pot
+
+
+VARIATION REQUESTS
+------------------
+After MESSAGE 1 (JSON), before MESSAGE 2 (image gen), you can edit:
+
+  Schema edit (re-emits both JSON blocks):
+    "Đổi panel 7 sang 6s thay vì 4s, và đổi narration outro lại 'tan trong miệng' thay vì 'thơm ngon'."
+
+  Image regen only (no JSON change, re-runs image tool for one panel):
+    "Regen panel 5"
+    "Tạo lại panel 11, thêm khói nhiều hơn"
+
+ChatGPT will re-emit the corresponding artifact (JSON blocks OR image).
+Never accept a reply that is prose-only — re-prompt with: "Output the two JSON blocks only" or "Generate panel N image".
+
+
+SANITY CHECKS BEFORE SAVING TO inbox/
+-------------------------------------
+- panels.length is between 9 and 14
+- Every durationSec is 4, 6, or 8
+- Sum of durationSec is between 45 and 60
+- panels[0].kind === "intro", panels[last].kind === "outro"
+- Outro line2 === "ĐĂNG KÝ KÊNH 🔔"
+- Outro narrationVi ends with "Bấm đăng ký kênh để xem thêm món Việt mỗi tuần!"
+- Every panel.narrationVi word count fits durationSec × 2.5 VN words/sec
+    (4s ≤ 10 words, 6s ≤ 15 words, 8s ≤ 20 words; Remotion otherwise cuts CTA mid-word)
+- motionComplexity (optional) is "complex" on at most 2 step panels — these route to Veo
+    Fast ($0.10/sec). Tier 1 cap is 10 Fast videos/day. Intro + outro always render as Lite
+    regardless of field.
+- metadata.hashtags has exactly 3 entries
+- dishSlug matches /^[a-z0-9-]+$/
+
+If anything fails, ask ChatGPT to fix and re-emit. Do NOT hand-edit JSON for schema fixes —
+keep the chat as source of truth so you can re-render later.

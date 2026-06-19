@@ -15,6 +15,23 @@ Use more panels when the dish has broth, sauce, marinade, roasting, frying, simm
 
 The image must show a logical cooking process from ingredients to finished dish.
 
+DURATION CONSTRAINT (CRITICAL — YouTube Shorts requirement):
+Total video duration MUST be between 45 and 60 seconds inclusive.
+That means sum(panel.durationSec) ∈ [45, 60].
+Each panel.durationSec MUST be 4, 6, or 8 (Veo 3.1 lite/fast hard constraint).
+- Use 4s for MOST step panels (default action shots)
+- Reserve 6s for intro hero shot + transition-heavy or complex steps
+- Reserve 8s ONLY for the outro panel (CTA needs airtime)
+- Typical valid mixes: 1×6 + 10×4 + 1×8 = 54s; or 1×6 + 8×4 + 1×8 = 46s
+- Before finishing section B, verify the sum is in [45, 60]; if outside, adjust panel count or per-panel duration
+
+SUBSCRIBE CTA REQUIREMENT (every video must have it):
+The final outro panel MUST end with a subscribe call-to-action:
+- Section B: outro narrationVi MUST end with "Bấm đăng ký kênh để xem thêm món Việt mỗi tuần!"
+- Section B: outro imageTextLabel line2 MUST be "ĐĂNG KÝ KÊNH 🔔" (literal, with bell emoji)
+- Section B: outro durationSec MUST be 6 or 8 (never 4 — CTA needs time)
+- Section D: outro image prompt MUST instruct the generator to bake "ĐĂNG KÝ KÊNH 🔔" as a clean overlay text on the hero dish
+
 IMPORTANT TEXT RULE:
 Do not render technical production words inside the image.
 Do not put these words in the image:

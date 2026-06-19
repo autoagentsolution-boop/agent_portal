@@ -43,10 +43,17 @@ Schema:
 Rules for JSON:
 - panels.length must be between 9 and 14 inclusive
 - panels[0].kind === "intro" with imageTextLabel.line1 = dish name only, line2/line3 = null
-- panels[last].kind === "outro" with imageTextLabel.line1 = dish name + " HOÀN THIỆN"
+- panels[last].kind === "outro" — REQUIRED outro shape (CTA subscribe is mandatory):
+    - imageTextLabel.line1 = dish name + " HOÀN THIỆN"
+    - imageTextLabel.line2 = "ĐĂNG KÝ KÊNH 🔔"
+    - imageTextLabel.line3 may be null or a short tagline (e.g. "Món Việt mỗi tuần")
+    - durationSec MUST be 6 or 8 (never 4 — CTA needs airtime)
+    - narrationVi MUST end with the literal sentence: "Bấm đăng ký kênh để xem thêm món Việt mỗi tuần!"
+    - imagePrompt MUST instruct the image generator to bake "ĐĂNG KÝ KÊNH 🔔" as a clean overlay text on the hero dish shot
 - All other panels have kind === "step"
 - Each durationSec MUST be exactly 4, 6, or 8 (no 5 or 7 — Veo API rejects them)
 - Sum of all durationSec must equal totalDurationSec
+- totalDurationSec MUST be in [45, 60] inclusive (YouTube Shorts cap — algorithm cliff at 60s)
 - dishSlug must be ASCII kebab-case (e.g. "Phở Bò" → "pho-bo", "Bò Kho" → "bo-kho")
 - Use Unicode for Vietnamese (no escape sequences)
 - Do not omit or rename fields. Do not add extra fields.
@@ -61,7 +68,9 @@ title: string              # ≤100 chars, VN-first, attention-grabbing, include
                            # Example: "Bò Kho tan trong miệng — Bí quyết quán Sài Gòn 30 năm 🥢"
 descriptionVi: |
   string                   # 200-500 words. Open with hook (1-2 sentences). List nguyên liệu chính.
-                           # Tóm tắt cách làm 5-8 bullets. Kết bằng CTA subscribe.
+                           # Tóm tắt cách làm 5-8 bullets.
+                           # MUST include a dedicated CTA paragraph near the end:
+                           #   "👉 Bấm đăng ký kênh + bật chuông 🔔 để không bỏ lỡ món Việt mới mỗi tuần."
                            # Add timestamps if applicable.
                            # End with hashtags-as-text 3-5 lines.
 descriptionEn: |

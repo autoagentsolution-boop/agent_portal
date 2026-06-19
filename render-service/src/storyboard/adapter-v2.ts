@@ -94,6 +94,13 @@ const renderPanelTts = async (
   const panel = story.panels[panelIdx]!;
   const text = panel.narrationVi.trim();
   if (!text) return false;
+  // Short-circuit when narration already exists at destination — avoids DB round-trip
+  // for re-stitch flows and lets users hand-drop pre-baked mp3s (parallel to --images-dir).
+  if (await fileExists(destAbs)) {
+    totals.ttsCached += 1;
+    logger.info('panel_tts_done', { index: panel.index, cached: true, voice: 'pre-existing' });
+    return true;
+  }
   const result = await ttsRoute(text, story.dishSlug, 'narrators');
   await copyToTarget(result.outputFile, destAbs);
   if (result.cached) totals.ttsCached += 1;
@@ -118,6 +125,7 @@ const planDryRun = (story: StoryboardV2, opts: AdapterOptions, panelDir: string)
     imageTextLabel: p.imageTextLabel,
     narrationVi: p.narrationVi,
     motionDirection: p.motionDirection,
+    motionComplexity: p.motionComplexity,
   }));
   for (const p of story.panels) {
     const src = opts.imagesDir
@@ -183,6 +191,7 @@ export const runAdapterV2 = async (story: StoryboardV2, opts: AdapterOptions): P
       imageTextLabel: p.imageTextLabel,
       narrationVi: p.narrationVi,
       motionDirection: p.motionDirection,
+      motionComplexity: p.motionComplexity,
     };
   });
 

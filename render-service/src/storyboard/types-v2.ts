@@ -1,4 +1,4 @@
-import type { Transition } from './schema-v2.ts';
+import type { MotionComplexity, Transition } from './schema-v2.ts';
 
 export interface PanelAssets {
   index: number;
@@ -14,6 +14,7 @@ export interface PanelAssets {
   imageTextLabel: { line1: string; line2: string | null; line3: string | null };
   narrationVi: string;
   motionDirection: string;
+  motionComplexity?: MotionComplexity;
 }
 
 export interface AdapterTotals {

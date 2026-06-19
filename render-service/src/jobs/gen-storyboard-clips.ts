@@ -1,12 +1,17 @@
 import { logger } from '../logger.ts';
-import { generateMotion, type VeoModel } from './gen-explode-motion.ts';
+import { type VeoModel } from './gen-explode-motion.ts';
 import { getOrCompute } from '../util/asset-cache.ts';
+import { type VideoBackend, veoBackend } from './video-backends.ts';
 
 export interface ClipSpec {
   id: string;
   startImagePath: string;
   prompt: string;
   durationSec?: number;
+  // Veo-only: 'lite' (cheap, $0.05/sec, 2 RPM Tier 1) or 'fast' (better motion, $0.10/sec).
+  // Undefined = legacy auto behavior (try lite first, fallback fast on quota).
+  // Included in cache key so re-routing the same panel forces a fresh gen at the chosen model.
+  modelHint?: 'lite' | 'fast';
 }
 
 export interface ClipResult {
@@ -17,25 +22,26 @@ export interface ClipResult {
   freshCostUsd: number;
 }
 
-const VEO_LITE_COST = 0.05;
 const CLIP_MAX_ATTEMPTS = 3;
 const CLIP_BACKOFF_BASE_MS = 5000;
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-const isRetryableVeoFailure = (err: unknown): boolean => {
-  if (typeof err !== 'object' || err === null) return false;
-  const msg = (err as { message?: string }).message ?? '';
-  // Veo "internal server" + transient network/HTTP errors. Skip retry on filter rejection or missing API key.
-  return /veo_failed.*code"?:\s*13|internal server|temporarily|UNAVAILABLE|RESOURCE_EXHAUSTED|veo_poll_timeout|UND_ERR/i.test(msg);
-};
-
-// Generates one Veo i2v clip per spec, with per-clip caching + per-spec retry on transient Veo failures.
-// Cache key includes clip id + startImage SHA + prompt, so different specs map to different cache entries.
-export const generateStoryboardClips = async (specs: ClipSpec[]): Promise<ClipResult[]> => {
+// Generates one i2v clip per spec, with per-clip caching + per-spec retry on transient backend failures.
+// Cache key includes clip id + startImage SHA + prompt + provider, so different backends do not cross-hit.
+// Backend defaults to Veo for backward compatibility — pass klingBackend (or via VIDEO_PROVIDER env in motion-v2.ts) to switch.
+//
+// Inter-call throttling: after each FRESH generation (non-cached), sleeps backend.interCallDelayMs()
+// before the next spec. Veo Tier 1 caps at 2 RPM, so default 35s prevents 429s mid-batch.
+// Cached hits skip the sleep — re-runs after cache fill don't pay the throttling tax.
+export const generateStoryboardClips = async (
+  specs: ClipSpec[],
+  backend: VideoBackend = veoBackend,
+): Promise<ClipResult[]> => {
   const results: ClipResult[] = [];
-  for (const s of specs) {
-    logger.info('storyboard_clip_start', { id: s.id });
+  for (let i = 0; i < specs.length; i++) {
+    const s = specs[i]!;
+    logger.info('storyboard_clip_start', { id: s.id, provider: backend.name });
 
     let lastErr: unknown;
     let cacheResult: Awaited<ReturnType<typeof getOrCompute>> | null = null;
@@ -43,38 +49,42 @@ export const generateStoryboardClips = async (specs: ClipSpec[]): Promise<ClipRe
       try {
         cacheResult = await getOrCompute(
           {
-            namespace: 'storyboard-clip',
+            namespace: backend.cacheNamespace,
             ext: 'mp4',
             inputs: {
               id: s.id,
               startImage: s.startImagePath,
               prompt: s.prompt,
-              durationSec: s.durationSec ?? 8,
+              durationSec: s.durationSec ?? backend.snapDuration(8),
+              provider: backend.name,
+              ...(s.modelHint ? { modelHint: s.modelHint } : {}),
             },
           },
           async () => {
-            const r = await generateMotion({
+            const buffer = await backend.generate({
               imagePath: s.startImagePath,
               prompt: s.prompt,
-              durationSeconds: s.durationSec ?? 8,
+              durationSeconds: s.durationSec ?? backend.snapDuration(8),
+              modelHint: s.modelHint,
             });
-            return r.buffer;
+            return buffer;
           },
         );
         break;
       } catch (err) {
         lastErr = err;
         const last = attempt === CLIP_MAX_ATTEMPTS;
-        if (last || !isRetryableVeoFailure(err)) throw err;
+        if (last || !backend.isRetryable(err)) throw err;
         const delay = CLIP_BACKOFF_BASE_MS * Math.pow(2, attempt - 1);
-        logger.warn('storyboard_clip_retry', { id: s.id, attempt, delay, error: String(err).slice(0, 200) });
+        logger.warn('storyboard_clip_retry', { id: s.id, provider: backend.name, attempt, delay, error: String(err).slice(0, 200) });
         await sleep(delay);
       }
     }
     if (!cacheResult) throw (lastErr ?? new Error(`storyboard_clip_unreachable: ${s.id}`));
 
-    const freshCostUsd = cacheResult.cached ? 0 : VEO_LITE_COST;
-    logger.info('storyboard_clip_done', { id: s.id, cached: cacheResult.cached, freshCostUsd });
+    const durationForBilling = s.durationSec ?? backend.snapDuration(8);
+    const freshCostUsd = cacheResult.cached ? 0 : backend.computeCostUsd(durationForBilling, s.modelHint);
+    logger.info('storyboard_clip_done', { id: s.id, provider: backend.name, cached: cacheResult.cached, freshCostUsd });
     results.push({
       id: s.id,
       cachePath: cacheResult.path,
@@ -82,6 +92,16 @@ export const generateStoryboardClips = async (specs: ClipSpec[]): Promise<ClipRe
       durationMs: cacheResult.durationMs,
       freshCostUsd,
     });
+
+    // Throttle: only after a FRESH call AND not last spec. Cached hits = no API used = no need to sleep.
+    const isLast = i === specs.length - 1;
+    if (!cacheResult.cached && !isLast) {
+      const delayMs = backend.interCallDelayMs();
+      if (delayMs > 0) {
+        logger.info('storyboard_clip_throttle', { provider: backend.name, delayMs, nextId: specs[i + 1]!.id });
+        await sleep(delayMs);
+      }
+    }
   }
   return results;
 };

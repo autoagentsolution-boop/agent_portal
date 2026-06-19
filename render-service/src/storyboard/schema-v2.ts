@@ -6,6 +6,13 @@ export type PanelKind = z.infer<typeof PanelKind>;
 export const Transition = z.enum(['cut', 'fade', 'zoom', 'swipe']);
 export type Transition = z.infer<typeof Transition>;
 
+// Routes per-panel between Veo Lite ($0.05/sec) and Veo Fast ($0.10/sec).
+// 'simple' → Lite (prep/cutting/stirring/intro/outro). 'complex' → Fast (hero shots,
+// dramatic plumes, fast camera moves, particle-heavy reveals). Optional — defaults to
+// 'simple'. intro/outro panels are FORCED to 'simple' regardless of this field.
+export const MotionComplexity = z.enum(['simple', 'complex']);
+export type MotionComplexity = z.infer<typeof MotionComplexity>;
+
 export const ImageTextLabel = z
   .object({
     line1: z.string().min(1),
@@ -34,6 +41,7 @@ export const Panel = z
     visualContent: z.string(),
     imagePrompt: z.string().min(1),
     motionDirection: z.string(),
+    motionComplexity: MotionComplexity.optional(),
     narrationVi: z.string(),
     onScreenTextVi: z.string(),
     durationSec: z.number().positive(),

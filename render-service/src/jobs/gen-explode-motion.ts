@@ -17,6 +17,12 @@ export interface MotionRequest {
   aspectRatio?: '9:16' | '16:9' | '1:1';
   pollIntervalMs?: number;
   pollTimeoutMs?: number;
+  // 'lite' = $0.05/sec, 2 RPM Tier 1 (best for simple prep/intro/outro).
+  // 'fast' = $0.10/sec, 2 RPM Tier 1 (better motion + complex visuals).
+  // Undefined = legacy auto: try Lite first, fallback Fast on quota.
+  // When set, attempt preferred model first; on quota error, fallback to the OTHER tier
+  // so the panel still ships when one of the two daily buckets (10 RPD each) is empty.
+  preferredModel?: 'lite' | 'fast';
 }
 
 export interface MotionResult {
@@ -155,13 +161,20 @@ export const generateMotion = async (req: MotionRequest): Promise<MotionResult> 
     return pollVeoJob(apiKey, opName, pollIntervalMs, pollTimeoutMs);
   };
 
+  const primary: VeoModel = req.preferredModel === 'fast' ? VEO_FAST : VEO_LITE;
+  const fallback: VeoModel = primary === VEO_LITE ? VEO_FAST : VEO_LITE;
+
   try {
-    const buffer = await attempt(VEO_LITE);
-    return { buffer, modelUsed: VEO_LITE, durationMs: Date.now() - started };
+    const buffer = await attempt(primary);
+    return { buffer, modelUsed: primary, durationMs: Date.now() - started };
   } catch (err) {
     if (!isQuotaError(err)) throw err;
-    logger.warn('veo_lite_quota_falling_back_fast', { error: String(err).slice(0, 200) });
-    const buffer = await attempt(VEO_FAST);
-    return { buffer, modelUsed: VEO_FAST, durationMs: Date.now() - started };
+    logger.warn('veo_primary_quota_falling_back', {
+      primary,
+      fallback,
+      error: String(err).slice(0, 200),
+    });
+    const buffer = await attempt(fallback);
+    return { buffer, modelUsed: fallback, durationMs: Date.now() - started };
   }
 };

@@ -29,8 +29,15 @@ import type {
 } from '../render-service/src/templates/cooking-explosion/types.ts';
 import { pickTrack, prepareMusicForLength } from '../render-service/src/audio/music-library.ts';
 
-const PUBLIC_ROOT = path.resolve('render-service/public');
-const TEMP_DIR = path.resolve('render-service/temp');
+// Anchor paths to the script file location, NOT CWD. Running this script from
+// render-service/ (where package.json lives) used to double the segment as
+// render-service/render-service/public/... because path.resolve('render-service/public')
+// resolves relative to CWD.
+import { fileURLToPath } from 'node:url';
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(SCRIPT_DIR, '..');
+const PUBLIC_ROOT = path.resolve(PROJECT_ROOT, 'render-service/public');
+const TEMP_DIR = path.resolve(PROJECT_ROOT, 'render-service/temp');
 
 const loadEnv = async (envPath: string): Promise<void> => {
   try {

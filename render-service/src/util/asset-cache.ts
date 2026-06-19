@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { logger } from '../logger.ts';
 
 export type AssetExt = 'png' | 'jpg' | 'mp4' | 'mp3' | 'wav' | 'txt' | 'json';
@@ -19,9 +20,22 @@ export interface CacheResult {
   durationMs: number;
 }
 
-const DEFAULT_ROOT = path.resolve(process.cwd(), 'render-service/public/explode-cache');
+// Anchor cache root to this file's location, not CWD. Running from render-service/
+// (where package.json lives) otherwise doubles the segment as
+// render-service/render-service/public/explode-cache. This module sits at
+// render-service/src/util/asset-cache.ts → ../../public/explode-cache resolves to
+// render-service/public/explode-cache regardless of CWD.
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(MODULE_DIR, '../../..');
+const DEFAULT_ROOT = path.resolve(MODULE_DIR, '../../public/explode-cache');
 
-const cacheRoot = (): string => process.env.EXPLODE_CACHE_DIR ?? DEFAULT_ROOT;
+// EXPLODE_CACHE_DIR env: absolute paths kept as-is; relative paths anchored to PROJECT_ROOT
+// (not CWD) so the doubled-segment bug cannot return when running from render-service/.
+const cacheRoot = (): string => {
+  const env = process.env.EXPLODE_CACHE_DIR;
+  if (!env || env.length === 0) return DEFAULT_ROOT;
+  return path.isAbsolute(env) ? env : path.resolve(PROJECT_ROOT, env);
+};
 
 const canonical = (v: unknown): unknown => {
   if (v === null || typeof v !== 'object') return v;

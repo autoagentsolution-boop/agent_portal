@@ -57,6 +57,23 @@ Use more panels when the dish has broth, sauce, marinade, roasting, frying, simm
 
 The image must show a logical cooking process from ingredients to finished dish.
 
+DURATION CONSTRAINT (CRITICAL — YouTube Shorts requirement):
+Total video duration MUST be between 45 and 60 seconds inclusive.
+This means sum(panel.durationSec) ∈ [45, 60].
+Since each panel.durationSec MUST be 4, 6, or 8 (Veo 3.1 lite/fast hard constraint):
+- Use 4s for MOST panels (default action shots)
+- Reserve 6s for intro hero shot + transition-heavy steps
+- Reserve 8s ONLY for the outro panel (needs time for CTA narration to land)
+- Typical valid mix: 1×6s intro + 8-10×4s steps + 1×6-8s outro = 50-60s
+- Verify the sum before output; adjust panel count or durations if outside [45, 60]
+
+SUBSCRIBE CTA REQUIREMENT (every video must have it):
+The final outro panel MUST include a subscribe call-to-action:
+- imageTextLabel.line2 = "ĐĂNG KÝ KÊNH 🔔" (literal, with bell emoji)
+- narrationVi MUST end with the sentence: "Bấm đăng ký kênh để xem thêm món Việt mỗi tuần!"
+- durationSec MUST be 6 or 8 (CTA needs airtime — never 4s on outro)
+- imagePrompt for outro MUST bake "ĐĂNG KÝ KÊNH 🔔" as a clean overlay text on the hero dish shot
+
 IMPORTANT TEXT RULE:
 Do not render technical production words inside the image.
 Do not put these words in the image:
@@ -187,10 +204,16 @@ Schema:
 Rules for JSON:
 - panels.length between 9 and 14 inclusive
 - panels[0].kind === "intro" with imageTextLabel.line1 = dish name only, line2/line3 null
-- panels[last].kind === "outro" with imageTextLabel.line1 = dish name + " HOÀN THIỆN"
+- panels[last].kind === "outro" — REQUIRED outro shape:
+    - imageTextLabel.line1 = dish name + " HOÀN THIỆN"
+    - imageTextLabel.line2 = "ĐĂNG KÝ KÊNH 🔔"
+    - imageTextLabel.line3 may be null or a short tagline
+    - durationSec MUST be 6 or 8 (never 4 — CTA needs time)
+    - narrationVi MUST end with: "Bấm đăng ký kênh để xem thêm món Việt mỗi tuần!"
+    - imagePrompt MUST instruct the image generator to render "ĐĂNG KÝ KÊNH 🔔" as a clean overlay on the hero dish
 - All middle panels have kind === "step"
 - Each durationSec MUST be 4, 6, or 8 (no 5 or 7 — Veo API constraint)
-- Sum of durationSec must equal totalDurationSec
+- Sum of durationSec MUST equal totalDurationSec AND be in [45, 60] inclusive (YouTube Shorts cap)
 - dishSlug must be ASCII kebab-case (e.g. "Phở Bò" → "pho-bo")
 - Use Unicode for Vietnamese (no escape sequences)
 - Do not omit or rename fields. Do not add extra fields.
@@ -204,7 +227,9 @@ title: string              # ≤100 chars, VN-first, attention-grabbing, include
                            # Example: "Bò Kho tan trong miệng — Bí quyết quán Sài Gòn 30 năm 🥢"
 descriptionVi: |
   string                   # 200-500 words. Open with hook (1-2 sentences). List nguyên liệu chính.
-                           # Tóm tắt cách làm 5-8 bullets. Kết bằng CTA subscribe.
+                           # Tóm tắt cách làm 5-8 bullets.
+                           # MUST include a dedicated CTA paragraph near the end:
+                           #   "👉 Bấm đăng ký kênh + bật chuông 🔔 để không bỏ lỡ món Việt mới mỗi tuần."
                            # Add timestamps if applicable.
                            # End with hashtags-as-text 3-5 lines.
 descriptionEn: |
@@ -253,6 +278,10 @@ When folder is ready, n8n cron will pick it up automatically next Tue/Fri at 9am
 - [ ] `panels[0].kind === "intro"`, `panels[last].kind === "outro"`
 - [ ] Mỗi `durationSec ∈ {4, 6, 8}` — KHÔNG có 5 hoặc 7 (Veo API reject)
 - [ ] `sum(durationSec) === totalDurationSec`
+- [ ] **`totalDurationSec ∈ [45, 60]`** (YouTube Shorts cap)
+- [ ] **Outro panel `durationSec ∈ {6, 8}`** (CTA airtime)
+- [ ] **Outro `imageTextLabel.line2 === "ĐĂNG KÝ KÊNH 🔔"`**
+- [ ] **Outro `narrationVi` kết thúc bằng "Bấm đăng ký kênh để xem thêm món Việt mỗi tuần!"**
 - [ ] `dishSlug` chỉ chứa `[a-z0-9-]`
 - [ ] `narrationVi` mỗi panel ~5-7s đọc (≈ 15-25 chữ)
 - [ ] YAML metadata parse được

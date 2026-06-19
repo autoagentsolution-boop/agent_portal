@@ -2,10 +2,14 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { logger } from '../logger.ts';
 import { resolveFfmpeg } from '../util/ffmpeg-resolver.ts';
 
-const DEFAULT_LIBRARY_DIR = path.resolve('render-service/public/music-library/lofi-vn');
+// Anchor to this module's path so CWD-from-render-service/ does not double the segment.
+// render-service/src/audio/music-library.ts → ../../public/music-library/lofi-vn
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_LIBRARY_DIR = path.resolve(MODULE_DIR, '../../public/music-library/lofi-vn');
 const AUDIO_EXTS = new Set(['.mp3', '.m4a', '.wav', '.ogg', '.opus', '.aac']);
 const FFMPEG_TIMEOUT_MS = 60_000;
 
@@ -15,8 +19,19 @@ export interface PickTrackOptions {
   seed?: string;
 }
 
-const libraryDir = (override?: string): string =>
-  override ?? process.env.MUSIC_LIBRARY_DIR ?? DEFAULT_LIBRARY_DIR;
+const PROJECT_ROOT = path.resolve(MODULE_DIR, '../../..');
+
+// Resolve a configured dir: absolute paths kept as-is, relative paths anchored to
+// PROJECT_ROOT (so `MUSIC_LIBRARY_DIR=render-service/public/...` in .env keeps
+// working regardless of which CWD the script was launched from).
+const resolveConfigured = (p: string): string => (path.isAbsolute(p) ? p : path.resolve(PROJECT_ROOT, p));
+
+const libraryDir = (override?: string): string => {
+  if (override) return resolveConfigured(override);
+  const env = process.env.MUSIC_LIBRARY_DIR;
+  if (env && env.length > 0) return resolveConfigured(env);
+  return DEFAULT_LIBRARY_DIR;
+};
 
 const listTracks = async (dir: string): Promise<string[]> => {
   let entries: string[];

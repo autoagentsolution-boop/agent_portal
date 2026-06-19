@@ -1,7 +1,5 @@
 {
   "narrators": [
-    "gcloud:vi-VN-Neural2-A",
-    "gcloud:vi-VN-Neural2-D",
     "edge:vi-VN-HoaiMyNeural",
     "edge:vi-VN-NamMinhNeural"
   ],
