@@ -42,6 +42,12 @@ Bokho/
 ReferenceVideoType/
 screenshot/
 
+# Source/output split — only the storyboard JSON is tracked; PNG masters
+# and rejected/test renders stay local (regenerable via ChatGPT, or transient)
+source/*/panel-*.png
+source/*/ChatGPT*.png
+output/
+
 # Claude session state (rotates frequently, not useful in repo)
 .claude/session-state/
 .claude/chrome-devtools/

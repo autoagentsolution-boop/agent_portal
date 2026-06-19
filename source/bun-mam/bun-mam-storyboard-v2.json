@@ -1,0 +1,491 @@
+{
+    "schemaVersion": "v2",
+    "dishName": "BÚN MẮM",
+    "dishSlug": "bun-mam",
+    "servingSize": "4 tô lớn",
+    "cuisineStyle": "Miền Tây Nam Bộ",
+    "totalDurationSec": 60,
+    "musicMood": "Ấm áp, dân dã miền Tây, cinematic golden, nhịp nhanh vừa phải cho YouTube Shorts",
+    "panels": [
+        {
+            "index": 1,
+            "kind": "intro",
+            "imageTextLabel": {
+                "line1": "BÚN MẮM",
+                "line2": null,
+                "line3": null
+            },
+            "ingredients": [
+                {
+                    "name": "Bún mắm thành phẩm",
+                    "amount": "1 tô lớn"
+                },
+                {
+                    "name": "Tôm",
+                    "amount": "2 con"
+                },
+                {
+                    "name": "Mực",
+                    "amount": "vài khoanh"
+                },
+                {
+                    "name": "Cá",
+                    "amount": "2 lát"
+                },
+                {
+                    "name": "Heo quay",
+                    "amount": "vài lát"
+                },
+                {
+                    "name": "Cà tím",
+                    "amount": "vài miếng"
+                },
+                {
+                    "name": "Rau sống",
+                    "amount": "vừa đủ"
+                }
+            ],
+            "preparation": "Giới thiệu tô bún mắm thành phẩm nóng, đầy topping và rau ăn kèm.",
+            "purpose": "Mở đầu bằng thành phẩm để tạo cảm giác thèm ăn và định hình món chính.",
+            "visualContent": "Tô bún mắm hoàn chỉnh với nước dùng màu nâu hổ phách, tôm, mực, cá, heo quay, chả cá, cà tím, rau sống, ớt và chanh.",
+            "imagePrompt": "Create a single standalone intro image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show a finished bowl of authentic Vietnamese Bún Mắm on a rustic wooden table: dark amber mắm broth, thick rice noodles, shrimp, squid, fish slices, roasted pork, fish cake, eggplant, herbs, banana blossom, water spinach, chili and lime. Premium high-end CGI 3D stop-motion food commercial style, handcrafted claymation-inspired food texture, cinematic warm golden lighting, dark smoky background, shallow depth of field, elegant steam, subtle golden motion trails. Render only the Vietnamese text label: BÚN MẮM. Do not render any extra text or technical production words inside the image.",
+            "motionDirection": "Tô bún mắm xoay nhẹ, hơi nước bay lên, ánh sáng vàng lướt qua mặt nước dùng.",
+            "narrationVi": "Bún mắm miền Tây đậm mùi mắm, ngọt nước dùng và đầy hải sản.",
+            "onScreenTextVi": "BÚN MẮM",
+            "durationSec": 6,
+            "transition": "fade"
+        },
+        {
+            "index": 2,
+            "kind": "step",
+            "imageTextLabel": {
+                "line1": "CHUẨN BỊ MÓN",
+                "line2": "Mắm linh 150g · Sặc 80g",
+                "line3": "Hải sản · Rau · Bún"
+            },
+            "ingredients": [
+                {
+                    "name": "Mắm cá linh",
+                    "amount": "150g"
+                },
+                {
+                    "name": "Mắm cá sặc",
+                    "amount": "80g"
+                },
+                {
+                    "name": "Xương heo",
+                    "amount": "700g"
+                },
+                {
+                    "name": "Tôm",
+                    "amount": "300g"
+                },
+                {
+                    "name": "Mực",
+                    "amount": "300g"
+                },
+                {
+                    "name": "Cá hú hoặc cá lóc",
+                    "amount": "400g"
+                },
+                {
+                    "name": "Heo quay",
+                    "amount": "300g"
+                },
+                {
+                    "name": "Chả cá",
+                    "amount": "200g"
+                },
+                {
+                    "name": "Cà tím",
+                    "amount": "300g"
+                },
+                {
+                    "name": "Bún tươi",
+                    "amount": "1.2kg"
+                },
+                {
+                    "name": "Rau sống",
+                    "amount": "650g"
+                }
+            ],
+            "preparation": "Bày nguyên liệu theo nhóm: mắm, nước dùng, hải sản, topping, bún và rau ăn kèm.",
+            "purpose": "Cho người xem nắm đầy đủ nguyên liệu chính trước khi bắt đầu nấu.",
+            "visualContent": "Mắm cá, xương heo, tôm, mực, cá, heo quay, chả cá, cà tím, bún và rau sống được sắp xếp sạch đẹp trên bàn gỗ.",
+            "imagePrompt": "Create a single standalone ingredient overview image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show an organized Vietnamese ingredient spread on a rustic wooden table: mắm cá linh 150g, mắm cá sặc 80g, pork bones 700g, shrimp 300g, squid 300g, fish 400g, roasted pork 300g, fish cake 200g, eggplant 300g, thick rice noodles 1.2kg, banana blossom, water spinach, bean sprouts, chives, herbs, lemongrass, shallot, garlic and chili. Premium high-end CGI 3D stop-motion food commercial style, handcrafted claymation texture, cinematic warm golden lighting, dark smoky background, shallow depth of field, elegant steam. Render only these Vietnamese text lines: CHUẨN BỊ MÓN / Mắm linh 150g · Sặc 80g / Hải sản · Rau · Bún. No extra text.",
+            "motionDirection": "Các nhóm nguyên liệu bay nhẹ vào đúng vị trí, tạo bố cục gọn và cao cấp.",
+            "narrationVi": "Chuẩn bị mắm cá linh, mắm cá sặc, xương heo, hải sản, bún tươi và rau sống.",
+            "onScreenTextVi": "CHUẨN BỊ MÓN\nMắm linh 150g · Sặc 80g\nHải sản · Rau · Bún",
+            "durationSec": 4,
+            "transition": "cut"
+        },
+        {
+            "index": 3,
+            "kind": "step",
+            "imageTextLabel": {
+                "line1": "SƠ CHẾ XƯƠNG",
+                "line2": "Xương heo 700g",
+                "line3": "Chần 5 phút · Rửa sạch"
+            },
+            "ingredients": [
+                {
+                    "name": "Xương heo",
+                    "amount": "700g"
+                },
+                {
+                    "name": "Nước sôi",
+                    "amount": "vừa đủ"
+                },
+                {
+                    "name": "Muối",
+                    "amount": "1 muỗng cà phê"
+                }
+            ],
+            "preparation": "Chần xương heo trong nước sôi 5 phút, đổ bỏ nước chần rồi rửa sạch.",
+            "purpose": "Loại bỏ bọt bẩn và mùi hôi để nước dùng trong hơn.",
+            "visualContent": "Xương heo trong nồi nước sôi, bọt nổi lên, sau đó được nhấc ra rổ inox để rửa sạch.",
+            "imagePrompt": "Create a single standalone cooking step image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show pork bones 700g being blanched in boiling water for 5 minutes and rinsed clean in a metal colander. Include a steaming pot, foam separating away, clean bones lifted with wooden chopsticks or a strainer, rustic wooden table, warm golden lighting, dark smoky background, premium CGI 3D stop-motion food commercial style, handcrafted claymation-inspired texture. Render only these Vietnamese text lines: SƠ CHẾ XƯƠNG / Xương heo 700g / Chần 5 phút · Rửa sạch. No extra text.",
+            "motionDirection": "Bọt tách khỏi mặt nước, xương được nhấc lên khỏi nồi và rơi nhẹ vào rổ.",
+            "narrationVi": "Xương heo chần 5 phút rồi rửa sạch để nước dùng trong và ít mùi hôi.",
+            "onScreenTextVi": "SƠ CHẾ XƯƠNG\nXương heo 700g\nChần 5 phút · Rửa sạch",
+            "durationSec": 4,
+            "transition": "cut"
+        },
+        {
+            "index": 4,
+            "kind": "step",
+            "imageTextLabel": {
+                "line1": "NẤU MẮM",
+                "line2": "Mắm linh · Mắm sặc · Sả",
+                "line3": "Nấu 15–20 phút"
+            },
+            "ingredients": [
+                {
+                    "name": "Mắm cá linh",
+                    "amount": "150g"
+                },
+                {
+                    "name": "Mắm cá sặc",
+                    "amount": "80g"
+                },
+                {
+                    "name": "Sả đập dập",
+                    "amount": "2 cây"
+                },
+                {
+                    "name": "Nước lọc",
+                    "amount": "700ml"
+                }
+            ],
+            "preparation": "Nấu mắm cá linh và mắm cá sặc với nước và sả trong 15–20 phút đến khi mắm rã.",
+            "purpose": "Lấy phần nước cốt mắm thơm đậm làm linh hồn cho nước dùng.",
+            "visualContent": "Nồi đất nấu mắm sôi nhẹ với sả, nước mắm chuyển màu nâu đậm và bốc hơi thơm.",
+            "imagePrompt": "Create a single standalone cooking step image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show mắm cá linh 150g and mắm cá sặc 80g simmering with crushed lemongrass and 700ml water in a clay pot. The fermented fish slowly dissolves into a rich dark broth with lemongrass pieces visible and gentle steam. Premium CGI 3D stop-motion food commercial style, handcrafted claymation-inspired food texture, cinematic warm golden lighting, dark smoky background, rustic wooden table, shallow depth of field. Render only these Vietnamese text lines: NẤU MẮM / Mắm linh · Mắm sặc · Sả / Nấu 15–20 phút. No extra text.",
+            "motionDirection": "Mắm tan dần trong nồi, sả xoay nhẹ, hơi nước cuộn lên theo ánh vàng.",
+            "narrationVi": "Nấu hai loại mắm với sả khoảng 15 đến 20 phút cho mắm rã và dậy mùi.",
+            "onScreenTextVi": "NẤU MẮM\nMắm linh · Mắm sặc · Sả\nNấu 15–20 phút",
+            "durationSec": 6,
+            "transition": "zoom"
+        },
+        {
+            "index": 5,
+            "kind": "step",
+            "imageTextLabel": {
+                "line1": "LỌC NƯỚC MẮM",
+                "line2": "Nước cốt mắm đậm vị",
+                "line3": "Lọc mịn qua rây"
+            },
+            "ingredients": [
+                {
+                    "name": "Mắm đã nấu",
+                    "amount": "toàn bộ"
+                },
+                {
+                    "name": "Rây lọc mịn",
+                    "amount": "1 cái"
+                },
+                {
+                    "name": "Tô sứ",
+                    "amount": "1 tô"
+                }
+            ],
+            "preparation": "Đổ mắm đã nấu qua rây, ép nhẹ để lấy nước cốt, bỏ phần xác và xương.",
+            "purpose": "Giữ nước dùng mịn, sạch và đậm vị mà không bị lợn cợn.",
+            "visualContent": "Dòng nước cốt mắm màu hổ phách chảy qua rây vào tô sứ, xác mắm được giữ lại trên rây.",
+            "imagePrompt": "Create a single standalone cooking step image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show cooked mắm broth being poured through a fine metal sieve into a ceramic bowl, leaving fish bones and solids behind. The filtered broth must look smooth, glossy, dark amber and rich. Use rustic wooden table, cinematic warm golden lighting, dark smoky background, elegant steam, premium CGI 3D stop-motion food commercial style, handcrafted claymation-inspired food texture. Render only these Vietnamese text lines: LỌC NƯỚC MẮM / Nước cốt mắm đậm vị / Lọc mịn qua rây. No extra text.",
+            "motionDirection": "Dòng nước cốt rơi chậm qua rây, tạo xoáy nhẹ trên mặt tô.",
+            "narrationVi": "Lọc lấy phần nước cốt mắm đậm vị, bỏ xác và xương nhỏ.",
+            "onScreenTextVi": "LỌC NƯỚC MẮM\nNước cốt mắm đậm vị\nLọc mịn qua rây",
+            "durationSec": 6,
+            "transition": "swipe"
+        },
+        {
+            "index": 6,
+            "kind": "step",
+            "imageTextLabel": {
+                "line1": "HẦM NƯỚC DÙNG",
+                "line2": "Xương · Nước dừa 500ml",
+                "line3": "Hầm 45–60 phút"
+            },
+            "ingredients": [
+                {
+                    "name": "Xương heo đã chần",
+                    "amount": "700g"
+                },
+                {
+                    "name": "Nước lọc",
+                    "amount": "3.5 lít"
+                },
+                {
+                    "name": "Nước dừa tươi",
+                    "amount": "500ml"
+                }
+            ],
+            "preparation": "Hầm xương với nước lọc và nước dừa tươi trong 45–60 phút, hớt bọt thường xuyên.",
+            "purpose": "Tạo nền nước dùng ngọt thanh để cân bằng vị mắm đậm.",
+            "visualContent": "Nồi nước dùng lớn với xương heo, nước dừa được rót vào, hơi nước bốc đều.",
+            "imagePrompt": "Create a single standalone cooking step image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show a large pot of pork bone broth simmering with clean pork bones, 3.5 liters water and 500ml fresh coconut water being poured in. The broth should be clear, lightly cloudy and gently steaming. Premium high-end CGI 3D stop-motion food commercial style, handcrafted claymation-inspired food texture, cinematic warm golden lighting, dark smoky background, rustic wooden table. Render only these Vietnamese text lines: HẦM NƯỚC DÙNG / Xương · Nước dừa 500ml / Hầm 45–60 phút. No extra text.",
+            "motionDirection": "Nước dừa rót thành dòng mảnh vào nồi, hơi nước bốc mạnh rồi dịu lại.",
+            "narrationVi": "Hầm xương với nước dừa để nước dùng ngọt thanh và tròn vị.",
+            "onScreenTextVi": "HẦM NƯỚC DÙNG\nXương · Nước dừa 500ml\nHầm 45–60 phút",
+            "durationSec": 4,
+            "transition": "fade"
+        },
+        {
+            "index": 7,
+            "kind": "step",
+            "imageTextLabel": {
+                "line1": "PHI GIA VỊ",
+                "line2": "Sả · Hành · Tỏi · Ớt",
+                "line3": "Phi thơm 2–3 phút"
+            },
+            "ingredients": [
+                {
+                    "name": "Sả băm hoặc lát mỏng",
+                    "amount": "3 cây"
+                },
+                {
+                    "name": "Hành tím",
+                    "amount": "5 củ"
+                },
+                {
+                    "name": "Tỏi",
+                    "amount": "5 tép"
+                },
+                {
+                    "name": "Ớt",
+                    "amount": "2 trái"
+                },
+                {
+                    "name": "Dầu ăn",
+                    "amount": "2 muỗng canh"
+                }
+            ],
+            "preparation": "Phi sả, hành tím, tỏi và ớt trong dầu nóng 2–3 phút đến khi thơm vàng.",
+            "purpose": "Tạo mùi thơm đặc trưng và giúp nồi bún mắm có chiều sâu hương vị.",
+            "visualContent": "Chảo nhỏ với sả, hành, tỏi, ớt đang xèo trong dầu, vài lát gia vị bật nhẹ lên không trung.",
+            "imagePrompt": "Create a single standalone cooking step image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show sliced lemongrass, shallot, garlic and chili being lightly fried in a small pan until fragrant and golden. Oil glows warmly, aromatics float and jump naturally above the pan, dark smoky background, rustic wooden table, shallow depth of field, premium CGI 3D stop-motion food commercial style, handcrafted claymation-inspired texture. Render only these Vietnamese text lines: PHI GIA VỊ / Sả · Hành · Tỏi · Ớt / Phi thơm 2–3 phút. No extra text.",
+            "motionDirection": "Gia vị bật nhẹ trong dầu nóng, hạt dầu lấp lánh và xoáy theo vòng tròn.",
+            "narrationVi": "Phi sả, hành, tỏi và ớt cho thơm rồi cho vào nồi nước dùng.",
+            "onScreenTextVi": "PHI GIA VỊ\nSả · Hành · Tỏi · Ớt\nPhi thơm 2–3 phút",
+            "durationSec": 4,
+            "transition": "cut"
+        },
+        {
+            "index": 8,
+            "kind": "step",
+            "imageTextLabel": {
+                "line1": "NÊM NỒI MẮM",
+                "line2": "Nước cốt · Đường phèn 30g",
+                "line3": "Nấu lửa nhỏ 10 phút"
+            },
+            "ingredients": [
+                {
+                    "name": "Nước hầm xương",
+                    "amount": "khoảng 3 lít"
+                },
+                {
+                    "name": "Nước cốt mắm",
+                    "amount": "toàn bộ"
+                },
+                {
+                    "name": "Đường phèn",
+                    "amount": "30g"
+                },
+                {
+                    "name": "Hạt nêm",
+                    "amount": "2 muỗng cà phê"
+                },
+                {
+                    "name": "Nước mắm",
+                    "amount": "1 muỗng canh, chỉnh sau"
+                }
+            ],
+            "preparation": "Cho nước cốt mắm vào nồi nước hầm xương, thêm gia vị và nấu lửa nhỏ 10 phút.",
+            "purpose": "Cân bằng vị mặn của mắm với độ ngọt thanh của xương và nước dừa.",
+            "visualContent": "Nước cốt mắm xoáy vào nồi nước dùng, đường phèn và gia vị tan dần trong nước màu nâu hổ phách.",
+            "imagePrompt": "Create a single standalone cooking step image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show filtered mắm broth swirling into pork bone broth with rock sugar 30g, fried lemongrass, shallot, garlic, chili and seasoning added. The soup becomes dark amber, glossy and gently simmering on low heat. Premium high-end CGI 3D stop-motion food commercial style, handcrafted claymation texture, cinematic warm golden lighting, dark smoky background, rustic wooden table, elegant steam. Render only these Vietnamese text lines: NÊM NỒI MẮM / Nước cốt · Đường phèn 30g / Nấu lửa nhỏ 10 phút. No extra text.",
+            "motionDirection": "Dòng nước cốt mắm xoáy vào nồi, đường phèn tan chậm tạo ánh lấp lánh.",
+            "narrationVi": "Cho nước cốt mắm vào nồi, thêm đường phèn và nấu nhỏ lửa cho vị cân bằng.",
+            "onScreenTextVi": "NÊM NỒI MẮM\nNước cốt · Đường phèn 30g\nNấu lửa nhỏ 10 phút",
+            "durationSec": 4,
+            "transition": "zoom"
+        },
+        {
+            "index": 9,
+            "kind": "step",
+            "imageTextLabel": {
+                "line1": "NẤU CÀ TÍM",
+                "line2": "Cà tím 300g",
+                "line3": "Nấu mềm 8–10 phút"
+            },
+            "ingredients": [
+                {
+                    "name": "Cà tím",
+                    "amount": "300g"
+                },
+                {
+                    "name": "Nước dùng mắm",
+                    "amount": "1 nồi"
+                }
+            ],
+            "preparation": "Cắt cà tím thành khúc vừa ăn, cho vào nồi nước dùng và nấu 8–10 phút.",
+            "purpose": "Tạo vị béo mềm, màu sắc đẹp và độ đầy đặn cho tô bún mắm.",
+            "visualContent": "Cà tím tím bóng rơi vào nồi nước dùng mắm đang sôi nhẹ, giữ hình dáng không nát.",
+            "imagePrompt": "Create a single standalone cooking step image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show purple eggplant pieces 300g dropping into simmering Bún Mắm broth, becoming soft and glossy while still holding shape. The broth is amber brown with elegant steam rising, rustic wooden table, dark smoky background, premium CGI 3D stop-motion food commercial style, handcrafted claymation-inspired food texture, cinematic warm golden lighting. Render only these Vietnamese text lines: NẤU CÀ TÍM / Cà tím 300g / Nấu mềm 8–10 phút. No extra text.",
+            "motionDirection": "Cà tím rơi chậm vào nồi, nổi lên giữa lớp hơi nước vàng.",
+            "narrationVi": "Cà tím nấu vừa mềm để giữ vị béo nhẹ và màu tím đẹp.",
+            "onScreenTextVi": "NẤU CÀ TÍM\nCà tím 300g\nNấu mềm 8–10 phút",
+            "durationSec": 4,
+            "transition": "cut"
+        },
+        {
+            "index": 10,
+            "kind": "step",
+            "imageTextLabel": {
+                "line1": "CHẦN HẢI SẢN",
+                "line2": "Tôm · Mực · Cá 1kg",
+                "line3": "Chần vừa chín"
+            },
+            "ingredients": [
+                {
+                    "name": "Tôm",
+                    "amount": "300g"
+                },
+                {
+                    "name": "Mực",
+                    "amount": "300g"
+                },
+                {
+                    "name": "Cá hú hoặc cá lóc",
+                    "amount": "400g"
+                },
+                {
+                    "name": "Nước sôi",
+                    "amount": "vừa đủ"
+                }
+            ],
+            "preparation": "Chần tôm, mực và cá riêng đến khi vừa chín rồi vớt ra ngay.",
+            "purpose": "Giữ hải sản ngọt, không bị dai và không làm tanh nồi nước dùng.",
+            "visualContent": "Tôm chuyển đỏ cam, mực trắng cuộn nhẹ, cá giữ nguyên lát trong rổ chần.",
+            "imagePrompt": "Create a single standalone cooking step image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show shrimp 300g, squid 300g and fish slices 400g being quickly blanched until just cooked. Shrimp turns orange-red, squid stays white and tender, fish slices remain intact. Use a clean pot and strainer on a rustic wooden table, warm golden lighting, dark smoky background, elegant steam, premium CGI 3D stop-motion food commercial style. Render only these Vietnamese text lines: CHẦN HẢI SẢN / Tôm · Mực · Cá 1kg / Chần vừa chín. No extra text.",
+            "motionDirection": "Tôm, mực và cá được nhấc khỏi nước sôi, hơi nước bung lên theo nhịp nhanh.",
+            "narrationVi": "Hải sản chần riêng vừa chín để giữ độ ngọt và không bị dai.",
+            "onScreenTextVi": "CHẦN HẢI SẢN\nTôm · Mực · Cá 1kg\nChần vừa chín",
+            "durationSec": 4,
+            "transition": "swipe"
+        },
+        {
+            "index": 11,
+            "kind": "step",
+            "imageTextLabel": {
+                "line1": "XẾP TÔ BÚN",
+                "line2": "Bún 1.2kg · Rau sống",
+                "line3": "Xếp topping đầy tô"
+            },
+            "ingredients": [
+                {
+                    "name": "Bún tươi sợi lớn",
+                    "amount": "1.2kg"
+                },
+                {
+                    "name": "Rau sống",
+                    "amount": "650g"
+                },
+                {
+                    "name": "Tôm chần",
+                    "amount": "300g"
+                },
+                {
+                    "name": "Mực chần",
+                    "amount": "300g"
+                },
+                {
+                    "name": "Cá chần",
+                    "amount": "400g"
+                },
+                {
+                    "name": "Heo quay",
+                    "amount": "300g"
+                },
+                {
+                    "name": "Chả cá",
+                    "amount": "200g"
+                },
+                {
+                    "name": "Cà tím",
+                    "amount": "300g"
+                }
+            ],
+            "preparation": "Trụng bún, cho vào tô, xếp rau sống và topping lên trên theo từng nhóm rõ ràng.",
+            "purpose": "Tạo cấu trúc tô bún đẹp, đủ topping và sẵn sàng để chan nước dùng.",
+            "visualContent": "Tô bún trắng ở giữa, xung quanh là rau sống, bên trên có tôm, mực, cá, heo quay, chả cá và cà tím.",
+            "imagePrompt": "Create a single standalone assembly image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show a deep Vietnamese bowl being assembled with thick white rice noodles, rau sống, banana blossom, water spinach, bean sprouts and herbs, then toppings falling neatly into place: shrimp, squid, fish slices, roasted pork, fish cake and eggplant. Ingredients land naturally into a clean circular arrangement. Premium high-end CGI 3D stop-motion food commercial style, handcrafted claymation-inspired texture, cinematic warm golden lighting, dark smoky background, rustic wooden table, elegant steam, subtle golden motion trails. Render only these Vietnamese text lines: XẾP TÔ BÚN / Bún 1.2kg · Rau sống / Xếp topping đầy tô. No extra text.",
+            "motionDirection": "Bún xoắn nhẹ trong tô, rau và topping rơi xuống theo vòng tròn gọn đẹp.",
+            "narrationVi": "Xếp bún, rau sống, cá, tôm, mực, heo quay và chả cá vào tô.",
+            "onScreenTextVi": "XẾP TÔ BÚN\nBún 1.2kg · Rau sống\nXếp topping đầy tô",
+            "durationSec": 4,
+            "transition": "zoom"
+        },
+        {
+            "index": 12,
+            "kind": "outro",
+            "imageTextLabel": {
+                "line1": "BÚN MẮM HOÀN THIỆN",
+                "line2": "ĐĂNG KÝ KÊNH 🔔",
+                "line3": "Món Việt mỗi tuần"
+            },
+            "ingredients": [
+                {
+                    "name": "Tô bún đã xếp topping",
+                    "amount": "4 tô"
+                },
+                {
+                    "name": "Nước dùng mắm nóng",
+                    "amount": "khoảng 2.5–3 lít"
+                },
+                {
+                    "name": "Rau thơm",
+                    "amount": "vừa đủ"
+                },
+                {
+                    "name": "Ớt",
+                    "amount": "vừa đủ"
+                },
+                {
+                    "name": "Chanh",
+                    "amount": "vừa đủ"
+                }
+            ],
+            "preparation": "Chan nước dùng mắm nóng vào tô, thêm rau thơm, ớt và chanh trước khi dùng.",
+            "purpose": "Hoàn thiện món ăn và kết thúc bằng CTA đăng ký kênh.",
+            "visualContent": "Tô bún mắm hoàn chỉnh được chan nước dùng nóng, hơi nước bốc lên, topping đầy đặn và chữ đăng ký nổi bật.",
+            "imagePrompt": "Create a single standalone outro image for BÚN MẮM, 1080x1920 pixels, vertical 9:16. Show the completed authentic Vietnamese Bún Mắm bowl with hot amber broth being poured over noodles, seafood, roasted pork, fish cake, eggplant, herbs, chili, lime, banana blossom and water spinach. The finished dish looks luxurious, warm and deeply Vietnamese. Bake the text \"ĐĂNG KÝ KÊNH 🔔\" as a clean visible overlay on the finished dish shot while keeping the dish clearly visible. Premium high-end CGI 3D stop-motion food commercial style, handcrafted claymation-inspired food texture, cinematic warm golden lighting, dark smoky background, rustic wooden table, shallow depth of field, elegant steam, subtle golden motion trails. Render only these Vietnamese text lines: BÚN MẮM HOÀN THIỆN / ĐĂNG KÝ KÊNH 🔔 / Món Việt mỗi tuần. No extra text.",
+            "motionDirection": "Nước dùng chan xuống tô, hơi nước dâng lên, chữ ĐĂNG KÝ KÊNH 🔔 sáng rõ ở phần kết.",
+            "narrationVi": "Chan nước dùng mắm nóng, thêm rau thơm, ớt và thưởng thức ngay. Bấm đăng ký kênh để xem thêm món Việt mỗi tuần!",
+            "onScreenTextVi": "BÚN MẮM HOÀN THIỆN\nĐĂNG KÝ KÊNH 🔔\nMón Việt mỗi tuần",
+            "durationSec": 10,
+            "transition": "fade"
+        }
+    ]
+}

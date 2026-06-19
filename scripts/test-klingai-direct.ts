@@ -6,10 +6,10 @@
 //   pnpm tsx ../scripts/test-klingai-direct.ts <imagePath> [--prompt="..."] [--duration=5|10] [--mode=std|pro] [--out=path.mp4]
 // Example:
 //   ./node_modules/.bin/tsx ../scripts/test-klingai-direct.ts \
-//     ../FoodImage/BunMam/panel-01.png \
+//     ../source/bun-mam/panel-01.png \
 //     --prompt="Tô bún mắm xoay nhẹ, hơi nước bay lên, ánh sáng vàng lướt qua mặt nước dùng." \
 //     --duration=5 --mode=std \
-//     --out=../FoodImage/BunMam/klingai-test-panel-01.mp4
+//     --out=../output/bun-mam/klingai-test-panel-01.mp4
 //
 // Required env (in render-service/.env):
 //   KLINGAI_ACCESS_KEY=...

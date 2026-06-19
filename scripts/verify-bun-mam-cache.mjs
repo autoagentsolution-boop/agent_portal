@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const fixture = JSON.parse(await readFile(path.join(ROOT, 'FoodImage/BunMam/bun-mam-storyboard-v2.json'), 'utf8'));
+const fixture = JSON.parse(await readFile(path.join(ROOT, 'source/bun-mam/bun-mam-storyboard-v2.json'), 'utf8'));
 const cacheRoot = path.join(ROOT, 'render-service/public/explode-cache/storyboard-clip');
 const imagesDir = path.join(ROOT, 'render-service/public/storyboard-v2/bun-mam');
 
