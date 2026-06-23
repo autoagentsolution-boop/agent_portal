@@ -1,7 +1,8 @@
 # Phase 10 — Meeting Booking via Cal.com (DESIGN ONLY)
 
 **Context:** [plan.md](plan.md) · extends Loop B (lead capture). **Priority:** P2 (after Phase 1 live).
-**Status:** design-only. **Decisions locked:** Cal.com self-host + Google Calendar + Google Meet.
+**Status:** design-only. **Decisions locked:** Cal.com self-host + Google Calendar + Google Meet +
+**MVP = Cal.com ONLY** (replaces Google Form for the meeting path; every lead books a call).
 
 > **Naming:** "calendar" elsewhere in this plan = the Google Sheet **posting** schedule tab. This phase's
 > calendar = the **booking calendar** (Google Calendar free/busy). Different things — do not conflate.
@@ -59,17 +60,18 @@ n8n does **less** than the custom path: it logs + notifies. Cal.com owns availab
 | + | `meetStatus` | `pending_meeting → confirmed → cancelled` |
 | + | `meetUrl` | Google Meet link (populated on BOOKING_CONFIRMED) |
 
+## Decisions locked
+
+1. **Cal.com ONLY for MVP** (resolved 2026-06-23). Cal.com replaces Google Form for the meeting path —
+   every lead books a call via the Cal.com page (name/email/product captured as booking questions). Post CTA
+   → Cal.com link. Google Form (phase-04) is NOT used in the MVP booking flow; keep it parked for a possible
+   later "low-intent info capture" second CTA, not built now.
+2. **Confirm UX = Cal.com native** (UI/email). Zero n8n work; native confirm already triggers Meet + invite.
+
 ## Open questions
 
-1. **Does Cal.com REPLACE Google Form, or coexist?** Cal.com booking page already collects name/email +
-   custom questions, so for the meeting path it replaces the Form. Options:
-   - (a) Cal.com only — every lead books a meeting (highest intent, simplest). CTA → Cal.com link.
-   - (b) Two CTAs — "Book a call" → Cal.com, "Get info" → Google Form (Phase-04) for low-intent leads.
-   **Recommend (a) for MVP**; add (b) if low-intent capture matters. **Needs user pick.**
-2. **Confirm UX** — confirm in Cal.com native UI/email (recommended, zero n8n work) vs surface a confirm
-   action in n8n/Sheet. Native is simpler and already does Meet+invite. Default native.
-3. **Pending-hold expiry** — Cal.com can auto-expire unconfirmed bookings; set a sensible window (e.g. 24h)
-   so held slots free up if the host doesn't act.
+1. **Pending-hold expiry** — Cal.com can auto-expire unconfirmed bookings; set a sensible window (e.g. 24h)
+   so held slots free up if the host doesn't act. **Needs user pick at build.**
 
 ## Risks
 

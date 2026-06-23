@@ -4,6 +4,12 @@
 **Priority:** P1 (independent of A — buildable in parallel). **Status:** pending.
 **Workflow file:** `n8n-workflows/mkt-lead-capture.json`.
 
+> **MVP PIVOT 2026-06-23:** MVP lead source is **Cal.com** (see [phase-10](phase-10-meeting-booking-calcom-design.md)),
+> NOT Google Form. Every lead books a call; Cal.com `BOOKING_CREATED` webhook feeds this loop. The Google-Form
+> + Apps-Script wiring below is **parked** (kept for a possible later low-intent second CTA). When building:
+> point the webhook at the Cal.com payload shape; the secret check + dedupe + leads-tab append + Gmail notify
+> chain all stay — only the producer changes.
+
 ## Overview
 Inbound only. Posts carry a CTA → **Google Form**. A bound **Apps Script** `onFormSubmit` trigger POSTs the
 response to an n8n webhook → validate → append to `leads` tab + email Sales. No X/scraping read APIs touched
