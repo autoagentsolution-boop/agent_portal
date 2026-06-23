@@ -52,6 +52,7 @@ per-platform result back. A row in `posting`/`posted` is never re-picked by an o
 | 06 | [Security + ops](phase-06-security-and-ops.md) | pending | vault, webhook auth, rate limits, token expiry, monitoring |
 | 07 | [Phase 2 auto-gen migration](phase-07-phase2-autogen-design.md) | pending | DESIGN ONLY — Gemini+Slides+review gate |
 | 08 | [Social-listening Loop C](phase-08-social-listening-loop-c-design.md) | design-only | DESIGN ONLY — Reddit listen + Claude draft, human posts; feeds Loop B |
+| 09 | [Local test plan](phase-09-local-test-plan.md) | pending | e2e lead loop + posting machinery; advisory-lock + idempotency tests |
 
 ## Key Dependencies
 
