@@ -1,0 +1,165 @@
+{
+  "name": "mkt-meta-token-refresh",
+  "active": false,
+  "settings": { "timezone": "Asia/Bangkok", "executionTimeout": 120, "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 3 * * 0" }] } },
+      "id": "cron",
+      "name": "Sunday 03:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preflight: marketing Meta app creds must exist. Token VALUES never logged.\nconst miss = [];\nfor (const k of ['MKT_FB_APP_ID','MKT_FB_APP_SECRET','MKT_FB_PAGE_ACCESS_TOKEN','MKT_FB_CREDENTIAL_ID','N8N_API_KEY']) {\n  if (!$env[k]) miss.push(k);\n}\nif (miss.length) throw new Error('mkt_meta_refresh: missing env vars: ' + miss.join(', '));\nconst hasThreads = !!($env.MKT_THREADS_ACCESS_TOKEN && $env.MKT_THREADS_CREDENTIAL_ID);\nreturn [{ json: { jobId: crypto.randomUUID(), startedAt: new Date().toISOString(), hasThreads, fbTokenLength: $env.MKT_FB_PAGE_ACCESS_TOKEN.length } }];"
+      },
+      "id": "preflight",
+      "name": "Preflight env check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 360]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.facebook.com/v18.0/oauth/access_token",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "grant_type", "value": "fb_exchange_token" },
+            { "name": "client_id", "value": "={{$env.MKT_FB_APP_ID}}" },
+            { "name": "client_secret", "value": "={{$env.MKT_FB_APP_SECRET}}" },
+            { "name": "fb_exchange_token", "value": "={{$env.MKT_FB_PAGE_ACCESS_TOKEN}}" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "fb-exchange",
+      "name": "FB exchange token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $json;\nif (!resp.access_token) throw new Error('mkt_fb_refresh_no_access_token in response');\nconst expiresIn = resp.expires_in || null;\nreturn [{ json: { fbNewTokenLength: resp.access_token.length, fbExpiresInSec: expiresIn, fbExpiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null } }];"
+      },
+      "id": "fb-parse",
+      "name": "Parse FB token (no value logged)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 360]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://localhost:5678/api/v1/credentials/{{$env.MKT_FB_CREDENTIAL_ID}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-N8N-API-KEY", "value": "={{$env.N8N_API_KEY}}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"data\": { \"accessToken\": {{ JSON.stringify($('FB exchange token').first().json.access_token) }} } }",
+        "options": { "timeout": 10000 }
+      },
+      "id": "fb-update-cred",
+      "name": "Update FB credential",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 360]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [
+            { "leftValue": "={{ $('Preflight env check').first().json.hasThreads }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+          ]
+        }
+      },
+      "id": "if-threads",
+      "name": "IF Threads configured",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1300, 360]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.threads.net/refresh_access_token",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "grant_type", "value": "th_refresh_token" },
+            { "name": "access_token", "value": "={{$env.MKT_THREADS_ACCESS_TOKEN}}" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "threads-refresh",
+      "name": "Threads refresh token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 280],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://localhost:5678/api/v1/credentials/{{$env.MKT_THREADS_CREDENTIAL_ID}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-N8N-API-KEY", "value": "={{$env.N8N_API_KEY}}" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"data\": { \"accessToken\": {{ JSON.stringify($('Threads refresh token').first().json.access_token) }} } }",
+        "options": { "timeout": 10000 }
+      },
+      "id": "threads-update-cred",
+      "name": "Update Threads credential",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1740, 280],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO run_log (job_id, level, step, detail) VALUES (gen_random_uuid(), 'info'::\"LogLevel\", 'upload'::\"LogStep\", $1::jsonb);",
+        "options": { "queryReplacement": "={{ JSON.stringify({ event: 'mkt_meta_token_refreshed', jobId: $('Preflight env check').first().json.jobId, fbNewTokenLength: $('Parse FB token (no value logged)').first().json.fbNewTokenLength, fbExpiresAt: $('Parse FB token (no value logged)').first().json.fbExpiresAt, threadsRefreshed: $('Preflight env check').first().json.hasThreads }) }}" }
+      },
+      "id": "log-success",
+      "name": "Log refresh success",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1960, 360],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    }
+  ],
+  "connections": {
+    "Sunday 03:00": { "main": [[{ "node": "Preflight env check", "type": "main", "index": 0 }]] },
+    "Preflight env check": { "main": [[{ "node": "FB exchange token", "type": "main", "index": 0 }]] },
+    "FB exchange token": { "main": [[{ "node": "Parse FB token (no value logged)", "type": "main", "index": 0 }]] },
+    "Parse FB token (no value logged)": { "main": [[{ "node": "Update FB credential", "type": "main", "index": 0 }]] },
+    "Update FB credential": { "main": [[{ "node": "IF Threads configured", "type": "main", "index": 0 }]] },
+    "IF Threads configured": {
+      "main": [
+        [{ "node": "Threads refresh token", "type": "main", "index": 0 }],
+        [{ "node": "Log refresh success", "type": "main", "index": 0 }]
+      ]
+    },
+    "Threads refresh token": { "main": [[{ "node": "Update Threads credential", "type": "main", "index": 0 }]] },
+    "Update Threads credential": { "main": [[{ "node": "Log refresh success", "type": "main", "index": 0 }]] }
+  }
+}

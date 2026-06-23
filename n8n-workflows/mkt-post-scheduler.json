@@ -1,0 +1,280 @@
+{
+  "name": "mkt-post-scheduler",
+  "active": false,
+  "settings": { "timezone": "Asia/Bangkok", "executionTimeout": 600, "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "*/20 * * * *" }] } },
+      "id": "cron",
+      "name": "Every 20 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [160, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT pg_try_advisory_lock(hashtext('mkt-post-scheduler')) AS got_lock;"
+      },
+      "id": "acquire-lock",
+      "name": "Acquire advisory lock",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [360, 400],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [
+            { "leftValue": "={{ $json.got_lock }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+          ]
+        }
+      },
+      "id": "if-lock",
+      "name": "IF lock acquired",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [560, 400]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "={{$env.MKT_SHEET_ID}}", "cachedResultName": "Marketing Calendar" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "calendar", "cachedResultName": "calendar" },
+        "options": {}
+      },
+      "id": "read-calendar",
+      "name": "Read calendar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [780, 320],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "mkt-gsheets", "name": "Marketing Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pick ONE due row: status=ready AND scheduledAt<=now(Asia/Bangkok). Sort asc, take first.\n// ALWAYS emit exactly one item carrying hasDue flag so the lock-release path is reachable on empty.\nconst rows = $input.all().map(i => i.json);\nconst nowBkk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));\nconst due = rows\n  .filter(r => String(r.status || '').trim() === 'ready')\n  .filter(r => {\n    const s = r.scheduledAt;\n    if (!s) return false;\n    const d = new Date(s);\n    return !isNaN(d) && d <= nowBkk;\n  })\n  .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));\nif (due.length === 0) return [{ json: { hasDue: false } }];\nconst row = due[0];\nif (row.row_number === undefined || row.row_number === null) throw new Error('mkt_scheduler: read node must expose row_number for write-back');\nreturn [{ json: { hasDue: true, ...row } }];"
+      },
+      "id": "pick-row",
+      "name": "Pick one due row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 320]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [
+            { "leftValue": "={{ $json.hasDue }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+          ]
+        }
+      },
+      "id": "if-due",
+      "name": "IF has due row",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1100, 400]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{$env.MKT_SHEET_ID}}", "cachedResultName": "Marketing Calendar" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "calendar", "cachedResultName": "calendar" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["row_number"],
+          "value": {
+            "row_number": "={{ $json.row_number }}",
+            "status": "posting"
+          }
+        },
+        "options": {}
+      },
+      "id": "claim-row",
+      "name": "Claim row (status=posting)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1220, 320],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "mkt-gsheets", "name": "Marketing Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build asset spec + platform list from the claimed row.\nconst row = $('Pick one due row').first().json;\nconst platforms = String(row.platforms || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);\nif (platforms.length === 0) throw new Error('mkt_scheduler: row has no platforms');\nconst driveFolderId = String(row.driveFolderId || '').trim();\nreturn [{ json: {\n  id: row.id,\n  rowNumber: row.row_number,\n  product: row.product,\n  copyVi: row.copyVi || '',\n  copyEn: row.copyEn || '',\n  platforms,\n  driveFolderId\n} }];"
+      },
+      "id": "build-spec",
+      "name": "Build post spec",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 320]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "queryString": "=name = 'hero.png'",
+        "filter": { "folderId": { "__rl": true, "mode": "id", "value": "={{ $json.driveFolderId }}" } },
+        "options": {}
+      },
+      "id": "drive-list",
+      "name": "Drive: find hero + slides",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1660, 320],
+      "credentials": { "googleDriveOAuth2Api": { "id": "mkt-gdrive", "name": "Marketing Google Drive" } },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate hero presence. If Drive list errored or no hero.png → emit validation error marker.\nconst spec = $('Build post spec').first().json;\nconst files = $input.all().map(i => i.json).filter(f => f && f.id);\nconst hero = files.find(f => (f.name || '').toLowerCase() === 'hero.png');\nif (!hero) {\n  return [{ json: { __invalid: true, id: spec.id, rowNumber: spec.rowNumber, error: 'hero.png missing in Drive folder' } }];\n}\nreturn [{ json: { ...spec, heroFileId: hero.id } }];"
+      },
+      "id": "validate-assets",
+      "name": "Validate assets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1880, 320]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [
+            { "leftValue": "={{ $json.__invalid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+          ]
+        }
+      },
+      "id": "if-valid",
+      "name": "IF invalid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [2100, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "// PHASE 1 ADAPTER PLACEHOLDER — publish to each platform.\n// FB Page = binary multi-photo; Threads = public image_url two-step container/publish.\n// Wired against MKT_* creds in P03. Until creds live, this aggregates a normalized result per platform.\n// Replace the body of each platform branch with real HTTP nodes when MKT_FB_PAGE_ACCESS_TOKEN /\n// MKT_THREADS_ACCESS_TOKEN are configured (see docs/marketing-pipeline-setup.md).\nconst spec = $json;\nconst results = [];\nfor (const p of spec.platforms) {\n  if (p !== 'facebook' && p !== 'threads') {\n    results.push({ platform: p, ok: false, url: null, error: 'no adapter (Phase 1 = facebook,threads only)' });\n  } else {\n    // Real publish happens in the platform HTTP subgraphs (P03/P05). Placeholder marks pending wiring.\n    results.push({ platform: p, ok: false, url: null, error: 'adapter not yet wired — set MKT_* creds (P03)' });\n  }\n}\nreturn [{ json: { id: spec.id, rowNumber: spec.rowNumber, results } }];"
+      },
+      "id": "fanout-adapters",
+      "name": "Platform fan-out (adapters)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2320, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate per-platform results → terminal status + write-back payload.\nconst row = $json;\nconst results = row.results || [];\nconst okCount = results.filter(r => r.ok).length;\nlet status;\nif (okCount === results.length && okCount > 0) status = 'posted';\nelse if (okCount > 0) status = 'partial';\nelse status = 'error';\nconst postUrl = {};\nfor (const r of results) if (r.ok && r.url) postUrl[r.platform] = r.url;\nconst errParts = results.filter(r => !r.ok).map(r => `${r.platform}:${r.error}`);\nreturn [{ json: {\n  id: row.id,\n  row_number: row.rowNumber,\n  status,\n  postUrl: JSON.stringify(postUrl),\n  postedAt: new Date().toISOString(),\n  error: errParts.join(' | ').slice(0, 500)\n} }];"
+      },
+      "id": "aggregate",
+      "name": "Aggregate results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2540, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation-error path: build write-back marking row=error, no network post happened.\nconst v = $json;\nreturn [{ json: {\n  id: v.id,\n  row_number: v.rowNumber,\n  status: 'error',\n  postUrl: '{}',\n  postedAt: new Date().toISOString(),\n  error: (v.error || 'validation failed').slice(0, 500)\n} }];"
+      },
+      "id": "build-error-writeback",
+      "name": "Build error write-back",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2320, 440]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{$env.MKT_SHEET_ID}}", "cachedResultName": "Marketing Calendar" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "calendar", "cachedResultName": "calendar" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["row_number"],
+          "value": {
+            "row_number": "={{ $json.row_number }}",
+            "status": "={{ $json.status }}",
+            "postUrl": "={{ $json.postUrl }}",
+            "postedAt": "={{ $json.postedAt }}",
+            "error": "={{ $json.error }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "writeback",
+      "name": "Write-back result",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [2760, 320],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "mkt-gsheets", "name": "Marketing Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO run_log (job_id, level, step, detail) VALUES (gen_random_uuid(), $1::\"LogLevel\", 'upload'::\"LogStep\", $2::jsonb);",
+        "options": { "queryReplacement": "={{ $json.status === 'posted' ? 'info' : ($json.status === 'partial' ? 'warn' : 'error') }},{{ JSON.stringify({ event: 'mkt_post', id: $json.id, status: $json.status, postUrl: $json.postUrl, error: $json.error }) }}" }
+      },
+      "id": "audit-log",
+      "name": "Audit run_log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2980, 320],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT pg_advisory_unlock(hashtext('mkt-post-scheduler')) AS released;"
+      },
+      "id": "release-lock",
+      "name": "Release advisory lock",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [3200, 320],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT pg_advisory_unlock(hashtext('mkt-post-scheduler')) AS released;"
+      },
+      "id": "release-lock-empty",
+      "name": "Release lock (no due row)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1220, 540],
+      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+    }
+  ],
+  "connections": {
+    "Every 20 min": { "main": [[{ "node": "Acquire advisory lock", "type": "main", "index": 0 }]] },
+    "Acquire advisory lock": { "main": [[{ "node": "IF lock acquired", "type": "main", "index": 0 }]] },
+    "IF lock acquired": { "main": [[{ "node": "Read calendar", "type": "main", "index": 0 }], []] },
+    "Read calendar": { "main": [[{ "node": "Pick one due row", "type": "main", "index": 0 }]] },
+    "Pick one due row": { "main": [[{ "node": "IF has due row", "type": "main", "index": 0 }]] },
+    "IF has due row": {
+      "main": [
+        [{ "node": "Claim row (status=posting)", "type": "main", "index": 0 }],
+        [{ "node": "Release lock (no due row)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Claim row (status=posting)": { "main": [[{ "node": "Build post spec", "type": "main", "index": 0 }]] },
+    "Build post spec": { "main": [[{ "node": "Drive: find hero + slides", "type": "main", "index": 0 }]] },
+    "Drive: find hero + slides": {
+      "main": [
+        [{ "node": "Validate assets", "type": "main", "index": 0 }],
+        [{ "node": "Validate assets", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validate assets": { "main": [[{ "node": "IF invalid", "type": "main", "index": 0 }]] },
+    "IF invalid": {
+      "main": [
+        [{ "node": "Build error write-back", "type": "main", "index": 0 }],
+        [{ "node": "Platform fan-out (adapters)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Platform fan-out (adapters)": { "main": [[{ "node": "Aggregate results", "type": "main", "index": 0 }]] },
+    "Aggregate results": { "main": [[{ "node": "Write-back result", "type": "main", "index": 0 }]] },
+    "Build error write-back": { "main": [[{ "node": "Write-back result", "type": "main", "index": 0 }]] },
+    "Write-back result": { "main": [[{ "node": "Audit run_log", "type": "main", "index": 0 }]] },
+    "Audit run_log": { "main": [[{ "node": "Release advisory lock", "type": "main", "index": 0 }]] }
+  }
+}
