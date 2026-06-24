@@ -335,15 +335,16 @@
     {
       "parameters": {
         "resource": "fileFolder",
-        "queryString": "=name = 'hero.png'",
         "filter": {
           "folderId": {
             "__rl": true,
             "mode": "id",
-            "value": "={{ $json.driveFolderId }}"
+            "value": "={{ $json.driveFolderId }}",
+            "cachedResultName": "={{ $json.driveFolderId }}"
           }
         },
-        "options": {}
+        "options": {},
+        "returnAll": true
       },
       "id": "drive-list",
       "name": "Drive: find hero + slides",
@@ -614,7 +615,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO run_log (job_id, level, step, detail) VALUES (gen_random_uuid(), $1::\"LogLevel\", 'upload'::\"LogStep\", $2::jsonb);",
+        "query": "INSERT INTO mkt_run_log (level, step, detail) VALUES ($1, 'mkt_post', $2::jsonb);",
         "options": {
           "queryReplacement": "={{ $json.status === 'posted' ? 'info' : ($json.status === 'partial' ? 'warn' : 'error') }},{{ JSON.stringify({ event: 'mkt_post', id: $json.id, status: $json.status, postUrl: $json.postUrl, error: $json.error }) }}"
         }
