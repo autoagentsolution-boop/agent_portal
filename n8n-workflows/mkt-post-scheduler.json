@@ -1,15 +1,31 @@
 {
   "name": "mkt-post-scheduler",
   "active": false,
-  "settings": { "timezone": "Asia/Bangkok", "executionTimeout": 600, "executionOrder": "v1" },
+  "settings": {
+    "timezone": "Asia/Bangkok",
+    "executionTimeout": 600,
+    "executionOrder": "v1"
+  },
   "nodes": [
     {
-      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "*/20 * * * *" }] } },
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/20 * * * *"
+            }
+          ]
+        }
+      },
       "id": "cron",
       "name": "Every 20 min",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.3,
-      "position": [160, 400]
+      "position": [
+        160,
+        400
+      ]
     },
     {
       "parameters": {
@@ -20,16 +36,37 @@
       "name": "Acquire advisory lock",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [360, 400],
-      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+      "position": [
+        360,
+        400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9ArbTOPDy2WRSPZl",
+          "name": "Videofarm Postgres"
+        }
+      }
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
           "combinator": "and",
           "conditions": [
-            { "leftValue": "={{ $json.got_lock }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+            {
+              "leftValue": "={{ $json.got_lock }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
           ]
         }
       },
@@ -37,20 +74,42 @@
       "name": "IF lock acquired",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
-      "position": [560, 400]
+      "position": [
+        560,
+        400
+      ]
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "={{$env.MKT_SHEET_ID}}", "cachedResultName": "Marketing Calendar" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "calendar", "cachedResultName": "calendar" },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{$env.MKT_SHEET_ID}}",
+          "cachedResultName": "Marketing Calendar"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "0",
+          "cachedResultName": "calendar"
+        },
         "options": {}
       },
       "id": "read-calendar",
       "name": "Read calendar",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
-      "position": [780, 320],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "mkt-gsheets", "name": "Marketing Google Sheets" } }
+      "position": [
+        780,
+        320
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "NOJxmMKDlNl6T5Tj",
+          "name": "MKT Google Sheets account"
+        }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -60,15 +119,31 @@
       "name": "Pick one due row",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1000, 320]
+      "position": [
+        1000,
+        320
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
           "combinator": "and",
           "conditions": [
-            { "leftValue": "={{ $json.hasDue }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+            {
+              "leftValue": "={{ $json.hasDue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
           ]
         }
       },
@@ -76,20 +151,156 @@
       "name": "IF has due row",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
-      "position": [1100, 400]
+      "position": [
+        1100,
+        400
+      ]
     },
     {
       "parameters": {
         "operation": "update",
-        "documentId": { "__rl": true, "mode": "id", "value": "={{$env.MKT_SHEET_ID}}", "cachedResultName": "Marketing Calendar" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "calendar", "cachedResultName": "calendar" },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{$env.MKT_SHEET_ID}}",
+          "cachedResultName": "Marketing Calendar"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "0",
+          "cachedResultName": "calendar"
+        },
         "columns": {
           "mappingMode": "defineBelow",
-          "matchingColumns": ["row_number"],
+          "matchingColumns": [
+            "row_number"
+          ],
           "value": {
             "row_number": "={{ $json.row_number }}",
             "status": "posting"
-          }
+          },
+          "schema": [
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "product",
+              "displayName": "product",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "angle",
+              "displayName": "angle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "copyVi",
+              "displayName": "copyVi",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "copyEn",
+              "displayName": "copyEn",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "driveFolderId",
+              "displayName": "driveFolderId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "platforms",
+              "displayName": "platforms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scheduledAt",
+              "displayName": "scheduledAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "postUrl",
+              "displayName": "postUrl",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "postedAt",
+              "displayName": "postedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
         },
         "options": {}
       },
@@ -97,8 +308,16 @@
       "name": "Claim row (status=posting)",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
-      "position": [1220, 320],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "mkt-gsheets", "name": "Marketing Google Sheets" } }
+      "position": [
+        1220,
+        320
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "NOJxmMKDlNl6T5Tj",
+          "name": "MKT Google Sheets account"
+        }
+      }
     },
     {
       "parameters": {
@@ -108,21 +327,38 @@
       "name": "Build post spec",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1440, 320]
+      "position": [
+        1440,
+        320
+      ]
     },
     {
       "parameters": {
         "resource": "fileFolder",
         "queryString": "=name = 'hero.png'",
-        "filter": { "folderId": { "__rl": true, "mode": "id", "value": "={{ $json.driveFolderId }}" } },
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "={{ $json.driveFolderId }}"
+          }
+        },
         "options": {}
       },
       "id": "drive-list",
       "name": "Drive: find hero + slides",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [1660, 320],
-      "credentials": { "googleDriveOAuth2Api": { "id": "mkt-gdrive", "name": "Marketing Google Drive" } },
+      "position": [
+        1660,
+        320
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "diCdoUNOKGfXm3Vg",
+          "name": "MKT Google Drive account"
+        }
+      },
       "onError": "continueErrorOutput"
     },
     {
@@ -133,15 +369,31 @@
       "name": "Validate assets",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1880, 320]
+      "position": [
+        1880,
+        320
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
           "combinator": "and",
           "conditions": [
-            { "leftValue": "={{ $json.__invalid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+            {
+              "leftValue": "={{ $json.__invalid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
           ]
         }
       },
@@ -149,7 +401,10 @@
       "name": "IF invalid",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
-      "position": [2100, 320]
+      "position": [
+        2100,
+        320
+      ]
     },
     {
       "parameters": {
@@ -159,7 +414,10 @@
       "name": "Platform fan-out (adapters)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2320, 220]
+      "position": [
+        2320,
+        220
+      ]
     },
     {
       "parameters": {
@@ -169,7 +427,10 @@
       "name": "Aggregate results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2540, 220]
+      "position": [
+        2540,
+        220
+      ]
     },
     {
       "parameters": {
@@ -179,23 +440,159 @@
       "name": "Build error write-back",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2320, 440]
+      "position": [
+        2320,
+        440
+      ]
     },
     {
       "parameters": {
         "operation": "update",
-        "documentId": { "__rl": true, "mode": "id", "value": "={{$env.MKT_SHEET_ID}}", "cachedResultName": "Marketing Calendar" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "calendar", "cachedResultName": "calendar" },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{$env.MKT_SHEET_ID}}",
+          "cachedResultName": "Marketing Calendar"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "0",
+          "cachedResultName": "calendar"
+        },
         "columns": {
           "mappingMode": "defineBelow",
-          "matchingColumns": ["row_number"],
+          "matchingColumns": [
+            "row_number"
+          ],
           "value": {
             "row_number": "={{ $json.row_number }}",
             "status": "={{ $json.status }}",
             "postUrl": "={{ $json.postUrl }}",
             "postedAt": "={{ $json.postedAt }}",
             "error": "={{ $json.error }}"
-          }
+          },
+          "schema": [
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "product",
+              "displayName": "product",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "angle",
+              "displayName": "angle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "copyVi",
+              "displayName": "copyVi",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "copyEn",
+              "displayName": "copyEn",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "driveFolderId",
+              "displayName": "driveFolderId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "platforms",
+              "displayName": "platforms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scheduledAt",
+              "displayName": "scheduledAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "postUrl",
+              "displayName": "postUrl",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "postedAt",
+              "displayName": "postedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
         },
         "options": {}
       },
@@ -203,21 +600,39 @@
       "name": "Write-back result",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
-      "position": [2760, 320],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "mkt-gsheets", "name": "Marketing Google Sheets" } }
+      "position": [
+        2760,
+        320
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "NOJxmMKDlNl6T5Tj",
+          "name": "MKT Google Sheets account"
+        }
+      }
     },
     {
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO run_log (job_id, level, step, detail) VALUES (gen_random_uuid(), $1::\"LogLevel\", 'upload'::\"LogStep\", $2::jsonb);",
-        "options": { "queryReplacement": "={{ $json.status === 'posted' ? 'info' : ($json.status === 'partial' ? 'warn' : 'error') }},{{ JSON.stringify({ event: 'mkt_post', id: $json.id, status: $json.status, postUrl: $json.postUrl, error: $json.error }) }}" }
+        "options": {
+          "queryReplacement": "={{ $json.status === 'posted' ? 'info' : ($json.status === 'partial' ? 'warn' : 'error') }},{{ JSON.stringify({ event: 'mkt_post', id: $json.id, status: $json.status, postUrl: $json.postUrl, error: $json.error }) }}"
+        }
       },
       "id": "audit-log",
       "name": "Audit run_log",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [2980, 320],
-      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+      "position": [
+        2980,
+        320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9ArbTOPDy2WRSPZl",
+          "name": "Videofarm Postgres"
+        }
+      }
     },
     {
       "parameters": {
@@ -228,8 +643,16 @@
       "name": "Release advisory lock",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [3200, 320],
-      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+      "position": [
+        3200,
+        320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9ArbTOPDy2WRSPZl",
+          "name": "Videofarm Postgres"
+        }
+      }
     },
     {
       "parameters": {
@@ -240,41 +663,216 @@
       "name": "Release lock (no due row)",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [1220, 540],
-      "credentials": { "postgres": { "id": "videofarm-pg", "name": "Videofarm Postgres" } }
+      "position": [
+        1220,
+        540
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9ArbTOPDy2WRSPZl",
+          "name": "Videofarm Postgres"
+        }
+      }
     }
   ],
   "connections": {
-    "Every 20 min": { "main": [[{ "node": "Acquire advisory lock", "type": "main", "index": 0 }]] },
-    "Acquire advisory lock": { "main": [[{ "node": "IF lock acquired", "type": "main", "index": 0 }]] },
-    "IF lock acquired": { "main": [[{ "node": "Read calendar", "type": "main", "index": 0 }], []] },
-    "Read calendar": { "main": [[{ "node": "Pick one due row", "type": "main", "index": 0 }]] },
-    "Pick one due row": { "main": [[{ "node": "IF has due row", "type": "main", "index": 0 }]] },
+    "Every 20 min": {
+      "main": [
+        [
+          {
+            "node": "Acquire advisory lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acquire advisory lock": {
+      "main": [
+        [
+          {
+            "node": "IF lock acquired",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF lock acquired": {
+      "main": [
+        [
+          {
+            "node": "Read calendar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Read calendar": {
+      "main": [
+        [
+          {
+            "node": "Pick one due row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick one due row": {
+      "main": [
+        [
+          {
+            "node": "IF has due row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "IF has due row": {
       "main": [
-        [{ "node": "Claim row (status=posting)", "type": "main", "index": 0 }],
-        [{ "node": "Release lock (no due row)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Claim row (status=posting)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Release lock (no due row)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Claim row (status=posting)": { "main": [[{ "node": "Build post spec", "type": "main", "index": 0 }]] },
-    "Build post spec": { "main": [[{ "node": "Drive: find hero + slides", "type": "main", "index": 0 }]] },
+    "Claim row (status=posting)": {
+      "main": [
+        [
+          {
+            "node": "Build post spec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build post spec": {
+      "main": [
+        [
+          {
+            "node": "Drive: find hero + slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Drive: find hero + slides": {
       "main": [
-        [{ "node": "Validate assets", "type": "main", "index": 0 }],
-        [{ "node": "Validate assets", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Validate assets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Validate assets": { "main": [[{ "node": "IF invalid", "type": "main", "index": 0 }]] },
+    "Validate assets": {
+      "main": [
+        [
+          {
+            "node": "IF invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "IF invalid": {
       "main": [
-        [{ "node": "Build error write-back", "type": "main", "index": 0 }],
-        [{ "node": "Platform fan-out (adapters)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Build error write-back",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Platform fan-out (adapters)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Platform fan-out (adapters)": { "main": [[{ "node": "Aggregate results", "type": "main", "index": 0 }]] },
-    "Aggregate results": { "main": [[{ "node": "Write-back result", "type": "main", "index": 0 }]] },
-    "Build error write-back": { "main": [[{ "node": "Write-back result", "type": "main", "index": 0 }]] },
-    "Write-back result": { "main": [[{ "node": "Audit run_log", "type": "main", "index": 0 }]] },
-    "Audit run_log": { "main": [[{ "node": "Release advisory lock", "type": "main", "index": 0 }]] }
+    "Platform fan-out (adapters)": {
+      "main": [
+        [
+          {
+            "node": "Aggregate results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate results": {
+      "main": [
+        [
+          {
+            "node": "Write-back result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build error write-back": {
+      "main": [
+        [
+          {
+            "node": "Write-back result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write-back result": {
+      "main": [
+        [
+          {
+            "node": "Audit run_log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit run_log": {
+      "main": [
+        [
+          {
+            "node": "Release advisory lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   }
 }
