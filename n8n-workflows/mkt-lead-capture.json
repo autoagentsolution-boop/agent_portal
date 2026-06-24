@@ -1,7 +1,11 @@
 {
   "name": "mkt-lead-capture",
   "active": false,
-  "settings": { "timezone": "Asia/Bangkok", "executionTimeout": 60, "executionOrder": "v1" },
+  "settings": {
+    "timezone": "Asia/Bangkok",
+    "executionTimeout": 60,
+    "executionOrder": "v1"
+  },
   "nodes": [
     {
       "parameters": {
@@ -14,26 +18,45 @@
       "name": "Lead webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [200, 360],
-      "webhookId": "mkt-lead-capture"
+      "position": [
+        200,
+        360
+      ],
+      "webhookId": "mkt-lead-capture",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "// Auth (constant-time secret) + validate. Throws → workflow errors → no row, but we 200 only at end.\nconst crypto = require('crypto');\nfunction safeEq(a, b) {\n  const ba = Buffer.from(String(a || ''));\n  const bb = Buffer.from(String(b || ''));\n  if (ba.length !== bb.length) return false;\n  return crypto.timingSafeEqual(ba, bb);\n}\nconst headers = $json.headers || {};\nconst body = $json.body || {};\nconst secret = headers['x-webhook-secret'] || headers['X-Webhook-Secret'];\nif (!$env.MKT_LEAD_WEBHOOK_SECRET) throw new Error('mkt_lead: MKT_LEAD_WEBHOOK_SECRET not set');\nif (!safeEq(secret, $env.MKT_LEAD_WEBHOOK_SECRET)) {\n  return [{ json: { __status: 401, __error: 'unauthorized' } }];\n}\nconst email = String(body.email || '').trim().toLowerCase();\nconst emailOk = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);\nif (!emailOk) {\n  return [{ json: { __status: 400, __error: 'invalid_email' } }];\n}\nreturn [{ json: {\n  __status: 200,\n  receivedAt: new Date().toISOString(),\n  name: String(body.name || '').slice(0, 200),\n  email,\n  phone: String(body.phone || '').slice(0, 50),\n  message: String(body.message || '').slice(0, 2000),\n  sourceProduct: String(body.product || body.sourceProduct || '').slice(0, 200),\n  sourcePlatform: String(body.platform || body.sourcePlatform || '').slice(0, 50),\n  rawPayload: JSON.stringify(body).slice(0, 5000)\n} }];"
+        "jsCode": "// Auth (constant-time secret, no crypto module) + validate.\nfunction safeEq(a, b) {\n  a = String(a == null ? '' : a);\n  b = String(b == null ? '' : b);\n  if (a.length !== b.length) return false;\n  let diff = 0;\n  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);\n  return diff === 0;\n}\nconst headers = $json.headers || {};\nconst body = $json.body || {};\nconst secret = headers['x-webhook-secret'] || headers['X-Webhook-Secret'];\nif (!$env.MKT_LEAD_WEBHOOK_SECRET) throw new Error('mkt_lead: MKT_LEAD_WEBHOOK_SECRET not set');\nif (!safeEq(secret, $env.MKT_LEAD_WEBHOOK_SECRET)) {\n  return [{ json: { __status: 401, __error: 'unauthorized' } }];\n}\nconst email = String(body.email || '').trim().toLowerCase();\nconst emailOk = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);\nif (!emailOk) {\n  return [{ json: { __status: 400, __error: 'invalid_email' } }];\n}\nreturn [{ json: {\n  __status: 200,\n  receivedAt: new Date().toISOString(),\n  name: String(body.name || '').slice(0, 200),\n  email,\n  phone: String(body.phone || '').slice(0, 50),\n  message: String(body.message || '').slice(0, 2000),\n  sourceProduct: String(body.product || body.sourceProduct || '').slice(0, 200),\n  sourcePlatform: String(body.platform || body.sourcePlatform || '').slice(0, 50),\n  rawPayload: JSON.stringify(body).slice(0, 5000)\n} }];"
       },
       "id": "auth-validate",
       "name": "Auth + validate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [420, 360]
+      "position": [
+        420,
+        360
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
           "combinator": "and",
           "conditions": [
-            { "leftValue": "={{ $json.__status }}", "rightValue": 200, "operator": { "type": "number", "operation": "equals" } }
+            {
+              "leftValue": "={{ $json.__status }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
           ]
         }
       },
@@ -41,20 +64,42 @@
       "name": "IF valid (200)",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
-      "position": [640, 360]
+      "position": [
+        640,
+        360
+      ]
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "={{$env.MKT_SHEET_ID}}", "cachedResultName": "Marketing Leads" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "leads", "cachedResultName": "leads" },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{$env.MKT_SHEET_ID}}",
+          "cachedResultName": "Marketing Leads"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "476128751",
+          "cachedResultName": "leads"
+        },
         "options": {}
       },
       "id": "read-leads",
       "name": "Read leads (dedupe)",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
-      "position": [860, 280],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "mkt-gsheets", "name": "Marketing Google Sheets" } }
+      "position": [
+        860,
+        280
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "mkt-gsheets",
+          "name": "Marketing Google Sheets"
+        }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -64,13 +109,26 @@
       "name": "Dedupe by email",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1080, 280]
+      "position": [
+        1080,
+        280
+      ]
     },
     {
       "parameters": {
         "operation": "append",
-        "documentId": { "__rl": true, "mode": "id", "value": "={{$env.MKT_SHEET_ID}}", "cachedResultName": "Marketing Leads" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "leads", "cachedResultName": "leads" },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{$env.MKT_SHEET_ID}}",
+          "cachedResultName": "Marketing Leads"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "476128751",
+          "cachedResultName": "leads"
+        },
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
@@ -82,7 +140,84 @@
             "sourceProduct": "={{ $json.sourceProduct }}",
             "sourcePlatform": "={{ $json.sourcePlatform }}",
             "rawPayload": "={{ $json.rawPayload }}"
-          }
+          },
+          "schema": [
+            {
+              "id": "receivedAt",
+              "displayName": "receivedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sourceProduct",
+              "displayName": "sourceProduct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sourcePlatform",
+              "displayName": "sourcePlatform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "rawPayload",
+              "displayName": "rawPayload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "matchingColumns": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
         "options": {}
       },
@@ -90,16 +225,37 @@
       "name": "Append to leads",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
-      "position": [1300, 280],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "mkt-gsheets", "name": "Marketing Google Sheets" } }
+      "position": [
+        1300,
+        280
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "mkt-gsheets",
+          "name": "Marketing Google Sheets"
+        }
+      }
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
           "combinator": "and",
           "conditions": [
-            { "leftValue": "={{ $('Dedupe by email').first().json.isDup }}", "rightValue": true, "operator": { "type": "boolean", "operation": "false", "singleValue": true } }
+            {
+              "leftValue": "={{ $('Dedupe by email').first().json.isDup }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
           ]
         }
       },
@@ -107,7 +263,10 @@
       "name": "IF not duplicate",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
-      "position": [1520, 280]
+      "position": [
+        1520,
+        280
+      ]
     },
     {
       "parameters": {
@@ -115,59 +274,162 @@
         "subject": "=New lead: {{ $('Dedupe by email').first().json.sourceProduct || 'unknown' }} via {{ $('Dedupe by email').first().json.sourcePlatform || 'unknown' }}",
         "emailType": "text",
         "message": "=New marketing lead received.\n\nName: {{ $('Dedupe by email').first().json.name }}\nEmail: {{ $('Dedupe by email').first().json.email }}\nPhone: {{ $('Dedupe by email').first().json.phone }}\nProduct: {{ $('Dedupe by email').first().json.sourceProduct }}\nPlatform: {{ $('Dedupe by email').first().json.sourcePlatform }}\n\nMessage:\n{{ $('Dedupe by email').first().json.message }}\n\nReceived: {{ $('Dedupe by email').first().json.receivedAt }}",
-        "options": {}
+        "options": {},
+        "operation": "send"
       },
       "id": "gmail-sales",
       "name": "Email Sales",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
-      "position": [1740, 200],
-      "credentials": { "gmailOAuth2": { "id": "mkt-gmail", "name": "Marketing Gmail (Sales)" } },
+      "position": [
+        1740,
+        200
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "mkt-gmail",
+          "name": "Marketing Gmail (Sales)"
+        }
+      },
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify({ ok: true }) }}",
-        "options": { "responseCode": 200 }
+        "options": {
+          "responseCode": 200
+        }
       },
       "id": "respond-ok",
       "name": "Respond 200",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1960, 280]
+      "position": [
+        1960,
+        280
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify({ ok: false, error: $json.__error }) }}",
-        "options": { "responseCode": "={{ $json.__status }}" }
+        "options": {
+          "responseCode": "={{ $json.__status }}"
+        }
       },
       "id": "respond-error",
       "name": "Respond error",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [860, 460]
+      "position": [
+        860,
+        460
+      ]
     }
   ],
   "connections": {
-    "Lead webhook": { "main": [[{ "node": "Auth + validate", "type": "main", "index": 0 }]] },
-    "Auth + validate": { "main": [[{ "node": "IF valid (200)", "type": "main", "index": 0 }]] },
+    "Lead webhook": {
+      "main": [
+        [
+          {
+            "node": "Auth + validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth + validate": {
+      "main": [
+        [
+          {
+            "node": "IF valid (200)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "IF valid (200)": {
       "main": [
-        [{ "node": "Read leads (dedupe)", "type": "main", "index": 0 }],
-        [{ "node": "Respond error", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Read leads (dedupe)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond error",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Read leads (dedupe)": { "main": [[{ "node": "Dedupe by email", "type": "main", "index": 0 }]] },
-    "Dedupe by email": { "main": [[{ "node": "Append to leads", "type": "main", "index": 0 }]] },
-    "Append to leads": { "main": [[{ "node": "IF not duplicate", "type": "main", "index": 0 }]] },
+    "Read leads (dedupe)": {
+      "main": [
+        [
+          {
+            "node": "Dedupe by email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe by email": {
+      "main": [
+        [
+          {
+            "node": "Append to leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to leads": {
+      "main": [
+        [
+          {
+            "node": "IF not duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "IF not duplicate": {
       "main": [
-        [{ "node": "Email Sales", "type": "main", "index": 0 }],
-        [{ "node": "Respond 200", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Email Sales",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Email Sales": { "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]] }
+    "Email Sales": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   }
 }
