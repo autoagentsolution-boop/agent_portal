@@ -409,7 +409,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Normalize FB /photos response (or error) into contract {results:[{platform,ok,url,error}]}.\n// Both success + continueErrorOutput branches land here; $json carries whichever fired.\nconst meta = $('Validate assets').first().json;\nconst platforms = meta.platforms || [];\nconst resp = $json || {};\nconst results = [];\nif (platforms.includes('facebook')) {\n  const errObj = resp.error;\n  const pid = resp.post_id || resp.id;\n  if (pid && !errObj) {\n    results.push({ platform:'facebook', ok:true, url:`https://facebook.com/${pid}`, error:null });\n  } else {\n    let msg = 'FB publish failed';\n    if (errObj) msg = typeof errObj==='string' ? errObj : (errObj.message || JSON.stringify(errObj));\n    else if (resp.message) msg = resp.message;\n    results.push({ platform:'facebook', ok:false, url:null, error:('FB: '+msg).slice(0,300) });\n  }\n}\nfor (const p of platforms) if (p!=='facebook') results.push({ platform:p, ok:false, url:null, error:'adapter not yet wired (Phase 1: facebook only live)' });\nreturn [{ json: { id: meta.id, rowNumber: meta.rowNumber, results } }];"
+        "jsCode": "// Normalize FB /photos response (or error) into contract {results:[{platform,ok,url,error}]}.\n// Both success + continueErrorOutput branches land here; $json carries whichever fired.\nconst meta = $('Validate assets').first().json;\nconst platforms = meta.platforms || [];\nconst resp = $json || {};\nconst results = [];\nif (platforms.includes('facebook')) {\n  const errObj = resp.error;\n  const pid = resp.post_id || resp.id;\n  if (pid && !errObj) {\n    results.push({ platform:'facebook', ok:true, url:`https://facebook.com/${pid}`, error:null });\n  } else {\n    let msg = 'FB publish failed';\n    if (errObj) msg = typeof errObj==='string' ? errObj : (errObj.message || JSON.stringify(errObj));\n    else if (resp.message) msg = resp.message;\n    results.push({ platform:'facebook', ok:false, url:null, error:('FB: '+msg).slice(0,300) });\n  }\n}\n// (Threads + other platforms handled by their own dedicated branches downstream.)\nreturn [{ json: { id: meta.id, rowNumber: meta.rowNumber, results } }];"
       },
       "id": "fanout-adapters",
       "name": "Normalize FB result",
@@ -746,6 +746,221 @@
       ],
       "onError": "continueErrorOutput",
       "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "jsCode": "// Threads adapter step 1: gate + build creation-container request. Carry FB results forward.\n// FB branch may have been skipped (platforms has no 'facebook') -> Normalize FB result didn't run.\nconst spec = $('Validate assets').first().json;\nlet fbResults = [];\nlet id = spec.id, rowNumber = spec.rowNumber;\ntry {\n  const fb = $('Normalize FB result').first().json;\n  if (fb && Array.isArray(fb.results)) { fbResults = fb.results; id = fb.id; rowNumber = fb.rowNumber; }\n} catch (e) { /* FB branch skipped; keep empty fbResults */ }\nconst platforms = spec.platforms || [];\nconst carry = { id, rowNumber, fbResults };\nif (!platforms.includes('threads')) { return [{ json: { ...carry, skipThreads: true } }]; }\nconst imageUrl = `https://lh3.googleusercontent.com/d/${spec.heroFileId}`;\nlet text = String(spec.copyVi || '');\nif (text.length > 500) { text = text.slice(0, 497); text = text.slice(0, text.lastIndexOf(' ')) + '\\u2026'; }\nreturn [{ json: { ...carry, skipThreads: false, imageUrl, text } }];"
+      },
+      "id": "threads-build",
+      "name": "Build Threads request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2980,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skipThreads }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "if-threads",
+      "name": "IF threads targeted",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3200,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.threads.net/v1.0/{{$env.MKT_THREADS_USER_ID}}/threads",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "IMAGE"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $json.imageUrl }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.text }}"
+            },
+            {
+              "name": "access_token",
+              "value": "={{$env.MKT_THREADS_ACCESS_TOKEN}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "threads-create",
+      "name": "Threads create container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3420,
+        440
+      ],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "amount": 35,
+        "unit": "seconds"
+      },
+      "id": "threads-wait",
+      "name": "Wait 35s (container)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3640,
+        440
+      ],
+      "webhookId": "mkt-threads-wait"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.threads.net/v1.0/{{$env.MKT_THREADS_USER_ID}}/threads_publish",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $('Threads create container').item.json.id }}"
+            },
+            {
+              "name": "access_token",
+              "value": "={{$env.MKT_THREADS_ACCESS_TOKEN}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "threads-publish",
+      "name": "Threads publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3860,
+        440
+      ],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Threads final: confirm publish, attach REAL permalink, append to fbResults -> single results[].\nconst carry = $('Build Threads request').first().json;\nconst results = [...(carry.fbResults || [])];\nif (!carry.skipThreads) {\n  const pub = $('Threads publish').first().json || {};\n  const perma = $json || {};\n  const mediaId = pub.id;\n  const pubErr = pub.error;\n  if (mediaId && !pubErr) {\n    // permalink GET may have failed (onError) -> fall back to media-id reference\n    const url = perma.permalink || `https://www.threads.net/@me/post/${mediaId}`;\n    results.push({ platform: 'threads', ok: true, url, error: null });\n  } else {\n    let msg = 'Threads publish failed';\n    if (pubErr) msg = typeof pubErr === 'string' ? pubErr : (pubErr.message || JSON.stringify(pubErr));\n    results.push({ platform: 'threads', ok: false, url: null, error: ('Threads: ' + msg).slice(0, 300) });\n  }\n}\nreturn [{ json: { id: carry.id, rowNumber: carry.rowNumber, results } }];"
+      },
+      "id": "threads-normalize",
+      "name": "Normalize Threads result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4290,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ Array.isArray($json.platforms) ? $json.platforms.includes('facebook') : String($json.platforms).split(',').map(s=>s.trim()).includes('facebook') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "if-facebook",
+      "name": "IF facebook targeted",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2240,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.threads.net/v1.0/{{ $('Threads publish').item.json.id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,permalink"
+            },
+            {
+              "name": "access_token",
+              "value": "={{$env.MKT_THREADS_ACCESS_TOKEN}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "threads-permalink",
+      "name": "Threads get permalink",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4070,
+        440
+      ],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
     }
   ],
   "connections": {
@@ -885,7 +1100,7 @@
         ],
         [
           {
-            "node": "Download hero (Drive)",
+            "node": "IF facebook targeted",
             "type": "main",
             "index": 0
           }
@@ -969,7 +1184,130 @@
       "main": [
         [
           {
+            "node": "Build Threads request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Threads request": {
+      "main": [
+        [
+          {
+            "node": "IF threads targeted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF threads targeted": {
+      "main": [
+        [
+          {
+            "node": "Threads create container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Threads result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Threads create container": {
+      "main": [
+        [
+          {
+            "node": "Wait 35s (container)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 35s (container)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 35s (container)": {
+      "main": [
+        [
+          {
+            "node": "Threads publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Threads publish": {
+      "main": [
+        [
+          {
+            "node": "Threads get permalink",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Threads get permalink",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Threads result": {
+      "main": [
+        [
+          {
             "node": "Aggregate results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF facebook targeted": {
+      "main": [
+        [
+          {
+            "node": "Download hero (Drive)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Threads request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Threads get permalink": {
+      "main": [
+        [
+          {
+            "node": "Normalize Threads result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Threads result",
             "type": "main",
             "index": 0
           }
