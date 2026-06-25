@@ -7,14 +7,23 @@ Sheet-driven multi-platform poster + inbound form lead capture. Independent of t
 
 | File | Loop | Trigger | Purpose |
 |------|------|---------|---------|
-| `n8n-workflows/mkt-post-scheduler.json` | A (posting) | cron `*/20 * * * *` | read calendar → claim → post → write-back |
+| `n8n-workflows/mkt-post-scheduler.json` | A (posting) | cron `*/20 * * * *` | read calendar → claim → post (FB+Threads) → write-back |
+| `n8n-workflows/mkt-copy-gen.json` | A0 (copy) | cron `*/10 * * * *` | brief/rework row → Gemini Flash → copyVi/copyEn → status=review |
 | `n8n-workflows/mkt-lead-capture.json` | B (leads) | webhook `POST /webhook/mkt-lead` | form → validate → leads tab + Gmail |
 | `n8n-workflows/mkt-meta-token-refresh.json` | — | cron Sun 03:00 | refresh FB Page + Threads long-lived tokens |
 
-> **Phase 1 status:** the FB/Threads **publish** step in `mkt-post-scheduler` is a placeholder Code node
-> (`Platform fan-out (adapters)`). The full loop — advisory lock, claim, idempotency, validation,
-> write-back, audit, unlock — is real and testable now. Wire the real HTTP publish subgraphs (per
-> `plans/.../phase-05-platform-adapter-spec.md`) once `MKT_*` Meta creds exist (see below).
+> **Status (2026-06-25):** FB Page + Threads publish adapters are **LIVE** (real HTTP, verified e2e —
+> both post image + caption, real URLs written back). Per-platform gating via the `platforms` CSV column
+> (`facebook`,`threads`). Copy auto-generation (`mkt-copy-gen`) is live: `brief`→Gemini→`review` gate,
+> `rework`+`feedback`→regen. **Instagram + X adapters = NEXT** (IG first; IG needs an IG Business account
+> linked to the FB Page — not yet set up). See `plans/.../phase-05-platform-adapter-spec.md`.
+
+### Full content flow
+```
+status=brief ──[mkt-copy-gen / Gemini]──▶ status=review ──(human approves in Sheet)──▶ status=ready
+   └─ rework+feedback loops back ─┘                                                        │
+status=ready ──[mkt-post-scheduler]── claim → Drive heroFile → FB photo + Threads 2-step ──▶ posted
+```
 
 ## 1. Import
 
@@ -49,9 +58,20 @@ Meta tokens (FB Page, Threads) are stored as n8n credentials too; capture their 
 
 Create one spreadsheet, ID → `MKT_SHEET_ID`. Two tabs:
 
-**`calendar`** — headers (row 1, exact): `id, product, angle, copyVi, copyEn, driveFolderId, platforms,
-scheduledAt, status, postUrl, postedAt, error`. Set `status` data-validation to
-`ready,posting,posted,partial,error`. Authors write `scheduledAt` in **Asia/Bangkok**.
+**`calendar`** — headers (row 1, exact): `id, product, angle, length, copyVi, copyEn, feedback,
+driveFolderId, heroFile, platforms, scheduledAt, status, postUrl, postedAt, error`. Set `status`
+data-validation to `brief,review,rework,ready,posting,posted,partial,error`. Authors write `scheduledAt`
+in **Asia/Bangkok**.
+
+Status lifecycle:
+- `brief` → fill `product` + `angle` (+ optional `length`: short/medium/long or a word count); `mkt-copy-gen`
+  writes `copyVi`/`copyEn`, flips to `review`. Leave copy cells **empty** — never hand-write them.
+- `review` → human reads copy. Approve → set `ready` + fill `scheduledAt`. Reject → set `rework` + write
+  `feedback` (copy-gen regenerates addressing it).
+- `ready` → `mkt-post-scheduler` claims (→`posting`) and publishes (→`posted`/`partial`/`error`).
+- `heroFile` = exact image filename in the post's `driveFolderId` folder (per-row; blank → legacy
+  `hero.png`). Lets one shared folder hold many images. Duplicate filenames in a folder → loud
+  `ambiguous heroFile` error (never silently posts the wrong image).
 
 **`leads`** — headers: `receivedAt, name, email, phone, message, sourceProduct, sourcePlatform, rawPayload`.
 
@@ -60,17 +80,21 @@ Share the spreadsheet with the Google account behind the n8n OAuth creds.
 ## 5. Google Drive (asset store)
 
 ```
-marketing-creative/
-  <id>/                  ← calendar.driveFolderId points here
-    hero.png             ← REQUIRED (missing → row goes to status=error, no post)
-    slides/01.png …      ← OPTIONAL; absent/empty → hero-only post, carousel skipped
+marketing-creative/                      ← one shared folder per project/campaign (= calendar.driveFolderId)
+    agentportal-dataentry-01.png          ← calendar.heroFile names the exact image per row
+    productb-launch-02.png                ← many images coexist; the row picks which one
+    hero.png                              ← legacy fallback used when heroFile is blank
 ```
 
-Zero-pad slide filenames for deterministic carousel order. Share `marketing-creative/` with the n8n Google account.
+The shared-folder + per-row `heroFile` model replaces the old folder-per-post layout. Share the folder
+"anyone with link" (required for Threads/IG — see below) AND with the n8n Google account (for FB binary
+download).
 
-> **Threads caveat:** Threads publishing needs **public image URLs**, not binary upload. Before wiring the
-> Threads adapter, set the Drive assets (or a mirror) to "anyone with link", or serve them via the
-> render-service static host. FB Page uses binary upload and has no such requirement.
+> **Public-URL platforms (Threads, Instagram):** these publish by **image URL**, not binary upload — the
+> platform's server fetches the image itself. The folder MUST be shared "anyone with link". The adapter
+> derives the URL as `https://lh3.googleusercontent.com/d/<fileId>` (verified to return raw image bytes).
+> FB Page uses **binary upload** (Drive download → multipart) and needs no public sharing. This binary-vs-URL
+> split is absorbed inside the adapter branches.
 
 ## 6. Lead form (Google Form + Apps Script glue)
 
