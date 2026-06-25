@@ -37,7 +37,11 @@ normalized post spec and returns a normalized result. Adding a channel = adding 
   2. `POST /{page}/feed` with `message` + `attached_media=[{media_fbid:id1},…]`.
 - Token: `{{$env.MKT_FB_PAGE_ACCESS_TOKEN}}`. Text limit generous (~63k); use copyVi.
 - url = `https://facebook.com/{post_id}`.
-- **Caveat (OQ#2):** requires CLASSIC Page; new Pages-experience profiles differ. Verify Page type.
+- **OQ#2 RESOLVED (2026-06-24, id corrected 2026-06-25):** Page is **New Pages Experience** (id
+  `1119172831269274`, DAIS). NPE differs from classic only in UI + token acquisition, NOT in publish
+  endpoints — `/photos` + `/feed` with `attached_media` work identically. Token via `/me/accounts` needs
+  scopes `pages_manage_posts` + `pages_show_list` + `pages_read_engagement`. No adapter rewrite; smoke
+  single-photo first.
 
 ### Threads (two-step container → publish)
 - **Single image:**

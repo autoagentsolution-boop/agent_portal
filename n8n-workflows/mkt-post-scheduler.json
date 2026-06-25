@@ -321,7 +321,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build asset spec + platform list from the claimed row.\nconst row = $('Pick one due row').first().json;\nconst platforms = String(row.platforms || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);\nif (platforms.length === 0) throw new Error('mkt_scheduler: row has no platforms');\nconst driveFolderId = String(row.driveFolderId || '').trim();\nreturn [{ json: {\n  id: row.id,\n  rowNumber: row.row_number,\n  product: row.product,\n  copyVi: row.copyVi || '',\n  copyEn: row.copyEn || '',\n  platforms,\n  driveFolderId\n} }];"
+        "jsCode": "// Build asset spec + platform list from the claimed row.\nconst row = $('Pick one due row').first().json;\nconst platforms = String(row.platforms || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);\nif (platforms.length === 0) throw new Error('mkt_scheduler: row has no platforms');\nconst driveFolderId = String(row.driveFolderId || '').trim();\n// heroFile = exact image filename within the (possibly shared) Drive folder. Blank -> legacy hero.png fallback.\nconst heroFile = String(row.heroFile || '').trim() || 'hero.png';\nreturn [{ json: {\n  id: row.id,\n  rowNumber: row.row_number,\n  product: row.product,\n  copyVi: row.copyVi || '',\n  copyEn: row.copyEn || '',\n  platforms,\n  driveFolderId,\n  heroFile\n} }];"
       },
       "id": "build-spec",
       "name": "Build post spec",
@@ -364,7 +364,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Validate hero presence. If Drive list errored or no hero.png → emit validation error marker.\nconst spec = $('Build post spec').first().json;\nconst files = $input.all().map(i => i.json).filter(f => f && f.id);\nconst hero = files.find(f => (f.name || '').toLowerCase() === 'hero.png');\nif (!hero) {\n  return [{ json: { __invalid: true, id: spec.id, rowNumber: spec.rowNumber, error: 'hero.png missing in Drive folder' } }];\n}\nreturn [{ json: { ...spec, heroFileId: hero.id } }];"
+        "jsCode": "// Resolve the post's hero image by filename (spec.heroFile) within the Drive folder.\n// Shared-folder model: one campaign/project folder holds many images; the row names which one.\n// Drive does NOT enforce unique filenames -> guard against >1 match (loud error beats wrong image).\nconst spec = $('Build post spec').first().json;\nconst files = $input.all().map(i => i.json).filter(f => f && f.id);\nconst want = String(spec.heroFile || 'hero.png').toLowerCase();\nconst matches = files.filter(f => (f.name || '').toLowerCase() === want);\nif (matches.length === 0) {\n  return [{ json: { __invalid: true, id: spec.id, rowNumber: spec.rowNumber, error: `heroFile '${spec.heroFile}' not found in Drive folder ${spec.driveFolderId}` } }];\n}\nif (matches.length > 1) {\n  return [{ json: { __invalid: true, id: spec.id, rowNumber: spec.rowNumber, error: `ambiguous heroFile '${spec.heroFile}': ${matches.length} files share this name in folder ${spec.driveFolderId}` } }];\n}\nreturn [{ json: { ...spec, heroFileId: matches[0].id } }];"
       },
       "id": "validate-assets",
       "name": "Validate assets",
@@ -409,15 +409,15 @@
     },
     {
       "parameters": {
-        "jsCode": "// PHASE 1 ADAPTER PLACEHOLDER — publish to each platform.\n// FB Page = binary multi-photo; Threads = public image_url two-step container/publish.\n// Wired against MKT_* creds in P03. Until creds live, this aggregates a normalized result per platform.\n// Replace the body of each platform branch with real HTTP nodes when MKT_FB_PAGE_ACCESS_TOKEN /\n// MKT_THREADS_ACCESS_TOKEN are configured (see docs/marketing-pipeline-setup.md).\nconst spec = $json;\nconst results = [];\nfor (const p of spec.platforms) {\n  if (p !== 'facebook' && p !== 'threads') {\n    results.push({ platform: p, ok: false, url: null, error: 'no adapter (Phase 1 = facebook,threads only)' });\n  } else {\n    // Real publish happens in the platform HTTP subgraphs (P03/P05). Placeholder marks pending wiring.\n    results.push({ platform: p, ok: false, url: null, error: 'adapter not yet wired — set MKT_* creds (P03)' });\n  }\n}\nreturn [{ json: { id: spec.id, rowNumber: spec.rowNumber, results } }];"
+        "jsCode": "// Normalize FB /photos response (or error) into contract {results:[{platform,ok,url,error}]}.\n// Both success + continueErrorOutput branches land here; $json carries whichever fired.\nconst meta = $('Validate assets').first().json;\nconst platforms = meta.platforms || [];\nconst resp = $json || {};\nconst results = [];\nif (platforms.includes('facebook')) {\n  const errObj = resp.error;\n  const pid = resp.post_id || resp.id;\n  if (pid && !errObj) {\n    results.push({ platform:'facebook', ok:true, url:`https://facebook.com/${pid}`, error:null });\n  } else {\n    let msg = 'FB publish failed';\n    if (errObj) msg = typeof errObj==='string' ? errObj : (errObj.message || JSON.stringify(errObj));\n    else if (resp.message) msg = resp.message;\n    results.push({ platform:'facebook', ok:false, url:null, error:('FB: '+msg).slice(0,300) });\n  }\n}\nfor (const p of platforms) if (p!=='facebook') results.push({ platform:p, ok:false, url:null, error:'adapter not yet wired (Phase 1: facebook only live)' });\nreturn [{ json: { id: meta.id, rowNumber: meta.rowNumber, results } }];"
       },
       "id": "fanout-adapters",
-      "name": "Platform fan-out (adapters)",
+      "name": "Normalize FB result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2320,
-        220
+        2760,
+        440
       ]
     },
     {
@@ -674,6 +674,78 @@
           "name": "Videofarm Postgres"
         }
       }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Validate assets').item.json.heroFileId }}"
+        },
+        "options": {
+          "binaryPropertyName": "data"
+        }
+      },
+      "id": "drive-download",
+      "name": "Download hero (Drive)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2320,
+        440
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "diCdoUNOKGfXm3Vg",
+          "name": "MKT Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/{{$env.MKT_FB_PAGE_ID}}/photos",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formData",
+              "name": "message",
+              "value": "={{ $('Validate assets').item.json.copyVi }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "published",
+              "value": "true"
+            },
+            {
+              "parameterType": "formData",
+              "name": "access_token",
+              "value": "={{$env.MKT_FB_PAGE_ACCESS_TOKEN}}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "source",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "fb-photo",
+      "name": "FB publish photo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2540,
+        440
+      ],
+      "onError": "continueErrorOutput",
+      "retryOnFail": false
     }
   ],
   "connections": {
@@ -813,18 +885,7 @@
         ],
         [
           {
-            "node": "Platform fan-out (adapters)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Platform fan-out (adapters)": {
-      "main": [
-        [
-          {
-            "node": "Aggregate results",
+            "node": "Download hero (Drive)",
             "type": "main",
             "index": 0
           }
@@ -869,6 +930,46 @@
         [
           {
             "node": "Release advisory lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download hero (Drive)": {
+      "main": [
+        [
+          {
+            "node": "FB publish photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB publish photo": {
+      "main": [
+        [
+          {
+            "node": "Normalize FB result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize FB result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize FB result": {
+      "main": [
+        [
+          {
+            "node": "Aggregate results",
             "type": "main",
             "index": 0
           }

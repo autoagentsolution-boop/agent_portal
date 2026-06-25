@@ -37,6 +37,11 @@ render-service/public/storyboard-v2/*/music.mp3
 render-service/temp/
 .remotion/
 
+# Meta/FB token dumps + screenshots with secrets (NEVER commit — live access tokens)
+page.json
+*page*.json
+*.png
+
 # Local reference / scratch dirs (large, user-personal)
 Bokho/
 ReferenceVideoType/

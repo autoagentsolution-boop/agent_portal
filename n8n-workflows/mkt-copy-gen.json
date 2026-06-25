@@ -1,0 +1,139 @@
+{
+  "name": "mkt-copy-gen",
+  "active": false,
+  "settings": { "timezone": "Asia/Bangkok", "executionTimeout": 120, "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "*/10 * * * *" }] } },
+      "id": "cron",
+      "name": "Every 10 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [160, 360]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "={{$env.MKT_SHEET_ID}}", "cachedResultName": "Marketing Calendar" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "0", "cachedResultName": "calendar" },
+        "options": {}
+      },
+      "id": "read-calendar",
+      "name": "Read calendar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [380, 360],
+      "alwaysOutputData": true,
+      "credentials": { "googleSheetsOAuth2Api": { "id": "NOJxmMKDlNl6T5Tj", "name": "MKT Google Sheets account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pick ONE row needing copy: status=brief (new) OR rework (rejected, regen). Emit hasDue flag so empty path stays reachable.\nconst rows = $input.all().map(i => i.json);\nconst todo = rows.filter(r => { const s = String(r.status || '').trim(); return s === 'brief' || s === 'rework'; });\nif (todo.length === 0) return [{ json: { hasDue: false } }];\nconst row = todo[0];\nif (row.row_number === undefined || row.row_number === null) throw new Error('mkt_copygen: read node must expose row_number for write-back');\nreturn [{ json: { hasDue: true, ...row } }];"
+      },
+      "id": "pick-brief",
+      "name": "Pick one brief row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 360]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2, "leftValue": "", "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [
+            { "leftValue": "={{ $json.hasDue }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+          ]
+        }
+      },
+      "id": "if-brief",
+      "name": "IF has brief row",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [820, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Gemini request: structural floor in code, creative flexibility from the row (angle/length/feedback).\nconst row = $json;\nconst product = String(row.product || '').trim();\nconst angle = String(row.angle || '').trim();\nconst lengthRaw = String(row.length || '').trim().toLowerCase();\nconst isRework = String(row.status || '').trim() === 'rework';\nconst feedback = String(row.feedback || '').trim();\nif (!product) throw new Error('mkt_copygen: row missing product');\n\n// length column overrides default; supports keyword or raw word count\nlet lengthSpec = 'khoảng 130-220 từ';\nif (lengthRaw) {\n  if (['short', 'ngắn', 'ngan'].includes(lengthRaw)) lengthSpec = 'ngắn gọn, khoảng 80-130 từ';\n  else if (['medium', 'vừa', 'vua'].includes(lengthRaw)) lengthSpec = 'khoảng 130-220 từ';\n  else if (['long', 'dài', 'dai'].includes(lengthRaw)) lengthSpec = 'dài, khoảng 220-320 từ';\n  else if (/^\\d+$/.test(lengthRaw)) lengthSpec = `khoảng ${lengthRaw} từ (cho phép lệch ±15%)`;\n}\n\nconst system = [\n  'Bạn là copywriter mạng xã hội cho Data Agentic Solutions (DAIS) — công ty làm nền tảng & giải pháp công nghệ dễ dùng, triển khai gọn, bám vận hành thực tế.',\n  'Viết 1 bài đăng Facebook/Threads có tính kéo tương tác cao. Viết như MỘT CON NGƯỜI đang chia sẻ, KHÔNG phải brand đang quảng cáo.',\n  'ĐỊNH DẠNG (guardrail cứng): KHÔNG dùng HTML/markdown (không <br>, <b>, **). Chỉ newline thật để tách dòng. Câu ngắn (<20 từ). Nhiều khoảng trắng giữa các dòng cho dễ đọc trên mobile.',\n  'CẤU TRÚC NỀN cho copyVi (copyEn dịch tương đương tự nhiên, giữ cùng sức nặng hook): HOOK dòng đầu TỐI ĐA 50 KÝ TỰ (kể cả emoji & dấu câu) — là số/tình huống cụ thể, câu trái chiều, hoặc thừa nhận nỗi đau; không vòng vo, không tên sản phẩm ở hook. Sau đó: dòng trống; re-hook đào sâu; dòng trống; thân 2-3 dòng emoji-led nói KẾT QUẢ vận hành cho con người (không liệt kê tính năng); dòng trống; 1 dòng chốt; 1 câu hỏi CỤ THỂ gây thảo luận (tránh \"bạn nghĩ sao?\"); 1 CTA duy nhất; dòng cuối 4-6 hashtag bắt đầu #DAIS.',\n  `YÊU CẦU ĐỘ DÀI: copyVi ${lengthSpec}. Tổng 4-6 emoji. TUYỆT ĐỐI tránh sáo rỗng và các từ: \"giải pháp đột phá\", \"khám phá\", \"thay đổi cuộc chơi\", \"nâng tầm\", \"tối ưu hiệu suất tức thì\". Không bịa số liệu, KHÔNG bịa % hay con số nếu brief không cung cấp, không hứa hẹn quá mức.`,\n  'ƯU TIÊN BRIEF: Nếu phần \"Góc tiếp cận (angle)\" có yêu cầu riêng về bố cục / giọng / cách kể / điểm nhấn → TUÂN THEO brief đó (linh hoạt cấu trúc nền), MIỄN vẫn giữ guardrail cứng (không HTML, hook ≤50 ký tự, tránh sáo rỗng, đúng độ dài). Angle ưu tiên cao hơn cấu trúc nền.'\n].join('\\n');\n\nlet user = `Sản phẩm/dịch vụ: ${product}\\nGóc tiếp cận (angle): ${angle || '(tự chọn góc phù hợp, nhấn lợi ích vận hành)'}\\nViết copyVi và copyEn.`;\nif (isRework && feedback) user += `\\n\\nLƯU Ý: bản trước đã bị TỪ CHỐI. Feedback của người duyệt: \"${feedback}\". Hãy viết lại để KHẮC PHỤC đúng các điểm này, đừng lặp lại lỗi cũ.`;\nelse if (isRework) user += `\\n\\nLƯU Ý: bản trước đã bị từ chối (không có ghi chú cụ thể). Hãy viết một phiên bản KHÁC HẲN về hook và cách tiếp cận.`;\n\nconst geminiBody = {\n  systemInstruction: { parts: [{ text: system }] },\n  contents: [{ role: 'user', parts: [{ text: user }] }],\n  generationConfig: {\n    temperature: 0.95,\n    topP: 0.95,\n    maxOutputTokens: 8192,\n    responseMimeType: 'application/json',\n    responseSchema: {\n      type: 'OBJECT',\n      properties: { copyVi: { type: 'STRING' }, copyEn: { type: 'STRING' } },\n      required: ['copyVi', 'copyEn']\n    }\n  }\n};\nreturn [{ json: { id: row.id, row_number: row.row_number, origStatus: String(row.status || 'brief').trim(), geminiBody } }];"
+      },
+      "id": "build-prompt",
+      "name": "Build Gemini request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "sendQuery": true,
+        "queryParameters": { "parameters": [{ "name": "key", "value": "={{$env.GEMINI_API_KEY}}" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.geminiBody) }}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "gemini-call",
+      "name": "Gemini Flash copy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1260, 320],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Gemini structured-JSON response. On any failure -> mark error; row stays at origStatus for retry.\n// Handles both the success branch (Gemini body) and the continueErrorOutput branch (HTTP/Axios error object).\nconst meta = $('Build Gemini request').first().json;\nconst resp = $json;\nlet copyVi = '', copyEn = '', err = '';\ntry {\n  // continueErrorOutput puts the HTTP error here; surface the real upstream status, not a generic 'empty'.\n  if (resp && resp.error) {\n    const e = resp.error;\n    const code = e.status || e.code || '';\n    let msg = e.message || 'upstream error';\n    const m = String(msg).match(/\\\"message\\\":\\s*\\\"([^\\\"]+)\\\"/);\n    if (m) msg = m[1];\n    throw new Error(`Gemini HTTP ${code}: ${msg}`);\n  }\n  const cand = resp?.candidates?.[0];\n  const finish = cand?.finishReason;\n  const text = cand?.content?.parts?.[0]?.text;\n  if (!text) throw new Error(`empty Gemini response (finishReason=${finish || 'none'})`);\n  const parsed = JSON.parse(text);\n  copyVi = String(parsed.copyVi || '').trim();\n  copyEn = String(parsed.copyEn || '').trim();\n  if (!copyVi || !copyEn) throw new Error('missing copyVi/copyEn in model output');\n} catch (e) {\n  err = 'copygen: ' + e.message;\n}\nreturn [{ json: { id: meta.id, row_number: meta.row_number, origStatus: meta.origStatus || 'brief', copyVi, copyEn, ok: !err, error: err } }];"
+      },
+      "id": "parse-copy",
+      "name": "Parse copy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1480, 320]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "mode": "id", "value": "={{$env.MKT_SHEET_ID}}", "cachedResultName": "Marketing Calendar" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "0", "cachedResultName": "calendar" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["row_number"],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true,
+          "schema": [
+            { "id": "row_number", "displayName": "row_number", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "copyVi", "displayName": "copyVi", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "copyEn", "displayName": "copyEn", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "status", "displayName": "status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "error", "displayName": "error", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ],
+          "value": {
+            "row_number": "={{ $json.row_number }}",
+            "copyVi": "={{ $json.copyVi }}",
+            "copyEn": "={{ $json.copyEn }}",
+            "status": "={{ $json.ok ? 'review' : $json.origStatus }}",
+            "error": "={{ $json.error }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "writeback-copy",
+      "name": "Write copy + status=review",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1700, 320],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "NOJxmMKDlNl6T5Tj", "name": "MKT Google Sheets account" } }
+    }
+  ],
+  "connections": {
+    "Every 10 min": { "main": [[{ "node": "Read calendar", "type": "main", "index": 0 }]] },
+    "Read calendar": { "main": [[{ "node": "Pick one brief row", "type": "main", "index": 0 }]] },
+    "Pick one brief row": { "main": [[{ "node": "IF has brief row", "type": "main", "index": 0 }]] },
+    "IF has brief row": { "main": [[{ "node": "Build Gemini request", "type": "main", "index": 0 }], []] },
+    "Build Gemini request": { "main": [[{ "node": "Gemini Flash copy", "type": "main", "index": 0 }]] },
+    "Gemini Flash copy": { "main": [[{ "node": "Parse copy", "type": "main", "index": 0 }], [{ "node": "Parse copy", "type": "main", "index": 0 }]] },
+    "Parse copy": { "main": [[{ "node": "Write copy + status=review", "type": "main", "index": 0 }]] }
+  }
+}
