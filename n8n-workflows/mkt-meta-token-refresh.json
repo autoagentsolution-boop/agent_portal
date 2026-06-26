@@ -13,7 +13,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Preflight: marketing Meta app creds must exist. Token VALUES never logged.\nconst miss = [];\nfor (const k of ['MKT_FB_APP_ID','MKT_FB_APP_SECRET','MKT_FB_PAGE_ACCESS_TOKEN','MKT_FB_CREDENTIAL_ID','N8N_API_KEY']) {\n  if (!$env[k]) miss.push(k);\n}\nif (miss.length) throw new Error('mkt_meta_refresh: missing env vars: ' + miss.join(', '));\nconst hasThreads = !!($env.MKT_THREADS_ACCESS_TOKEN && $env.MKT_THREADS_CREDENTIAL_ID);\nreturn [{ json: { jobId: crypto.randomUUID(), startedAt: new Date().toISOString(), hasThreads, fbTokenLength: $env.MKT_FB_PAGE_ACCESS_TOKEN.length } }];"
+        "jsCode": "// SECRET-FREE health monitor. No app secret anywhere (we cannot obtain it).\n// FB/IG page tokens derived from a long-lived user token never expire -> we only check LIVENESS\n// via GET /me (200+id = alive, code 190 = dead -> re-mint in browser). Threads rotates (th_refresh_token,\n// no secret required) so it gets a real refresh + credential PATCH.\nif (!$env.MKT_FB_PAGE_ACCESS_TOKEN) throw new Error('mkt_meta_refresh: missing MKT_FB_PAGE_ACCESS_TOKEN');\nconst hasThreads = !!($env.MKT_THREADS_ACCESS_TOKEN && $env.MKT_THREADS_CREDENTIAL_ID && $env.N8N_API_KEY);\nconst hasIg = !!($env.MKT_IG_ACCESS_TOKEN && $env.MKT_IG_USER_ID);\nreturn [{ json: { jobId: crypto.randomUUID(), startedAt: new Date().toISOString(), hasThreads, hasIg, fbTokenLength: $env.MKT_FB_PAGE_ACCESS_TOKEN.length } }];"
       },
       "id": "preflight",
       "name": "Preflight env check",
@@ -24,60 +24,37 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "https://graph.facebook.com/v18.0/oauth/access_token",
+        "url": "https://graph.facebook.com/v25.0/me",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "grant_type", "value": "fb_exchange_token" },
-            { "name": "client_id", "value": "={{$env.MKT_FB_APP_ID}}" },
-            { "name": "client_secret", "value": "={{$env.MKT_FB_APP_SECRET}}" },
-            { "name": "fb_exchange_token", "value": "={{$env.MKT_FB_PAGE_ACCESS_TOKEN}}" }
+            { "name": "fields", "value": "id,name" },
+            { "name": "access_token", "value": "={{$env.MKT_FB_PAGE_ACCESS_TOKEN}}" }
           ]
         },
         "options": { "timeout": 30000 }
       },
-      "id": "fb-exchange",
-      "name": "FB exchange token",
+      "id": "fb-live",
+      "name": "FB token liveness",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [640, 360]
+      "position": [640, 360],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "const resp = $json;\nif (!resp.access_token) throw new Error('mkt_fb_refresh_no_access_token in response');\nconst expiresIn = resp.expires_in || null;\nreturn [{ json: { fbNewTokenLength: resp.access_token.length, fbExpiresInSec: expiresIn, fbExpiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null } }];"
+        "jsCode": "// GET /me on a page token returns { id, name } when alive, or { error:{code:190,...} } when dead.\nconst r = $json || {};\nconst err = r.error || null;\nconst alive = !!r.id && !err;\nlet reason = null;\nif (err) reason = (err.code === 190 ? 'expired_or_revoked' : (err.message || 'error')) + (err.error_subcode ? ` (subcode ${err.error_subcode})` : '');\nreturn [{ json: { fbAlive: alive, fbName: r.name || null, fbNeedsAttention: !alive, fbError: err ? (err.message || String(err)) : null, fbReason: reason } }];"
       },
       "id": "fb-parse",
-      "name": "Parse FB token (no value logged)",
+      "name": "Parse FB liveness",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [860, 360]
     },
     {
       "parameters": {
-        "method": "PATCH",
-        "url": "=http://localhost:5678/api/v1/credentials/{{$env.MKT_FB_CREDENTIAL_ID}}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "X-N8N-API-KEY", "value": "={{$env.N8N_API_KEY}}" },
-            { "name": "content-type", "value": "application/json" }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={ \"data\": { \"accessToken\": {{ JSON.stringify($('FB exchange token').first().json.access_token) }} } }",
-        "options": { "timeout": 10000 }
-      },
-      "id": "fb-update-cred",
-      "name": "Update FB credential",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1080, 360]
-    },
-    {
-      "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict" },
+          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict", "leftValue": "" },
           "combinator": "and",
           "conditions": [
             { "leftValue": "={{ $('Preflight env check').first().json.hasThreads }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
@@ -88,7 +65,7 @@
       "name": "IF Threads configured",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
-      "position": [1300, 360]
+      "position": [1080, 360]
     },
     {
       "parameters": {
@@ -107,7 +84,7 @@
       "name": "Threads refresh token",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1520, 280],
+      "position": [1300, 240],
       "onError": "continueRegularOutput"
     },
     {
@@ -130,17 +107,64 @@
       "name": "Update Threads credential",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1740, 280],
+      "position": [1520, 240],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2, "typeValidation": "strict", "leftValue": "" },
+          "combinator": "and",
+          "conditions": [
+            { "leftValue": "={{ $('Preflight env check').first().json.hasIg }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+          ]
+        }
+      },
+      "id": "if-ig-configured",
+      "name": "IF IG configured",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1300, 480]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v25.0/{{$env.MKT_IG_USER_ID}}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "fields", "value": "id,username" },
+            { "name": "access_token", "value": "={{$env.MKT_IG_ACCESS_TOKEN}}" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "ig-live",
+      "name": "IG token liveness",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 520],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $json || {};\nconst err = r.error || null;\nconst alive = !!r.id && !err;\nlet reason = null;\nif (err) reason = (err.code === 190 ? 'expired_or_revoked' : (err.message || 'error')) + (err.error_subcode ? ` (subcode ${err.error_subcode})` : '');\nreturn [{ json: { igAlive: alive, igUsername: r.username || null, igNeedsAttention: !alive, igError: err ? (err.message || String(err)) : null, igReason: reason } }];"
+      },
+      "id": "ig-parse",
+      "name": "Parse IG liveness",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1740, 520],
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO run_log (job_id, level, step, detail) VALUES (gen_random_uuid(), 'info'::\"LogLevel\", 'upload'::\"LogStep\", $1::jsonb);",
-        "options": { "queryReplacement": "={{ JSON.stringify({ event: 'mkt_meta_token_refreshed', jobId: $('Preflight env check').first().json.jobId, fbNewTokenLength: $('Parse FB token (no value logged)').first().json.fbNewTokenLength, fbExpiresAt: $('Parse FB token (no value logged)').first().json.fbExpiresAt, threadsRefreshed: $('Preflight env check').first().json.hasThreads }) }}" }
+        "query": "=INSERT INTO run_log (job_id, level, step, detail) VALUES (gen_random_uuid(), '{{ ($('Parse FB liveness').first().json.fbNeedsAttention || ($('Preflight env check').first().json.hasIg && $('Parse IG liveness').first().json.igNeedsAttention)) ? 'warn' : 'info' }}'::\"LogLevel\", 'upload'::\"LogStep\", $1::jsonb);",
+        "options": { "queryReplacement": "={{ JSON.stringify({ event: 'mkt_meta_token_health', jobId: $('Preflight env check').first().json.jobId, fb: { alive: $('Parse FB liveness').first().json.fbAlive, name: $('Parse FB liveness').first().json.fbName, needsAttention: $('Parse FB liveness').first().json.fbNeedsAttention, reason: $('Parse FB liveness').first().json.fbReason, error: $('Parse FB liveness').first().json.fbError }, ig: $('Preflight env check').first().json.hasIg ? { alive: $('Parse IG liveness').first().json.igAlive, username: $('Parse IG liveness').first().json.igUsername, needsAttention: $('Parse IG liveness').first().json.igNeedsAttention, reason: $('Parse IG liveness').first().json.igReason, error: $('Parse IG liveness').first().json.igError } : null, threadsRefreshed: $('Preflight env check').first().json.hasThreads }) }}" }
       },
-      "id": "log-success",
-      "name": "Log refresh success",
+      "id": "log-health",
+      "name": "Log token health",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [1960, 360],
@@ -149,17 +173,24 @@
   ],
   "connections": {
     "Sunday 03:00": { "main": [[{ "node": "Preflight env check", "type": "main", "index": 0 }]] },
-    "Preflight env check": { "main": [[{ "node": "FB exchange token", "type": "main", "index": 0 }]] },
-    "FB exchange token": { "main": [[{ "node": "Parse FB token (no value logged)", "type": "main", "index": 0 }]] },
-    "Parse FB token (no value logged)": { "main": [[{ "node": "Update FB credential", "type": "main", "index": 0 }]] },
-    "Update FB credential": { "main": [[{ "node": "IF Threads configured", "type": "main", "index": 0 }]] },
+    "Preflight env check": { "main": [[{ "node": "FB token liveness", "type": "main", "index": 0 }]] },
+    "FB token liveness": { "main": [[{ "node": "Parse FB liveness", "type": "main", "index": 0 }]] },
+    "Parse FB liveness": { "main": [[{ "node": "IF Threads configured", "type": "main", "index": 0 }]] },
     "IF Threads configured": {
       "main": [
         [{ "node": "Threads refresh token", "type": "main", "index": 0 }],
-        [{ "node": "Log refresh success", "type": "main", "index": 0 }]
+        [{ "node": "IF IG configured", "type": "main", "index": 0 }]
       ]
     },
     "Threads refresh token": { "main": [[{ "node": "Update Threads credential", "type": "main", "index": 0 }]] },
-    "Update Threads credential": { "main": [[{ "node": "Log refresh success", "type": "main", "index": 0 }]] }
+    "Update Threads credential": { "main": [[{ "node": "IF IG configured", "type": "main", "index": 0 }]] },
+    "IF IG configured": {
+      "main": [
+        [{ "node": "IG token liveness", "type": "main", "index": 0 }],
+        [{ "node": "Log token health", "type": "main", "index": 0 }]
+      ]
+    },
+    "IG token liveness": { "main": [[{ "node": "Parse IG liveness", "type": "main", "index": 0 }]] },
+    "Parse IG liveness": { "main": [[{ "node": "Log token health", "type": "main", "index": 0 }]] }
   }
 }

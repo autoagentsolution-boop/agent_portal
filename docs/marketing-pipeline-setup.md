@@ -7,22 +7,26 @@ Sheet-driven multi-platform poster + inbound form lead capture. Independent of t
 
 | File | Loop | Trigger | Purpose |
 |------|------|---------|---------|
-| `n8n-workflows/mkt-post-scheduler.json` | A (posting) | cron `*/20 * * * *` | read calendar → claim → post (FB+Threads) → write-back |
+| `n8n-workflows/mkt-post-scheduler.json` | A (posting) | cron `*/20 * * * *` | read calendar → claim → post (FB+Threads+IG) → write-back |
 | `n8n-workflows/mkt-copy-gen.json` | A0 (copy) | cron `*/10 * * * *` | brief/rework row → Gemini Flash → copyVi/copyEn → status=review |
 | `n8n-workflows/mkt-lead-capture.json` | B (leads) | webhook `POST /webhook/mkt-lead` | form → validate → leads tab + Gmail |
 | `n8n-workflows/mkt-meta-token-refresh.json` | — | cron Sun 03:00 | refresh FB Page + Threads long-lived tokens |
 
 > **Status (2026-06-25):** FB Page + Threads publish adapters are **LIVE** (real HTTP, verified e2e —
-> both post image + caption, real URLs written back). Per-platform gating via the `platforms` CSV column
-> (`facebook`,`threads`). Copy auto-generation (`mkt-copy-gen`) is live: `brief`→Gemini→`review` gate,
-> `rework`+`feedback`→regen. **Instagram + X adapters = NEXT** (IG first; IG needs an IG Business account
-> linked to the FB Page — not yet set up). See `plans/.../phase-05-platform-adapter-spec.md`.
+> both post image + caption, real URLs written back). **Instagram adapter is BUILT** (URL-fetch model,
+> dormant until `MKT_IG_*` env set — smoke-pending with a role-user token; app still in Development mode
+> so live publish needs a user with an app role + IG Business linked). Per-platform gating via the
+> `platforms` CSV column (`facebook`,`threads`,`instagram`). Copy auto-generation (`mkt-copy-gen`) is live:
+> `brief`→Gemini→`review` gate, `rework`+`feedback`→regen.
+> **X adapter = deferred** (no account). **IG inbound webhook (listening) = deferred** — Meta requires the
+> app to be Published + app-reviewed before webhook events deliver; build when the app exits Development.
+> See `plans/.../phase-05-platform-adapter-spec.md`.
 
 ### Full content flow
 ```
 status=brief ──[mkt-copy-gen / Gemini]──▶ status=review ──(human approves in Sheet)──▶ status=ready
    └─ rework+feedback loops back ─┘                                                        │
-status=ready ──[mkt-post-scheduler]── claim → Drive heroFile → FB photo + Threads 2-step ──▶ posted
+status=ready ──[mkt-post-scheduler]── claim → Drive heroFile → FB photo + Threads/IG 2-step ──▶ posted
 ```
 
 ## 1. Import
@@ -51,8 +55,8 @@ credential vault.
 | Marketing Gmail (Sales) | gmailOAuth2 | gmail.send |
 | Videofarm Postgres | postgres | (reused, already exists) |
 
-Meta tokens (FB Page, Threads) are stored as n8n credentials too; capture their credential IDs into
-`MKT_FB_CREDENTIAL_ID` / `MKT_THREADS_CREDENTIAL_ID` so the weekly refresh can PATCH them.
+Meta tokens (FB Page, Threads, Instagram) are stored as n8n credentials too; capture their credential IDs into
+`MKT_FB_CREDENTIAL_ID` / `MKT_THREADS_CREDENTIAL_ID` / `MKT_IG_CREDENTIAL_ID` so the weekly refresh can PATCH them.
 
 ## 4. Google Sheet (control plane)
 
@@ -139,6 +143,20 @@ Reuses the `fb-token-refresh.json` pattern (exchange long-lived token weekly, PA
 - **Threads** needs a Threads profile linked to the same Meta app with `threads_basic` +
   `threads_content_publish`. Separate token from the FB Page token. Leave the `MKT_THREADS_*` vars blank until
   the account exists — the refresh workflow skips Threads when unset.
+- **Instagram** uses the **Instagram API with Instagram Login** flow (base URL `graph.instagram.com`, token
+  prefix `IGAA...`), NOT the Facebook-Login Graph flow. This was verified 2026-06-25: the account in use
+  (`nghiep.t.lam`, IG user id `27296029900081035`, type `MEDIA_CREATOR`) is reached via `graph.instagram.com`,
+  and is NOT linked as an `instagram_business_account` on the FB Page — so the `graph.facebook.com/{page}/media`
+  path returns "does not exist". `MKT_IG_USER_ID` is the **Instagram-Login user id** from
+  `GET graph.instagram.com/me` — NOT the `17841...` Facebook-Login business id. Token scopes:
+  `instagram_business_basic` + `instagram_business_content_publish`.
+  **Publish model = URL-fetch (like Threads):** `POST graph.instagram.com/{ig-id}/media` with public `image_url`
+  → wait → `POST .../media_publish`. Drive folder MUST be shared "anyone with link". The adapter uses **`copyEn`**
+  for IG and truncates to IG's 2200-char caption limit.
+  **Token refresh:** Instagram-Login tokens refresh via `GET graph.instagram.com/refresh_access_token`
+  (`grant_type=ig_refresh_token`), NOT the FB `fb_exchange_token` grant — the refresh-workflow IG branch
+  currently uses the FB grant and must be corrected before relying on auto-refresh (tracked, not yet fixed).
+  Leave `MKT_IG_*` blank to skip the IG branch cleanly.
 
 ## 8. Operations
 
