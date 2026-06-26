@@ -27,9 +27,21 @@ Lead capture (B) trước — post đang chạy mà 0 đường thu lead = lãng
 | B0 | Google Forms → Sheet poll → leads (`mkt-form-lead.json`) | ✅ DONE 2026-06-26 (exec 698, LIVE) |
 | B1 | [phase-01-calcom-selfhost-lead.md](phase-01-calcom-selfhost-lead.md) | code+validate DONE (`mkt-calcom-lead.json`); live-test chờ VPS |
 | B2 | [phase-02-whatsapp-inbound-adapter.md](phase-02-whatsapp-inbound-adapter.md) | pending |
-| B3 | [phase-03-telegram-bot-adapter.md](phase-03-telegram-bot-adapter.md) | pending |
+| B3 | [phase-03-telegram-bot-adapter.md](phase-03-telegram-bot-adapter.md) | DEFERRED — cần public URL + conversation state |
 | B4 | [phase-04-zalo-oa-adapter.md](phase-04-zalo-oa-adapter.md) | pending |
-| B5 | [phase-05-dynamic-cta-copygen.md](phase-05-dynamic-cta-copygen.md) | pending (đã có form link thật cho CTA) |
+| B5 | [phase-05-dynamic-cta-copygen.md](phase-05-dynamic-cta-copygen.md) | ✅ DONE 2026-06-26 (conditional `leadsForm` CTA) |
+
+> **B3 Telegram DEFERRED 2026-06-26** — ghi chú cũ "Telegram Trigger = NO public URL" SAI. Node
+> `telegramTrigger` là webhook (isWebhook:true) → activate gọi setWebhook → Telegram POST ngược cần n8n có
+> public HTTPS. localhost không nhận được. Workaround = polling getUpdates (Schedule + HTTP, như Forms) NHƯNG
+> flow user chọn "bot hỏi email rồi mới lưu" = state machine cần lưu conversation state (Postgres/Sheet). Cả 2
+> điểm này khiến Telegram nặng hơn Forms nhiều → defer cùng nhóm "cần public endpoint" với Cal.com. Build khi
+> có VPS/tunnel.
+
+> **B5 DONE 2026-06-26** — copy-gen đọc cột `leadsForm` (calendar). Có giá trị → inject form URL vào CTA của
+> copyVi/copyEn/copyThreads QUA PROMPT (Gemini tự viết trong budget, không append → không vỡ cap
+> copyThreads≤480/copyX≤280); copyX giữ "link in bio". Rỗng → CTA generic (backward-compat). KHÔNG đụng length
+> spec. ⚠️ user phải thêm header `leadsForm` vào tab calendar để dùng. copy-gen id sdpQoLqGeW3Y8dAy patched.
 
 > **B0 (Forms) thêm vào scope 2026-06-26** — user muốn cả 2 đường (Forms + Cal.com) cho linh hoạt. Forms =
 > capture info, KHÔNG cần SMTP/public URL → testable local ngay. Dùng Google Sheets Trigger (poll tab
