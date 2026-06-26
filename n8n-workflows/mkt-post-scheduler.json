@@ -1434,13 +1434,13 @@
         "options": {
           "timeout": 60000
         },
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "twitterOAuth2Api"
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api"
       },
       "credentials": {
-        "twitterOAuth2Api": {
-          "id": "ie1soKviS9FSxgfr",
-          "name": "X DAIS"
+        "oAuth2Api": {
+          "id": "",
+          "name": "X DAIS media"
         }
       }
     },
@@ -1472,13 +1472,13 @@
         "options": {
           "timeout": 60000
         },
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "twitterOAuth2Api"
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api"
       },
       "credentials": {
-        "twitterOAuth2Api": {
-          "id": "ie1soKviS9FSxgfr",
-          "name": "X DAIS"
+        "oAuth2Api": {
+          "id": "",
+          "name": "X DAIS media"
         }
       }
     },
@@ -1492,7 +1492,7 @@
         640
       ],
       "parameters": {
-        "jsCode": "// X final: append result. Not live-tested; tolerant parsing of v2 response shapes.\nconst carry = $('Build X request').first().json;\nconst results = [...(carry.priorResults || [])];\nif (!carry.skipX) {\n  const item = $('X create tweet').first();\n  const resp = (item && item.json) || {};\n  const data = resp.data || {};\n  const tid = data.id;\n  const err = resp.errors || resp.error || resp.title;\n  if (tid && !err) {\n    results.push({ platform: 'x', ok: true, url: 'https://twitter.com/i/web/status/' + tid, error: null });\n  } else {\n    let msg = 'X publish failed';\n    if (err) msg = typeof err === 'string' ? err : JSON.stringify(err);\n    results.push({ platform: 'x', ok: false, url: null, error: ('X: ' + msg).slice(0, 300) });\n  }\n}\nreturn [{ json: { id: carry.id, rowNumber: carry.rowNumber, results } }];"
+        "jsCode": "// X final: append result. Guard upstream nodes that may be skipped on upload/publish failure.\nconst carry = $('Build X request').first().json;\nconst results = [...(carry.priorResults || [])];\nif (!carry.skipX) {\n  // upload error surfaces on the X upload media node (continueErrorOutput)\n  let uploadErr = null;\n  try { const u = $('X upload media').first(); uploadErr = (u && u.json && u.json.error) || null; } catch (e) {}\n  let tid = null, pubErr = null;\n  try {\n    const item = $('X create tweet').first();\n    const resp = (item && item.json) || {};\n    tid = (resp.data && resp.data.id) || null;\n    pubErr = resp.errors || resp.error || resp.title || null;\n  } catch (e) { /* create tweet skipped because upload failed */ }\n  if (tid && !pubErr) {\n    results.push({ platform: 'x', ok: true, url: 'https://twitter.com/i/web/status/' + tid, error: null });\n  } else {\n    let msg = 'X publish failed';\n    const e = pubErr || uploadErr;\n    if (e) msg = typeof e === 'string' ? e : (e.message || JSON.stringify(e));\n    else if (!tid) msg = 'X media upload failed (no media id)';\n    results.push({ platform: 'x', ok: false, url: null, error: ('X: ' + msg).slice(0, 300) });\n  }\n}\nreturn [{ json: { id: carry.id, rowNumber: carry.rowNumber, results } }];"
       }
     }
   ],
