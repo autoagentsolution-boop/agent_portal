@@ -1010,7 +1010,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://graph.instagram.com/v25.0/{{$env.MKT_IG_USER_ID}}/media",
+        "url": "=https://graph.facebook.com/v25.0/{{$env.MKT_IG_USER_ID}}/media",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -1063,7 +1063,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://graph.instagram.com/v25.0/{{$env.MKT_IG_USER_ID}}/media_publish",
+        "url": "=https://graph.facebook.com/v25.0/{{$env.MKT_IG_USER_ID}}/media_publish",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -1097,7 +1097,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://graph.instagram.com/v25.0/{{ $('IG publish').item.json.id }}",
+        "url": "=https://graph.facebook.com/v25.0/{{ $('IG publish').item.json.id }}",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
