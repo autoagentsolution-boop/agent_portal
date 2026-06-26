@@ -1,0 +1,209 @@
+{
+  "name": "mkt-publish-video",
+  "active": false,
+  "settings": {
+    "timezone": "Asia/Bangkok",
+    "executionTimeout": 300,
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "video-input",
+      "name": "Video input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "={{ $json.driveFolderId }}",
+            "cachedResultName": "={{ $json.driveFolderId }}"
+          }
+        },
+        "options": {},
+        "returnAll": true
+      },
+      "id": "list-folder",
+      "name": "List Drive folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        420,
+        360
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "diCdoUNOKGfXm3Vg",
+          "name": "MKT Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Resolve the single video filename (heroFile) -> Drive fileId.\n// heroFile carries 1 filename for video (same column reused across asset types).\n// Fail loud on not-found / ambiguous.\nconst spec = $('Video input').first().json;\nconst files = $input.all().map(i => i.json).filter(f => f && f.id);\nlet name = spec.heroFile;\nif (typeof name === 'string') name = name.split(',')[0].trim();\nif (!name) throw new Error('video: heroFile empty');\nconst want = String(name).toLowerCase();\nconst matches = files.filter(f => (f.name || '').toLowerCase() === want);\nif (matches.length === 0) throw new Error(`video: file '${name}' not found in folder ${spec.driveFolderId}`);\nif (matches.length > 1) throw new Error(`video: ambiguous file '${name}': ${matches.length} files share this name`);\nreturn [{ json: { id: spec.id, rowNumber: spec.rowNumber, videoFileId: matches[0].id, name: matches[0].name, description: String(spec.copyVi || spec.copyEn || '').slice(0, 60000) } }];"
+      },
+      "id": "resolve-video",
+      "name": "Resolve video",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.videoFileId }}"
+        },
+        "options": {
+          "binaryPropertyName": "data"
+        }
+      },
+      "id": "download-video",
+      "name": "Download video (Drive)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        860,
+        360
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "diCdoUNOKGfXm3Vg",
+          "name": "MKT Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v25.0/{{$env.MKT_FB_PAGE_ID}}/videos",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formData",
+              "name": "description",
+              "value": "={{ $('Resolve video').item.json.description }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "access_token",
+              "value": "={{$env.MKT_FB_PAGE_ACCESS_TOKEN}}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "source",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "fb-publish-video",
+      "name": "FB publish video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1080,
+        360
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize FB /videos response (or error) into the shared contract results[].\n// /videos returns {id} for the video object; the public watch URL is /watch/?v={id}.\nconst spec = $('Video input').first().json;\nconst resp = $json || {};\nconst results = [];\nconst errObj = resp.error;\nconst vid = resp.id;\nif (vid && !errObj) {\n  results.push({ platform: 'facebook', ok: true, url: `https://www.facebook.com/watch/?v=${vid}`, error: null });\n} else {\n  let msg = 'FB video publish failed';\n  if (errObj) msg = typeof errObj === 'string' ? errObj : (errObj.message || JSON.stringify(errObj));\n  else if (resp.message) msg = resp.message;\n  results.push({ platform: 'facebook', ok: false, url: null, error: ('FB video: ' + msg).slice(0, 300) });\n}\nreturn [{ json: { id: spec.id, rowNumber: spec.rowNumber, results } }];"
+      },
+      "id": "normalize-video",
+      "name": "Normalize video",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        360
+      ]
+    }
+  ],
+  "connections": {
+    "Video input": {
+      "main": [
+        [
+          {
+            "node": "List Drive folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Drive folder": {
+      "main": [
+        [
+          {
+            "node": "Resolve video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve video": {
+      "main": [
+        [
+          {
+            "node": "Download video (Drive)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download video (Drive)": {
+      "main": [
+        [
+          {
+            "node": "FB publish video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB publish video": {
+      "main": [
+        [
+          {
+            "node": "Normalize video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

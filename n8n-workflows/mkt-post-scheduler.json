@@ -1604,6 +1604,50 @@
         1870,
         360
       ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "6ahwy0vphyCuvEqk",
+          "cachedResultName": "mkt-publish-video"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "exec-video",
+      "name": "Publish video",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1870,
+        520
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Video sub-workflow threw (missing file / FB error): build an error result so\n// the orchestrator still aggregates + writes back (row=error) + releases the lock.\nconst spec = $('Build post spec').first().json;\nconst e = $json && ($json.error || $json.message || $json);\nlet msg = 'video publish failed';\nif (e) msg = typeof e === 'string' ? e : (e.message || JSON.stringify(e));\nreturn [{ json: { id: spec.id, rowNumber: spec.rowNumber, results: [{ platform: 'facebook', ok: false, url: null, error: ('video: ' + msg).slice(0, 300) }] } }];"
+      },
+      "id": "video-error",
+      "name": "Video error result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1870,
+        680
+      ]
     }
   ],
   "connections": {
@@ -1712,10 +1756,45 @@
             "index": 0
           }
         ],
-        [],
+        [
+          {
+            "node": "Publish video",
+            "type": "main",
+            "index": 0
+          }
+        ],
         [
           {
             "node": "Drive: find hero + slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish video": {
+      "main": [
+        [
+          {
+            "node": "Aggregate results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Video error result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Video error result": {
+      "main": [
+        [
+          {
+            "node": "Aggregate results",
             "type": "main",
             "index": 0
           }
