@@ -321,7 +321,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build asset spec + platform list from the claimed row.\nconst row = $('Pick one due row').first().json;\nconst platforms = String(row.platforms || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);\nif (platforms.length === 0) throw new Error('mkt_scheduler: row has no platforms');\nconst driveFolderId = String(row.driveFolderId || '').trim();\n// heroFile = exact image filename within the (possibly shared) Drive folder. Blank -> legacy hero.png fallback.\nconst heroFile = String(row.heroFile || '').trim() || 'hero.png';\nreturn [{ json: {\n  id: row.id,\n  rowNumber: row.row_number,\n  product: row.product,\n  copyVi: row.copyVi || '',\n  copyEn: row.copyEn || '',\n  copyThreads: row.copyThreads || '',\n  copyX: row.copyX || '',\n  platforms,\n  driveFolderId,\n  heroFile\n} }];"
+        "jsCode": "// Build asset spec + platform list from the claimed row.\nconst row = $('Pick one due row').first().json;\nconst platforms = String(row.platforms || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);\nif (platforms.length === 0) throw new Error('mkt_scheduler: row has no platforms');\nconst driveFolderId = String(row.driveFolderId || '').trim();\n// heroFile = exact image filename within the (possibly shared) Drive folder. Blank -> legacy hero.png fallback.\nconst heroFile = String(row.heroFile || '').trim() || 'hero.png';\n// assetType routes the publish path: image (default/legacy) | carousel | video.\n// heroFile is REUSED for all 3: 1 filename (image/video) or comma-separated list (carousel).\nconst assetType = (String(row.assetType || '').trim().toLowerCase()) || 'image';\nreturn [{ json: {\n  id: row.id,\n  rowNumber: row.row_number,\n  product: row.product,\n  copyVi: row.copyVi || '',\n  copyEn: row.copyEn || '',\n  copyThreads: row.copyThreads || '',\n  copyX: row.copyX || '',\n  platforms,\n  driveFolderId,\n  heroFile,\n  assetType\n} }];"
       },
       "id": "build-spec",
       "name": "Build post spec",
@@ -1494,6 +1494,102 @@
       "parameters": {
         "jsCode": "// X final: append result. Guard upstream nodes that may be skipped on upload/publish failure.\nconst carry = $('Build X request').first().json;\nconst results = [...(carry.priorResults || [])];\nif (!carry.skipX) {\n  // upload error surfaces on the X upload media node (continueErrorOutput)\n  let uploadErr = null;\n  try { const u = $('X upload media').first(); uploadErr = (u && u.json && u.json.error) || null; } catch (e) {}\n  let tid = null, pubErr = null;\n  try {\n    const item = $('X create tweet').first();\n    const resp = (item && item.json) || {};\n    tid = (resp.data && resp.data.id) || null;\n    pubErr = resp.errors || resp.error || resp.title || null;\n  } catch (e) { /* create tweet skipped because upload failed */ }\n  if (tid && !pubErr) {\n    results.push({ platform: 'x', ok: true, url: 'https://twitter.com/i/web/status/' + tid, error: null });\n  } else {\n    let msg = 'X publish failed';\n    const e = pubErr || uploadErr;\n    if (e) msg = typeof e === 'string' ? e : (e.message || JSON.stringify(e));\n    else if (!tid) msg = 'X media upload failed (no media id)';\n    results.push({ platform: 'x', ok: false, url: null, error: ('X: ' + msg).slice(0, 300) });\n  }\n}\nreturn [{ json: { id: carry.id, rowNumber: carry.rowNumber, results } }];"
       }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "version": 2,
+                  "typeValidation": "loose",
+                  "leftValue": ""
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.assetType }}",
+                    "rightValue": "carousel",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "carousel"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "version": 2,
+                  "typeValidation": "loose",
+                  "leftValue": ""
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.assetType }}",
+                    "rightValue": "video",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "video"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "image"
+        }
+      },
+      "id": "route-assettype",
+      "name": "Route by assetType",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1650,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "xSms7SuC5f2MFA6E",
+          "cachedResultName": "mkt-publish-carousel"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "exec-carousel",
+      "name": "Publish carousel",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1870,
+        180
+      ]
     }
   ],
   "connections": {
@@ -1586,7 +1682,37 @@
       "main": [
         [
           {
+            "node": "Route by assetType",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by assetType": {
+      "main": [
+        [
+          {
+            "node": "Publish carousel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [],
+        [
+          {
             "node": "Drive: find hero + slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish carousel": {
+      "main": [
+        [
+          {
+            "node": "Aggregate results",
             "type": "main",
             "index": 0
           }

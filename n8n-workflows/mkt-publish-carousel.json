@@ -1,0 +1,282 @@
+{
+  "name": "mkt-publish-carousel",
+  "active": false,
+  "settings": {
+    "timezone": "Asia/Bangkok",
+    "executionTimeout": 180,
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "carousel-input",
+      "name": "Carousel input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "={{ $json.driveFolderId }}",
+            "cachedResultName": "={{ $json.driveFolderId }}"
+          }
+        },
+        "options": {},
+        "returnAll": true
+      },
+      "id": "list-folder",
+      "name": "List Drive folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        420,
+        360
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "diCdoUNOKGfXm3Vg",
+          "name": "MKT Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Resolve carousel slides from the shared heroFile column (comma-separated filenames,\n// in display order). Reuses heroFile instead of a separate slideFiles column (KISS).\n// Shared-folder model: folder holds many files; the row names which ones + order.\n// Fail loud on not-found / ambiguous (loud error beats wrong/partial carousel).\nconst spec = $('Carousel input').first().json;\nconst files = $input.all().map(i => i.json).filter(f => f && f.id);\nlet slides = spec.heroFile;\nif (typeof slides === 'string') slides = slides.split(',').map(s => s.trim()).filter(Boolean);\nif (!Array.isArray(slides) || slides.length === 0) throw new Error('carousel: heroFile empty (need comma-separated filenames)');\nif (slides.length < 2) throw new Error('carousel: need >=2 slides in heroFile, got ' + slides.length);\nif (slides.length > 10) throw new Error('carousel: max 10 slides, got ' + slides.length);\n\nconst out = [];\nfor (let i = 0; i < slides.length; i++) {\n  const want = String(slides[i]).toLowerCase();\n  const matches = files.filter(f => (f.name || '').toLowerCase() === want);\n  if (matches.length === 0) throw new Error(`carousel: slide '${slides[i]}' not found in folder ${spec.driveFolderId}`);\n  if (matches.length > 1) throw new Error(`carousel: ambiguous slide '${slides[i]}': ${matches.length} files share this name`);\n  out.push({ json: { fileId: matches[0].id, slideIndex: i, name: matches[0].name } });\n}\nreturn out;"
+      },
+      "id": "resolve-slides",
+      "name": "Resolve slides",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.fileId }}"
+        },
+        "options": {
+          "binaryPropertyName": "data"
+        }
+      },
+      "id": "download-slide",
+      "name": "Download slide (Drive)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        860,
+        360
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "diCdoUNOKGfXm3Vg",
+          "name": "MKT Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v25.0/{{$env.MKT_FB_PAGE_ID}}/photos",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formData",
+              "name": "published",
+              "value": "false"
+            },
+            {
+              "parameterType": "formData",
+              "name": "access_token",
+              "value": "={{$env.MKT_FB_PAGE_ACCESS_TOKEN}}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "source",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "fb-upload-unpublished",
+      "name": "FB upload unpublished",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1080,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// All uploads succeeded (any failure throws upstream = fail loud per design).\n// $input.all() preserves emit order from Resolve slides -> map in order.\nconst spec = $('Carousel input').first().json;\nconst ups = $input.all().map(i => i.json);\nlet slides = spec.heroFile;\nif (typeof slides === 'string') slides = slides.split(',').map(s => s.trim()).filter(Boolean);\nconst expected = Array.isArray(slides) ? slides.length : 0;\nif (ups.length !== expected) throw new Error(`carousel: fbid count ${ups.length} != expected ${expected}`);\nconst attached = [];\nfor (let i = 0; i < ups.length; i++) {\n  const fbid = ups[i].id || ups[i].post_id;\n  if (!fbid) throw new Error(`carousel: slide ${i} upload returned no id`);\n  attached.push({ media_fbid: String(fbid) });\n}\nconst message = String(spec.copyVi || spec.copyEn || '').slice(0, 60000);\nreturn [{ json: { id: spec.id, rowNumber: spec.rowNumber, message, attachedMedia: JSON.stringify(attached) } }];"
+      },
+      "id": "collect-fbids",
+      "name": "Collect fbids",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v25.0/{{$env.MKT_FB_PAGE_ID}}/feed",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formData",
+              "name": "message",
+              "value": "={{ $json.message }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "attached_media",
+              "value": "={{ $json.attachedMedia }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "access_token",
+              "value": "={{$env.MKT_FB_PAGE_ACCESS_TOKEN}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "fb-feed-post",
+      "name": "FB create feed post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1520,
+        360
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize FB /feed response (or error) into the shared contract results[].\nconst spec = $('Carousel input').first().json;\nconst resp = $json || {};\nconst results = [];\nconst errObj = resp.error;\nconst pid = resp.id || resp.post_id;\nif (pid && !errObj) {\n  results.push({ platform: 'facebook', ok: true, url: `https://facebook.com/${pid}`, error: null });\n} else {\n  let msg = 'FB carousel publish failed';\n  if (errObj) msg = typeof errObj === 'string' ? errObj : (errObj.message || JSON.stringify(errObj));\n  else if (resp.message) msg = resp.message;\n  results.push({ platform: 'facebook', ok: false, url: null, error: ('FB carousel: ' + msg).slice(0, 300) });\n}\nreturn [{ json: { id: spec.id, rowNumber: spec.rowNumber, results } }];"
+      },
+      "id": "normalize-carousel",
+      "name": "Normalize carousel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1740,
+        360
+      ]
+    }
+  ],
+  "connections": {
+    "Carousel input": {
+      "main": [
+        [
+          {
+            "node": "List Drive folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Drive folder": {
+      "main": [
+        [
+          {
+            "node": "Resolve slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve slides": {
+      "main": [
+        [
+          {
+            "node": "Download slide (Drive)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download slide (Drive)": {
+      "main": [
+        [
+          {
+            "node": "FB upload unpublished",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB upload unpublished": {
+      "main": [
+        [
+          {
+            "node": "Collect fbids",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect fbids": {
+      "main": [
+        [
+          {
+            "node": "FB create feed post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB create feed post": {
+      "main": [
+        [
+          {
+            "node": "Normalize carousel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize carousel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
