@@ -24,11 +24,17 @@ Lead capture (B) trước — post đang chạy mà 0 đường thu lead = lãng
 ### Khối B — Lead Capture
 | Phase | File | Status |
 |-------|------|--------|
-| B1 | [phase-01-calcom-selfhost-lead.md](phase-01-calcom-selfhost-lead.md) | pending |
+| B0 | Google Forms → Sheet poll → leads (`mkt-form-lead.json`) | ✅ DONE 2026-06-26 (exec 698, LIVE) |
+| B1 | [phase-01-calcom-selfhost-lead.md](phase-01-calcom-selfhost-lead.md) | code+validate DONE (`mkt-calcom-lead.json`); live-test chờ VPS |
 | B2 | [phase-02-whatsapp-inbound-adapter.md](phase-02-whatsapp-inbound-adapter.md) | pending |
 | B3 | [phase-03-telegram-bot-adapter.md](phase-03-telegram-bot-adapter.md) | pending |
 | B4 | [phase-04-zalo-oa-adapter.md](phase-04-zalo-oa-adapter.md) | pending |
-| B5 | [phase-05-dynamic-cta-copygen.md](phase-05-dynamic-cta-copygen.md) | pending |
+| B5 | [phase-05-dynamic-cta-copygen.md](phase-05-dynamic-cta-copygen.md) | pending (đã có form link thật cho CTA) |
+
+> **B0 (Forms) thêm vào scope 2026-06-26** — user muốn cả 2 đường (Forms + Cal.com) cho linh hoạt. Forms =
+> capture info, KHÔNG cần SMTP/public URL → testable local ngay. Dùng Google Sheets Trigger (poll tab
+> form_responses trong MKT_SHEET_ID), tái dùng nguyên Loop B tail. LIVE + verify 5/5 (exec 698). Cal.com =
+> book meeting, code xong nhưng cần VPS. Setup doc: `docs/marketing-form-calcom-lead-setup.md`.
 
 ### Khối A — Content Factory
 | Phase | File | Status |

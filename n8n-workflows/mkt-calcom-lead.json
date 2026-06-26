@@ -1,0 +1,435 @@
+{
+  "name": "mkt-calcom-lead",
+  "active": false,
+  "settings": {
+    "timezone": "Asia/Bangkok",
+    "executionTimeout": 60,
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mkt-calcom",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Cal.com webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        200,
+        360
+      ],
+      "webhookId": "mkt-calcom-lead",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Cal.com BOOKING_CREATED -> lead schema.\n// Cal.com signs the body with HMAC-SHA256 in 'x-cal-signature-256'. The n8n\n// task-runner sandbox blocks require('crypto'), so we cannot recompute the\n// HMAC here. Instead we gate on a shared secret in the URL query (?s=...),\n// constant-time compared. Cal.com lets you append query params to the webhook\n// URL, so this is the sandbox-safe equivalent of the lead-capture secret.\nfunction safeEq(a, b) {\n  a = String(a == null ? '' : a);\n  b = String(b == null ? '' : b);\n  if (a.length !== b.length) return false;\n  let diff = 0;\n  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);\n  return diff === 0;\n}\nconst query = $json.query || {};\nconst body = $json.body || {};\nif (!$env.MKT_CALCOM_WEBHOOK_SECRET) throw new Error('mkt_calcom: MKT_CALCOM_WEBHOOK_SECRET not set');\nif (!safeEq(query.s, $env.MKT_CALCOM_WEBHOOK_SECRET)) {\n  return [{ json: { __status: 401, __error: 'unauthorized' } }];\n}\n\n// Only act on booking creation; ignore other event types if they ever arrive.\nconst triggerEvent = body.triggerEvent || '';\nif (triggerEvent && triggerEvent !== 'BOOKING_CREATED') {\n  return [{ json: { __status: 202, __error: 'ignored_event', __event: triggerEvent } }];\n}\n\nconst p = body.payload || {};\nconst attendee = (Array.isArray(p.attendees) && p.attendees[0]) || {};\nconst email = String(attendee.email || '').trim().toLowerCase();\nconst emailOk = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);\nif (!emailOk) {\n  return [{ json: { __status: 400, __error: 'invalid_email' } }];\n}\n\n// Meeting link: Cal.com exposes it in several shapes across versions.\nconst meetUrl = String(\n  p.videoCallData?.url ||\n  p.metadata?.videoCallUrl ||\n  p.location ||\n  ''\n).slice(0, 500);\nconst meetingAt = String(p.startTime || '').slice(0, 50);\nconst calBookingUid = String(p.uid || p.bookingId || '').slice(0, 100);\nconst title = String(p.title || p.eventTitle || 'Cal.com booking').slice(0, 200);\nconst attendeeMessage = String(p.additionalNotes || attendee.notes || '').slice(0, 1000);\n\n// Pack meeting metadata into message + rawPayload (leads tab stays 8 cols).\nconst message = [\n  title,\n  meetingAt ? ('Meeting: ' + meetingAt) : '',\n  meetUrl ? ('Link: ' + meetUrl) : '',\n  attendeeMessage\n].filter(Boolean).join('\\n').slice(0, 2000);\n\nreturn [{ json: {\n  __status: 200,\n  receivedAt: new Date().toISOString(),\n  name: String(attendee.name || '').slice(0, 200),\n  email,\n  phone: String(attendee.phoneNumber || '').slice(0, 50),\n  message,\n  sourceProduct: title,\n  sourcePlatform: 'calcom',\n  calBookingUid,\n  rawPayload: JSON.stringify({ meetingAt, meetUrl, calBookingUid, payload: p }).slice(0, 5000)\n} }];"
+      },
+      "id": "auth-parse",
+      "name": "Auth + parse booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.__status }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if-valid",
+      "name": "IF valid (200)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        640,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{$env.MKT_SHEET_ID}}",
+          "cachedResultName": "Marketing Leads"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "476128751",
+          "cachedResultName": "leads"
+        },
+        "options": {}
+      },
+      "id": "read-leads",
+      "name": "Read leads (dedupe)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        860,
+        280
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "mkt-gsheets",
+          "name": "Marketing Google Sheets"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dedupe by Cal.com booking UID (each booking = one lead, survives webhook retry).\n// Falls back to email+30d if UID missing.\nconst lead = $('Auth + parse booking').first().json;\nconst existing = $input.all().map(i => i.json);\nlet isDup = false;\nif (lead.calBookingUid) {\n  isDup = existing.some(r => String(r.rawPayload || '').includes('\"calBookingUid\":\"' + lead.calBookingUid + '\"'));\n}\nif (!isDup) {\n  const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000);\n  isDup = existing.some(r => {\n    if (String(r.email || '').trim().toLowerCase() !== lead.email) return false;\n    if (String(r.sourcePlatform || '') !== 'calcom') return false;\n    const d = new Date(r.receivedAt);\n    return !isNaN(d) && d >= cutoff;\n  });\n}\nreturn [{ json: { ...lead, isDup } }];"
+      },
+      "id": "dedupe",
+      "name": "Dedupe by booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{$env.MKT_SHEET_ID}}",
+          "cachedResultName": "Marketing Leads"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "476128751",
+          "cachedResultName": "leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "receivedAt": "={{ $json.receivedAt }}",
+            "name": "={{ $json.name }}",
+            "email": "={{ $json.email }}",
+            "phone": "={{ $json.phone }}",
+            "message": "={{ $json.message }}",
+            "sourceProduct": "={{ $json.sourceProduct }}",
+            "sourcePlatform": "={{ $json.sourcePlatform }}",
+            "rawPayload": "={{ $json.rawPayload }}"
+          },
+          "schema": [
+            {
+              "id": "receivedAt",
+              "displayName": "receivedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sourceProduct",
+              "displayName": "sourceProduct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sourcePlatform",
+              "displayName": "sourcePlatform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "rawPayload",
+              "displayName": "rawPayload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "matchingColumns": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "append-lead",
+      "name": "Append to leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1300,
+        280
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "mkt-gsheets",
+          "name": "Marketing Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $('Dedupe by booking').first().json.isDup }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "if-not-dup",
+      "name": "IF not duplicate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1520,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{$env.MKT_SALES_EMAIL}}",
+        "subject": "=New booking (Cal.com): {{ $('Dedupe by booking').first().json.name || 'unknown' }}",
+        "emailType": "text",
+        "message": "=New meeting booked via Cal.com.\n\nName: {{ $('Dedupe by booking').first().json.name }}\nEmail: {{ $('Dedupe by booking').first().json.email }}\nPhone: {{ $('Dedupe by booking').first().json.phone }}\n\n{{ $('Dedupe by booking').first().json.message }}\n\nReceived: {{ $('Dedupe by booking').first().json.receivedAt }}",
+        "options": {},
+        "operation": "send"
+      },
+      "id": "gmail-sales",
+      "name": "Email Sales",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1740,
+        200
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "mkt-gmail",
+          "name": "Marketing Gmail (Sales)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-ok",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1960,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: $json.__status === 202, error: $json.__error }) }}",
+        "options": {
+          "responseCode": "={{ $json.__status }}"
+        }
+      },
+      "id": "respond-error",
+      "name": "Respond non-200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        860,
+        460
+      ]
+    }
+  ],
+  "connections": {
+    "Cal.com webhook": {
+      "main": [
+        [
+          {
+            "node": "Auth + parse booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth + parse booking": {
+      "main": [
+        [
+          {
+            "node": "IF valid (200)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF valid (200)": {
+      "main": [
+        [
+          {
+            "node": "Read leads (dedupe)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond non-200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read leads (dedupe)": {
+      "main": [
+        [
+          {
+            "node": "Dedupe by booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe by booking": {
+      "main": [
+        [
+          {
+            "node": "Append to leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to leads": {
+      "main": [
+        [
+          {
+            "node": "IF not duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF not duplicate": {
+      "main": [
+        [
+          {
+            "node": "Email Sales",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Sales": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,356 @@
+{
+  "name": "mkt-form-lead",
+  "active": false,
+  "settings": {
+    "timezone": "Asia/Bangkok",
+    "executionTimeout": 120,
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{$env.MKT_SHEET_ID}}",
+          "cachedResultName": "Marketing Leads"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "={{$env.MKT_FORM_RESPONSES_GID}}",
+          "cachedResultName": "form_responses"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "id": "form-trigger",
+      "name": "Form response added",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        360
+      ],
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "mkt-gsheets-trigger",
+          "name": "Marketing Google Sheets Trigger"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize a Google Forms response row -> lead schema.\n// Forms column headers = the full question text (VI/EN); resolve tolerantly by\n// keyword substring. Keyword ORDER matters: more specific phrases first so a\n// shared word (e.g. 'product' appears in both the product question and the\n// 'how do you know about our products' question) lands on the right column.\nconst row = $json || {};\n\nconst lk = {};\nfor (const k of Object.keys(row)) lk[k.toLowerCase().trim()] = row[k];\n\nfunction pick(keywords, fallback) {\n  for (const kw of keywords) {\n    for (const key of Object.keys(lk)) {\n      if (key.includes(kw)) {\n        const v = lk[key];\n        if (v != null && String(v).trim() !== '') return String(v).trim();\n      }\n    }\n  }\n  return fallback != null ? fallback : '';\n}\n\nconst email = pick(['email', 'e-mail', 'thư', 'mail']).toLowerCase();\nconst emailOk = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);\nif (!emailOk) {\n  // Drop silently: malformed Forms row (or header row that slipped through).\n  return [];\n}\n\n// Timestamp: Forms writes a 'Timestamp'/'Dấu thời gian' column. Fallback to now.\nconst ts = pick(['timestamp', 'dấu thời gian', 'thời gian']);\nlet receivedAt = new Date().toISOString();\nif (ts) {\n  const d = new Date(ts);\n  if (!isNaN(d)) receivedAt = d.toISOString();\n}\n\n// 'looking for' before 'product' so the product question wins over the\n// 'how do you know about our products' question.\nconst sourceProduct = pick(['looking for', 'sản phẩm', 'dịch vụ', 'service', 'product']).slice(0, 200);\nconst challenges = pick(['challenge', 'message', 'nội dung', 'nhu cầu', 'need', 'vấn đề', 'ghi chú', 'note', 'yêu cầu']);\nconst heardFrom = pick(['how do you know', 'know about', 'hear about', 'biết', 'kênh']);\n\nconst message = [\n  challenges,\n  heardFrom ? ('Heard from: ' + heardFrom) : ''\n].filter(Boolean).join('\\n').slice(0, 2000);\n\nreturn [{ json: {\n  receivedAt,\n  name: pick(['full name', 'name', 'tên', 'họ']).slice(0, 200),\n  email,\n  phone: pick(['phone', 'mobile', 'điện thoại', 'sđt', 'sdt']).slice(0, 50),\n  message,\n  sourceProduct,\n  sourcePlatform: 'form',\n  rawPayload: JSON.stringify(row).slice(0, 5000)\n} }];"
+      },
+      "id": "normalize-form",
+      "name": "Normalize form row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{$env.MKT_SHEET_ID}}",
+          "cachedResultName": "Marketing Leads"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "476128751",
+          "cachedResultName": "leads"
+        },
+        "options": {}
+      },
+      "id": "read-leads",
+      "name": "Read leads (dedupe)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        640,
+        360
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "mkt-gsheets",
+          "name": "Marketing Google Sheets"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dedupe by email within 30 days. Mark isDup; always append, skip Sales email if dup.\nconst lead = $('Normalize form row').first().json;\nconst existing = $input.all().map(i => i.json);\nconst cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000);\nconst isDup = existing.some(r => {\n  if (String(r.email || '').trim().toLowerCase() !== lead.email) return false;\n  const d = new Date(r.receivedAt);\n  return !isNaN(d) && d >= cutoff;\n});\nreturn [{ json: { ...lead, isDup } }];"
+      },
+      "id": "dedupe",
+      "name": "Dedupe by email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{$env.MKT_SHEET_ID}}",
+          "cachedResultName": "Marketing Leads"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "476128751",
+          "cachedResultName": "leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "receivedAt": "={{ $json.receivedAt }}",
+            "name": "={{ $json.name }}",
+            "email": "={{ $json.email }}",
+            "phone": "={{ $json.phone }}",
+            "message": "={{ $json.message }}",
+            "sourceProduct": "={{ $json.sourceProduct }}",
+            "sourcePlatform": "={{ $json.sourcePlatform }}",
+            "rawPayload": "={{ $json.rawPayload }}"
+          },
+          "schema": [
+            {
+              "id": "receivedAt",
+              "displayName": "receivedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sourceProduct",
+              "displayName": "sourceProduct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sourcePlatform",
+              "displayName": "sourcePlatform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "rawPayload",
+              "displayName": "rawPayload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "matchingColumns": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "append-lead",
+      "name": "Append to leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1080,
+        360
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "mkt-gsheets",
+          "name": "Marketing Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $('Dedupe by email').first().json.isDup }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "if-not-dup",
+      "name": "IF not duplicate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1300,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{$env.MKT_SALES_EMAIL}}",
+        "subject": "=New lead (form): {{ $('Dedupe by email').first().json.sourceProduct || 'unknown' }}",
+        "emailType": "text",
+        "message": "=New marketing lead received via Google Form.\n\nName: {{ $('Dedupe by email').first().json.name }}\nEmail: {{ $('Dedupe by email').first().json.email }}\nPhone: {{ $('Dedupe by email').first().json.phone }}\nProduct: {{ $('Dedupe by email').first().json.sourceProduct }}\n\nMessage:\n{{ $('Dedupe by email').first().json.message }}\n\nReceived: {{ $('Dedupe by email').first().json.receivedAt }}",
+        "options": {},
+        "operation": "send"
+      },
+      "id": "gmail-sales",
+      "name": "Email Sales",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1520,
+        280
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "mkt-gmail",
+          "name": "Marketing Gmail (Sales)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Form response added": {
+      "main": [
+        [
+          {
+            "node": "Normalize form row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize form row": {
+      "main": [
+        [
+          {
+            "node": "Read leads (dedupe)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read leads (dedupe)": {
+      "main": [
+        [
+          {
+            "node": "Dedupe by email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe by email": {
+      "main": [
+        [
+          {
+            "node": "Append to leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to leads": {
+      "main": [
+        [
+          {
+            "node": "IF not duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF not duplicate": {
+      "main": [
+        [
+          {
+            "node": "Email Sales",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  }
+}
