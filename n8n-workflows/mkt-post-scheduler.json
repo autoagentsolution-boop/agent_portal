@@ -1198,17 +1198,13 @@
       "onError": "continueErrorOutput",
       "parameters": {
         "method": "POST",
-        "url": "https://api.linkedin.com/rest/images?action=initializeUpload",
+        "url": "https://api.linkedin.com/v2/assets?action=registerUpload",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "Authorization",
               "value": "=Bearer {{$env.MKT_LINKEDIN_ACCESS_TOKEN}}"
-            },
-            {
-              "name": "LinkedIn-Version",
-              "value": "202606"
             },
             {
               "name": "X-Restli-Protocol-Version",
@@ -1218,7 +1214,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ initializeUploadRequest: { owner: $json.owner } }) }}",
+        "jsonBody": "={{ JSON.stringify({ registerUploadRequest: { recipes: ['urn:li:digitalmediaRecipe:feedshare-image'], owner: $json.owner, serviceRelationships: [{ relationshipType: 'OWNER', identifier: 'urn:li:userGeneratedContent' }] } }) }}",
         "options": {
           "timeout": 30000
         }
@@ -1257,7 +1253,7 @@
       "onError": "continueErrorOutput",
       "parameters": {
         "method": "PUT",
-        "url": "={{ $('LI init upload').item.json.value.uploadUrl }}",
+        "url": "={{ $('LI init upload').item.json.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'].uploadUrl }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1287,17 +1283,13 @@
       "onError": "continueErrorOutput",
       "parameters": {
         "method": "POST",
-        "url": "https://api.linkedin.com/rest/posts",
+        "url": "https://api.linkedin.com/v2/ugcPosts",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "Authorization",
               "value": "=Bearer {{$env.MKT_LINKEDIN_ACCESS_TOKEN}}"
-            },
-            {
-              "name": "LinkedIn-Version",
-              "value": "202606"
             },
             {
               "name": "X-Restli-Protocol-Version",
@@ -1307,7 +1299,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ author: $('Build LinkedIn request').item.json.owner, commentary: $('Build LinkedIn request').item.json.commentary, visibility: \"PUBLIC\", distribution: { feedDistribution: \"MAIN_FEED\", targetEntities: [], thirdPartyDistributionChannels: [] }, content: { media: { altText: $('Build LinkedIn request').item.json.product || \"image\", id: $('LI init upload').item.json.value.image } }, lifecycleState: \"PUBLISHED\", isReshareDisabledByAuthor: false }) }}",
+        "jsonBody": "={{ JSON.stringify({ author: $('Build LinkedIn request').item.json.owner, lifecycleState: 'PUBLISHED', specificContent: { 'com.linkedin.ugc.ShareContent': { shareCommentary: { text: $('Build LinkedIn request').item.json.commentary }, shareMediaCategory: 'IMAGE', media: [ { status: 'READY', media: $('LI init upload').item.json.value.asset, title: { text: ($('Build LinkedIn request').item.json.product || 'image') } } ] } }, visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' } }) }}",
         "options": {
           "timeout": 60000,
           "response": {
