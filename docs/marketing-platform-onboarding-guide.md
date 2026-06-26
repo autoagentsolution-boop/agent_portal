@@ -136,22 +136,32 @@ verification.
   Phải **nạp credit trước** mới gọi được API.
 - Post có link bị X **bóp reach** → trả phí cao nhất cho loại post hiệu quả thấp nhất.
 
-**Auth:** Bắt buộc **OAuth 2.0 user-context + PKCE** (app-only Bearer token KHÔNG post được). Token
-user-context vẫn gửi dạng `Authorization: Bearer <user-token>`.
+**Auth:** Bắt buộc **OAuth 2.0 user-context + PKCE** (app-only Bearer token KHÔNG post được).
+
+> ⚠️ **BẪY media.write (verified 2026-06-26, đã fix sau khi đăng thật):** đăng ảnh qua `/2/media/upload` đòi
+> scope **`media.write`**. Credential **predefined "X OAuth2 API"** của n8n chỉ xin `tweet.read tweet.write
+> users.read offline.access` → **thiếu media.write** → upload ảnh trả **403 Forbidden**. PHẢI dùng credential
+> **generic "OAuth2 API"** (tự khai scope đủ). Text-only tweet thì predefined đủ; có ảnh/video thì BẮT BUỘC generic.
 
 **Khách chuẩn bị (nếu quyết dùng X):**
-1. X Developer account (developer.x.com → Free Account để có quyền dev, không phải tier post).
-2. Tạo **Project → App**.
-3. **User authentication settings:** App permissions = Read and write; Type = Web App; Callback URL =
-   n8n callback (`http://localhost:5678/rest/oauth2-credential/callback`) hoặc URL test.
-4. **Nạp credit** (Developer Console → Billing). Chưa nạp = mọi call post bị chặn.
-5. Chạy OAuth2 PKCE flow lấy user-context token. Scope: `tweet.read tweet.write users.read media.write
-   offline.access`.
+1. X Developer account (developer.x.com).
+2. Tạo **Project → App** → **User authentication settings:** App permissions = **Read and write**; Type =
+   **Web App**; Callback URL = n8n OAuth redirect (copy từ form credential n8n).
+3. **Nạp credit** (Developer Console → Billing). Chưa nạp = mọi call post bị chặn.
+4. Trong n8n: **Add credential → "OAuth2 API"** (generic — KHÔNG phải 2 cái "X OAuth2 API"/"X OAuth API"
+   predefined). Điền:
+   - Grant Type: `PKCE`
+   - Authorization URL: `https://twitter.com/i/oauth2/authorize` (hằng số, không lấy từ dashboard)
+   - Access Token URL: `https://api.twitter.com/2/oauth2/token` (hằng số)
+   - Client ID + Client Secret: từ X app → Keys and tokens → OAuth 2.0
+   - **Scope** (cách nhau DẤU CÁCH, không phẩy): `tweet.read tweet.write users.read media.write offline.access`
+   - Authentication: `Header`
+   - → **Connect my account** → authorize bằng account X DAIS. n8n tự lưu + auto-refresh token (~2h).
 
-**Env cần điền:** `MKT_X_ACCESS_TOKEN` (user-context token).
+**Token lưu trong n8n credential vault** (không phải $env) → auto-refresh, đúng mô hình bán per-install.
 
-**Cơ chế publish:** upload media (`/2/media/upload`) → tạo tweet (`/2/tweets` với media_ids). 280 ký tự.
-Video = chunked upload (INIT/APPEND/FINALIZE + poll STATUS) — phức tạp hơn ảnh.
+**Cơ chế publish:** upload media (`/2/media/upload`) → tạo tweet (`/2/tweets` với media_ids). 280 ký tự
+(dùng cột `copyX`). Video = chunked upload (INIT/APPEND/FINALIZE + poll STATUS) — phức tạp hơn ảnh.
 
 **Khuyến nghị deal khách:** chỉ thêm X khi khách thực sự cần. Tính phí API X (theo lượng post) + phí vận
 hành vào hợp đồng riêng, tách khỏi 4 nền free.
@@ -181,7 +191,7 @@ Pipeline chạy bằng Google Sheet (control plane):
 
 ```
 status=brief (product+angle, copy TRỐNG)
-  → [copy-gen / Gemini] → status=review (copy đã sinh: copyVi/copyEn long-form + copyThreads English ≤480)
+  → [copy-gen / Gemini] → status=review (copy đã sinh: copyVi/copyEn long-form + copyThreads EN ≤480 + copyX EN ≤280)
   → người duyệt: sửa nếu cần (status=rework để regen) HOẶC set status=ready + scheduledAt
   → [post-scheduler] → đăng đồng loạt các nền trong cột platforms → status=posted (+ postUrl)
 ```
