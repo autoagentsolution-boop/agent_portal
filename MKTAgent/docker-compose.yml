@@ -1,0 +1,33 @@
+# MKTAgent stack: app + its own Postgres (port 5433 to avoid clashing with the
+# video-farm Postgres on 5432). Standalone — does not touch the n8n stack.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mktagent
+      POSTGRES_PASSWORD: mktagent
+      POSTGRES_DB: mktagent
+    ports:
+      - "5433:5432"
+    volumes:
+      - mktagent-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mktagent"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    env_file: .env
+    environment:
+      # Inside compose, reach Postgres by service name.
+      DATABASE_URL: postgresql://mktagent:mktagent@postgres:5432/mktagent
+    ports:
+      - "7100:7100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  mktagent-pg:

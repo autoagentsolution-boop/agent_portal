@@ -1,0 +1,26 @@
+// MKTAgent Postgres schema — marketing control plane (Campaign/Post/Lead/
+// OAuthToken/MktRunLog). Source of truth replacing the Google Sheets control
+// plane. Full domain models land in P1; P0 ships a minimal generatable schema.
+
+generator client {
+  provider = "prisma-client"
+  output   = "./generated/prisma"
+  runtime  = "nodejs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Liveness/audit log — ported from n8n mkt_run_log (no FK, free-form JSON).
+// Present from P0 so the logger/db wiring can be exercised before domain models.
+model MktRunLog {
+  id        BigInt   @id @default(autoincrement())
+  level     String
+  step      String
+  detail    Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], name: "ix_mkt_log_created")
+  @@map("mkt_run_log")
+}
