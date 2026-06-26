@@ -321,7 +321,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build asset spec + platform list from the claimed row.\nconst row = $('Pick one due row').first().json;\nconst platforms = String(row.platforms || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);\nif (platforms.length === 0) throw new Error('mkt_scheduler: row has no platforms');\nconst driveFolderId = String(row.driveFolderId || '').trim();\n// heroFile = exact image filename within the (possibly shared) Drive folder. Blank -> legacy hero.png fallback.\nconst heroFile = String(row.heroFile || '').trim() || 'hero.png';\nreturn [{ json: {\n  id: row.id,\n  rowNumber: row.row_number,\n  product: row.product,\n  copyVi: row.copyVi || '',\n  copyEn: row.copyEn || '',\n  platforms,\n  driveFolderId,\n  heroFile\n} }];"
+        "jsCode": "// Build asset spec + platform list from the claimed row.\nconst row = $('Pick one due row').first().json;\nconst platforms = String(row.platforms || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);\nif (platforms.length === 0) throw new Error('mkt_scheduler: row has no platforms');\nconst driveFolderId = String(row.driveFolderId || '').trim();\n// heroFile = exact image filename within the (possibly shared) Drive folder. Blank -> legacy hero.png fallback.\nconst heroFile = String(row.heroFile || '').trim() || 'hero.png';\nreturn [{ json: {\n  id: row.id,\n  rowNumber: row.row_number,\n  product: row.product,\n  copyVi: row.copyVi || '',\n  copyEn: row.copyEn || '',\n  copyThreads: row.copyThreads || '',\n  platforms,\n  driveFolderId,\n  heroFile\n} }];"
       },
       "id": "build-spec",
       "name": "Build post spec",
@@ -705,7 +705,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://graph.facebook.com/v21.0/{{$env.MKT_FB_PAGE_ID}}/photos",
+        "url": "=https://graph.facebook.com/v25.0/{{$env.MKT_FB_PAGE_ID}}/photos",
         "sendBody": true,
         "contentType": "multipart-form-data",
         "bodyParameters": {
@@ -749,7 +749,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Threads adapter step 1: gate + build creation-container request. Carry FB results forward.\n// FB branch may have been skipped (platforms has no 'facebook') -> Normalize FB result didn't run.\nconst spec = $('Validate assets').first().json;\nlet fbResults = [];\nlet id = spec.id, rowNumber = spec.rowNumber;\ntry {\n  const fb = $('Normalize FB result').first().json;\n  if (fb && Array.isArray(fb.results)) { fbResults = fb.results; id = fb.id; rowNumber = fb.rowNumber; }\n} catch (e) { /* FB branch skipped; keep empty fbResults */ }\nconst platforms = spec.platforms || [];\nconst carry = { id, rowNumber, fbResults };\nif (!platforms.includes('threads')) { return [{ json: { ...carry, skipThreads: true } }]; }\nconst imageUrl = `https://lh3.googleusercontent.com/d/${spec.heroFileId}`;\nlet text = String(spec.copyVi || '');\nif (text.length > 500) { text = text.slice(0, 497); text = text.slice(0, text.lastIndexOf(' ')) + '\\u2026'; }\nreturn [{ json: { ...carry, skipThreads: false, imageUrl, text } }];"
+        "jsCode": "// Threads adapter step 1: gate + build creation-container request. Carry FB results forward.\n// FB branch may have been skipped (platforms has no 'facebook') -> Normalize FB result didn't run.\nconst spec = $('Validate assets').first().json;\nlet fbResults = [];\nlet id = spec.id, rowNumber = spec.rowNumber;\ntry {\n  const fb = $('Normalize FB result').first().json;\n  if (fb && Array.isArray(fb.results)) { fbResults = fb.results; id = fb.id; rowNumber = fb.rowNumber; }\n} catch (e) { /* FB branch skipped; keep empty fbResults */ }\nconst platforms = spec.platforms || [];\nconst carry = { id, rowNumber, fbResults };\nif (!platforms.includes('threads')) { return [{ json: { ...carry, skipThreads: true } }]; }\nconst imageUrl = `https://lh3.googleusercontent.com/d/${spec.heroFileId}`;\nlet text = String(spec.copyThreads || '').trim();\nif (!text) { text = String(spec.copyVi || ''); if (text.length > 500) { text = text.slice(0, 497); text = text.slice(0, text.lastIndexOf(' ')) + '…'; } }\nreturn [{ json: { ...carry, skipThreads: false, imageUrl, text } }];"
       },
       "id": "threads-build",
       "name": "Build Threads request",
@@ -885,7 +885,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Threads final: confirm publish, attach REAL permalink, append to fbResults -> single results[].\nconst carry = $('Build Threads request').first().json;\nconst results = [...(carry.fbResults || [])];\nif (!carry.skipThreads) {\n  const pub = $('Threads publish').first().json || {};\n  const perma = $json || {};\n  const mediaId = pub.id;\n  const pubErr = pub.error;\n  if (mediaId && !pubErr) {\n    // permalink GET may have failed (onError) -> fall back to media-id reference\n    const url = perma.permalink || `https://www.threads.net/@me/post/${mediaId}`;\n    results.push({ platform: 'threads', ok: true, url, error: null });\n  } else {\n    let msg = 'Threads publish failed';\n    if (pubErr) msg = typeof pubErr === 'string' ? pubErr : (pubErr.message || JSON.stringify(pubErr));\n    results.push({ platform: 'threads', ok: false, url: null, error: ('Threads: ' + msg).slice(0, 300) });\n  }\n}\nreturn [{ json: { id: carry.id, rowNumber: carry.rowNumber, results } }];"
+        "jsCode": "// Threads final: confirm publish, attach REAL permalink, append to fbResults -> single results[].\nconst carry = $('Build Threads request').first().json;\nconst results = [...(carry.fbResults || [])];\nif (!carry.skipThreads) {\n  const pubItem = $('Threads publish').first();\n  const pub = (pubItem && pubItem.json) || {};\n  const perma = $json || {};\n  const mediaId = pub.id;\n  const pubErr = pub.error;\n  if (mediaId && !pubErr) {\n    // permalink GET may have failed (onError) -> fall back to media-id reference\n    const url = perma.permalink || `https://www.threads.net/@me/post/${mediaId}`;\n    results.push({ platform: 'threads', ok: true, url, error: null });\n  } else {\n    let msg = 'Threads publish failed';\n    if (pubErr) msg = typeof pubErr === 'string' ? pubErr : (pubErr.message || JSON.stringify(pubErr));\n    results.push({ platform: 'threads', ok: false, url: null, error: ('Threads: ' + msg).slice(0, 300) });\n  }\n}\nreturn [{ json: { id: carry.id, rowNumber: carry.rowNumber, results } }];"
       },
       "id": "threads-normalize",
       "name": "Normalize Threads result",
@@ -961,6 +961,531 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// IG adapter step 1: gate + build media-container inputs. Carry Threads/FB results forward.\n// 'Normalize Threads result' ALWAYS runs (both IF-threads branches converge) -> emits {id,rowNumber,results}.\nconst prev = $('Normalize Threads result').first().json;\nconst spec = $('Validate assets').first().json;\nconst results = [...(prev.results || [])];\nconst carry = { id: prev.id, rowNumber: prev.rowNumber, priorResults: results };\nconst platforms = spec.platforms || [];\nif (!platforms.includes('instagram')) { return [{ json: { ...carry, skipIg: true } }]; }\n// IG = URL-fetch model (like Threads): public Drive link, platform server fetches it.\nconst imageUrl = `https://lh3.googleusercontent.com/d/${spec.heroFileId}`;\n// IG audience -> English copy. Caption limit 2200 (generous); truncate defensively.\nlet caption = String(spec.copyEn || spec.copyVi || '');\nif (caption.length > 2200) { caption = caption.slice(0, 2197); caption = caption.slice(0, caption.lastIndexOf(' ')) + '…'; }\nreturn [{ json: { ...carry, skipIg: false, imageUrl, caption } }];"
+      },
+      "id": "build-ig-request",
+      "name": "Build IG request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2980,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skipIg }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "if-instagram-targeted",
+      "name": "IF instagram targeted",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3200,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.instagram.com/v25.0/{{$env.MKT_IG_USER_ID}}/media",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "image_url",
+              "value": "={{ $json.imageUrl }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.caption }}"
+            },
+            {
+              "name": "access_token",
+              "value": "={{$env.MKT_IG_ACCESS_TOKEN}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "ig-create-container",
+      "name": "IG create container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3420,
+        640
+      ],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "wait-ig-container",
+      "name": "Wait 30s (IG container)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3640,
+        640
+      ],
+      "webhookId": "mkt-ig-wait"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.instagram.com/v25.0/{{$env.MKT_IG_USER_ID}}/media_publish",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $('IG create container').item.json.id }}"
+            },
+            {
+              "name": "access_token",
+              "value": "={{$env.MKT_IG_ACCESS_TOKEN}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "ig-publish",
+      "name": "IG publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3860,
+        640
+      ],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.instagram.com/v25.0/{{ $('IG publish').item.json.id }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "permalink"
+            },
+            {
+              "name": "access_token",
+              "value": "={{$env.MKT_IG_ACCESS_TOKEN}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ig-get-permalink",
+      "name": "IG get permalink",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4070,
+        640
+      ],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// IG final: confirm publish, attach REAL permalink, append to priorResults -> single results[].\nconst carry = $('Build IG request').first().json;\nconst results = [...(carry.priorResults || [])];\nif (!carry.skipIg) {\n  const pubItem = $('IG publish').first();\n  const pub = (pubItem && pubItem.json) || {};\n  const perma = $json || {};\n  const mediaId = pub.id;\n  const pubErr = pub.error;\n  if (mediaId && !pubErr) {\n    const url = perma.permalink || `https://www.instagram.com/p/${mediaId}`;\n    results.push({ platform: 'instagram', ok: true, url, error: null });\n  } else {\n    let msg = 'Instagram publish failed';\n    if (pubErr) msg = typeof pubErr === 'string' ? pubErr : (pubErr.message || JSON.stringify(pubErr));\n    results.push({ platform: 'instagram', ok: false, url: null, error: ('Instagram: ' + msg).slice(0, 300) });\n  }\n}\nreturn [{ json: { id: carry.id, rowNumber: carry.rowNumber, results } }];"
+      },
+      "id": "normalize-ig-result",
+      "name": "Normalize IG result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4290,
+        640
+      ]
+    },
+    {
+      "id": "build-li-request",
+      "name": "Build LinkedIn request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4510,
+        640
+      ],
+      "parameters": {
+        "jsCode": "// LinkedIn adapter step 1: gate + carry prior results forward.\n// 'Normalize IG result' ALWAYS runs (both IG IF branches converge) -> {id,rowNumber,results}.\nconst prev = $('Normalize IG result').first().json;\nconst spec = $('Validate assets').first().json;\nconst results = [...(prev.results || [])];\nconst carry = { id: prev.id, rowNumber: prev.rowNumber, priorResults: results, heroFileId: spec.heroFileId };\nconst platforms = spec.platforms || [];\nif (!platforms.includes('linkedin')) { return [{ json: { ...carry, skipLi: true } }]; }\n// LinkedIn commentary limit 3000 chars (generous); long-form like FB -> copyVi.\nlet commentary = String(spec.copyVi || spec.copyEn || '');\nif (commentary.length > 3000) { commentary = commentary.slice(0, 2997); commentary = commentary.slice(0, commentary.lastIndexOf(' ')) + '…'; }\nconst owner = 'urn:li:person:' + String($env.MKT_LINKEDIN_PERSON_ID || '');\nreturn [{ json: { ...carry, skipLi: false, commentary, owner } }];"
+      }
+    },
+    {
+      "id": "if-linkedin-targeted",
+      "name": "IF linkedin targeted",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4730,
+        640
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skipLi }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "li-init-upload",
+      "name": "LI init upload",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4950,
+        640
+      ],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/rest/images?action=initializeUpload",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.MKT_LINKEDIN_ACCESS_TOKEN}}"
+            },
+            {
+              "name": "LinkedIn-Version",
+              "value": "202606"
+            },
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ initializeUploadRequest: { owner: $json.owner } }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "li-download-hero",
+      "name": "Download hero (LinkedIn)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5170,
+        640
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Build LinkedIn request').item.json.heroFileId }}"
+        },
+        "options": {
+          "binaryPropertyName": "data"
+        }
+      }
+    },
+    {
+      "id": "li-upload-binary",
+      "name": "LI upload binary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5390,
+        640
+      ],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('LI init upload').item.json.value.uploadUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.MKT_LINKEDIN_ACCESS_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "li-create-post",
+      "name": "LI create post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5610,
+        640
+      ],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/rest/posts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.MKT_LINKEDIN_ACCESS_TOKEN}}"
+            },
+            {
+              "name": "LinkedIn-Version",
+              "value": "202606"
+            },
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ author: $('Build LinkedIn request').item.json.owner, commentary: $('Build LinkedIn request').item.json.commentary, visibility: \"PUBLIC\", distribution: { feedDistribution: \"MAIN_FEED\", targetEntities: [], thirdPartyDistributionChannels: [] }, content: { media: { altText: $('Build LinkedIn request').item.json.product || \"image\", id: $('LI init upload').item.json.value.image } }, lifecycleState: \"PUBLISHED\", isReshareDisabledByAuthor: false }) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "normalize-li-result",
+      "name": "Normalize LinkedIn result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5830,
+        640
+      ],
+      "parameters": {
+        "jsCode": "// LinkedIn final: read post URN from x-restli-id header, append to priorResults.\nconst carry = $('Build LinkedIn request').first().json;\nconst results = [...(carry.priorResults || [])];\nif (!carry.skipLi) {\n  const item = $('LI create post').first();\n  const resp = (item && item.json) || {};\n  const headers = resp.headers || {};\n  const code = resp.statusCode || resp.status;\n  const urn = headers['x-restli-id'] || headers['X-RestLi-Id'];\n  const body = resp.body || resp;\n  if (urn && (!code || code === 201 || code === 200)) {\n    results.push({ platform: 'linkedin', ok: true, url: 'https://www.linkedin.com/feed/update/' + urn, error: null });\n  } else {\n    let msg = 'LinkedIn publish failed';\n    if (body && body.message) msg = body.message;\n    else if (body && body.error) msg = typeof body.error === 'string' ? body.error : JSON.stringify(body.error);\n    results.push({ platform: 'linkedin', ok: false, url: null, error: ('LinkedIn: ' + msg).slice(0, 300) });\n  }\n}\nreturn [{ json: { id: carry.id, rowNumber: carry.rowNumber, results } }];"
+      }
+    },
+    {
+      "id": "build-x-request",
+      "name": "Build X request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6050,
+        640
+      ],
+      "parameters": {
+        "jsCode": "// X adapter step 1: gate + carry forward. NOTE: not live-tested (no API credit).\nconst prev = $('Normalize LinkedIn result').first().json;\nconst spec = $('Validate assets').first().json;\nconst results = [...(prev.results || [])];\nconst carry = { id: prev.id, rowNumber: prev.rowNumber, priorResults: results, heroFileId: spec.heroFileId };\nconst platforms = spec.platforms || [];\nif (!platforms.includes('x') && !platforms.includes('twitter')) { return [{ json: { ...carry, skipX: true } }]; }\n// X hard limit 280 chars -> prefer short variant (copyThreads), else truncate copyVi.\nlet text = String(spec.copyThreads || '').trim();\nif (!text) { text = String(spec.copyVi || ''); }\nif (text.length > 280) { text = text.slice(0, 277); text = text.slice(0, text.lastIndexOf(' ')) + '…'; }\nreturn [{ json: { ...carry, skipX: false, text } }];"
+      }
+    },
+    {
+      "id": "if-x-targeted",
+      "name": "IF x targeted",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        6270,
+        640
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skipX }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "x-download-hero",
+      "name": "Download hero (X)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        6490,
+        640
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Build X request').item.json.heroFileId }}"
+        },
+        "options": {
+          "binaryPropertyName": "data"
+        }
+      }
+    },
+    {
+      "id": "x-upload-media",
+      "name": "X upload media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6710,
+        640
+      ],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twitter.com/2/media/upload",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.MKT_X_ACCESS_TOKEN}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formData",
+              "name": "media_category",
+              "value": "tweet_image"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "media",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "x-create-tweet",
+      "name": "X create tweet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6930,
+        640
+      ],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twitter.com/2/tweets",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.MKT_X_ACCESS_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $('Build X request').item.json.text, media: { media_ids: [ String(($('X upload media').item.json.media_id_string) || ($('X upload media').item.json.data && $('X upload media').item.json.data.id) || ($('X upload media').item.json.media_id) || \"\") ] } }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "normalize-x-result",
+      "name": "Normalize X result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7150,
+        640
+      ],
+      "parameters": {
+        "jsCode": "// X final: append result. Not live-tested; tolerant parsing of v2 response shapes.\nconst carry = $('Build X request').first().json;\nconst results = [...(carry.priorResults || [])];\nif (!carry.skipX) {\n  const item = $('X create tweet').first();\n  const resp = (item && item.json) || {};\n  const data = resp.data || {};\n  const tid = data.id;\n  const err = resp.errors || resp.error || resp.title;\n  if (tid && !err) {\n    results.push({ platform: 'x', ok: true, url: 'https://twitter.com/i/web/status/' + tid, error: null });\n  } else {\n    let msg = 'X publish failed';\n    if (err) msg = typeof err === 'string' ? err : JSON.stringify(err);\n    results.push({ platform: 'x', ok: false, url: null, error: ('X: ' + msg).slice(0, 300) });\n  }\n}\nreturn [{ json: { id: carry.id, rowNumber: carry.rowNumber, results } }];"
+      }
     }
   ],
   "connections": {
@@ -1271,7 +1796,7 @@
       "main": [
         [
           {
-            "node": "Aggregate results",
+            "node": "Build IG request",
             "type": "main",
             "index": 0
           }
@@ -1308,6 +1833,303 @@
         [
           {
             "node": "Normalize Threads result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build IG request": {
+      "main": [
+        [
+          {
+            "node": "IF instagram targeted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF instagram targeted": {
+      "main": [
+        [
+          {
+            "node": "IG create container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize IG result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG create container": {
+      "main": [
+        [
+          {
+            "node": "Wait 30s (IG container)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 30s (IG container)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30s (IG container)": {
+      "main": [
+        [
+          {
+            "node": "IG publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG publish": {
+      "main": [
+        [
+          {
+            "node": "IG get permalink",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IG get permalink",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG get permalink": {
+      "main": [
+        [
+          {
+            "node": "Normalize IG result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize IG result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize IG result": {
+      "main": [
+        [
+          {
+            "node": "Build LinkedIn request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build LinkedIn request": {
+      "main": [
+        [
+          {
+            "node": "IF linkedin targeted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF linkedin targeted": {
+      "main": [
+        [
+          {
+            "node": "LI init upload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize LinkedIn result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LI init upload": {
+      "main": [
+        [
+          {
+            "node": "Download hero (LinkedIn)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize LinkedIn result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download hero (LinkedIn)": {
+      "main": [
+        [
+          {
+            "node": "LI upload binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LI upload binary": {
+      "main": [
+        [
+          {
+            "node": "LI create post",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize LinkedIn result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LI create post": {
+      "main": [
+        [
+          {
+            "node": "Normalize LinkedIn result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize LinkedIn result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize LinkedIn result": {
+      "main": [
+        [
+          {
+            "node": "Build X request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build X request": {
+      "main": [
+        [
+          {
+            "node": "IF x targeted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF x targeted": {
+      "main": [
+        [
+          {
+            "node": "Download hero (X)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize X result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download hero (X)": {
+      "main": [
+        [
+          {
+            "node": "X upload media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "X upload media": {
+      "main": [
+        [
+          {
+            "node": "X create tweet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize X result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "X create tweet": {
+      "main": [
+        [
+          {
+            "node": "Normalize X result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize X result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize X result": {
+      "main": [
+        [
+          {
+            "node": "Aggregate results",
             "type": "main",
             "index": 0
           }
