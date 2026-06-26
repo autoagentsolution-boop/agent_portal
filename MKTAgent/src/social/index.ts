@@ -1,12 +1,19 @@
 // Social adapter registry. Scheduler fans out a post to each targeted platform
 // by looking the adapter up here. Adapters added per phase (FB first).
 import { facebookAdapter } from './facebook.ts';
+import { instagramAdapter } from './instagram.ts';
+import { threadsAdapter } from './threads.ts';
+import { linkedinAdapter } from './linkedin.ts';
+import { xAdapter } from './x.ts';
 import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { SocialPlatform } from '../../prisma/generated/prisma/client.ts';
 
 const registry: Partial<Record<SocialPlatform, SocialAdapter>> = {
   facebook: facebookAdapter,
-  // instagram, threads, linkedin, x — added in later P2 steps.
+  instagram: instagramAdapter,
+  threads: threadsAdapter,
+  linkedin: linkedinAdapter,
+  x: xAdapter,
 };
 
 export const getAdapter = (platform: SocialPlatform): SocialAdapter | undefined =>
