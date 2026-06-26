@@ -1589,6 +1589,20 @@
       "position": [
         1870,
         180
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sub-workflow threw (missing file / FB error): build an error result so the\n// orchestrator still aggregates + writes back (row=error) + releases the lock.\n// id/rowNumber come from Build post spec (always present), not the error payload.\nconst spec = $('Build post spec').first().json;\nconst e = $json && ($json.error || $json.message || $json);\nlet msg = 'carousel publish failed';\nif (e) msg = typeof e === 'string' ? e : (e.message || JSON.stringify(e));\nreturn [{ json: { id: spec.id, rowNumber: spec.rowNumber, results: [{ platform: 'facebook', ok: false, url: null, error: ('carousel: ' + msg).slice(0, 300) }] } }];"
+      },
+      "id": "carousel-error",
+      "name": "Carousel error result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1870,
+        360
       ]
     }
   ],
@@ -1709,6 +1723,24 @@
       ]
     },
     "Publish carousel": {
+      "main": [
+        [
+          {
+            "node": "Aggregate results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Carousel error result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carousel error result": {
       "main": [
         [
           {
