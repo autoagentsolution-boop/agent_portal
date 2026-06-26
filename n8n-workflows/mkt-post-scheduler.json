@@ -1239,6 +1239,12 @@
         "options": {
           "binaryPropertyName": "data"
         }
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "diCdoUNOKGfXm3Vg",
+          "name": "MKT Google Drive account"
+        }
       }
     },
     {
@@ -1386,6 +1392,12 @@
         },
         "options": {
           "binaryPropertyName": "data"
+        }
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "diCdoUNOKGfXm3Vg",
+          "name": "MKT Google Drive account"
         }
       }
     },
