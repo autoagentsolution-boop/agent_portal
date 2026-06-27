@@ -1,8 +1,11 @@
-// JWT auth middleware for user-facing routes. Replaces requireApiKey on the
-// tenant-scoped API (api-key stays ONLY on internal cron/webhook s2s in later
-// phases). Extracts Bearer token → verifies → attaches userId/userEmail.
+// Auth middleware for user-facing routes. Two credential paths, in order:
+//   1. Bearer JWT  (Authorization header) — CLI / tests / service-to-service.
+//   2. Session cookie (T8 BFF)            — the browser UI; opaque handle, the
+//      JWT never reaches the client. See lib/session.ts.
+// Either resolves to req.userId; absence/invalidity → 401 (reason never leaked).
 import type { Request, Response, NextFunction } from 'express';
 import { verifySession } from '../lib/auth-jwt.ts';
+import { resolveSession, SESSION_COOKIE } from '../lib/session.ts';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -10,6 +13,8 @@ declare global {
     interface Request {
       userId?: string;
       userEmail?: string;
+      // Populated by cookie-parser (mounted in server.ts).
+      cookies?: Record<string, string>;
     }
   }
 }
@@ -20,18 +25,31 @@ const bearer = (header: string | undefined): string | null => {
   return scheme === 'Bearer' && token ? token : null;
 };
 
-export const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
+// Resolve a request's identity from Bearer JWT first, then the session cookie.
+// Returns userId or null. Exported so SSE (header OR query) can reuse the cookie
+// path without duplicating the lookup.
+export const resolveRequestOwner = async (req: Request): Promise<string | null> => {
   const token = bearer(req.header('authorization'));
-  if (!token) {
-    res.status(401).json({ error: 'unauthorized' });
-    return;
+  if (token) {
+    const claims = verifySession(token);
+    if (claims) {
+      req.userEmail = claims.email;
+      return claims.sub;
+    }
   }
-  const claims = verifySession(token);
-  if (!claims) {
-    res.status(401).json({ error: 'unauthorized' });
-    return;
-  }
-  req.userId = claims.sub;
-  req.userEmail = claims.email;
-  next();
+  const cookieHandle = req.cookies?.[SESSION_COOKIE];
+  return resolveSession(cookieHandle);
+};
+
+export const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
+  void resolveRequestOwner(req)
+    .then((ownerId) => {
+      if (!ownerId) {
+        res.status(401).json({ error: 'unauthorized' });
+        return;
+      }
+      req.userId = ownerId;
+      next();
+    })
+    .catch(() => res.status(401).json({ error: 'unauthorized' }));
 };

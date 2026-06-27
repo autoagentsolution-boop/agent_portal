@@ -3,6 +3,8 @@
 // are mounted in later phases; P0 ships /health only.
 import { env } from './config/env.ts';
 import express, { type ErrorRequestHandler } from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { logger } from './lib/logger.ts';
 import { startSchedulerCron } from './scheduler/cron.ts';
 import { startCopyGenCron } from './copygen/cron.ts';
@@ -16,6 +18,15 @@ import { eventsRouter } from './api/events-router.ts';
 import { leadsRouter } from './api/leads-router.ts';
 
 const app = express();
+
+// CORS for the browser UI (T8). Credentialed (cookie) XHR requires an explicit
+// origin — wildcard is rejected by browsers when credentials:true. Only enabled
+// when UI_BASE_URL is set; the lead webhooks are server-to-server (no browser) so
+// they're unaffected. Without a UI configured, no cross-origin access is allowed.
+if (env.UI_BASE_URL) {
+  app.use(cors({ origin: env.UI_BASE_URL, credentials: true }));
+}
+app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_req, res) => {

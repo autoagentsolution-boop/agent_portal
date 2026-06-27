@@ -2,13 +2,14 @@
 // Polling GET /posts?status= remains the always-works fallback; SSE is the
 // low-latency path for the review UI.
 //
-// Auth: requireAuth needs a Bearer header, but the browser EventSource API can't
-// set headers. So this endpoint accepts the JWT via either the Authorization
-// header (programmatic clients) OR a `?token=` query param (EventSource). The
-// query path puts the token in access logs — acceptable for this internal tool;
-// revisit if it ever faces untrusted networks (use a short-lived stream ticket).
+// Auth: the browser uses EventSource(url, { withCredentials: true }) so the
+// HttpOnly session cookie (T8) rides the request — no token in the URL/logs. We
+// resolve via the shared Bearer-or-cookie resolver, then fall back to a `?token=`
+// JWT query param ONLY for non-cookie programmatic clients (puts the token in
+// access logs — fine for an internal tool; the cookie path avoids it for the UI).
 import { Router } from 'express';
 import { verifySession } from '../lib/auth-jwt.ts';
+import { resolveRequestOwner } from './middleware-auth.ts';
 import { subscribe, type PostStatusEvent } from '../events/bus.ts';
 import { logger } from '../lib/logger.ts';
 
@@ -16,23 +17,17 @@ export const eventsRouter: Router = Router();
 
 const HEARTBEAT_MS = 25_000; // < typical 30-60s idle-proxy timeout
 
-const tokenFrom = (req: { header: (n: string) => string | undefined; query: Record<string, unknown> }): string | null => {
-  const h = req.header('authorization');
-  if (h) {
-    const [scheme, t] = h.split(' ');
-    if (scheme === 'Bearer' && t) return t;
+eventsRouter.get('/', async (req, res) => {
+  // Primary: Bearer header or session cookie (browser EventSource w/ credentials).
+  let ownerId = await resolveRequestOwner(req);
+  // Fallback: ?token= JWT for clients that can set neither header nor cookie.
+  if (!ownerId && typeof req.query.token === 'string') {
+    ownerId = verifySession(req.query.token)?.sub ?? null;
   }
-  return typeof req.query.token === 'string' ? req.query.token : null;
-};
-
-eventsRouter.get('/', (req, res) => {
-  const token = tokenFrom(req);
-  const claims = token ? verifySession(token) : null;
-  if (!claims) {
+  if (!ownerId) {
     res.status(401).json({ error: 'unauthorized' });
     return;
   }
-  const ownerId = claims.sub;
 
   // SSE headers. Disable proxy buffering so events flush immediately.
   res.writeHead(200, {

@@ -54,6 +54,18 @@ export const claimForPublish = async (id: string): Promise<boolean> => {
   return r.count === 1;
 };
 
+// Owner-scoped atomic claim for the manual "publish now" trigger (T8). Same race
+// guard as claimForPublish but also asserts ownerId — so the UI button can only
+// claim the caller's own post. Coexists with the cron: whichever claims the
+// ready→posting transition first wins; the loser sees false (claim_lost).
+export const claimForPublishOwned = async (id: string, ownerId: string): Promise<boolean> => {
+  const r = await prisma.post.updateMany({
+    where: { id, ownerId, status: 'ready' },
+    data: { status: 'posting' },
+  });
+  return r.count === 1;
+};
+
 // Worker write-back — keyed by id only (the worker already owns the row it claimed).
 export const updatePost = (id: string, data: Prisma.PostUpdateInput): Promise<Post> =>
   prisma.post.update({ where: { id }, data });
@@ -74,6 +86,17 @@ export const getPostWithCampaign = (
 // BEFORE an atomic transition reports 409 for wrong-state (no existence leak).
 export const getPostForOwner = (id: string, ownerId: string): Promise<Post | null> =>
   prisma.post.findFirst({ where: { id, ownerId } });
+
+// Scoped fetch with campaign+owner for the manual copy-gen trigger (T8). Mirrors
+// findCopyGenDueWithCampaign's include but for ONE owner-scoped post. Null → 404.
+export const getPostForCopyGen = (
+  id: string,
+  ownerId: string,
+): Promise<PostWithCampaignOwner | null> =>
+  prisma.post.findFirst({
+    where: { id, ownerId },
+    include: { campaign: { include: { owner: true } } },
+  });
 
 // REST list: tenant-scoped + filter + keyset pagination by id. Fetches limit+1
 // to compute the next cursor without a second count query.

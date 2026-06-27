@@ -9,7 +9,13 @@
 import { acquireSchedulerLock } from './lock.ts';
 import { resolvePublishInput, PostValidationError } from './resolve-input.ts';
 import { aggregate, toWriteBack } from './aggregate.ts';
-import { findPublishDue, claimForPublish, updatePost } from '../db/repos/post-repo.ts';
+import {
+  findPublishDue,
+  claimForPublish,
+  claimForPublishOwned,
+  getPostForOwner,
+  updatePost,
+} from '../db/repos/post-repo.ts';
 import { publishTo } from '../social/index.ts';
 import { publishPostStatus } from '../events/bus.ts';
 import { logRun } from '../db/client.ts';
@@ -32,7 +38,9 @@ export interface TickResult {
   reason?: string;
 }
 
-async function processPost(post: Post, publish: PublishFn): Promise<TickResult> {
+// Core: resolve → fan-out → aggregate → write-back for ONE already-claimed post
+// (status=posting). Shared by the cron tick and the manual publish-now trigger.
+export async function processPost(post: Post, publish: PublishFn): Promise<TickResult> {
   // Validation failure → mark error, no network call (n8n "Build error write-back").
   let input: PublishInput;
   try {
@@ -70,6 +78,34 @@ async function processPost(post: Post, publish: PublishFn): Promise<TickResult> 
     error: outcome.error,
   });
   return { picked: true, postId: post.id, status: outcome.status };
+}
+
+// Manual trigger (T8): publish a specific owner-scoped post NOW (UI "Publish now"
+// button) instead of waiting for the scheduler cron. The route has already checked
+// ownership; here we use the owner-scoped atomic claim (ready→posting) as the race
+// guard — it coexists with the cron (first to claim wins). No advisory lock needed:
+// the claim is the serialization point, and we publish exactly one row.
+//   Returns: not_found (wrong state/tenant → no claim) | claim_lost | the outcome.
+export async function publishPostNow(
+  postId: string,
+  ownerId: string,
+  publish: PublishFn = publishTo,
+): Promise<TickResult> {
+  const claimed = await claimForPublishOwned(postId, ownerId);
+  if (!claimed) {
+    // Either not ready, wrong tenant, or the cron claimed it first.
+    const exists = await getPostForOwner(postId, ownerId);
+    return { picked: false, postId, reason: exists ? 'not_publishable' : 'not_found' };
+  }
+  const post = await getPostForOwner(postId, ownerId);
+  if (!post) return { picked: false, postId, reason: 'not_found' }; // unreachable post-claim
+  try {
+    return await processPost(post, publish);
+  } catch (e) {
+    await updatePost(postId, { status: 'error', error: String(e).slice(0, 500), postedAt: new Date() }).catch(() => {});
+    publishPostStatus(ownerId, { postId, status: 'error', campaignId: post.campaignId, error: String(e).slice(0, 500) });
+    throw e;
+  }
 }
 
 export async function runSchedulerTick(publish: PublishFn = publishTo): Promise<TickResult> {

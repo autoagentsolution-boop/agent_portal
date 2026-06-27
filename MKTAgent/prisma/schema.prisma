@@ -110,8 +110,30 @@ model User {
   posts     Post[]
   leads     Lead[]
   tokens    OAuthToken[]
+  sessions  Session[]
 
   @@map("mkt_user")
+}
+
+// Opaque server-side session for the browser BFF (T8). The browser holds only a
+// random handle in an HttpOnly cookie; the JWT/credential NEVER reaches the client.
+// We store the SHA-256 of the handle (not the handle itself) so a DB read cannot
+// reconstruct a live cookie. Server-revocable (delete row) — strictly stronger
+// than a stateless JWT-in-cookie, which can't be invalidated before expiry.
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  ownerId   String   @map("owner_id") @db.Uuid
+  // SHA-256 hex of the opaque cookie handle. Unique → O(1) lookup on each request.
+  tokenHash String   @unique @map("token_hash")
+  userAgent String?  @map("user_agent")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId], name: "ix_session_owner")
+  @@index([expiresAt], name: "ix_session_expires")
+  @@map("mkt_session")
 }
 
 // A marketing campaign: one product/offer + angle + brand context. Spawns posts.

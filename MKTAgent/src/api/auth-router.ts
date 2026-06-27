@@ -1,10 +1,15 @@
-// Auth router — Google login → long-lived app JWT.
+// Auth router — Google login → opaque server-side session (browser) or JWT (CLI).
 //   GET  /auth/google/start    → 302 to Google consent (identity scope only)
-//   GET  /auth/google/callback → exchange code, upsert user, issue JWT (JSON)
+//   GET  /auth/google/callback → exchange code, upsert user, set HttpOnly session
+//                                cookie, 302 → UI (NO token in the URL/response)
+//   POST /auth/logout          → revoke the current session cookie
 //   GET  /auth/me              → requireAuth-protected identity echo (verify gate)
 //
-// CSRF: `state` is a short-lived (10m) HMAC-signed nonce (JWT) — stateless, no
-// server store, survives restarts. No refresh token anywhere (plan T1/§4).
+// SECURITY (T8): the browser flow issues an OPAQUE session handle in an HttpOnly
+// cookie — the JWT/credential never reaches the client, and the session is
+// server-revocable. The JWT path is retained only for the non-browser caller
+// (CLI/tests): when UI_BASE_URL is unset the callback falls back to JSON {token}.
+// CSRF on login: `state` is a short-lived (10m) HMAC-signed nonce (JWT), stateless.
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { randomBytes } from 'node:crypto';
@@ -12,9 +17,20 @@ import { ok, fail, asyncHandler } from './http.ts';
 import { requireAuth } from './middleware-auth.ts';
 import { buildConsentUrl, exchangeCodeForIdentity } from '../lib/google-oauth.ts';
 import { signSession } from '../lib/auth-jwt.ts';
+import { createSession, revokeSession, sessionTtlMs, SESSION_COOKIE } from '../lib/session.ts';
 import { upsertGoogleUser, getUserById } from '../db/repos/user-repo.ts';
 import { env } from '../config/env.ts';
 import { logger } from '../lib/logger.ts';
+
+// Cookie attributes. SameSite=Lax allows the top-level OAuth redirect to carry the
+// cookie back; Secure in production (HTTPS). HttpOnly = JS can never read it.
+const sessionCookieOpts = () => ({
+  httpOnly: true as const,
+  sameSite: 'lax' as const,
+  secure: env.NODE_ENV === 'production',
+  maxAge: sessionTtlMs(),
+  path: '/',
+});
 
 export const authRouter: Router = Router();
 
@@ -59,8 +75,18 @@ authRouter.get(
     try {
       const identity = await exchangeCodeForIdentity(code);
       const user = await upsertGoogleUser(identity);
-      const token = signSession({ sub: user.id, email: user.email });
       logger.info('auth_login', { userId: user.id, email: user.email });
+
+      // Browser flow (UI_BASE_URL set): opaque session cookie + redirect, no token
+      // anywhere the client can read. This is the path the UI uses.
+      if (env.UI_BASE_URL) {
+        const { handle } = await createSession(user.id, req.header('user-agent') ?? undefined);
+        res.cookie(SESSION_COOKIE, handle, sessionCookieOpts());
+        return res.redirect(env.UI_BASE_URL);
+      }
+
+      // CLI/test fallback (no UI configured): return the JWT as JSON.
+      const token = signSession({ sub: user.id, email: user.email });
       ok(res, {
         token,
         user: { id: user.id, email: user.email, displayName: user.displayName },
@@ -69,6 +95,16 @@ authRouter.get(
       logger.warn('auth_login_failed', { error: String(e) });
       return fail(res, 401, 'login_failed');
     }
+  }),
+);
+
+// Logout — revoke the server-side session and clear the cookie. Idempotent.
+authRouter.post(
+  '/logout',
+  asyncHandler(async (req, res) => {
+    await revokeSession(req.cookies?.[SESSION_COOKIE]);
+    res.clearCookie(SESSION_COOKIE, { path: '/' });
+    ok(res, { loggedOut: true });
   }),
 );
 

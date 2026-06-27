@@ -12,6 +12,8 @@ import {
 } from './schemas.ts';
 import { toPostDto, toPostDetailDto } from './mappers.ts';
 import { publishPostStatus } from '../events/bus.ts';
+import { generateForPost } from '../copygen/service.ts';
+import { publishPostNow } from '../scheduler/tick.ts';
 import { getCampaign } from '../db/repos/campaign-repo.ts';
 import {
   listPosts,
@@ -93,6 +95,48 @@ postsRouter.delete(
     if (r === 'locked')
       return fail(res, 409, 'post_in_flight', 'post is being published; cannot delete');
     res.status(204).end();
+  }),
+);
+
+// Manual copy-gen trigger (T8) — UI "Generate" button. brief|rework → review on
+// success, without waiting for the cron. Shares the copy-gen advisory lock so it
+// can't double-run with the cron (lock held → 409 busy).
+postsRouter.post(
+  '/:id/generate',
+  asyncHandler(async (req, res) => {
+    if (!(await getPostForOwner(req.params.id, req.userId!)))
+      return fail(res, 404, 'post_not_found');
+    const r = await generateForPost(req.params.id, req.userId!);
+    if (r.reason === 'lock_held')
+      return fail(res, 409, 'copygen_busy', 'copy-gen is already running; retry shortly');
+    if (r.reason === 'not_generatable')
+      return fail(res, 409, 'not_generatable', 'post must be in brief or rework state');
+    if (r.reason === 'not_found') return fail(res, 404, 'post_not_found');
+    if (r.status === 'retry')
+      return fail(res, 502, 'copygen_failed', r.error?.slice(0, 300) ?? 'generation failed');
+    if (r.status !== 'review') return fail(res, 500, 'copygen_error');
+    // Success → return the now-review post.
+    const post = await getPostForOwner(req.params.id, req.userId!);
+    ok(res, post ? toPostDto(post) : { id: req.params.id, status: 'review' });
+  }),
+);
+
+// Manual publish trigger (T8) — UI "Publish now" button. ready → posting → fan-out
+// NOW instead of waiting for the scheduler cron. Owner-scoped atomic claim is the
+// race guard; coexists with the cron (first to claim wins). ⚠ This performs a REAL
+// social publish — the user invokes it deliberately after reviewing.
+postsRouter.post(
+  '/:id/publish-now',
+  asyncHandler(async (req, res) => {
+    if (!(await getPostForOwner(req.params.id, req.userId!)))
+      return fail(res, 404, 'post_not_found');
+    const r = await publishPostNow(req.params.id, req.userId!);
+    if (r.reason === 'not_found') return fail(res, 404, 'post_not_found');
+    if (r.reason === 'not_publishable')
+      return fail(res, 409, 'not_publishable', 'post must be in ready state');
+    // Outcome (posted/partial/error) already persisted + emitted by processPost.
+    const post = await getPostForOwner(req.params.id, req.userId!);
+    ok(res, post ? toPostDto(post) : { id: req.params.id, status: r.status });
   }),
 );
 

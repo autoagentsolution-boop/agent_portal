@@ -40,6 +40,12 @@ const schema = z.object({
   JWT_SECRET: z.string().default(''),
   JWT_TTL: z.string().default('60d'), // jsonwebtoken expiresIn syntax
 
+  // Browser BFF (T8). UI_BASE_URL set → OAuth callback issues an HttpOnly session
+  // cookie + redirects here (no token in the URL); also the sole allowed CORS
+  // origin for credentialed XHR. Empty → CLI/JSON-token fallback, CORS off.
+  UI_BASE_URL: z.string().default(''),
+  SESSION_TTL: z.string().default('30d'), // opaque-session lifetime: <n>[smhd]
+
   // Gemini (copy-gen)
   GEMINI_API_KEY: z.string().default(''),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
