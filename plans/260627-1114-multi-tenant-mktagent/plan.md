@@ -101,7 +101,7 @@ Three-layer inheritance: **User defaults → Campaign defaults → Post override
 | **T2 ✅ DONE (2026-06-27)** Ownership | ownerId on Campaign+Lead+MktRunLog; migrate existing rows→DAIS system user; ALL repos filter by ownerId; P7-slice routes assert JWT owner; cross-tenant read → 404 | ✅ 10/10 isolation tests pass (2 seeded users): each sees only own campaigns/posts; cross-tenant GET/approve → 404 (no leak); own re-approve → 409 (state guard intact); no-token → 401. Back-fill: 0 post/campaign owner mismatches, 0 null leads, live DAIS data → system owner. tsc 0. |
 | **T3 ✅ DONE (2026-06-27)** Config-as-data | Campaign config columns + DTO/schemas; Post override semantics; copy-gen prompt reads brandVoice/language/length via 3-layer resolver; persona-optional | ✅ 17/17 pass (vi/en/fr/de): 3-layer resolution (post>campaign>user); business persona vs personal persona-free; responseSchema {body,threads,x}; e2e copy-bag+language persisted; dry-tick brief→review through real service. tsc 0. |
 | **T4 ✅ DONE (2026-06-27)** Per-user tokens | OAuthToken composite PK (ownerId,platform); thread ownerId through token-repo/service/5 adapters/scheduler/cron; connect-flow endpoints (start+callback) | ✅ ALL PASS: 4 DAIS rows migrated→system owner (0 orphans); adapter-path token resolves by (owner,platform); 2-owner isolation (distinct tokens, B sees only own, no cross-leak→null); connect /start URL builder valid per platform (all gated on app creds). HTTP: no-auth→401, unknown platform→404, gated→500 connect_not_configured, callback no-code→400, bad-state→400. tsc 0. |
-| **T5 Realtime+OpenAPI** | SSE /events per-user; event bus in scheduler/copygen; zod-to-openapi gen; finalize contract doc | SSE pushes only own status; openapi.json validates; openapi-typescript compiles |
+| **T5 ✅ DONE (2026-06-27)** Realtime+OpenAPI | SSE /events per-user; event bus in scheduler/copygen; zod-to-openapi gen; finalize contract doc | ✅ ALL PASS: 2-stream isolation (A sees own post.status `ready`, B sees own, zero cross-leak both ways); SSE 401 no/bad token; openapi.json 8 paths valid 3.1.0, $refs resolve, openapi-typescript 7 compiles it. tsc 0. Test data 0 leftovers. |
 | **T6 P5 leads (re-slotted)** | webhook/form/calcom + dedupe (already in lead-repo) + per-user ownerId + Gmail notify | curl webhook→Lead row scoped to owner; dup→skip; calcom parse |
 | **T7 P7-full + P8 deploy** | full Campaign/Post CRUD; finish deploy (fix migrate-deploy datasource.url bug); parity vs n8n | CRUD per-tenant; container migrate+boot clean; 1 e2e post |
 
@@ -242,6 +242,28 @@ Three-layer inheritance: **User defaults → Campaign defaults → Post override
   its app creds set (META_APP_ID/SECRET, THREADS_APP_ID/SECRET, LINKEDIN_CLIENT_ID/SECRET, X_CLIENT_ID/SECRET, PUBLIC_BASE_URL
   added to env.ts, all default ''). Same bucket as Google login + social app-review — code testable now with own dev app.
 - **Verify scripts updated**: `verify-adapters-dryrun.ts` + `test-facebook-publish.ts` pass SYSTEM_OWNER_ID.
+
+## T5 implementation notes (2026-06-27)
+- **Event bus** `src/events/bus.ts` = `Map<ownerId, Set<subscriber>>` (NOT EventEmitter — avoids global
+  maxListeners(10) ceiling on conn count; per-owner filtering by construction). `subscribe(ownerId,fn)→unsubscribe`,
+  `publishPostStatus(ownerId, {postId,status,campaignId?,postUrls?,error?})` never throws (one bad subscriber
+  isolated). **Single-process only** — multi-instance deploy needs Redis pub/sub or sticky sessions (documented v1 limit).
+- **SSE** `src/api/events-router.ts` `GET /events`: emits `ready` then `post.status` frames; 25s heartbeat (`: ping`)
+  beats idle-proxy timeout; `X-Accel-Buffering: no` + `Cache-Control: no-transform` for nginx; unsubscribe on
+  `req.close`/`res.error` (leak guard). **Auth = Bearer header OR `?token=` query** (browser EventSource can't set
+  headers). ⚠ query-token lands in access logs — acceptable for internal tool; use short-lived stream ticket if it ever
+  faces untrusted nets. Mounted WITHOUT requireAuth (that's header-only) — self-authenticates.
+- **Emit chokepoints = call sites** (not repo layer — updatePost is unscoped worker fn): scheduler tick (validation-error,
+  normal write-back, catch-after-claim), copygen service (review success + bad-brief error), posts-router (approve→ready,
+  reject→rework). Each call site already holds post.ownerId + new status.
+- **OpenAPI** `src/contract/openapi.ts` via `@asteasolutions/zod-to-openapi@7` (zod-3 compatible; added devDep). Registers
+  the EXISTING api/schemas.ts (single source of truth, unchanged) + envelope wrappers `{data,meta?}|{error,details?}` +
+  8 path defs (auth/me, posts list/detail/approve/reject, campaigns, connect/start, events). Bearer security scheme.
+  `npm run gen:openapi` → `openapi.json` at MKTAgent root (committed — UI runs `openapi-typescript` against it). Verified:
+  valid 3.1.0, $refs resolve to registered component schemas, openapi-typescript@7 compiles it cleanly.
+- **Known gap**: SSE only emits `post.status` (the review-UI need). Campaign/lead events + a Last-Event-ID replay buffer
+  are additive later if the UI needs them. No persistence — a disconnected client misses events in the gap; polling
+  `GET /posts?status=` is the reconcile path (plan §5).
 
 ## Still open (decide at phase, low-risk)
 - T4: connect-flow + Google-login redirect URIs need stable public HTTPS in prod (ties to T7/P8 deploy/domain).

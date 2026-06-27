@@ -15,6 +15,7 @@ import { callGemini } from './gemini.ts';
 import { parseGeminiResponse } from './parse.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
+import { publishPostStatus } from '../events/bus.ts';
 
 const LOCK_KEY = 'mkt-copy-gen';
 
@@ -47,6 +48,12 @@ export async function runCopyGenTick(callFn: GeminiFn = callGemini): Promise<Cop
       const msg = e instanceof Error ? e.message : String(e);
       await updatePost(post.id, { status: 'error', error: msg.slice(0, 500) });
       await logRun('error', 'mkt_copygen', { id: post.id, error: msg }, post.ownerId);
+      publishPostStatus(post.ownerId, {
+        postId: post.id,
+        status: 'error',
+        campaignId: post.campaignId,
+        error: msg.slice(0, 500),
+      });
       return { picked: true, postId: post.id, status: 'retry', error: msg };
     }
 
@@ -80,6 +87,11 @@ export async function runCopyGenTick(callFn: GeminiFn = callGemini): Promise<Cop
       },
       post.ownerId,
     );
+    publishPostStatus(post.ownerId, {
+      postId: post.id,
+      status: 'review',
+      campaignId: post.campaignId,
+    });
     return { picked: true, postId: post.id, status: 'review' };
   } catch (e) {
     logger.error('copygen_tick_failed', { error: String(e).slice(0, 300) });

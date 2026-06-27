@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { ok, fail, parseOr422, asyncHandler } from './http.ts';
 import { listPostsQuery, approvePostBody, rejectPostBody } from './schemas.ts';
 import { toPostDto, toPostDetailDto } from './mappers.ts';
+import { publishPostStatus } from '../events/bus.ts';
 import {
   listPosts,
   getPostWithCampaign,
@@ -48,6 +49,7 @@ postsRouter.post(
     if (!(await getPostForOwner(req.params.id, req.userId!))) return fail(res, 404, 'post_not_found');
     const updated = await approveReview(req.params.id, req.userId!, body.scheduledAt ?? new Date());
     if (!updated) return fail(res, 409, 'not_in_review', 'post is not in review state');
+    publishPostStatus(req.userId!, { postId: updated.id, status: updated.status, campaignId: updated.campaignId });
     ok(res, toPostDto(updated));
   }),
 );
@@ -60,6 +62,7 @@ postsRouter.post(
     if (!(await getPostForOwner(req.params.id, req.userId!))) return fail(res, 404, 'post_not_found');
     const updated = await rejectReview(req.params.id, req.userId!, body.feedback);
     if (!updated) return fail(res, 409, 'not_in_review', 'post is not in review state');
+    publishPostStatus(req.userId!, { postId: updated.id, status: updated.status, campaignId: updated.campaignId });
     ok(res, toPostDto(updated));
   }),
 );

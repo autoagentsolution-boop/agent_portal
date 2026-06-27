@@ -1,0 +1,1244 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MKTAgent API",
+    "version": "0.1.0",
+    "description": "Multi-tenant marketing automation API. All endpoints are tenant-scoped via the Bearer JWT (Google login). Responses use the { data, meta? } | { error, details? } envelope."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:7100",
+      "description": "local dev"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "PostStatus": {
+        "type": "string",
+        "enum": [
+          "brief",
+          "review",
+          "rework",
+          "ready",
+          "posting",
+          "posted",
+          "partial",
+          "error"
+        ]
+      },
+      "AssetType": {
+        "type": "string",
+        "enum": [
+          "image",
+          "carousel",
+          "video"
+        ]
+      },
+      "SocialPlatform": {
+        "type": "string",
+        "enum": [
+          "facebook",
+          "instagram",
+          "threads",
+          "linkedin",
+          "x"
+        ]
+      },
+      "CopyBag": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "threads": {
+            "type": "string"
+          },
+          "x": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "body",
+          "threads",
+          "x"
+        ]
+      },
+      "CampaignDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "product": {
+            "type": "string"
+          },
+          "angle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "brandContext": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "leadsForm": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultLength": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "facebook",
+                "instagram",
+                "threads",
+                "linkedin",
+                "x"
+              ]
+            }
+          },
+          "brandVoice": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "postingWindow": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "product",
+          "angle",
+          "brandContext",
+          "leadsForm",
+          "active",
+          "language",
+          "defaultLength",
+          "platforms",
+          "brandVoice",
+          "postingWindow",
+          "timezone",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "PostDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "campaignId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "brief",
+              "review",
+              "rework",
+              "ready",
+              "posting",
+              "posted",
+              "partial",
+              "error"
+            ]
+          },
+          "assetType": {
+            "type": "string",
+            "enum": [
+              "image",
+              "carousel",
+              "video"
+            ]
+          },
+          "copy": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "threads": {
+                "type": "string"
+              },
+              "x": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "body",
+              "threads",
+              "x"
+            ]
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lengthSpec": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feedback": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "driveFolderId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "heroFile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "facebook",
+                "instagram",
+                "threads",
+                "linkedin",
+                "x"
+              ]
+            }
+          },
+          "scheduledAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "postUrls": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "postedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "campaignId",
+          "status",
+          "assetType",
+          "copy",
+          "language",
+          "lengthSpec",
+          "feedback",
+          "driveFolderId",
+          "heroFile",
+          "platforms",
+          "scheduledAt",
+          "postUrls",
+          "error",
+          "postedAt",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "PostDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "campaignId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "brief",
+              "review",
+              "rework",
+              "ready",
+              "posting",
+              "posted",
+              "partial",
+              "error"
+            ]
+          },
+          "assetType": {
+            "type": "string",
+            "enum": [
+              "image",
+              "carousel",
+              "video"
+            ]
+          },
+          "copy": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "threads": {
+                "type": "string"
+              },
+              "x": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "body",
+              "threads",
+              "x"
+            ]
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lengthSpec": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feedback": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "driveFolderId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "heroFile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "facebook",
+                "instagram",
+                "threads",
+                "linkedin",
+                "x"
+              ]
+            }
+          },
+          "scheduledAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "postUrls": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "postedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "campaign": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "product": {
+                "type": "string"
+              },
+              "angle": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "brandContext": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "leadsForm": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "language": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "defaultLength": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "platforms": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "facebook",
+                    "instagram",
+                    "threads",
+                    "linkedin",
+                    "x"
+                  ]
+                }
+              },
+              "brandVoice": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "postingWindow": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "timezone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "product",
+              "angle",
+              "brandContext",
+              "leadsForm",
+              "active",
+              "language",
+              "defaultLength",
+              "platforms",
+              "brandVoice",
+              "postingWindow",
+              "timezone",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "campaignId",
+          "status",
+          "assetType",
+          "copy",
+          "language",
+          "lengthSpec",
+          "feedback",
+          "driveFolderId",
+          "heroFile",
+          "platforms",
+          "scheduledAt",
+          "postUrls",
+          "error",
+          "postedAt",
+          "createdAt",
+          "updatedAt",
+          "campaign"
+        ]
+      },
+      "ApprovePostBody": {
+        "type": "object",
+        "properties": {
+          "scheduledAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RejectPostBody": {
+        "type": "object",
+        "properties": {
+          "feedback": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "feedback"
+        ]
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "details": {}
+        },
+        "required": [
+          "error"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Current authenticated user",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The logged-in user identity + config defaults",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "email": {
+                          "type": "string",
+                          "format": "email"
+                        },
+                        "displayName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "avatarUrl": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "accountType": {
+                          "type": "string",
+                          "enum": [
+                            "business",
+                            "personal"
+                          ]
+                        },
+                        "defaultLanguage": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "email",
+                        "displayName",
+                        "avatarUrl",
+                        "accountType",
+                        "defaultLanguage",
+                        "role"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/invalid token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts": {
+      "get": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "List the current user's posts (keyset-paginated)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "brief",
+                "review",
+                "rework",
+                "ready",
+                "posting",
+                "posted",
+                "partial",
+                "error"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "campaignId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of posts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PostDto"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "nextCursor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "count",
+                        "nextCursor"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid query params",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts/{id}": {
+      "get": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Get one post with its embedded campaign",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Post detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PostDetailDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts/{id}/approve": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Approve a post in review → ready (schedules it)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scheduledAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated post",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PostDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Post is not in review state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts/{id}/reject": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Reject a post in review → rework (with feedback)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "feedback": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "feedback"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated post",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PostDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Post is not in review state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/campaigns": {
+      "get": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "List the current user's campaigns",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Campaigns",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CampaignDto"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connect/{platform}/start": {
+      "get": {
+        "tags": [
+          "connect"
+        ],
+        "summary": "Begin per-user OAuth for a social platform (302 to consent)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "facebook",
+                "instagram",
+                "threads",
+                "linkedin",
+                "x"
+              ]
+            },
+            "required": true,
+            "name": "platform",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the platform consent screen"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown platform",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Platform OAuth client not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Server-Sent Events stream of this user's post status changes",
+        "description": "text/event-stream. Auth via Bearer header OR ?token= query (EventSource). Emits `ready` then `post.status` events: {postId,status,campaignId,postUrls,error,at}.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream (Content-Type: text/event-stream)"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}

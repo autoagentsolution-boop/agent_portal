@@ -11,6 +11,7 @@ import { resolvePublishInput, PostValidationError } from './resolve-input.ts';
 import { aggregate, toWriteBack } from './aggregate.ts';
 import { findPublishDue, claimForPublish, updatePost } from '../db/repos/post-repo.ts';
 import { publishTo } from '../social/index.ts';
+import { publishPostStatus } from '../events/bus.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
 import type { Post } from '../../prisma/generated/prisma/client.ts';
@@ -40,6 +41,12 @@ async function processPost(post: Post, publish: PublishFn): Promise<TickResult> 
     if (e instanceof PostValidationError) {
       await updatePost(post.id, { status: 'error', error: e.message.slice(0, 500), postedAt: new Date() });
       await logRun('warn', 'mkt_post', { id: post.id, status: 'error', reason: e.message }, post.ownerId);
+      publishPostStatus(post.ownerId, {
+        postId: post.id,
+        status: 'error',
+        campaignId: post.campaignId,
+        error: e.message.slice(0, 500),
+      });
       return { picked: true, postId: post.id, status: 'error', reason: e.message };
     }
     throw e;
@@ -55,6 +62,13 @@ async function processPost(post: Post, publish: PublishFn): Promise<TickResult> 
     { id: post.id, status: outcome.status, postUrls: outcome.postUrls, error: outcome.error },
     post.ownerId,
   );
+  publishPostStatus(post.ownerId, {
+    postId: post.id,
+    status: outcome.status,
+    campaignId: post.campaignId,
+    postUrls: outcome.postUrls,
+    error: outcome.error,
+  });
   return { picked: true, postId: post.id, status: outcome.status };
 }
 
@@ -81,6 +95,12 @@ export async function runSchedulerTick(publish: PublishFn = publishTo): Promise<
       // Unexpected failure AFTER claim (e.g. DB write). Don't leave the row stuck
       // in `posting`; mark it error so a future tick/operator sees it terminally.
       await updatePost(due.id, { status: 'error', error: String(e).slice(0, 500), postedAt: new Date() }).catch(() => {});
+      publishPostStatus(due.ownerId, {
+        postId: due.id,
+        status: 'error',
+        campaignId: due.campaignId,
+        error: String(e).slice(0, 500),
+      });
       throw e;
     }
   } catch (e) {

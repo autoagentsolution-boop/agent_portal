@@ -12,6 +12,7 @@ import { postsRouter } from './api/posts-router.ts';
 import { campaignsRouter } from './api/campaigns-router.ts';
 import { authRouter } from './api/auth-router.ts';
 import { connectRouter } from './api/connect-router.ts';
+import { eventsRouter } from './api/events-router.ts';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -32,6 +33,10 @@ app.use('/connect', connectRouter);
 // cron/webhook s2s routes (mounted in later phases), not user-facing CRUD.
 app.use('/posts', requireAuth, postsRouter);
 app.use('/campaigns', requireAuth, campaignsRouter);
+
+// Per-user SSE stream (T5). Self-authenticates (Bearer header OR ?token= for the
+// browser EventSource API) so it is NOT behind requireAuth's header-only gate.
+app.use('/events', eventsRouter);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   // Malformed JSON body → 400, not a generic 500 (express.json throws a SyntaxError
