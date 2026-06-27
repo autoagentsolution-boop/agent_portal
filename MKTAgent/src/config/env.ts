@@ -32,6 +32,8 @@ const schema = z.object({
 
   // Gemini (copy-gen)
   GEMINI_API_KEY: z.string().default(''),
+  GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
+  ENABLE_COPYGEN_CRON: z.coerce.boolean().default(false),
 
   // Lead capture
   MKT_LEAD_WEBHOOK_SECRET: z.string().default(''),

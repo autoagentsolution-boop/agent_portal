@@ -17,6 +17,16 @@ export const findCopyGenDue = (): Promise<Post | null> =>
     orderBy: { createdAt: 'asc' },
   });
 
+// Copy-gen needs the parent Campaign (product/angle/leadsForm live there).
+export type PostWithCampaign = Prisma.PostGetPayload<{ include: { campaign: true } }>;
+
+export const findCopyGenDueWithCampaign = (): Promise<PostWithCampaign | null> =>
+  prisma.post.findFirst({
+    where: { status: { in: ['brief', 'rework'] } },
+    orderBy: { createdAt: 'asc' },
+    include: { campaign: true },
+  });
+
 // Scheduler queue: ready + scheduledAt in the past, oldest first.
 export const findPublishDue = (now: Date): Promise<Post | null> =>
   prisma.post.findFirst({

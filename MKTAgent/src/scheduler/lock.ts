@@ -17,20 +17,22 @@
 import pg from 'pg';
 import { env } from '../config/env.ts';
 
-const LOCK_KEY = 'mkt-post-scheduler';
-
-export interface SchedulerLock {
+export interface AdvisoryLock {
   acquired: boolean;
   release(): Promise<void>;
 }
 
-export async function acquireSchedulerLock(): Promise<SchedulerLock> {
+// Acquire a DB-global session advisory lock keyed by an arbitrary string.
+// Each worker passes its own key so the scheduler and copy-gen don't block each
+// other, but two ticks of the SAME worker (or the same worker across instances)
+// serialize.
+export async function acquireAdvisoryLock(key: string): Promise<AdvisoryLock> {
   const client = new pg.Client({ connectionString: env.DATABASE_URL });
   await client.connect();
   try {
     const r = await client.query<{ got_lock: boolean }>(
       'SELECT pg_try_advisory_lock(hashtext($1)) AS got_lock',
-      [LOCK_KEY],
+      [key],
     );
     if (r.rows[0]?.got_lock !== true) {
       await client.end();
@@ -40,7 +42,7 @@ export async function acquireSchedulerLock(): Promise<SchedulerLock> {
       acquired: true,
       release: async () => {
         try {
-          await client.query('SELECT pg_advisory_unlock(hashtext($1))', [LOCK_KEY]);
+          await client.query('SELECT pg_advisory_unlock(hashtext($1))', [key]);
         } finally {
           await client.end();
         }
@@ -51,3 +53,7 @@ export async function acquireSchedulerLock(): Promise<SchedulerLock> {
     throw e;
   }
 }
+
+// Scheduler keeps its original key (matches the n8n lock name byte-for-byte).
+export const acquireSchedulerLock = (): Promise<AdvisoryLock> =>
+  acquireAdvisoryLock('mkt-post-scheduler');
