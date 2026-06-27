@@ -39,7 +39,7 @@ async function processPost(post: Post, publish: PublishFn): Promise<TickResult> 
   } catch (e) {
     if (e instanceof PostValidationError) {
       await updatePost(post.id, { status: 'error', error: e.message.slice(0, 500), postedAt: new Date() });
-      await logRun('warn', 'mkt_post', { id: post.id, status: 'error', reason: e.message });
+      await logRun('warn', 'mkt_post', { id: post.id, status: 'error', reason: e.message }, post.ownerId);
       return { picked: true, postId: post.id, status: 'error', reason: e.message };
     }
     throw e;
@@ -49,12 +49,12 @@ async function processPost(post: Post, publish: PublishFn): Promise<TickResult> 
   const results = await Promise.all(post.platforms.map((p) => publish(p, input)));
   const outcome = aggregate(results);
   await updatePost(post.id, toWriteBack(outcome));
-  await logRun(outcome.status === 'error' ? 'error' : 'info', 'mkt_post', {
-    id: post.id,
-    status: outcome.status,
-    postUrls: outcome.postUrls,
-    error: outcome.error,
-  });
+  await logRun(
+    outcome.status === 'error' ? 'error' : 'info',
+    'mkt_post',
+    { id: post.id, status: outcome.status, postUrls: outcome.postUrls, error: outcome.error },
+    post.ownerId,
+  );
   return { picked: true, postId: post.id, status: outcome.status };
 }
 

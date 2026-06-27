@@ -19,8 +19,8 @@ const fail = (msg: string): PublishResult => ({
   error: ('IG: ' + msg).slice(0, 300),
 });
 
-const igUserId = async (): Promise<string> => {
-  const meta = await getTokenMeta('instagram');
+const igUserId = async (ownerId: string): Promise<string> => {
+  const meta = await getTokenMeta(ownerId, 'instagram');
   const id = (meta?.userId as string) || env.MKT_IG_USER_ID;
   if (!id) throw new Error('IG user id missing');
   return id;
@@ -51,12 +51,12 @@ export const instagramAdapter: SocialAdapter = {
   supports: ['image'] as AssetType[],
   async publish(input: PublishInput): Promise<PublishResult> {
     try {
-      const token = await getActiveToken('instagram');
-      const user = await igUserId();
+      const token = await getActiveToken(input.ownerId, 'instagram');
+      const user = await igUserId(input.ownerId);
       const ref = input.assets[0];
       if (!ref) return fail('no asset for image post');
       const imageUrl = assetStore.publicUrl(ref); // IG fetches server-side
-      const caption = input.copyVi || input.copyEn || '';
+      const caption = input.body;
 
       // 1) create container
       const create = await getJson(

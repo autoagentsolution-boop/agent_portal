@@ -47,20 +47,33 @@ export const campaignDto = z.object({
   brandContext: z.string().nullable(),
   leadsForm: z.string().nullable(),
   active: z.boolean(),
+  // Config-as-data (T3) — all nullable (inherit from user / unset).
+  language: z.string().nullable(),
+  defaultLength: z.string().nullable(),
+  platforms: z.array(socialPlatform),
+  brandVoice: z.string().nullable(),
+  postingWindow: z.string().nullable(),
+  timezone: z.string().nullable(),
   createdAt: z.string(), // ISO
   updatedAt: z.string(),
 });
 export type CampaignDto = z.infer<typeof campaignDto>;
+
+// Language-agnostic copy bag persisted to Post.copy (all variants in one language).
+export const copyBag = z.object({
+  body: z.string(),
+  threads: z.string(),
+  x: z.string(),
+});
+export type CopyBag = z.infer<typeof copyBag>;
 
 export const postDto = z.object({
   id: z.string().uuid(),
   campaignId: z.string().uuid(),
   status: postStatus,
   assetType,
-  copyVi: z.string().nullable(),
-  copyEn: z.string().nullable(),
-  copyThreads: z.string().nullable(),
-  copyX: z.string().nullable(),
+  copy: copyBag.nullable(),
+  language: z.string().nullable(),
   lengthSpec: z.string().nullable(),
   feedback: z.string().nullable(),
   driveFolderId: z.string().nullable(),

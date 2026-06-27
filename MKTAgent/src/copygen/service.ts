@@ -10,6 +10,7 @@
 import { acquireAdvisoryLock } from '../scheduler/lock.ts';
 import { findCopyGenDueWithCampaign, updatePost } from '../db/repos/post-repo.ts';
 import { buildGeminiBody } from './prompt.ts';
+import { resolveCopyConfig } from './resolve-config.ts';
 import { callGemini } from './gemini.ts';
 import { parseGeminiResponse } from './parse.ts';
 import { logRun } from '../db/client.ts';
@@ -45,7 +46,7 @@ export async function runCopyGenTick(callFn: GeminiFn = callGemini): Promise<Cop
       // Bad brief (e.g. campaign missing product) → terminal error, won't fix on retry.
       const msg = e instanceof Error ? e.message : String(e);
       await updatePost(post.id, { status: 'error', error: msg.slice(0, 500) });
-      await logRun('error', 'mkt_copygen', { id: post.id, error: msg });
+      await logRun('error', 'mkt_copygen', { id: post.id, error: msg }, post.ownerId);
       return { picked: true, postId: post.id, status: 'retry', error: msg };
     }
 
@@ -54,21 +55,31 @@ export async function runCopyGenTick(callFn: GeminiFn = callGemini): Promise<Cop
 
     if (!result.ok) {
       // Transient (quota/empty) → leave at original status for next tick.
-      await logRun('warn', 'mkt_copygen', { id: post.id, retry: post.status, error: result.error });
+      await logRun('warn', 'mkt_copygen', { id: post.id, retry: post.status, error: result.error }, post.ownerId);
       logger.warn('copygen_failed_retry', { postId: post.id, error: result.error.slice(0, 200) });
       return { picked: true, postId: post.id, status: 'retry', error: result.error };
     }
 
+    // Persist the language-agnostic copy bag + the resolved language it was
+    // generated in (so the row records its own language for adapters/UI).
+    const cfg = resolveCopyConfig(post);
     await updatePost(post.id, {
-      ...result.copy,
+      copy: result.copy as unknown as object,
+      language: cfg.language,
       status: 'review',
       error: null,
     });
-    await logRun('info', 'mkt_copygen', {
-      id: post.id,
-      status: 'review',
-      lens: { vi: result.copy.copyVi.length, threads: result.copy.copyThreads.length, x: result.copy.copyX.length },
-    });
+    await logRun(
+      'info',
+      'mkt_copygen',
+      {
+        id: post.id,
+        status: 'review',
+        language: cfg.language,
+        lens: { body: result.copy.body.length, threads: result.copy.threads.length, x: result.copy.x.length },
+      },
+      post.ownerId,
+    );
     return { picked: true, postId: post.id, status: 'review' };
   } catch (e) {
     logger.error('copygen_tick_failed', { error: String(e).slice(0, 300) });

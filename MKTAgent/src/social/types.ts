@@ -7,14 +7,17 @@ import type { AssetRef } from '../assets/store.ts';
 
 export interface PublishInput {
   postId: string;
+  // Tenant that owns the post → selects which (owner, platform) token the adapter
+  // publishes with (T4). Carried from Post.ownerId (T2 denorm) via resolve-input.
+  ownerId: string;
   assetType: AssetType;
   // Resolved asset refs in display order (1 for image/video, 2-10 for carousel).
   assets: AssetRef[];
-  // Copy variants — adapter picks the right one for its platform/length budget.
-  copyVi: string;
-  copyEn: string;
-  copyThreads: string;
-  copyX: string;
+  // Language-agnostic copy bag — all variants are in the post's resolved language.
+  // Adapter picks by length budget: body (FB/IG/LinkedIn), threads (≤480), x (≤280).
+  body: string;
+  threads: string;
+  x: string;
 }
 
 export interface PublishResult {

@@ -7,6 +7,7 @@
 // Liveness already proven by `tokens/cli.ts maintain`; not repeated here.
 import { getAdapter } from './index.ts';
 import { getActiveToken } from '../tokens/service.ts';
+import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { assetStore } from '../assets/store.ts';
 import { prisma } from '../db/client.ts';
 import type { SocialPlatform } from '../../prisma/generated/prisma/client.ts';
@@ -29,7 +30,7 @@ async function main(): Promise<void> {
   for (const p of platforms) {
     const r = report[p] as Record<string, unknown>;
     try {
-      const t = await getActiveToken(p);
+      const t = await getActiveToken(SYSTEM_OWNER_ID, p);
       r.tokenOk = t.length > 0;
     } catch (e) {
       r.tokenOk = false;

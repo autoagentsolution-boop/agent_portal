@@ -8,6 +8,7 @@ import { toPostDto, toPostDetailDto } from './mappers.ts';
 import {
   listPosts,
   getPostWithCampaign,
+  getPostForOwner,
   approveReview,
   rejectReview,
 } from '../db/repos/post-repo.ts';
@@ -19,7 +20,7 @@ postsRouter.get(
   asyncHandler(async (req, res) => {
     const q = parseOr422(res, listPostsQuery, req.query);
     if (!q) return;
-    const rows = await listPosts(q);
+    const rows = await listPosts({ ...q, ownerId: req.userId! });
     const hasMore = rows.length > q.limit;
     const page = hasMore ? rows.slice(0, q.limit) : rows;
     ok(res, page.map(toPostDto), {
@@ -32,7 +33,7 @@ postsRouter.get(
 postsRouter.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const post = await getPostWithCampaign(req.params.id);
+    const post = await getPostWithCampaign(req.params.id, req.userId!);
     if (!post) return fail(res, 404, 'post_not_found');
     ok(res, toPostDetailDto(post));
   }),
@@ -43,7 +44,9 @@ postsRouter.post(
   asyncHandler(async (req, res) => {
     const body = parseOr422(res, approvePostBody, req.body ?? {});
     if (!body) return;
-    const updated = await approveReview(req.params.id, body.scheduledAt ?? new Date());
+    // 404 first (not found / cross-tenant → no existence leak), then 409 for state.
+    if (!(await getPostForOwner(req.params.id, req.userId!))) return fail(res, 404, 'post_not_found');
+    const updated = await approveReview(req.params.id, req.userId!, body.scheduledAt ?? new Date());
     if (!updated) return fail(res, 409, 'not_in_review', 'post is not in review state');
     ok(res, toPostDto(updated));
   }),
@@ -54,7 +57,8 @@ postsRouter.post(
   asyncHandler(async (req, res) => {
     const body = parseOr422(res, rejectPostBody, req.body ?? {});
     if (!body) return;
-    const updated = await rejectReview(req.params.id, body.feedback);
+    if (!(await getPostForOwner(req.params.id, req.userId!))) return fail(res, 404, 'post_not_found');
+    const updated = await rejectReview(req.params.id, req.userId!, body.feedback);
     if (!updated) return fail(res, 409, 'not_in_review', 'post is not in review state');
     ok(res, toPostDto(updated));
   }),

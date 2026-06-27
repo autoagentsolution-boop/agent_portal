@@ -8,8 +8,19 @@
 import type { Post } from '../../prisma/generated/prisma/client.ts';
 import type { PublishInput } from '../social/types.ts';
 import type { AssetRef } from '../assets/store.ts';
+import type { CopyVariants } from '../copygen/parse.ts';
 
 export class PostValidationError extends Error {}
+
+// Post.copy is JSON — narrow it to the variant bag, tolerating partial/null.
+const readCopy = (copy: unknown): CopyVariants => {
+  const c = (copy ?? {}) as Partial<CopyVariants>;
+  return {
+    body: typeof c.body === 'string' ? c.body : '',
+    threads: typeof c.threads === 'string' ? c.threads : '',
+    x: typeof c.x === 'string' ? c.x : '',
+  };
+};
 
 const parseAssetRefs = (heroFile: string | null): AssetRef[] =>
   (heroFile ?? '')
@@ -32,13 +43,14 @@ export function resolvePublishInput(post: Post): PublishInput {
   if (post.assetType !== 'carousel' && assets.length !== 1) {
     throw new PostValidationError(`${post.assetType} needs exactly 1 asset, got ${assets.length}`);
   }
+  const copy = readCopy(post.copy);
   return {
     postId: post.id,
+    ownerId: post.ownerId,
     assetType: post.assetType,
     assets,
-    copyVi: post.copyVi ?? '',
-    copyEn: post.copyEn ?? '',
-    copyThreads: post.copyThreads ?? '',
-    copyX: post.copyX ?? '',
+    body: copy.body,
+    threads: copy.threads,
+    x: copy.x,
   };
 }

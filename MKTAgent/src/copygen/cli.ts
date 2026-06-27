@@ -7,6 +7,7 @@ import { runCopyGenTick } from './service.ts';
 import { buildGeminiBody } from './prompt.ts';
 import { createPost, findCopyGenDueWithCampaign } from '../db/repos/post-repo.ts';
 import { prisma } from '../db/client.ts';
+import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 
 // Deterministic stub mimicking a valid Gemini structured-JSON response.
 const stubGemini = async (): Promise<unknown> => ({
@@ -17,10 +18,9 @@ const stubGemini = async (): Promise<unknown> => ({
         parts: [
           {
             text: JSON.stringify({
-              copyVi: 'Hook thử nghiệm ngắn\n\nThân bài nói kết quả vận hành.\n\nBạn xử lý việc này thế nào?\n#DAIS #Automation',
-              copyEn: 'Short test hook\n\nBody about operational results.\n\nHow do you handle this?\n#DAIS #Automation',
-              copyThreads: 'Short test hook for Threads. Real outcome in one line. Try it. #DAIS',
-              copyX: 'Short test hook. One value line. link in bio #DAIS',
+              body: 'Hook thử nghiệm ngắn\n\nThân bài nói kết quả vận hành.\n\nBạn xử lý việc này thế nào?\n#DAIS #Automation',
+              threads: 'Short test hook for Threads. Real outcome in one line. Try it. #DAIS',
+              x: 'Short test hook. One value line. link in bio #DAIS',
             }),
           },
         ],
@@ -31,9 +31,9 @@ const stubGemini = async (): Promise<unknown> => ({
 
 async function seedTest(): Promise<void> {
   const c = await prisma.campaign.create({
-    data: { product: 'copygen-smoke-test', angle: 'nhấn lợi ích vận hành', active: true },
+    data: { ownerId: SYSTEM_OWNER_ID, product: 'copygen-smoke-test', angle: 'nhấn lợi ích vận hành', active: true },
   });
-  const p = await createPost({ campaignId: c.id, status: 'brief', assetType: 'image', lengthSpec: 'short' });
+  const p = await createPost({ campaignId: c.id, ownerId: c.ownerId, status: 'brief', assetType: 'image', lengthSpec: 'short' });
   console.log(JSON.stringify({ campaignId: c.id, postId: p.id, status: p.status }, null, 2));
 }
 

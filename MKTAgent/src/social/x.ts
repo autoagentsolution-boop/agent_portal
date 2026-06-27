@@ -19,9 +19,9 @@ const fail = (msg: string): PublishResult => ({
   error: ('X: ' + msg).slice(0, 300),
 });
 
-// 280-char hard cap; prefer copyX, fall back to copyThreads then copyVi.
+// 280-char hard cap; prefer x, fall back to threads then body.
 const tweetText = (input: PublishInput): string => {
-  let t = (input.copyX || input.copyThreads || input.copyVi || '').trim();
+  let t = (input.x || input.threads || input.body || '').trim();
   if (t.length > 280) {
     t = t.slice(0, 277);
     t = t.slice(0, t.lastIndexOf(' ')) + '…';
@@ -34,7 +34,7 @@ export const xAdapter: SocialAdapter = {
   supports: ['image'] as AssetType[],
   async publish(input: PublishInput): Promise<PublishResult> {
     try {
-      const token = await getActiveToken('x');
+      const token = await getActiveToken(input.ownerId, 'x');
       const auth = { Authorization: `Bearer ${token}` };
       const ref = input.assets[0];
       if (!ref) return fail('no asset for image post');

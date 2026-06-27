@@ -22,8 +22,8 @@ const fail = (msg: string): PublishResult => ({
   error: ('FB: ' + msg).slice(0, 300),
 });
 
-const pageId = async (): Promise<string> => {
-  const meta = await getTokenMeta('facebook');
+const pageId = async (ownerId: string): Promise<string> => {
+  const meta = await getTokenMeta(ownerId, 'facebook');
   const id = (meta?.pageId as string) || env.MKT_FB_PAGE_ID;
   if (!id) throw new Error('FB page id missing');
   return id;
@@ -45,7 +45,7 @@ async function publishImage(input: PublishInput, token: string, page: string): P
   if (!ref) return fail('no asset for image post');
   const { bytes, contentType } = await assetStore.fetchBinary(ref);
   const form = new FormData();
-  form.append('message', input.copyVi || input.copyEn || '');
+  form.append('message', input.body);
   form.append('published', 'true');
   form.append('access_token', token);
   form.append('source', new Blob([new Uint8Array(bytes)], { type: contentType }), 'image');
@@ -76,7 +76,7 @@ async function publishCarousel(input: PublishInput, token: string, page: string)
     fbids.push(await uploadUnpublished(ref, token, page));
   }
   const form = new FormData();
-  form.append('message', input.copyVi || input.copyEn || '');
+  form.append('message', input.body);
   form.append('access_token', token);
   form.append('attached_media', JSON.stringify(fbids.map((id) => ({ media_fbid: id }))));
   const j = await postForm(`https://graph.facebook.com/${G}/${page}/feed`, form);
@@ -90,7 +90,7 @@ async function publishVideo(input: PublishInput, token: string, page: string): P
   if (!ref) return fail('no asset for video post');
   const { bytes, contentType } = await assetStore.fetchBinary(ref);
   const form = new FormData();
-  form.append('description', input.copyVi || input.copyEn || '');
+  form.append('description', input.body);
   form.append('access_token', token);
   form.append('source', new Blob([new Uint8Array(bytes)], { type: contentType }), 'video.mp4');
   const j = await postForm(`https://graph.facebook.com/${G}/${page}/videos`, form);
@@ -104,8 +104,8 @@ export const facebookAdapter: SocialAdapter = {
   supports: ['image', 'carousel', 'video'] as AssetType[],
   async publish(input: PublishInput): Promise<PublishResult> {
     try {
-      const token = await getActiveToken('facebook');
-      const page = await pageId();
+      const token = await getActiveToken(input.ownerId, 'facebook');
+      const page = await pageId(input.ownerId);
       if (input.assetType === 'carousel') return await publishCarousel(input, token, page);
       if (input.assetType === 'video') return await publishVideo(input, token, page);
       return await publishImage(input, token, page);

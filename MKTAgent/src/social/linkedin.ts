@@ -19,8 +19,8 @@ const fail = (msg: string): PublishResult => ({
   error: ('LinkedIn: ' + msg).slice(0, 300),
 });
 
-const ownerUrn = async (): Promise<string> => {
-  const meta = await getTokenMeta('linkedin');
+const ownerUrn = async (ownerId: string): Promise<string> => {
+  const meta = await getTokenMeta(ownerId, 'linkedin');
   const personId = (meta?.personId as string) || env.MKT_LINKEDIN_PERSON_ID;
   if (!personId) throw new Error('LinkedIn person id missing');
   return `urn:li:person:${personId}`;
@@ -31,8 +31,8 @@ export const linkedinAdapter: SocialAdapter = {
   supports: ['image'] as AssetType[],
   async publish(input: PublishInput): Promise<PublishResult> {
     try {
-      const token = await getActiveToken('linkedin');
-      const owner = await ownerUrn();
+      const token = await getActiveToken(input.ownerId, 'linkedin');
+      const owner = await ownerUrn(input.ownerId);
       const ref = input.assets[0];
       if (!ref) return fail('no asset for image post');
       const authHeader = { Authorization: `Bearer ${token}` };
@@ -85,7 +85,7 @@ export const linkedinAdapter: SocialAdapter = {
               lifecycleState: 'PUBLISHED',
               specificContent: {
                 'com.linkedin.ugc.ShareContent': {
-                  shareCommentary: { text: input.copyEn || input.copyVi || '' },
+                  shareCommentary: { text: input.body },
                   shareMediaCategory: 'IMAGE',
                   media: [{ status: 'READY', media: assetUrn }],
                 },

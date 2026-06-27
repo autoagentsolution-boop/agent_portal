@@ -9,13 +9,15 @@ export const prisma = new PrismaClient({ adapter });
 
 export type LogLevel = 'info' | 'warn' | 'error';
 
-// Append an audit row to mkt_run_log. detail is free-form JSON.
+// Append an audit row to mkt_run_log. detail is free-form JSON. ownerId is
+// optional (T2): tenant-attributed events pass it; system/cron events omit it.
 export const logRun = async (
   level: LogLevel,
   step: string,
   detail?: Record<string, unknown>,
+  ownerId?: string,
 ): Promise<void> => {
   await prisma.mktRunLog.create({
-    data: { level, step, detail: (detail ?? {}) as object },
+    data: { level, step, detail: (detail ?? {}) as object, ownerId: ownerId ?? null },
   });
 };

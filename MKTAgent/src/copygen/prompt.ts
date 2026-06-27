@@ -1,11 +1,15 @@
-// Gemini request builder — ported VERBATIM from the n8n "Build Gemini request"
-// node. The system prompt is the proven asset (hook ≤50 chars, banned phrases,
-// copyThreads EN ≤480, copyX EN ≤280, conditional lead-form CTA); do NOT reword.
+// Gemini request builder (T3 — config-as-data + language-agnostic).
 //
-// Source mapping vs the n8n Sheet row:
-//   product/angle/leadsForm  ← Campaign  (were Sheet columns)
-//   lengthSpec/feedback/status ← Post
-import type { PostWithCampaign } from '../db/repos/post-repo.ts';
+// The GUARDRAILS are the proven asset, ported verbatim from the n8n "Build Gemini
+// request" node (hook ≤50 chars, no HTML/markdown, banned clichés, threads ≤480,
+// x ≤280, conditional lead-form CTA). What T3 changes:
+//   • language is RESOLVED (post → campaign → user) and ALL variants generate in
+//     that language — the old "Threads/X always English" rule is dropped.
+//   • brand persona is OPTIONAL: business (brandVoice present) → company voice;
+//     personal (null) → a human sharing, no brand persona, no forced #brand tags.
+//   • output is a 3-variant bag { body, threads, x } (was copyVi/En/Threads/X).
+import type { PostWithCampaignOwner } from '../db/repos/post-repo.ts';
+import { resolveCopyConfig, type ResolvedCopyConfig } from './resolve-config.ts';
 
 export interface GeminiRequestBody {
   systemInstruction: { parts: Array<{ text: string }> };
@@ -13,18 +17,37 @@ export interface GeminiRequestBody {
   generationConfig: Record<string, unknown>;
 }
 
-// length keyword/raw-count → Vietnamese length spec (verbatim from n8n).
+// length keyword/raw-count → human length spec. Kept language-neutral (word count
+// is universal); the model writes the count in the target language naturally.
 export function lengthSpecFor(lengthRaw: string): string {
   const l = lengthRaw.trim().toLowerCase();
-  if (!l) return 'khoảng 130-220 từ';
-  if (['short', 'ngắn', 'ngan'].includes(l)) return 'ngắn gọn, khoảng 80-130 từ';
-  if (['medium', 'vừa', 'vua'].includes(l)) return 'khoảng 130-220 từ';
-  if (['long', 'dài', 'dai'].includes(l)) return 'dài, khoảng 220-320 từ';
-  if (/^\d+$/.test(l)) return `khoảng ${l} từ (cho phép lệch ±15%)`;
-  return 'khoảng 130-220 từ';
+  if (!l) return 'about 130-220 words';
+  if (['short', 'ngắn', 'ngan'].includes(l)) return 'concise, about 80-130 words';
+  if (['medium', 'vừa', 'vua'].includes(l)) return 'about 130-220 words';
+  if (['long', 'dài', 'dai'].includes(l)) return 'long, about 220-320 words';
+  if (/^\d+$/.test(l)) return `about ${l} words (±15% allowed)`;
+  return 'about 130-220 words';
 }
 
-export function buildGeminiBody(post: PostWithCampaign): GeminiRequestBody {
+// Persona line: business uses the resolved brand voice/context; personal omits any
+// company persona. Returned as an array of system lines spliced into the prompt.
+function personaLines(cfg: ResolvedCopyConfig): string[] {
+  if (cfg.brandVoice) {
+    const who = cfg.brandName ? `${cfg.brandName}` : 'the brand';
+    return [
+      `You are a social-media copywriter for ${who}. Brand voice: ${cfg.brandVoice}.`,
+      cfg.brandContext ? `Brand context (facts you may use, do not invent beyond these): ${cfg.brandContext}.` : '',
+      'Write ONE high-engagement Facebook/Threads post. Write like a HUMAN sharing, NOT a brand advertising.',
+    ].filter(Boolean);
+  }
+  // Personal / no-brand: human sharing, no company persona, no forced brand hashtags.
+  return [
+    'You are a real person sharing a genuine post on social media — NOT a brand, NOT an advertiser.',
+    'Write ONE high-engagement Facebook/Threads post in a natural, personal voice. No company persona.',
+  ];
+}
+
+export function buildGeminiBody(post: PostWithCampaignOwner): GeminiRequestBody {
   const product = (post.campaign.product ?? '').trim();
   const angle = (post.campaign.angle ?? '').trim();
   const leadsForm = (post.campaign.leadsForm ?? '').trim();
@@ -32,30 +55,35 @@ export function buildGeminiBody(post: PostWithCampaign): GeminiRequestBody {
   const isRework = post.status === 'rework';
   if (!product) throw new Error('mkt_copygen: campaign missing product');
 
-  const lengthSpec = lengthSpecFor(post.lengthSpec ?? '');
+  const cfg = resolveCopyConfig(post);
+  const lengthSpec = lengthSpecFor(cfg.lengthRaw);
+  const lang = cfg.language;
+  const hashtagRule = cfg.brandVoice
+    ? `end with 4-6 hashtags${cfg.brandName ? ` starting with #${cfg.brandName.replace(/\s+/g, '')}` : ''}`
+    : 'end with 2-4 relevant, natural hashtags (no forced brand tags)';
 
   const system = [
-    'Bạn là copywriter mạng xã hội cho Data Agentic Solutions (DAIS) — công ty làm nền tảng & giải pháp công nghệ dễ dùng, triển khai gọn, bám vận hành thực tế.',
-    'Viết 1 bài đăng Facebook/Threads có tính kéo tương tác cao. Viết như MỘT CON NGƯỜI đang chia sẻ, KHÔNG phải brand đang quảng cáo.',
-    'ĐỊNH DẠNG (guardrail cứng): KHÔNG dùng HTML/markdown (không <br>, <b>, **). Chỉ newline thật để tách dòng. Câu ngắn (<20 từ). Nhiều khoảng trắng giữa các dòng cho dễ đọc trên mobile.',
-    'CẤU TRÚC NỀN cho copyVi (copyEn dịch tương đương tự nhiên, giữ cùng sức nặng hook): HOOK dòng đầu TỐI ĐA 50 KÝ TỰ (kể cả emoji & dấu câu) — là số/tình huống cụ thể, câu trái chiều, hoặc thừa nhận nỗi đau; không vòng vo, không tên sản phẩm ở hook. Sau đó: dòng trống; re-hook đào sâu; dòng trống; thân 2-3 dòng emoji-led nói KẾT QUẢ vận hành cho con người (không liệt kê tính năng); dòng trống; 1 dòng chốt; 1 câu hỏi CỤ THỂ gây thảo luận (tránh "bạn nghĩ sao?"); 1 CTA duy nhất; dòng cuối 4-6 hashtag bắt đầu #DAIS.',
-    `YÊU CẦU ĐỘ DÀI: copyVi ${lengthSpec}. Tổng 4-6 emoji. TUYỆT ĐỐI tránh sáo rỗng và các từ: "giải pháp đột phá", "khám phá", "thay đổi cuộc chơi", "nâng tầm", "tối ưu hiệu suất tức thì". Không bịa số liệu, KHÔNG bịa % hay con số nếu brief không cung cấp, không hứa hẹn quá mức.`,
-    'BẢN THREADS RIÊNG (copyThreads): viết MỘT phiên bản RÚT GỌN tự thân cho Threads, TỐI ĐA 480 ký tự (mục tiêu 300-450). KHÔNG cắt từ copyVi — viết lại: 1 hook mạnh ≤50 ký tự, 1-2 dòng thân nói kết quả, 1 câu chốt + 1 CTA, 2-3 hashtag #DAIS. Phải đứng được như một post hoàn chỉnh, không cụt câu, không thiếu CTA. VIẾT BẰNG TIẾNG ANH (Threads audience chủ yếu dùng tiếng Anh) — KHÔNG dùng tiếng Việt; giữ cùng thông điệp & sức nặng hook như copyVi nhưng diễn đạt tự nhiên bằng tiếng Anh.',
-    'BẢN X/TWITTER RIÊNG (copyX): viết MỘT tweet tự thân cho X, TỐI ĐA 280 KÝ TỰ (kể cả emoji/hashtag) — KHÔNG được vượt 280. 1 hook ≤50 ký tự, 1 câu giá trị, 1 CTA ngắn (vd "link in bio"), 1-2 hashtag #DAIS. KHÔNG chèn URL thật vào text (X tính phí cao cho post có link). VIẾT BẰNG TIẾNG ANH, đứng độc lập, không cụt câu.',
-    'ƯU TIÊN BRIEF: Nếu phần "Góc tiếp cận (angle)" có yêu cầu riêng về bố cục / giọng / cách kể / điểm nhấn → TUÂN THEO brief đó (linh hoạt cấu trúc nền), MIỄN vẫn giữ guardrail cứng (không HTML, hook ≤50 ký tự, tránh sáo rỗng, đúng độ dài). Angle ưu tiên cao hơn cấu trúc nền.',
+    ...personaLines(cfg),
+    `LANGUAGE: write EVERY variant (body, threads, x) in ${lang}. Do not mix languages; keep it natural and idiomatic in ${lang}.`,
+    'FORMAT (hard guardrail): NO HTML/markdown (no <br>, <b>, **). Real newlines only to separate lines. Short sentences (<20 words). Generous blank lines between lines for mobile readability.',
+    `STRUCTURE for "body": first-line HOOK MAX 50 CHARACTERS (including emoji & punctuation) — a concrete number/situation, a contrarian line, or a pain admission; no rambling, no product name in the hook. Then: blank line; a deeper re-hook; blank line; 2-3 emoji-led body lines about the real human/operational RESULT (not a feature list); blank line; 1 closing line; 1 SPECIFIC discussion question (avoid "what do you think?"); 1 single CTA; final line ${hashtagRule}.`,
+    `LENGTH: body ${lengthSpec}. 4-6 emojis total. Strictly avoid empty buzzwords ("breakthrough solution", "discover", "game changer", "take it to the next level", "instantly optimize"). Do NOT fabricate stats/percentages/numbers not in the brief; no over-promising.`,
+    'SEPARATE THREADS VARIANT ("threads"): write a STANDALONE shortened version, MAX 480 characters (target 300-450). Do NOT truncate the body — rewrite: 1 strong hook ≤50 chars, 1-2 body lines on the result, 1 closing line + 1 CTA, 2-3 hashtags. Must stand alone as a complete post — no cut-off sentences, no missing CTA.',
+    'SEPARATE X/TWITTER VARIANT ("x"): write ONE standalone tweet, MAX 280 CHARACTERS (incl. emoji/hashtags) — MUST NOT exceed 280. 1 hook ≤50 chars, 1 value line, 1 short CTA (e.g. "link in bio"), 1-2 hashtags. Do NOT put a real URL in the text (X penalizes link posts). Standalone, no cut-off.',
+    'BRIEF PRIORITY: if the "angle" carries its own layout/tone/storytelling/emphasis request → FOLLOW that brief (flex the base structure) as long as the hard guardrails hold (no HTML, hook ≤50 chars, avoid buzzwords, correct length). Angle outranks the base structure.',
   ];
   if (leadsForm) {
     system.push(
-      `LINK THU LEAD: bài này có form thu lead = ${leadsForm}. Trong CTA của copyVi, copyEn VÀ copyThreads, dùng ĐÚNG link này (viết nguyên URL) làm lời kêu gọi để lại thông tin / đăng ký — KHÔNG dùng "link in bio" cho 3 bản đó. copyThreads vẫn phải ≤480 ký tự KỂ CẢ link (rút gọn phần thân để chừa chỗ cho URL, không cụt câu). RIÊNG copyX: TUYỆT ĐỐI KHÔNG chèn URL thật (X tính phí cao cho link) — giữ "link in bio". Mỗi bản chỉ 1 CTA, không spam link.`,
+      `LEAD FORM LINK: this post has a lead-capture form = ${leadsForm}. In the CTA of "body" AND "threads", use EXACTLY this link (write the full URL) as the call to sign up / leave info — do NOT use "link in bio" for those two. "threads" must still be ≤480 chars INCLUDING the link (trim the body to make room, no cut-off). For "x" ONLY: NEVER insert a real URL (X penalizes links) — keep "link in bio". One CTA per variant, no link spam.`,
     );
   }
   const systemText = system.join('\n');
 
-  let user = `Sản phẩm/dịch vụ: ${product}\nGóc tiếp cận (angle): ${angle || '(tự chọn góc phù hợp, nhấn lợi ích vận hành)'}\nViết copyVi và copyEn.`;
+  let user = `Product/service: ${product}\nAngle: ${angle || '(choose a fitting angle, emphasize the real operational benefit)'}\nWrite the body, threads, and x variants — all in ${lang}.`;
   if (isRework && feedback) {
-    user += `\n\nLƯU Ý: bản trước đã bị TỪ CHỐI. Feedback của người duyệt: "${feedback}". Hãy viết lại để KHẮC PHỤC đúng các điểm này, đừng lặp lại lỗi cũ.`;
+    user += `\n\nNOTE: the previous version was REJECTED. Reviewer feedback: "${feedback}". Rewrite to FIX exactly these points; do not repeat the old mistakes.`;
   } else if (isRework) {
-    user += `\n\nLƯU Ý: bản trước đã bị từ chối (không có ghi chú cụ thể). Hãy viết một phiên bản KHÁC HẲN về hook và cách tiếp cận.`;
+    user += `\n\nNOTE: the previous version was rejected (no specific notes). Write a SUBSTANTIALLY DIFFERENT hook and approach.`;
   }
 
   return {
@@ -69,12 +97,11 @@ export function buildGeminiBody(post: PostWithCampaign): GeminiRequestBody {
       responseSchema: {
         type: 'OBJECT',
         properties: {
-          copyVi: { type: 'STRING' },
-          copyEn: { type: 'STRING' },
-          copyThreads: { type: 'STRING' },
-          copyX: { type: 'STRING' },
+          body: { type: 'STRING' },
+          threads: { type: 'STRING' },
+          x: { type: 'STRING' },
         },
-        required: ['copyVi', 'copyEn', 'copyThreads', 'copyX'],
+        required: ['body', 'threads', 'x'],
       },
     },
   };

@@ -19,9 +19,9 @@ const fail = (msg: string): PublishResult => ({
 });
 
 // Threads caps text at 500 chars even for image posts. Prefer the standalone
-// copyThreads variant; truncate on a word boundary as a safety net.
+// threads variant, fall back to the long body; truncate on a word boundary.
 const threadsText = (input: PublishInput): string => {
-  let t = (input.copyThreads || input.copyVi || '').trim();
+  let t = (input.threads || input.body || '').trim();
   if (t.length > 500) {
     t = t.slice(0, 497);
     t = t.slice(0, t.lastIndexOf(' ')) + '…';
@@ -29,8 +29,8 @@ const threadsText = (input: PublishInput): string => {
   return t;
 };
 
-const userId = async (): Promise<string> => {
-  const meta = await getTokenMeta('threads');
+const userId = async (ownerId: string): Promise<string> => {
+  const meta = await getTokenMeta(ownerId, 'threads');
   const id = (meta?.userId as string) || env.MKT_THREADS_USER_ID;
   if (!id) throw new Error('Threads user id missing');
   return id;
@@ -48,8 +48,8 @@ export const threadsAdapter: SocialAdapter = {
   supports: ['image'] as AssetType[],
   async publish(input: PublishInput): Promise<PublishResult> {
     try {
-      const token = await getActiveToken('threads');
-      const user = await userId();
+      const token = await getActiveToken(input.ownerId, 'threads');
+      const user = await userId(input.ownerId);
       const ref = input.assets[0];
       if (!ref) return fail('no asset for image post');
       const imageUrl = assetStore.publicUrl(ref);

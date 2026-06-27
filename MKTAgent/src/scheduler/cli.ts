@@ -10,6 +10,7 @@
 import { runSchedulerTick } from './tick.ts';
 import { createPost } from '../db/repos/post-repo.ts';
 import { prisma } from '../db/client.ts';
+import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import type { PublishInput, PublishResult } from '../social/types.ts';
 import type { SocialPlatform } from '../../prisma/generated/prisma/client.ts';
 
@@ -22,14 +23,15 @@ const stubPublish = async (platform: SocialPlatform, input: PublishInput): Promi
 
 async function seedTest(): Promise<void> {
   const campaign = await prisma.campaign.create({
-    data: { product: 'scheduler-smoke-test', angle: 'P3 verify', active: true },
+    data: { ownerId: SYSTEM_OWNER_ID, product: 'scheduler-smoke-test', angle: 'P3 verify', active: true },
   });
   const post = await createPost({
     campaignId: campaign.id,
+    ownerId: campaign.ownerId,
     status: 'ready',
     assetType: 'image',
-    copyVi: 'Bài test scheduler (dry-run)',
-    copyEn: 'Scheduler smoke test',
+    language: 'vi',
+    copy: { body: 'Bài test scheduler (dry-run)', threads: 'Scheduler smoke test', x: 'Scheduler smoke test' },
     heroFile: '1bo4diy3vlH9VmRE-78Z15ux9053-KZci',
     platforms: ['facebook', 'instagram'],
     scheduledAt: new Date(Date.now() - 60_000),

@@ -6,3 +6,4 @@ dist/
 output/
 prisma/generated/
 *.log
+oauth-token-backup-pre-t4.json

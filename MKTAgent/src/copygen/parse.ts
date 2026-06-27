@@ -1,11 +1,13 @@
-// Parse Gemini structured-JSON → copy variants. Ported from the n8n "Parse copy"
-// node, including the hard length safety-net (Threads ≤480, X ≤280) in case the
-// model overshoots its own instruction.
+// Parse Gemini structured-JSON → copy variants (T3 shape). Keeps the hard length
+// safety-net (threads ≤480, x ≤280) in case the model overshoots its instruction.
+// CopyVariants is the language-agnostic bag persisted to Post.copy:
+//   body    → long copy for Facebook/Instagram/LinkedIn
+//   threads → standalone ≤480
+//   x       → standalone ≤280
 export interface CopyVariants {
-  copyVi: string;
-  copyEn: string;
-  copyThreads: string;
-  copyX: string;
+  body: string;
+  threads: string;
+  x: string;
 }
 
 export type ParseResult =
@@ -34,16 +36,15 @@ export function parseGeminiResponse(resp: any): ParseResult {
     if (!text) throw new Error(`empty Gemini response (finishReason=${finish || 'none'})`);
 
     const parsed = JSON.parse(text);
-    const copyVi = String(parsed.copyVi || '').trim();
-    const copyEn = String(parsed.copyEn || '').trim();
-    let copyThreads = String(parsed.copyThreads || '').trim();
-    let copyX = String(parsed.copyX || '').trim();
-    if (!copyVi || !copyEn) throw new Error('missing copyVi/copyEn in model output');
+    const body = String(parsed.body || '').trim();
+    let threads = String(parsed.threads || '').trim();
+    let x = String(parsed.x || '').trim();
+    if (!body) throw new Error('missing body in model output');
 
-    copyThreads = cap(copyThreads, 480);
-    copyX = cap(copyX, 280);
+    threads = cap(threads, 480);
+    x = cap(x, 280);
 
-    return { ok: true, copy: { copyVi, copyEn, copyThreads, copyX } };
+    return { ok: true, copy: { body, threads, x } };
   } catch (e) {
     return { ok: false, error: 'copygen: ' + (e instanceof Error ? e.message : String(e)) };
   }

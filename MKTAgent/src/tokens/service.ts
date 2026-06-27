@@ -1,32 +1,41 @@
 // Token service — the API the rest of the app uses for OAuth tokens.
-// Adapters call getActiveToken(); the refresh cron calls runTokenMaintenance().
-import { getToken, upsertToken, markTokenStatus } from '../db/repos/token-repo.ts';
+// Adapters call getActiveToken(ownerId, platform); the refresh cron calls
+// runTokenMaintenance() (walks every tenant's tokens).
+import { getToken, upsertToken, markTokenStatus, listAllTokenKeys } from '../db/repos/token-repo.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
 import { env } from '../config/env.ts';
+import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { providers } from './providers.ts';
 import type { SocialPlatform } from '../../prisma/generated/prisma/client.ts';
 
-// Return the current plaintext token for a platform, or throw if missing/revoked.
-// Adapters use this instead of reading process.env directly.
-export const getActiveToken = async (platform: SocialPlatform): Promise<string> => {
-  const rec = await getToken(platform);
+// Return the current plaintext token for (owner, platform), or throw if
+// missing/revoked. Adapters use this instead of reading process.env directly.
+export const getActiveToken = async (
+  ownerId: string,
+  platform: SocialPlatform,
+): Promise<string> => {
+  const rec = await getToken(ownerId, platform);
   if (!rec) throw new Error(`token: no token stored for ${platform}`);
   if (rec.status === 'revoked') throw new Error(`token: ${platform} revoked, needs re-mint`);
   return rec.token;
 };
 
 export const getTokenMeta = async (
+  ownerId: string,
   platform: SocialPlatform,
 ): Promise<Record<string, unknown> | null> => {
-  const rec = await getToken(platform);
+  const rec = await getToken(ownerId, platform);
   return rec?.meta ?? null;
 };
 
-// One-time seed: import tokens from env into the encrypted DB store. Idempotent
-// (upsert). Run on first boot / after re-minting a token in env. meta carries the
+// One-time seed: import tokens from env into the encrypted DB store for one owner
+// (defaults to the system/DAIS owner — env tokens are DAIS's). Idempotent (upsert).
+// Real users populate their rows via the connect-flow, not env. meta carries the
 // platform identity ids the providers need.
-export const seedTokensFromEnv = async (): Promise<string[]> => {
+export const seedTokensFromEnv = async (
+  ownerId: string = SYSTEM_OWNER_ID,
+): Promise<string[]> => {
   const seeded: string[] = [];
   const plan: Array<{
     platform: SocialPlatform;
@@ -41,22 +50,29 @@ export const seedTokensFromEnv = async (): Promise<string[]> => {
   ];
   for (const p of plan) {
     if (!p.token) continue;
-    await upsertToken({ platform: p.platform, token: p.token, meta: p.meta ?? null });
+    await upsertToken({ ownerId, platform: p.platform, token: p.token, meta: p.meta ?? null });
     seeded.push(p.platform);
   }
-  await logRun('info', 'token_seed', { seeded });
+  await logRun('info', 'token_seed', { ownerId, seeded }, ownerId);
   return seeded;
 };
 
-// Refresh-ahead-of-expiry + liveness for every stored token. Idempotent; safe to
-// run on a cron. Returns a per-platform summary.
+// Refresh-ahead-of-expiry + liveness for EVERY stored token across all tenants.
+// Idempotent; safe to run on a cron. Returns a per-(owner,platform) summary.
 export const runTokenMaintenance = async (): Promise<Record<string, unknown>> => {
   const summary: Record<string, unknown> = {};
-  for (const platform of Object.keys(providers) as SocialPlatform[]) {
-    const provider = providers[platform]!;
-    const rec = await getToken(platform);
+  const keys = await listAllTokenKeys();
+
+  for (const { ownerId, platform } of keys) {
+    const key = `${ownerId}:${platform}`;
+    const provider = providers[platform];
+    if (!provider) {
+      summary[key] = { skipped: 'no provider' };
+      continue;
+    }
+    const rec = await getToken(ownerId, platform);
     if (!rec) {
-      summary[platform] = { skipped: 'no token' };
+      summary[key] = { skipped: 'no token' };
       continue;
     }
     let token = rec.token;
@@ -71,6 +87,7 @@ export const runTokenMaintenance = async (): Promise<Record<string, unknown>> =>
         if (within) {
           const r = await provider.refresh(token, rec.refreshToken, rec.meta);
           await upsertToken({
+            ownerId,
             platform,
             token: r.token,
             refreshToken: r.refreshToken ?? rec.refreshToken,
@@ -83,12 +100,12 @@ export const runTokenMaintenance = async (): Promise<Record<string, unknown>> =>
       }
 
       const check = await provider.check(token, rec.meta);
-      await markTokenStatus(platform, check.alive ? 'active' : 'needs_attention');
-      summary[platform] = { refreshed, alive: check.alive, identity: check.identity, reason: check.reason };
+      await markTokenStatus(ownerId, platform, check.alive ? 'active' : 'needs_attention');
+      summary[key] = { refreshed, alive: check.alive, identity: check.identity, reason: check.reason };
     } catch (e) {
-      await markTokenStatus(platform, 'needs_attention');
-      summary[platform] = { refreshed, error: String(e).slice(0, 200) };
-      logger.warn('token_maintenance_error', { platform, error: String(e).slice(0, 200) });
+      await markTokenStatus(ownerId, platform, 'needs_attention');
+      summary[key] = { refreshed, error: String(e).slice(0, 200) };
+      logger.warn('token_maintenance_error', { ownerId, platform, error: String(e).slice(0, 200) });
     }
   }
   await logRun('info', 'token_maintenance', summary);

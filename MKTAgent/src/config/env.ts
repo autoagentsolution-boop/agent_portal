@@ -29,6 +29,16 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: z.string().default(''),
   GOOGLE_CLIENT_SECRET: z.string().default(''),
   GOOGLE_REFRESH_TOKEN: z.string().default(''),
+  // App-login OAuth redirect (distinct from Drive scope — identity only). Dev =
+  // localhost callback; prod needs HTTPS (ties to T7/P8 deploy).
+  GOOGLE_OAUTH_REDIRECT_URI: z
+    .string()
+    .default('http://localhost:7100/auth/google/callback'),
+
+  // App auth: long-lived JWT (HS256). No refresh token — user wants zero re-auth
+  // friction; rotating JWT_SECRET invalidates all sessions (re-login via Google).
+  JWT_SECRET: z.string().default(''),
+  JWT_TTL: z.string().default('60d'), // jsonwebtoken expiresIn syntax
 
   // Gemini (copy-gen)
   GEMINI_API_KEY: z.string().default(''),
@@ -58,6 +68,25 @@ const schema = z.object({
   // Graph API versions (pinned; overridable)
   GRAPH_VERSION: z.string().default('v25.0'),
   THREADS_VERSION: z.string().default('v1.0'),
+
+  // Per-user social connect-flow OAuth clients (T4). Distinct from the DAIS
+  // env-seeded long-lived tokens — these onboard REAL users via consent. Each is
+  // optional; the connect endpoint for a platform fail-fasts (500) until its app
+  // creds are set, gated the same way as Google login (external app-review bucket).
+  // Public base for building absolute connect callback URIs (dev = localhost).
+  PUBLIC_BASE_URL: z.string().default('http://localhost:7100'),
+  // Meta (FB Pages + IG + Threads share one Meta app; Threads may use its own).
+  META_APP_ID: z.string().default(''),
+  META_APP_SECRET: z.string().default(''),
+  THREADS_APP_ID: z.string().default(''),
+  THREADS_APP_SECRET: z.string().default(''),
+  // LinkedIn OAuth 2.0 (Sign In with LinkedIn + w_member_social).
+  LINKEDIN_CLIENT_ID: z.string().default(''),
+  LINKEDIN_CLIENT_SECRET: z.string().default(''),
+  // X / Twitter OAuth2 user-context (PKCE). Reuses X_CLIENT_ID/SECRET that the
+  // token refresh provider already reads from process.env.
+  X_CLIENT_ID: z.string().default(''),
+  X_CLIENT_SECRET: z.string().default(''),
 });
 
 const parsed = schema.safeParse(process.env);

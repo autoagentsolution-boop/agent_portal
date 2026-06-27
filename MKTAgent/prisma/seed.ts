@@ -1,11 +1,13 @@
 // Seed + smoke test for P1: create a campaign + post via the repos, read back.
 // Run: npx tsx prisma/seed.ts
 import { createCampaign } from '../src/db/repos/campaign-repo.ts';
-import { createPost, getPost, findCopyGenDue } from '../src/db/repos/post-repo.ts';
+import { createPost, getPostForOwner, findCopyGenDue } from '../src/db/repos/post-repo.ts';
 import { logRun, prisma } from '../src/db/client.ts';
+import { SYSTEM_OWNER_ID } from '../src/db/system-owner.ts';
 
 async function main(): Promise<void> {
   const campaign = await createCampaign({
+    ownerId: SYSTEM_OWNER_ID,
     product: 'AgentPortal',
     angle: 'nhấn mạnh tự động đăng bài, sales chỉ duyệt',
     brandContext: 'DAIS — nền tảng & giải pháp công nghệ dễ dùng, triển khai gọn.',
@@ -14,6 +16,7 @@ async function main(): Promise<void> {
 
   const post = await createPost({
     campaignId: campaign.id,
+    ownerId: campaign.ownerId,
     status: 'brief',
     assetType: 'image',
     driveFolderId: '1KUbt8uiFzhgjGqkVitV7V9Fr6Xhf9E9j',
@@ -22,7 +25,7 @@ async function main(): Promise<void> {
     lengthSpec: 'long',
   });
 
-  const readBack = await getPost(post.id);
+  const readBack = await getPostForOwner(post.id, SYSTEM_OWNER_ID);
   const due = await findCopyGenDue();
   await logRun('info', 'seed', { campaignId: campaign.id, postId: post.id });
 
