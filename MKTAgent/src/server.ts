@@ -4,6 +4,8 @@
 import { env } from './config/env.ts';
 import express, { type ErrorRequestHandler } from 'express';
 import { logger } from './lib/logger.ts';
+import { startSchedulerCron } from './scheduler/cron.ts';
+import { startTokenCron } from './tokens/cron.ts';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -28,6 +30,8 @@ const bootstrap = (): void => {
   app.listen(env.PORT, () => {
     logger.info('mktagent_listening', { port: env.PORT, env: env.NODE_ENV });
   });
+  if (env.ENABLE_SCHEDULER_CRON) startSchedulerCron();
+  if (env.ENABLE_TOKEN_CRON) startTokenCron();
 };
 
 bootstrap();

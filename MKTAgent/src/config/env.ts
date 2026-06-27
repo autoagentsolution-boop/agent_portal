@@ -15,6 +15,9 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   // Internal API auth (REST + webhooks). Comma-separated keys allowed.
   MKT_API_KEYS: z.string().default(''),
+  // Background workers (off by default so dev/CLI runs don't auto-post).
+  ENABLE_SCHEDULER_CRON: z.coerce.boolean().default(false),
+  ENABLE_TOKEN_CRON: z.coerce.boolean().default(false),
   // Token encryption (32 bytes hex). Required once tokens module is used; we
   // validate format here but allow empty in dev so scaffold boots.
   TOKEN_ENC_KEY: z
