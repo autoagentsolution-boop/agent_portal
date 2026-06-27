@@ -40,6 +40,58 @@ export const rejectPostBody = z.object({
 });
 export type RejectPostBody = z.infer<typeof rejectPostBody>;
 
+// ---- CRUD bodies (T7) ----
+// ownerId is NEVER accepted from the client — it is taken from the JWT. Post.copy
+// and Post.status are owned by copy-gen/the review gate, so neither is settable here.
+
+// Config-as-data fields are nullable: null = "clear / inherit from user default".
+export const createCampaignBody = z.object({
+  product: z.string().min(1).max(200),
+  angle: z.string().max(2000).nullish(),
+  brandContext: z.string().max(4000).nullish(),
+  leadsForm: z.string().url().max(500).nullish(),
+  active: z.boolean().optional(),
+  language: z.string().max(40).nullish(),
+  defaultLength: z.string().max(40).nullish(),
+  platforms: z.array(socialPlatform).optional(),
+  brandVoice: z.string().max(2000).nullish(),
+  postingWindow: z.string().max(40).nullish(),
+  timezone: z.string().max(64).nullish(),
+});
+export type CreateCampaignBody = z.infer<typeof createCampaignBody>;
+
+// PATCH semantics: every field optional. `undefined` → unchanged; explicit `null`
+// → clear the column. `.strict()` rejects unknown keys so typos surface as 422.
+export const updateCampaignBody = createCampaignBody.partial().strict();
+export type UpdateCampaignBody = z.infer<typeof updateCampaignBody>;
+
+export const createPostBody = z.object({
+  campaignId: z.string().uuid(),
+  assetType: assetType.optional(),
+  language: z.string().max(40).nullish(),
+  lengthSpec: z.string().max(40).nullish(),
+  driveFolderId: z.string().max(200).nullish(),
+  heroFile: z.string().max(2000).nullish(), // 1 filename or CSV (carousel)
+  platforms: z.array(socialPlatform).optional(),
+  scheduledAt: z.coerce.date().nullish(),
+});
+export type CreatePostBody = z.infer<typeof createPostBody>;
+
+// Editable post fields (campaignId is immutable — a re-home would desync ownerId).
+export const updatePostBody = z
+  .object({
+    assetType,
+    language: z.string().max(40).nullish(),
+    lengthSpec: z.string().max(40).nullish(),
+    driveFolderId: z.string().max(200).nullish(),
+    heroFile: z.string().max(2000).nullish(),
+    platforms: z.array(socialPlatform),
+    scheduledAt: z.coerce.date().nullish(),
+  })
+  .partial()
+  .strict();
+export type UpdatePostBody = z.infer<typeof updatePostBody>;
+
 // ---- Response DTOs (what the UI renders; decoupled from the DB row) ----
 export const campaignDto = z.object({
   id: z.string().uuid(),

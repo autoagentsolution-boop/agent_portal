@@ -11,8 +11,10 @@ RUN npm install --no-audit --no-fund
 COPY prisma ./prisma
 RUN npx prisma generate
 
-# App source.
-COPY tsconfig.json ./
+# App source. prisma.config.ts is REQUIRED at runtime: Prisma 7 reads the
+# datasource url from it (schema.prisma has no inline url), so `migrate deploy`
+# inside the container crash-loops without it.
+COPY tsconfig.json prisma.config.ts ./
 COPY src ./src
 
 ENV NODE_ENV=production

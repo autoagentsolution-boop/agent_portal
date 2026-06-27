@@ -27,6 +27,10 @@ import {
   leadDto,
   leadSource,
   leadCaptureResult,
+  createCampaignBody,
+  updateCampaignBody,
+  createPostBody,
+  updatePostBody,
 } from '../api/schemas.ts';
 
 extendZodWithOpenApi(z);
@@ -57,6 +61,10 @@ const PostDto = registry.register('PostDto', postDto);
 const PostDetailDto = registry.register('PostDetailDto', postDetailDto);
 registry.register('ApprovePostBody', approvePostBody);
 registry.register('RejectPostBody', rejectPostBody);
+const CreateCampaignBody = registry.register('CreateCampaignBody', createCampaignBody);
+const UpdateCampaignBody = registry.register('UpdateCampaignBody', updateCampaignBody);
+const CreatePostBody = registry.register('CreatePostBody', createPostBody);
+const UpdatePostBody = registry.register('UpdatePostBody', updatePostBody);
 registry.register('LeadSource', leadSource);
 const LeadDto = registry.register('LeadDto', leadDto);
 const LeadCaptureResult = registry.register('LeadCaptureResult', leadCaptureResult);
@@ -171,7 +179,56 @@ registry.registerPath({
   },
 });
 
-// ---- Campaigns -----------------------------------------------------------------
+// ---- Posts CRUD (T7) -----------------------------------------------------------
+const uuidParam = z.object({ id: z.string().uuid() });
+
+registry.registerPath({
+  method: 'post',
+  path: '/posts',
+  tags: ['posts'],
+  summary: 'Create a post (brief) under one of the user\'s campaigns',
+  security: [{ [bearer.name]: [] }],
+  request: { body: { content: json(CreatePostBody) } },
+  responses: {
+    201: { description: 'Created post (status=brief)', content: json(dataEnvelope(PostDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Campaign not found / cross-tenant'),
+    422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
+  method: 'patch',
+  path: '/posts/{id}',
+  tags: ['posts'],
+  summary: 'Edit a post\'s config (asset/targets/schedule). Editable states only.',
+  security: [{ [bearer.name]: [] }],
+  request: { params: uuidParam, body: { content: json(UpdatePostBody) } },
+  responses: {
+    200: { description: 'Updated post', content: json(dataEnvelope(PostDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Post is in a non-editable (scheduler-owned) state'),
+    422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
+  method: 'delete',
+  path: '/posts/{id}',
+  tags: ['posts'],
+  summary: 'Delete a post (blocked while publishing)',
+  security: [{ [bearer.name]: [] }],
+  request: { params: uuidParam },
+  responses: {
+    204: { description: 'Deleted' },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Post is being published; cannot delete'),
+  },
+});
+
+// ---- Campaigns CRUD (T7) -------------------------------------------------------
 registry.registerPath({
   method: 'get',
   path: '/campaigns',
@@ -181,6 +238,63 @@ registry.registerPath({
   responses: {
     200: { description: 'Campaigns', content: json(dataEnvelope(z.array(CampaignDto))) },
     401: errorResponse('Unauthorized'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/campaigns',
+  tags: ['campaigns'],
+  summary: 'Create a campaign',
+  security: [{ [bearer.name]: [] }],
+  request: { body: { content: json(CreateCampaignBody) } },
+  responses: {
+    201: { description: 'Created campaign', content: json(dataEnvelope(CampaignDto)) },
+    401: errorResponse('Unauthorized'),
+    422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/campaigns/{id}',
+  tags: ['campaigns'],
+  summary: 'Get one campaign',
+  security: [{ [bearer.name]: [] }],
+  request: { params: uuidParam },
+  responses: {
+    200: { description: 'Campaign', content: json(dataEnvelope(CampaignDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+  },
+});
+
+registry.registerPath({
+  method: 'patch',
+  path: '/campaigns/{id}',
+  tags: ['campaigns'],
+  summary: 'Update a campaign (partial)',
+  security: [{ [bearer.name]: [] }],
+  request: { params: uuidParam, body: { content: json(UpdateCampaignBody) } },
+  responses: {
+    200: { description: 'Updated campaign', content: json(dataEnvelope(CampaignDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
+  method: 'delete',
+  path: '/campaigns/{id}',
+  tags: ['campaigns'],
+  summary: 'Delete a campaign (cascades to its posts)',
+  security: [{ [bearer.name]: [] }],
+  request: { params: uuidParam },
+  responses: {
+    204: { description: 'Deleted' },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
   },
 });
 

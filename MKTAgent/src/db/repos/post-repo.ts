@@ -124,3 +124,68 @@ export const rejectReview = async (
   });
   return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
 };
+
+// ── Tenant-facing CRUD (T7) ───────────────────────────────────────────────────
+
+// States in which a user may edit/configure a post. Excludes scheduler-owned
+// states (ready/posting/posted/partial) — once approved, the worker owns the row.
+const EDITABLE: PostStatus[] = ['brief', 'review', 'rework', 'error'];
+
+// Tenant create: the route has already verified the campaign belongs to ownerId,
+// so ownerId is denormalized here (never from the client body). Always starts at
+// `brief` — copy-gen picks it up; the client cannot inject generated state/copy.
+export interface CreatePostForOwnerArgs {
+  campaignId: string;
+  ownerId: string;
+  assetType?: Post['assetType'];
+  language?: string | null;
+  lengthSpec?: string | null;
+  driveFolderId?: string | null;
+  heroFile?: string | null;
+  platforms?: Post['platforms'];
+  scheduledAt?: Date | null;
+}
+
+export const createPostForOwner = (args: CreatePostForOwnerArgs): Promise<Post> =>
+  prisma.post.create({
+    data: {
+      campaignId: args.campaignId,
+      ownerId: args.ownerId,
+      status: 'brief',
+      ...(args.assetType ? { assetType: args.assetType } : {}),
+      ...(args.language !== undefined ? { language: args.language } : {}),
+      ...(args.lengthSpec !== undefined ? { lengthSpec: args.lengthSpec } : {}),
+      ...(args.driveFolderId !== undefined ? { driveFolderId: args.driveFolderId } : {}),
+      ...(args.heroFile !== undefined ? { heroFile: args.heroFile } : {}),
+      ...(args.platforms ? { platforms: args.platforms } : {}),
+      ...(args.scheduledAt !== undefined ? { scheduledAt: args.scheduledAt } : {}),
+    },
+  });
+
+// Scoped, state-guarded edit. updateMany guard = {id, ownerId, status ∈ EDITABLE}.
+// Returns null if the guard didn't match — the route's 404 probe runs first, so a
+// null here means wrong-state → 409 (can't edit a post the scheduler already owns).
+export const updatePostFields = async (
+  id: string,
+  ownerId: string,
+  data: Prisma.PostUpdateInput,
+): Promise<Post | null> => {
+  const r = await prisma.post.updateMany({
+    where: { id, ownerId, status: { in: EDITABLE } },
+    data,
+  });
+  return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
+};
+
+// Scoped delete, blocked only while the scheduler holds the row (status=posting).
+// Returns: 'ok' | 'locked' (in-flight → 409). Not-found/wrong-tenant is handled by
+// the route's prior 404 probe, so a 0-count here means the locked guard tripped.
+export const deletePost = async (
+  id: string,
+  ownerId: string,
+): Promise<'ok' | 'locked'> => {
+  const r = await prisma.post.deleteMany({
+    where: { id, ownerId, status: { not: 'posting' } },
+  });
+  return r.count === 1 ? 'ok' : 'locked';
+};

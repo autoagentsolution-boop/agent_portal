@@ -28,3 +28,10 @@ export const updateCampaign = async (
   const r = await prisma.campaign.updateMany({ where: { id, ownerId }, data });
   return r.count === 1 ? getCampaign(id, ownerId) : null;
 };
+
+// Scoped delete (cascades to child posts via FK onDelete: Cascade). Returns false
+// for not-found / wrong-tenant so the route maps to 404 (no existence leak).
+export const deleteCampaign = async (id: string, ownerId: string): Promise<boolean> => {
+  const r = await prisma.campaign.deleteMany({ where: { id, ownerId } });
+  return r.count === 1;
+};
