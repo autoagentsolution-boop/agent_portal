@@ -3,30 +3,41 @@ import { api, type PostDto } from '../api/client';
 import { usePostEvents } from '../hooks/use-post-events';
 import { PostCard } from './PostCard';
 
+import type { DemoMode } from '../flow/demo-flow';
+
 interface Props {
   campaignId: string | null;
-  ownerId: string;
+  demoMode: DemoMode;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
+  onPostsChange?: (posts: PostDto[]) => void;
 }
 
-export function PostBoard({ campaignId, notify }: Props) {
+export function PostBoard({ campaignId, demoMode, notify, onPostsChange }: Props) {
   const [posts, setPosts] = useState<PostDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
+  const setVisiblePosts = useCallback((next: PostDto[] | ((prev: PostDto[]) => PostDto[])) => {
+    setPosts((prev) => {
+      const value = typeof next === 'function' ? next(prev) : next;
+      onPostsChange?.(value);
+      return value;
+    });
+  }, [onPostsChange]);
+
   const load = useCallback(async () => {
     setLoading(true);
     const r = await api.listPosts(campaignId ? { campaignId, limit: 100 } : { limit: 100 });
-    if (r.ok) setPosts(r.data);
+    if (r.ok) setVisiblePosts(r.data);
     else notify(`Load failed: ${r.error.error}`, 'err');
     setLoading(false);
-  }, [campaignId, notify]);
+  }, [campaignId, notify, setVisiblePosts]);
 
   useEffect(() => { void load(); }, [load]);
 
   // Live status patches from SSE — update the matching row in place.
   const live = usePostEvents((e) => {
-    setPosts((prev) =>
+    setVisiblePosts((prev) =>
       prev.map((p) =>
         p.id === e.postId
           ? { ...p, status: e.status as PostDto['status'], postUrls: e.postUrls ?? p.postUrls, error: e.error ?? p.error }
@@ -46,7 +57,7 @@ export function PostBoard({ campaignId, notify }: Props) {
 
   // After a per-card action, replace that one post (or drop on delete).
   const onPatched = (p: PostDto | null, id: string) =>
-    setPosts((prev) => (p ? prev.map((x) => (x.id === id ? p : x)) : prev.filter((x) => x.id !== id)));
+    setVisiblePosts((prev) => (p ? prev.map((x) => (x.id === id ? p : x)) : prev.filter((x) => x.id !== id)));
 
   return (
     <div>
@@ -70,7 +81,7 @@ export function PostBoard({ campaignId, notify }: Props) {
         <p className="muted">No posts yet. {campaignId ? 'Create a brief to start.' : ''}</p>
       ) : (
         posts.map((p) => (
-          <PostCard key={p.id} post={p} notify={notify} onPatched={onPatched} />
+          <PostCard key={p.id} post={p} demoMode={demoMode} notify={notify} onPatched={onPatched} />
         ))
       )}
     </div>

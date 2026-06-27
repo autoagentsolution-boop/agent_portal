@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { api, type PostDto, type Result } from '../api/client';
+import type { DemoMode } from '../flow/demo-flow';
 
 interface Props {
   post: PostDto;
+  demoMode: DemoMode;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
   onPatched: (p: PostDto | null, id: string) => void;
 }
 
-export function PostCard({ post, notify, onPatched }: Props) {
+export function PostCard({ post, demoMode, notify, onPatched }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -36,6 +38,15 @@ export function PostCard({ post, notify, onPatched }: Props) {
     await run('Reject', () => api.reject(post.id, feedback.trim()));
     setRejecting(false);
     setFeedback('');
+  };
+
+  const publish = async () => {
+    if (demoMode === 'safe') {
+      notify('Safe Simulation is on: publish is blocked to avoid accidental real social posts. Switch to Live for the one controlled demo.', 'err');
+      return;
+    }
+    if (!confirm(`Live publish this post to: ${post.platforms.join(', ') || 'configured platforms'}?`)) return;
+    await run('Publish', () => api.publishNow(post.id));
   };
 
   const s = post.status;
@@ -97,8 +108,8 @@ export function PostCard({ post, notify, onPatched }: Props) {
             Approve
           </button>
           <button className="btn" disabled={!canReview || !!busy} onClick={() => setRejecting(true)}>Reject</button>
-          <button className="btn" disabled={!canPublish || !!busy} title="Real social post" onClick={() => void run('Publish', () => api.publishNow(post.id))}>
-            {busy === 'Publish' ? '…' : 'Publish now'}
+          <button className="btn" disabled={!canPublish || !!busy} title={demoMode === 'safe' ? 'Safe mode blocks real publishing' : 'Real social post'} onClick={() => void publish()}>
+            {busy === 'Publish' ? '…' : demoMode === 'safe' ? 'Publish (safe)' : 'Publish now'}
           </button>
           <button className="btn danger" disabled={!canEdit || !!busy} onClick={() => void del()}>Delete</button>
         </div>
