@@ -24,6 +24,9 @@ import {
   postDto,
   postDetailDto,
   copyBag,
+  leadDto,
+  leadSource,
+  leadCaptureResult,
 } from '../api/schemas.ts';
 
 extendZodWithOpenApi(z);
@@ -37,6 +40,13 @@ const bearer = registry.registerComponent('securitySchemes', 'bearerAuth', {
   bearerFormat: 'JWT',
 });
 
+// Webhook intake secret (lead funnels — no JWT). Header for webhook/form.
+const webhookSecret = registry.registerComponent('securitySchemes', 'webhookSecret', {
+  type: 'apiKey',
+  in: 'header',
+  name: 'x-webhook-secret',
+});
+
 // ---- Component schemas (registered under stable names → $ref in the spec). ------
 registry.register('PostStatus', postStatus);
 registry.register('AssetType', assetType);
@@ -47,6 +57,9 @@ const PostDto = registry.register('PostDto', postDto);
 const PostDetailDto = registry.register('PostDetailDto', postDetailDto);
 registry.register('ApprovePostBody', approvePostBody);
 registry.register('RejectPostBody', rejectPostBody);
+registry.register('LeadSource', leadSource);
+const LeadDto = registry.register('LeadDto', leadDto);
+const LeadCaptureResult = registry.register('LeadCaptureResult', leadCaptureResult);
 
 // ---- Envelopes: every response is { data, meta? } | { error, details? }. -------
 const listMeta = z.object({ count: z.number().int(), nextCursor: z.string().uuid().nullable() });
@@ -184,6 +197,50 @@ registry.registerPath({
     401: errorResponse('Unauthorized'),
     404: errorResponse('Unknown platform'),
     500: errorResponse('Platform OAuth client not configured'),
+  },
+});
+
+// ---- Leads (T6) ----------------------------------------------------------------
+const leadIntakeBody = z.object({}).passthrough().openapi({
+  description: 'Open-shaped funnel payload (fields vary by source); email is required after normalization.',
+});
+
+const leadIntakePath = (path: string, summary: string, query?: z.AnyZodObject) =>
+  registry.registerPath({
+    method: 'post',
+    path,
+    tags: ['leads'],
+    summary,
+    security: [{ [webhookSecret.name]: [] }],
+    request: {
+      ...(query ? { query } : {}),
+      body: { content: json(leadIntakeBody) },
+    },
+    responses: {
+      200: { description: 'Capture outcome (created/duplicate/ignored)', content: json(dataEnvelope(LeadCaptureResult)) },
+      400: errorResponse('Invalid payload (e.g. bad email)'),
+      401: errorResponse('Bad/missing webhook secret'),
+      503: errorResponse('Webhook secret not configured'),
+    },
+  });
+
+leadIntakePath('/leads/webhook', 'Generic JSON lead intake (header x-webhook-secret)');
+leadIntakePath('/leads/form', 'Google-Form-style row intake (header x-webhook-secret)');
+leadIntakePath(
+  '/leads/calcom',
+  'Cal.com BOOKING_CREATED intake (query ?s=secret)',
+  z.object({ s: z.string() }),
+);
+
+registry.registerPath({
+  method: 'get',
+  path: '/leads',
+  tags: ['leads'],
+  summary: 'List the current user\'s captured leads',
+  security: [{ [bearer.name]: [] }],
+  responses: {
+    200: { description: 'Leads (most recent first)', content: json(listEnvelope(LeadDto)) },
+    401: errorResponse('Unauthorized'),
   },
 });
 

@@ -17,6 +17,7 @@ export const postStatus = z.enum([
 ]);
 export const assetType = z.enum(['image', 'carousel', 'video']);
 export const socialPlatform = z.enum(['facebook', 'instagram', 'threads', 'linkedin', 'x']);
+export const leadSource = z.enum(['webhook', 'form', 'calcom']);
 
 // ---- Query params ----
 export const listPostsQuery = z.object({
@@ -91,6 +92,28 @@ export type PostDto = z.infer<typeof postDto>;
 // Detail view = post + embedded campaign (saves the UI a second round-trip).
 export const postDetailDto = postDto.extend({ campaign: campaignDto });
 export type PostDetailDto = z.infer<typeof postDetailDto>;
+
+// Lead read DTO (T6) — what GET /leads returns; rawPayload/ownerId never exposed.
+export const leadDto = z.object({
+  id: z.string().uuid(),
+  name: z.string().nullable(),
+  email: z.string(),
+  phone: z.string().nullable(),
+  message: z.string().nullable(),
+  sourceProduct: z.string().nullable(),
+  source: leadSource,
+  calBookingUid: z.string().nullable(),
+  receivedAt: z.string(), // ISO
+});
+export type LeadDto = z.infer<typeof leadDto>;
+
+// Lead intake bodies (T6). Webhook/form are open-shaped (funnels vary); documented
+// as objects. Capture response is the dedupe outcome.
+export const leadCaptureResult = z.object({
+  status: z.enum(['created', 'duplicate', 'ignored']),
+  leadId: z.string().uuid().nullable().optional(),
+  reason: z.string().optional(),
+});
 
 // ---- Envelope: every response is { data } | { error }. Stable across the API. ----
 export interface ListMeta {

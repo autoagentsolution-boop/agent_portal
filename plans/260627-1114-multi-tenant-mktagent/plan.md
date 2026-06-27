@@ -102,7 +102,7 @@ Three-layer inheritance: **User defaults → Campaign defaults → Post override
 | **T3 ✅ DONE (2026-06-27)** Config-as-data | Campaign config columns + DTO/schemas; Post override semantics; copy-gen prompt reads brandVoice/language/length via 3-layer resolver; persona-optional | ✅ 17/17 pass (vi/en/fr/de): 3-layer resolution (post>campaign>user); business persona vs personal persona-free; responseSchema {body,threads,x}; e2e copy-bag+language persisted; dry-tick brief→review through real service. tsc 0. |
 | **T4 ✅ DONE (2026-06-27)** Per-user tokens | OAuthToken composite PK (ownerId,platform); thread ownerId through token-repo/service/5 adapters/scheduler/cron; connect-flow endpoints (start+callback) | ✅ ALL PASS: 4 DAIS rows migrated→system owner (0 orphans); adapter-path token resolves by (owner,platform); 2-owner isolation (distinct tokens, B sees only own, no cross-leak→null); connect /start URL builder valid per platform (all gated on app creds). HTTP: no-auth→401, unknown platform→404, gated→500 connect_not_configured, callback no-code→400, bad-state→400. tsc 0. |
 | **T5 ✅ DONE (2026-06-27)** Realtime+OpenAPI | SSE /events per-user; event bus in scheduler/copygen; zod-to-openapi gen; finalize contract doc | ✅ ALL PASS: 2-stream isolation (A sees own post.status `ready`, B sees own, zero cross-leak both ways); SSE 401 no/bad token; openapi.json 8 paths valid 3.1.0, $refs resolve, openapi-typescript 7 compiles it. tsc 0. Test data 0 leftovers. |
-| **T6 P5 leads (re-slotted)** | webhook/form/calcom + dedupe (already in lead-repo) + per-user ownerId + Gmail notify | curl webhook→Lead row scoped to owner; dup→skip; calcom parse |
+| **T6 ✅ DONE (2026-06-27)** P5 leads (re-slotted) | webhook/form/calcom + dedupe (already in lead-repo) + per-user ownerId + Gmail notify | ✅ ALL PASS (live curl): webhook 401/400/created/duplicate; form VN-keyword-pick→created; calcom non-booking→ignored, BOOKING_CREATED→created, same-uid→duplicate, bad-secret→401; GET /leads 401-no-token / list (3 sources) / tenant-isolation (other owner=0) / DTO hides rawPayload+ownerId. openapi.json 12 paths, openapi-typescript compiles. tsc 0. Test data cleaned. |
 | **T7 P7-full + P8 deploy** | full Campaign/Post CRUD; finish deploy (fix migrate-deploy datasource.url bug); parity vs n8n | CRUD per-tenant; container migrate+boot clean; 1 e2e post |
 
 ## New deps (T1)
@@ -264,6 +264,27 @@ Three-layer inheritance: **User defaults → Campaign defaults → Post override
 - **Known gap**: SSE only emits `post.status` (the review-UI need). Campaign/lead events + a Last-Event-ID replay buffer
   are additive later if the UI needs them. No persistence — a disconnected client misses events in the gap; polling
   `GET /posts?status=` is the reconcile path (plan §5).
+
+## T6 implementation notes (2026-06-27)
+- **Lead-repo already done in T2** (dedupe + tenant scope) — T6 = router/service/normalizers on top.
+- **Normalizers** `src/leads/normalize.ts` ported VERBATIM from the 3 n8n Code nodes (mkt-lead-capture, mkt-calcom-lead,
+  mkt-form-lead): `normalizeWebhook` (body.email/name/phone/product/platform), `normalizeCalcom` (BOOKING_CREATED filter,
+  attendee[0], meet-url across videoCallData/metadata/location shapes, packs title+startTime+link into message),
+  `normalizeForm` (keyword-pick column resolver, VN+EN substrings, 'looking for' before 'product'). Pure → discriminated
+  `NormalizeResult` (no throw); 202=ignored maps to `{status:ignored}` not an error.
+- **Service** `src/leads/service.ts` = chokepoint: `resolveLeadOwner()` (v1 → SYSTEM_OWNER_ID; the ONE seam for per-owner
+  intake later — funnels have no JWT, same external gate as social connect), dedupe (calcom→bookingUid, else email/30d),
+  persist, `void notifySales()` (best-effort, never affects outcome).
+- **Notify** `src/leads/notify.ts` = best-effort Gmail (googleapis, GOOGLE_REFRESH_TOKEN + MKT_SALES_EMAIL); unconfigured →
+  logged skip; send failure swallowed (lead already persisted — a 500 would make the funnel retry → dupes). Currently
+  gated (no refresh token/sales email in .env) — same external-onboarding bucket.
+- **Router** `src/api/leads-router.ts`: 3 PUBLIC intake POSTs (secret-gated, NOT x-api-key — funnels set x-webhook-secret
+  header / calcom ?s= query; constant-time `safeEqual`; 503 if secret unset) + GET /leads (requireAuth, tenant-scoped).
+  Mounted WITHOUT blanket requireAuth (GET self-guards). DTO hides rawPayload + ownerId.
+- **Contract**: leadDto/leadSource/leadCaptureResult added to schemas.ts; 4 lead paths + `webhookSecret` security scheme
+  in openapi.ts → openapi.json now 12 paths.
+- **Dev secrets**: MKT_LEAD_WEBHOOK_SECRET + MKT_CALCOM_WEBHOOK_SECRET appended to .env (gitignored) + copied to
+  `lead-test-secrets.txt` (gitignored) for curl testing. Endpoints are LIVE for manual test now.
 
 ## Still open (decide at phase, low-risk)
 - T4: connect-flow + Google-login redirect URIs need stable public HTTPS in prod (ties to T7/P8 deploy/domain).

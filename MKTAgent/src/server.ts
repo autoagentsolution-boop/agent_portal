@@ -13,6 +13,7 @@ import { campaignsRouter } from './api/campaigns-router.ts';
 import { authRouter } from './api/auth-router.ts';
 import { connectRouter } from './api/connect-router.ts';
 import { eventsRouter } from './api/events-router.ts';
+import { leadsRouter } from './api/leads-router.ts';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -37,6 +38,11 @@ app.use('/campaigns', requireAuth, campaignsRouter);
 // Per-user SSE stream (T5). Self-authenticates (Bearer header OR ?token= for the
 // browser EventSource API) so it is NOT behind requireAuth's header-only gate.
 app.use('/events', eventsRouter);
+
+// Leads (T6). Mixed auth: POST intake routes are secret-gated (external funnels
+// have no JWT); GET /leads self-guards with requireAuth. So NOT behind a blanket
+// requireAuth mount.
+app.use('/leads', leadsRouter);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   // Malformed JSON body → 400, not a generic 500 (express.json throws a SyntaxError
