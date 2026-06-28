@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import { useAuth } from './hooks/use-auth';
 import { useToast } from './hooks/use-toast';
-import { api, loginUrl, type AgentIntakeDraft } from './api/client';
+import { api, loginUrl, type AgentChatSessionDto, type CampaignDto, type PostDto } from './api/client';
 import { ActiveFlowsPage } from './components/ActiveFlowsPage';
 import { DemoModeToggle } from './components/DemoModeToggle';
 import { MasterAgentIntake } from './components/MasterAgentIntake';
 import type { DemoMode } from './flow/demo-flow';
-import type { CampaignDto, PostDto } from './api/client';
 
 type Page = 'master' | 'flows';
 type Theme = 'light' | 'dark';
@@ -25,17 +24,59 @@ export function App() {
   const [activeCampaign, setActiveCampaign] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState<DemoMode>('safe');
   const [refreshKey, setRefreshKey] = useState(0);
-  const [chatTitles, setChatTitles] = useState<string[]>([]);
   const [flowPosts, setFlowPosts] = useState<PostDto[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignDto[]>([]);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [chatSessions, setChatSessions] = useState<AgentChatSessionDto[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const activeChat = chatSessions.find((chat) => chat.id === activeChatId) ?? null;
   const bump = () => setRefreshKey((k) => k + 1);
-  const addChatTitle = (title: string) =>
-    setChatTitles((prev) => [title, ...prev.filter((item) => item !== title)].slice(0, 8));
+
+  const loadChats = async () => {
+    const r = await api.listAgentChats();
+    if (!r.ok) return;
+
+    setChatSessions((current) => r.data.map((chat) => {
+      const hydrated = current.find((item) => item.id === chat.id && item.messages.length > chat.messages.length);
+      return hydrated ? { ...chat, draft: hydrated.draft ?? chat.draft, messages: hydrated.messages } : chat;
+    }));
+    setActiveChatId((current) => current && r.data.some((chat) => chat.id === current) ? current : null);
+  };
+
+  const selectChat = async (id: string) => {
+    const r = await api.getAgentChat(id);
+    if (r.ok) {
+      setChatSessions((prev) => [r.data, ...prev.filter((chat) => chat.id !== id)]);
+      setActiveChatId(id);
+      setPage('master');
+    }
+  };
+
+  const deleteChat = async (event: MouseEvent<HTMLButtonElement>, chat: AgentChatSessionDto) => {
+    event.stopPropagation();
+    if (!confirm(`Delete “${chat.title}”?`)) return;
+
+    const r = await api.deleteAgentChat(chat.id);
+    if (!r.ok) {
+      show(`Delete failed: ${r.error.error}`, 'err');
+      return;
+    }
+
+    setChatSessions((prev) => prev.filter((item) => item.id !== chat.id));
+    setActiveChatId((current) => current === chat.id ? null : current);
+    if (activeChatId === chat.id) setPage('master');
+    show('Chat deleted');
+  };
+
+  const upsertChat = (chat: AgentChatSessionDto) => {
+    setChatSessions((prev) => [chat, ...prev.filter((item) => item.id !== chat.id)]);
+    setActiveChatId(chat.id);
+  };
 
   useEffect(() => {
     if (!auth.user) return;
     void api.listCampaigns().then((r) => { if (r.ok) setCampaigns(r.data); });
+    void loadChats();
   }, [auth.user, refreshKey]);
 
   if (auth.loading) return <div className="center"><div className="muted">Loading…</div></div>;
@@ -59,7 +100,7 @@ export function App() {
           <strong>AgentPortal</strong>
           <button className="icon-btn" aria-label="Toggle theme" onClick={() => setTheme((t) => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '◐' : '☼'}</button>
         </div>
-        <button className={`sidebar-item ${page === 'master' ? 'active' : ''}`} onClick={() => setPage('master')}>✎ New setup chat</button>
+        <button className={`sidebar-item ${page === 'master' && !activeChatId ? 'active' : ''}`} onClick={() => { setActiveChatId(null); setPage('master'); }}>✎ New setup chat</button>
         <button className={`sidebar-item ${page === 'flows' ? 'active' : ''}`} onClick={() => setPage('flows')}>▦ Active Flows</button>
         <div className="flow-sidebar-tree">
           <button className="tree-row level-1" onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setPage('flows'); }}>Branding / Social</button>
@@ -69,22 +110,9 @@ export function App() {
             const campaignPosts = flowPosts.filter((post) => post.campaignId === campaign.id);
             return (
               <div key={campaign.id}>
-                <button
-                  className={`tree-row level-2 ${activeCampaign === campaign.id && !selectedPostId ? 'active' : ''}`}
-                  onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(null); setPage('flows'); }}
-                >
-                  {campaign.product}
-                </button>
-                {campaignPosts.length === 0 ? (
-                  <div className="tree-empty nested">No briefs loaded</div>
-                ) : campaignPosts.slice(0, 6).map((post, index) => (
-                  <button
-                    className={`tree-row level-3 ${selectedPostId === post.id ? 'active' : ''}`}
-                    key={post.id}
-                    onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(post.id); setPage('flows'); }}
-                  >
-                    {postTitle(post, index)}
-                  </button>
+                <button className={`tree-row level-2 ${activeCampaign === campaign.id && !selectedPostId ? 'active' : ''}`} onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(null); setPage('flows'); }}>{campaign.product}</button>
+                {campaignPosts.length === 0 ? <div className="tree-empty nested">No briefs loaded</div> : campaignPosts.slice(0, 6).map((post, index) => (
+                  <button className={`tree-row level-3 ${selectedPostId === post.id ? 'active' : ''}`} key={post.id} onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(post.id); setPage('flows'); }}>{postTitle(post, index)}</button>
                 ))}
               </div>
             );
@@ -94,10 +122,13 @@ export function App() {
         <button className="sidebar-item muted-action">◷ Scheduled</button>
 
         <div className="sidebar-section">Chats</div>
-        {chatTitles.length === 0 ? (
+        {chatSessions.length === 0 ? (
           <div className="sidebar-empty">No setup chats yet</div>
-        ) : chatTitles.map((title) => (
-          <button className="sidebar-link" key={title} onClick={() => setPage('master')}>{title}</button>
+        ) : chatSessions.map((chat) => (
+          <div className={`sidebar-chat-row ${activeChatId === chat.id ? 'active' : ''}`} key={chat.id}>
+            <button className="sidebar-link" onClick={() => void selectChat(chat.id)}>{chat.title}</button>
+            <button className="sidebar-chat-delete" aria-label={`Delete ${chat.title}`} onClick={(event) => void deleteChat(event, chat)}>×</button>
+          </div>
         ))}
         <div className="sidebar-user">{auth.user.email}</div>
       </aside>
@@ -105,12 +136,11 @@ export function App() {
       <main className="app-main">
         {page === 'master' ? (
           <div className="master-home">
-            <div className="master-toolbar">
-              <DemoModeToggle mode={demoMode} onChange={setDemoMode} />
-            </div>
+            <div className="master-toolbar"><DemoModeToggle mode={demoMode} onChange={setDemoMode} /></div>
             <MasterAgentIntake
+              session={activeChat}
               notify={show}
-              onChatTitle={addChatTitle}
+              onSessionChange={upsertChat}
               onOpenFlows={() => setPage('flows')}
               onCreated={(campaign) => { setActiveCampaign(campaign.id); bump(); }}
             />

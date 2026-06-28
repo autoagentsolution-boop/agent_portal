@@ -132,6 +132,24 @@ export const agentIntakeDraft = z.object({
 });
 export type AgentIntakeDraft = z.infer<typeof agentIntakeDraft>;
 
+export const createAgentChatBody = z.object({
+  title: z.string().min(1).max(160),
+  message: z.string().min(1).max(8000).optional(),
+  timezone: z.string().max(64).default('Asia/Bangkok'),
+});
+export type CreateAgentChatBody = z.infer<typeof createAgentChatBody>;
+
+export const appendAgentChatMessageBody = z.object({
+  message: z.string().min(1).max(8000),
+  timezone: z.string().max(64).default('Asia/Bangkok'),
+});
+export type AppendAgentChatMessageBody = z.infer<typeof appendAgentChatMessageBody>;
+
+export const saveAgentCredentialBody = z.object({
+  value: z.string().min(1).max(12000),
+});
+export type SaveAgentCredentialBody = z.infer<typeof saveAgentCredentialBody>;
+
 // ---- Response DTOs (what the UI renders; decoupled from the DB row) ----
 export const campaignDto = z.object({
   id: z.string().uuid(),

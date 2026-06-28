@@ -26,6 +26,16 @@ export type AgentIntakeDraft = {
   assistantMessage?: string;
   provider: string;
 };
+export type AgentChatMessageDto = { id: string; role: 'user' | 'agent'; content: string; createdAt: string };
+export type AgentChatSessionDto = {
+  id: string;
+  title: string;
+  draft: AgentIntakeDraft | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: AgentChatMessageDto[];
+};
+export type AgentCredentialStatusDto = { agentId: string; key: string; status: string; updatedAt: string };
 
 export interface ApiError {
   status: number;
@@ -36,7 +46,7 @@ export interface ApiError {
 export type Result<T> = { ok: true; data: T; meta?: unknown } | { ok: false; error: ApiError };
 
 interface RequestOpts {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   query?: Record<string, string | number | undefined>;
 }
@@ -85,6 +95,18 @@ export const api = {
 
   parseMasterIntake: (message: string, timezone = Intl.DateTimeFormat().resolvedOptions().timeZone) =>
     request<AgentIntakeDraft>('/agent/intake', { method: 'POST', body: { message, timezone } }),
+  listAgentChats: () => request<AgentChatSessionDto[]>('/agent/chats'),
+  createAgentChat: (title: string, message?: string, timezone = Intl.DateTimeFormat().resolvedOptions().timeZone) =>
+    request<AgentChatSessionDto>('/agent/chats', { method: 'POST', body: { title, message, timezone } }),
+  getAgentChat: (id: string) => request<AgentChatSessionDto>(`/agent/chats/${id}`),
+  appendAgentChatMessage: (id: string, message: string, timezone = Intl.DateTimeFormat().resolvedOptions().timeZone) =>
+    request<AgentChatSessionDto>(`/agent/chats/${id}/messages`, { method: 'POST', body: { message, timezone } }),
+  deleteAgentChat: (id: string) => request<void>(`/agent/chats/${id}`, { method: 'DELETE' }),
+  listAgentCredentialStatus: () => request<AgentCredentialStatusDto[]>('/agent/credentials/status'),
+  saveAgentCredential: (agentId: string, key: string, value: string) =>
+    request<AgentCredentialStatusDto>(`/agent/credentials/${agentId}/${key}`, { method: 'PUT', body: { value } }),
+  deleteAgentCredential: (agentId: string, key: string) =>
+    request<{ deleted: boolean }>(`/agent/credentials/${agentId}/${key}`, { method: 'DELETE' }),
 
   listCampaigns: () => request<CampaignDto[]>('/campaigns'),
   createCampaign: (body: Dto['CreateCampaignBody']) =>

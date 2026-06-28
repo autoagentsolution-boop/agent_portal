@@ -1,7 +1,7 @@
 # Master Agent Investor Demo Plan
 
 ## Status
-- Planned
+- Blocked — Master Agent chat runtime does not respond; resume from `plans/reports/handoff-260628-1540-master-agent-chat-runtime-blocker.md`.
 
 ## Target Date
 - Tuesday 2026-06-30

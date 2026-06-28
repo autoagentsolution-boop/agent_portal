@@ -2,7 +2,7 @@
 
 ## Overview
 Priority: P0  
-Status: Planned
+Status: Blocked — compile/build pass, but runtime chat send does not respond. See `../reports/handoff-260628-1540-master-agent-chat-runtime-blocker.md`.
 
 Store Master Agent chat history per user in Postgres, same ownership model as Campaign/Post. Do not use localStorage/session-only history for the investor demo.
 
