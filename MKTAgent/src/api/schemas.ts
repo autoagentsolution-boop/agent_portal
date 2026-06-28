@@ -92,6 +92,46 @@ export const updatePostBody = z
   .strict();
 export type UpdatePostBody = z.infer<typeof updatePostBody>;
 
+// ---- Master Agent typed intake (draft-only, never publishes) -----------------------
+export const agentIntakeBody = z.object({
+  message: z.string().min(10).max(8000),
+  timezone: z.string().max(64).default('Asia/Bangkok'),
+});
+export type AgentIntakeBody = z.infer<typeof agentIntakeBody>;
+
+export const missingField = z.object({
+  key: z.string(),
+  label: z.string(),
+  reason: z.string(),
+  required: z.boolean(),
+});
+export type MissingField = z.infer<typeof missingField>;
+
+export const agentPostDraft = z.object({
+  assetType: assetType.optional(),
+  language: z.string().nullable().optional(),
+  lengthSpec: z.string().nullable().optional(),
+  driveFolderId: z.string().nullable().optional(),
+  heroFile: z.string().nullable().optional(),
+  platforms: z.array(socialPlatform).optional(),
+  // Draft responses are JSON; the create-post route will coerce this ISO string.
+  scheduledAt: z.string().nullable().optional(),
+});
+export type AgentPostDraft = z.infer<typeof agentPostDraft>;
+
+export const agentIntakeDraft = z.object({
+  selectedTemplateId: z.literal('branding-video-post'),
+  selectedTemplateTitle: z.literal('Branding / Social Video Post Flow'),
+  confidence: z.number().min(0).max(1),
+  campaign: createCampaignBody.partial().extend({ product: z.string().optional() }),
+  post: agentPostDraft,
+  missingFields: z.array(missingField),
+  nextQuestion: z.string(),
+  assistantMessage: z.string().optional(),
+  provider: z.string(),
+});
+export type AgentIntakeDraft = z.infer<typeof agentIntakeDraft>;
+
 // ---- Response DTOs (what the UI renders; decoupled from the DB row) ----
 export const campaignDto = z.object({
   id: z.string().uuid(),

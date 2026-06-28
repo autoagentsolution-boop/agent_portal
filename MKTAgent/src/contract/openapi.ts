@@ -44,12 +44,24 @@ const bearer = registry.registerComponent('securitySchemes', 'bearerAuth', {
   bearerFormat: 'JWT',
 });
 
+// Browser session cookie (T8 BFF) — opaque HttpOnly handle set by the Google login
+// callback. The UI authenticates with this; the JWT never reaches the client.
+const sessionCookie = registry.registerComponent('securitySchemes', 'sessionCookie', {
+  type: 'apiKey',
+  in: 'cookie',
+  name: 'mkt_session',
+});
+
 // Webhook intake secret (lead funnels — no JWT). Header for webhook/form.
 const webhookSecret = registry.registerComponent('securitySchemes', 'webhookSecret', {
   type: 'apiKey',
   in: 'header',
   name: 'x-webhook-secret',
 });
+
+// User-facing endpoints accept EITHER the Bearer JWT (CLI/tests) or the session
+// cookie (browser). Reused on every tenant-scoped path's `security`.
+const userAuth = [{ [bearer.name]: [] }, { [sessionCookie.name]: [] }];
 
 // ---- Component schemas (registered under stable names → $ref in the spec). ------
 registry.register('PostStatus', postStatus);
@@ -179,8 +191,54 @@ registry.registerPath({
   },
 });
 
+// ---- Auth: logout (T8) ---------------------------------------------------------
+registry.registerPath({
+  method: 'post',
+  path: '/auth/logout',
+  tags: ['auth'],
+  summary: 'Revoke the current browser session (clears the cookie)',
+  security: [{ [sessionCookie.name]: [] }],
+  responses: {
+    200: { description: 'Logged out', content: json(dataEnvelope(z.object({ loggedOut: z.boolean() }))) },
+  },
+});
+
 // ---- Posts CRUD (T7) -----------------------------------------------------------
 const uuidParam = z.object({ id: z.string().uuid() });
+
+// ---- Manual triggers (T8) — UI Generate / Publish-now buttons ------------------
+registry.registerPath({
+  method: 'post',
+  path: '/posts/{id}/generate',
+  tags: ['posts'],
+  summary: 'Run copy-gen for this post now (brief|rework → review)',
+  description: 'On-demand copy generation instead of waiting for the cron. Shares the copy-gen advisory lock.',
+  security: userAuth,
+  request: { params: uuidParam },
+  responses: {
+    200: { description: 'Generated post (status=review)', content: json(dataEnvelope(PostDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Copy-gen busy, or post not in brief/rework'),
+    502: errorResponse('Generation failed (transient/upstream)'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/posts/{id}/publish-now',
+  tags: ['posts'],
+  summary: 'Publish this post now (ready → posting → fan-out). REAL social post.',
+  description: 'User-triggered immediate publish after review; coexists with the scheduler cron (first to claim wins).',
+  security: userAuth,
+  request: { params: uuidParam },
+  responses: {
+    200: { description: 'Publish outcome (status posted|partial|error)', content: json(dataEnvelope(PostDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Post not in ready state'),
+  },
+});
 
 registry.registerPath({
   method: 'post',

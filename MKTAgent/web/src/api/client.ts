@@ -15,6 +15,17 @@ export type CampaignDto = Dto['CampaignDto'];
 export type PostDto = Dto['PostDto'];
 export type PostDetailDto = Dto['PostDetailDto'];
 export type LeadDto = Dto['LeadDto'];
+export type AgentIntakeDraft = {
+  selectedTemplateId: 'branding-video-post';
+  selectedTemplateTitle: 'Branding / Social Video Post Flow';
+  confidence: number;
+  campaign: Partial<Dto['CreateCampaignBody']>;
+  post: Partial<Omit<Dto['CreatePostBody'], 'campaignId'>>;
+  missingFields: Array<{ key: string; label: string; reason: string; required: boolean }>;
+  nextQuestion: string;
+  assistantMessage?: string;
+  provider: string;
+};
 
 export interface ApiError {
   status: number;
@@ -71,6 +82,9 @@ export type Me = NonNullable<
 export const api = {
   me: () => request<Me>('/auth/me'),
   logout: () => request<{ loggedOut: boolean }>('/auth/logout', { method: 'POST' }),
+
+  parseMasterIntake: (message: string, timezone = Intl.DateTimeFormat().resolvedOptions().timeZone) =>
+    request<AgentIntakeDraft>('/agent/intake', { method: 'POST', body: { message, timezone } }),
 
   listCampaigns: () => request<CampaignDto[]>('/campaigns'),
   createCampaign: (body: Dto['CreateCampaignBody']) =>

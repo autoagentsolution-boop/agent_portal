@@ -16,6 +16,7 @@ import { authRouter } from './api/auth-router.ts';
 import { connectRouter } from './api/connect-router.ts';
 import { eventsRouter } from './api/events-router.ts';
 import { leadsRouter } from './api/leads-router.ts';
+import { agentRouter } from './api/agent-router.ts';
 
 const app = express();
 
@@ -45,6 +46,10 @@ app.use('/connect', connectRouter);
 // cron/webhook s2s routes (mounted in later phases), not user-facing CRUD.
 app.use('/posts', requireAuth, postsRouter);
 app.use('/campaigns', requireAuth, campaignsRouter);
+
+// Master Agent typed intake. Draft-only parser that helps users set up the flow;
+// writes still happen through the explicit campaign/post APIs after UI confirmation.
+app.use('/agent', requireAuth, agentRouter);
 
 // Per-user SSE stream (T5). Self-authenticates (Bearer header OR ?token= for the
 // browser EventSource API) so it is NOT behind requireAuth's header-only gate.

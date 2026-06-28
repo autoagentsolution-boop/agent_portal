@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type CampaignDto } from '../api/client';
+import { CampaignSetupForm } from './CampaignSetupForm';
 
 interface Props {
   activeId: string | null;
@@ -12,7 +13,7 @@ export function CampaignList({ activeId, onSelect, onChange, notify }: Props) {
   const [campaigns, setCampaigns] = useState<CampaignDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [product, setProduct] = useState('');
+  const [editing, setEditing] = useState<CampaignDto | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -24,17 +25,12 @@ export function CampaignList({ activeId, onSelect, onChange, notify }: Props) {
 
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const create = async () => {
-    if (!product.trim()) return;
-    const r = await api.createCampaign({ product: product.trim() });
-    if (r.ok) {
-      notify(`Created “${r.data.product}”`);
-      setProduct('');
-      setCreating(false);
-      await load();
-      onSelect(r.data.id);
-      onChange();
-    } else notify(`Create failed: ${r.error.error}`, 'err');
+  const saved = async (campaign: CampaignDto) => {
+    setCreating(false);
+    setEditing(null);
+    await load();
+    onSelect(campaign.id);
+    onChange();
   };
 
   const remove = async (id: string, name: string) => {
@@ -51,22 +47,30 @@ export function CampaignList({ activeId, onSelect, onChange, notify }: Props) {
   return (
     <div>
       <div className="spread" style={{ marginBottom: 12 }}>
-        <strong>Campaigns</strong>
-        <button className="btn" onClick={() => setCreating((v) => !v)}>{creating ? '×' : '+ New'}</button>
+        <div>
+          <strong>Campaigns</strong>
+          <div className="muted small">Full brief: language, tone, length, CTA and channels.</div>
+        </div>
+        <button className="btn" onClick={() => { setCreating((v) => !v); setEditing(null); }}>{creating ? '×' : '+ New'}</button>
       </div>
 
       {creating && (
-        <div className="card">
-          <div className="field">
-            <label>Product / offer</label>
-            <input
-              autoFocus value={product} onChange={(e) => setProduct(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void create()}
-              placeholder="e.g. AI Agent Course"
-            />
-          </div>
-          <button className="btn primary" onClick={() => void create()}>Create</button>
-        </div>
+        <CampaignSetupForm
+          mode="create"
+          onSaved={(c) => void saved(c)}
+          onCancel={() => setCreating(false)}
+          notify={notify}
+        />
+      )}
+
+      {editing && (
+        <CampaignSetupForm
+          mode="edit"
+          campaign={editing}
+          onSaved={(c) => void saved(c)}
+          onCancel={() => setEditing(null)}
+          notify={notify}
+        />
       )}
 
       <div
@@ -88,14 +92,21 @@ export function CampaignList({ activeId, onSelect, onChange, notify }: Props) {
           >
             <div className="spread">
               <div className="product">{c.product}</div>
-              <button
-                className="btn danger" style={{ padding: '2px 8px' }}
-                onClick={(e) => { e.stopPropagation(); void remove(c.id, c.product); }}
-              >✕</button>
+              <div className="row">
+                <button
+                  className="btn" style={{ padding: '2px 8px' }}
+                  onClick={(e) => { e.stopPropagation(); setCreating(false); setEditing(c); }}
+                >Edit</button>
+                <button
+                  className="btn danger" style={{ padding: '2px 8px' }}
+                  onClick={(e) => { e.stopPropagation(); void remove(c.id, c.product); }}
+                >✕</button>
+              </div>
             </div>
             <div className="meta">
-              {c.language ?? 'lang: inherit'} · {c.platforms.length ? c.platforms.join(', ') : 'no platforms'}
-              {c.active ? '' : ' · inactive'}
+              {c.language ?? 'inherit language'} · {c.defaultLength ?? 'inherit length'} · {c.platforms.length ? c.platforms.join(', ') : 'no platforms'}
+              {c.angle ? ' · angle set' : ' · needs angle'}
+              {c.brandVoice ? ' · tone set' : ' · needs tone'}
             </div>
           </div>
         ))

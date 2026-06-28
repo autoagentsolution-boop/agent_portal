@@ -1,27 +1,32 @@
 import { brandingVideoFlow } from '../flow/demo-flow';
 
 const recommendations = [
-  'Use the full Branding / Social Video Flow for investor demo storytelling.',
-  'Run Content Agent live; keep media nodes visible as integration roadmap.',
-  'Use Safe mode for repeated demos; Live only for one controlled DAIS publish.',
+  'Start with Campaign setup: product, angle, language, tone, audience proof and target channels.',
+  'Create a Post brief with media IDs, length, schedule and platform overrides before generating copy.',
+  'Reject with specific feedback when copy is weak; Generate again from rework until it is convincing.',
+  'Approve with schedule; keep Safe Simulation on until one controlled live publish.',
 ];
 
-const missing = [
-  { label: 'Source/reference content', state: 'Ask user or let Find Content Agent gather it' },
-  { label: 'Visual style system', state: 'Will be forked from user design tomorrow' },
-  { label: 'Publish mode', state: 'Safe by default; Live requires confirmation' },
+const checkpoints = [
+  { label: 'Language', state: 'Campaign default or per-post override is now explicit' },
+  { label: 'Tone / brand voice', state: 'Feeds Gemini persona and guardrails' },
+  { label: 'Media package', state: 'Paste Drive folder + hero/video/carousel file IDs' },
+  { label: 'Schedule', state: 'Approve with an exact publish time or leave ready now' },
 ];
 
 export function FlowCoachPanel() {
   return (
     <aside className="coach card">
       <div className="eyebrow">Master Agent / Flow Coach</div>
-      <h3>Recommended workflow</h3>
-      <p className="muted">I will collect missing context, suggest agents, and route artifacts through approval gates.</p>
+      <h3>Full marketing workflow</h3>
+      <p className="muted">Collect the selling context first, then route it through copy-gen, review, rework, schedule and publish.</p>
 
       <div className="section-title">Required inputs</div>
       <ul className="check-list">
         {brandingVideoFlow.requiredInputs.map((item) => <li key={item}>✓ {item}</li>)}
+        <li>✓ Language and post length</li>
+        <li>✓ Media attachment: image, carousel or video</li>
+        <li>✓ Schedule or publish-now decision</li>
       </ul>
 
       <div className="section-title">Demo guidance</div>
@@ -29,8 +34,8 @@ export function FlowCoachPanel() {
         {recommendations.map((item) => <li key={item}>{item}</li>)}
       </ul>
 
-      <div className="section-title">Still needed</div>
-      {missing.map((m) => (
+      <div className="section-title">Coverage</div>
+      {checkpoints.map((m) => (
         <div className="missing-item" key={m.label}>
           <strong>{m.label}</strong>
           <span>{m.state}</span>

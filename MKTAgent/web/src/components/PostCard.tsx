@@ -1,20 +1,26 @@
 import { useState } from 'react';
 import { api, type PostDto, type Result } from '../api/client';
 import type { DemoMode } from '../flow/demo-flow';
+import { fromLocalDateTimeInput, toLocalDateTimeInput } from './form-options';
 
 interface Props {
   post: PostDto;
   demoMode: DemoMode;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
+  onEdit: (post: PostDto) => void;
+  selected?: boolean;
   onPatched: (p: PostDto | null, id: string) => void;
 }
 
-export function PostCard({ post, demoMode, notify, onPatched }: Props) {
+const formatDate = (iso: string | null): string => iso ? new Date(iso).toLocaleString() : 'not scheduled';
+
+export function PostCard({ post, demoMode, notify, onEdit, selected = false, onPatched }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [approveAt, setApproveAt] = useState(toLocalDateTimeInput(post.scheduledAt));
 
-  // Run an action helper, surface errors, patch the row on success.
   const run = async (label: string, fn: () => Promise<Result<PostDto>>) => {
     setBusy(label);
     try {
@@ -40,6 +46,12 @@ export function PostCard({ post, demoMode, notify, onPatched }: Props) {
     setFeedback('');
   };
 
+  const approve = async () => {
+    const scheduledAt = fromLocalDateTimeInput(approveAt) ?? undefined;
+    await run('Approve', () => api.approve(post.id, scheduledAt));
+    setScheduling(false);
+  };
+
   const publish = async () => {
     if (demoMode === 'safe') {
       notify('Safe Simulation is on: publish is blocked to avoid accidental real social posts. Switch to Live for the one controlled demo.', 'err');
@@ -56,15 +68,21 @@ export function PostCard({ post, demoMode, notify, onPatched }: Props) {
   const canEdit = ['brief', 'review', 'rework', 'error'].includes(s);
 
   return (
-    <div className="card">
+    <div id={`post-${post.id}`} className={`card post-card ${selected ? 'selected' : ''}`}>
       <div className="spread">
         <div className="row">
           <span className={`badge ${s}`}>{s}</span>
           <span className="muted" style={{ fontSize: 12 }}>
-            {post.assetType} · {post.platforms.join(', ') || 'no platforms'} · {post.language ?? 'lang: inherit'}
+            {post.assetType} · {post.platforms.join(', ') || 'no platforms'} · {post.language ?? 'inherit language'} · {post.lengthSpec ?? 'inherit length'}
           </span>
         </div>
         <span className="muted" style={{ fontSize: 11 }}>{post.id.slice(0, 8)}</span>
+      </div>
+
+      <div className="brief-summary">
+        <span>Media: {post.heroFile ? post.heroFile : 'missing asset IDs'}</span>
+        <span>Schedule: {formatDate(post.scheduledAt)}</span>
+        {post.feedback && <span>Feedback: {post.feedback}</span>}
       </div>
 
       {post.copy && (
@@ -88,26 +106,41 @@ export function PostCard({ post, demoMode, notify, onPatched }: Props) {
         </div>
       )}
 
-      {rejecting ? (
+      {rejecting && (
         <div style={{ marginTop: 10 }}>
           <div className="field">
             <label>Rework feedback</label>
-            <textarea autoFocus value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="What to change…" />
+            <textarea autoFocus value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="What to change: tone, hook, CTA, length, language…" />
           </div>
           <div className="btn-row">
             <button className="btn primary" onClick={() => void submitReject()}>Send feedback</button>
             <button className="btn" onClick={() => setRejecting(false)}>Cancel</button>
           </div>
         </div>
-      ) : (
+      )}
+
+      {scheduling && (
+        <div className="approve-panel">
+          <div className="field">
+            <label>Approve schedule</label>
+            <input type="datetime-local" value={approveAt} onChange={(e) => setApproveAt(e.target.value)} />
+            <div className="help-text">Empty means ready immediately. Scheduler publishes ready posts whose time is due.</div>
+          </div>
+          <div className="btn-row">
+            <button className="btn primary" disabled={!!busy} onClick={() => void approve()}>Approve final</button>
+            <button className="btn" onClick={() => setScheduling(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {!rejecting && !scheduling && (
         <div className="btn-row" style={{ marginTop: 10 }}>
+          <button className="btn" disabled={!canEdit || !!busy} onClick={() => onEdit(post)}>Edit brief</button>
           <button className="btn" disabled={!canGenerate || !!busy} onClick={() => void run('Generate', () => api.generate(post.id))}>
             {busy === 'Generate' ? '…' : 'Generate copy'}
           </button>
-          <button className="btn primary" disabled={!canReview || !!busy} onClick={() => void run('Approve', () => api.approve(post.id))}>
-            Approve
-          </button>
-          <button className="btn" disabled={!canReview || !!busy} onClick={() => setRejecting(true)}>Reject</button>
+          <button className="btn primary" disabled={!canReview || !!busy} onClick={() => setScheduling(true)}>Approve / schedule</button>
+          <button className="btn" disabled={!canReview || !!busy} onClick={() => setRejecting(true)}>Reject + rework</button>
           <button className="btn" disabled={!canPublish || !!busy} title={demoMode === 'safe' ? 'Safe mode blocks real publishing' : 'Real social post'} onClick={() => void publish()}>
             {busy === 'Publish' ? '…' : demoMode === 'safe' ? 'Publish (safe)' : 'Publish now'}
           </button>
