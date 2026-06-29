@@ -8,6 +8,7 @@ import type { WorkflowPlan } from '../schemas/workflow-plan.ts';
 import { requirementAnalyzer, type RequirementAnalyzer } from './requirement-analyzer.ts';
 import { evaluateClarification, type ClarificationQuestion } from './clarification-engine.ts';
 import { planWorkflow } from './workflow-planner.ts';
+import { mergeGoals } from './goal-merge.ts';
 
 export type MasterAgentOutcome =
   | { status: 'awaiting_clarification'; goal: GoalSpec; questions: ClarificationQuestion[] }
@@ -35,6 +36,16 @@ export class MasterAgent {
   async handle(message: string): Promise<MasterAgentOutcome> {
     const goal = await this.analyzer.analyze(message);
     return this.planFromGoal(goal);
+  }
+
+  // Conversational refinement: the user follows up on an existing run with a new
+  // free-text message ("…and add an image"). Analyze the message as a DELTA and
+  // merge it additively onto the prior goal so nothing already gathered is lost,
+  // then re-plan. This is what keeps the conversation cumulative instead of each
+  // turn re-asking everything.
+  async refine(prior: GoalSpec, message: string): Promise<MasterAgentOutcome> {
+    const delta = await this.analyzer.analyze(message);
+    return this.planFromGoal(mergeGoals(prior, delta));
   }
 }
 

@@ -18,11 +18,12 @@ import { runWorkflow } from '../orchestration/executor/workflow-executor.ts';
 import {
   createRun,
   createNodes,
+  deleteNodes,
   getRunForOwner,
   getRunWithNodes,
   getLatestRunWithNodesForChat,
   listRuns,
-  setRunStatus,
+  replanRun,
 } from '../db/repos/workflow-run-repo.ts';
 import { mergeAnswers, toRunDto, type ClarifyQuestions } from './orchestration-mappers.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
@@ -50,6 +51,29 @@ const persistOutcome = async (
   return { id: run.id };
 };
 
+// Re-plan an EXISTING run in place (clarification answers OR a conversational
+// refinement). Clears old planned nodes first so a changed DAG doesn't duplicate.
+// Returns the questions to surface when the outcome is awaiting_clarification.
+const applyOutcomeToRun = async (
+  runId: string,
+  ownerId: string,
+  goal: GoalSpec,
+  outcome: MasterAgentOutcome,
+): Promise<{ questions?: ClarifyQuestions }> => {
+  await deleteNodes(runId, ownerId);
+  if (outcome.status === 'planned') {
+    await replanRun(runId, 'planned', goal, outcome.plan);
+    await createNodes(runId, ownerId, outcome.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
+    return {};
+  }
+  if (outcome.status === 'awaiting_clarification') {
+    await replanRun(runId, 'awaiting_clarification', goal, null);
+    return { questions: outcome.questions };
+  }
+  await replanRun(runId, 'failed', goal, null);
+  return {};
+};
+
 interface RespondExtras { questions?: ClarifyQuestions; assistantMessage?: string }
 const respondRun = async (res: Parameters<typeof ok>[0], id: string, ownerId: string, extras: RespondExtras = {}): Promise<void> => {
   const full = await getRunWithNodes(id, ownerId);
@@ -57,14 +81,36 @@ const respondRun = async (res: Parameters<typeof ok>[0], id: string, ownerId: st
   ok(res, toRunDto(full, extras));
 };
 
+// A run is still in the conversational pre-execution phase (so a follow-up message
+// refines it) until it has been approved/executed. needs_approval/running/completed
+// are live executions — a new message there starts a fresh run instead.
+const PRE_EXEC = new Set(['awaiting_clarification', 'planned', 'failed', 'planning']);
+
 orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   const body = parseOr422(res, createRunBody, req.body ?? {});
   if (!body) return;
   // Conversational unify: every run lives on a chat session (sidebar + history). Open
   // or reuse one, then author a natural reply for this turn alongside the run row.
   const sessionId = await ensureChatSession(req.userId!, body.chatSessionId, body.message);
-  const outcome = await masterAgent.handle(body.message);
+
+  // Refinement vs fresh: if this chat already has a pre-execution run, treat the new
+  // message as a follow-up — analyze it as a DELTA and merge onto the prior goal so
+  // nothing already gathered (product/audience/platforms) is lost. Otherwise plan
+  // from scratch.
+  const existing = body.chatSessionId ? await getLatestRunWithNodesForChat(sessionId, req.userId!) : null;
+  const refine = existing && PRE_EXEC.has(existing.status);
+
+  const outcome = refine
+    ? await masterAgent.refine(goalSpec.parse(existing!.goal), body.message)
+    : await masterAgent.handle(body.message);
   const assistantMessage = await recordTurn(sessionId, body.message, outcome);
+
+  if (refine) {
+    const { questions } = await applyOutcomeToRun(existing!.id, req.userId!, outcome.goal, outcome);
+    res.status(201);
+    return respondRun(res, existing!.id, req.userId!, { questions, assistantMessage });
+  }
+
   const { id, questions } = await persistOutcome(req.userId!, sessionId, outcome.goal, outcome);
   res.status(201);
   await respondRun(res, id, req.userId!, { questions, assistantMessage });
@@ -85,18 +131,8 @@ orchestrationRouter.post('/runs/:id/clarify', asyncHandler(async (req, res) => {
   const assistantMessage = run.chatSessionId
     ? await recordTurn(run.chatSessionId, summarizeAnswers(body.answers), outcome)
     : undefined;
-  // Re-plan into the SAME run row (update goal/status + nodes if planned).
-  if (outcome.status === 'planned') {
-    await setRunStatus(run.id, 'planned', { goal: merged, plan: outcome.plan });
-    await createNodes(run.id, req.userId!, outcome.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
-    return respondRun(res, run.id, req.userId!, { assistantMessage });
-  }
-  if (outcome.status === 'awaiting_clarification') {
-    await setRunStatus(run.id, 'awaiting_clarification', { goal: merged });
-    return respondRun(res, run.id, req.userId!, { questions: outcome.questions, assistantMessage });
-  }
-  await setRunStatus(run.id, 'failed', { goal: merged });
-  return respondRun(res, run.id, req.userId!, { assistantMessage });
+  const { questions } = await applyOutcomeToRun(run.id, req.userId!, merged, outcome);
+  return respondRun(res, run.id, req.userId!, { questions, assistantMessage });
 }));
 
 orchestrationRouter.post('/runs/:id/approve', asyncHandler(async (req, res) => {

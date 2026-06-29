@@ -5,6 +5,7 @@ import { analyzeDeterministic } from './master/deterministic-analyzer.ts';
 import { evaluateClarification } from './master/clarification-engine.ts';
 import { MasterAgent } from './master/master-agent.ts';
 import { deterministicReply } from './master/conversation-author.ts';
+import { mergeGoals } from './master/goal-merge.ts';
 import { agentIdList } from './schemas/workflow-plan.ts';
 import { env } from '../config/env.ts';
 
@@ -84,6 +85,27 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   const vague = analyzeDeterministic('help me with marketing');
   const out2 = agent.planFromGoal(vague);
   check('vague → awaiting_clarification', out2.status === 'awaiting_clarification', out2.status);
+}
+
+// Conversational refinement: a follow-up message must MERGE onto the prior goal, not
+// reset it (the "re-asks everything when I add an image" bug). Uses planFromGoal +
+// mergeGoals directly (no LLM) to keep the assertion deterministic.
+{
+  console.log('Refinement merge (goal-merge)');
+  const rich = analyzeDeterministic('Post about our AI automation product on facebook, audience small business owners, angle saving operational time');
+  const richOut = new MasterAgent().planFromGoal(rich);
+  check('rich baseline → planned', richOut.status === 'planned', richOut.status);
+
+  // The follow-up "I also want to add an image" mentions no product/audience/platform.
+  const delta = analyzeDeterministic('tôi muốn up ảnh nữa, thêm infographic');
+  const merged = mergeGoals(rich, delta);
+  check('merge keeps product', Boolean(merged.slots.product), merged.slots.product);
+  check('merge keeps audience', Boolean(merged.slots.targetAudience), merged.slots.targetAudience);
+  check('merge keeps platforms', merged.platforms.includes('facebook'), merged.platforms);
+  check('merge adds infographic', merged.outputs.needsInfographic === true, merged.outputs);
+
+  const mergedOut = new MasterAgent().planFromGoal(merged);
+  check('merged still plans (no re-clarify)', mergedOut.status === 'planned', mergedOut.status);
 }
 
 // Conversation author (deterministic fallback — no LLM needed). Voices each outcome.

@@ -58,10 +58,12 @@ async function main(): Promise<void> {
     const vagueRunId = vague.body?.data?.id;
     const chatId = vague.body?.data?.chatSessionId;
 
-    // Richness gate: product + a single platform is now too thin to plan — the agent
-    // must ASK first (audience/angle), not jump to a bare DAG. This is the core fix.
+    // Richness gate: product + a single platform + a named output is now too thin to
+    // plan — the agent must ASK first (audience/angle), not jump to a bare DAG. This is
+    // the core fix. (Output named explicitly so the gate's anyOutput precondition holds
+    // regardless of LLM variance.)
     const thin = await call('POST', '/orchestration/runs', tokenA, {
-      message: 'Post about our AI automation product on facebook with file id 1bo4diy3vlH9VmRE-78Z15ux9053-KZci',
+      message: 'Write a Facebook text post about our AI automation product',
     });
     check('thin (product+platform) → awaiting_clarification', thin.body?.data?.status === 'awaiting_clarification', thin.body?.data?.status);
     check('thin asks audience or angle', (thin.body?.data?.questions ?? []).some((q: any) => (q.slot === 'targetAudience' || q.slot === 'angle') && q.required), thin.body?.data?.questions);
@@ -86,6 +88,18 @@ async function main(): Promise<void> {
     });
     check('rich one-shot → planned', complete.body?.data?.status === 'planned', complete.body?.data?.status);
     const runId = complete.body?.data?.id;
+    const completeChat = complete.body?.data?.chatSessionId;
+    const beforeNodes = complete.body?.data?.nodes?.length ?? 0;
+
+    // CONVERSATIONAL REFINEMENT: a free-text follow-up on the same chat must MERGE
+    // (add an image) — not reset and re-ask everything (the reported bug). Same run,
+    // still planned, with the infographic node added.
+    const refined = await call('POST', '/orchestration/runs', tokenA, { message: 'tôi muốn thêm infographic nữa', chatSessionId: completeChat });
+    check('refine stays planned (no re-clarify)', refined.body?.data?.status === 'planned', refined.body?.data?.status);
+    check('refine reuses same run', refined.body?.data?.id === runId, { refined: refined.body?.data?.id, runId });
+    check('refine keeps the chat session', refined.body?.data?.chatSessionId === completeChat, refined.body?.data?.chatSessionId);
+    check('refine added infographic node', (refined.body?.data?.nodes ?? []).some((n: any) => n.agentId === 'infographic'), refined.body?.data?.nodes?.map((n: any) => n.agentId));
+    check('refine did not duplicate nodes', (refined.body?.data?.nodes?.length ?? 0) >= beforeNodes && (refined.body?.data?.nodes?.length ?? 0) <= beforeNodes + 2, { before: beforeNodes, after: refined.body?.data?.nodes?.length });
 
     // Cross-tenant read → 404.
     const leak = await call('GET', `/orchestration/runs/${runId}`, tokenB);

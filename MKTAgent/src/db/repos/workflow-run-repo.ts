@@ -4,10 +4,10 @@
 // free-form string; transitions are guarded with updateMany(count===1) like the
 // post review gate so a stale UI can't double-advance a run.
 import { prisma } from '../client.ts';
+import { Prisma } from '../../../prisma/generated/prisma/client.ts';
 import type {
   WorkflowRun,
   WorkflowNodeRun,
-  Prisma,
 } from '../../../prisma/generated/prisma/client.ts';
 
 export type RunWithNodes = Prisma.WorkflowRunGetPayload<{
@@ -52,6 +52,12 @@ export const createNodes = async (
       status: 'pending',
     })),
   });
+};
+
+// Drop a run's planned nodes before a re-plan (conversational refinement can change
+// the DAG of an already-planned run). Scoped by ownerId for tenant safety.
+export const deleteNodes = async (runId: string, ownerId: string): Promise<void> => {
+  await prisma.workflowNodeRun.deleteMany({ where: { runId, ownerId } });
 };
 
 // ── Tenant-facing reads (scoped) ─────────────────────────────────────────────
@@ -104,6 +110,20 @@ export const setRunStatus = (
   data: Prisma.WorkflowRunUpdateInput = {},
 ): Promise<WorkflowRun> =>
   prisma.workflowRun.update({ where: { id }, data: { ...data, status } });
+
+// Re-plan an existing run: update goal + status, and set plan (or clear it with
+// Prisma.JsonNull when a refinement dropped back to awaiting_clarification/failed).
+// Keeps the Json-null quirk inside the repo layer.
+export const replanRun = (
+  id: string,
+  status: string,
+  goal: object,
+  plan: object | null,
+): Promise<WorkflowRun> =>
+  prisma.workflowRun.update({
+    where: { id },
+    data: { status, goal, plan: plan ?? Prisma.JsonNull },
+  });
 
 // ── Node-level writes (executor owns the run) ────────────────────────────────
 export const setNodeStatus = (
