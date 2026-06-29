@@ -113,6 +113,7 @@ model User {
   sessions  Session[]
   agentChatSessions AgentChatSession[]
   agentCredentials   AgentCredential[]
+  workflowRuns       WorkflowRun[]
 
   @@map("mkt_user")
 }
@@ -301,6 +302,76 @@ model AgentCredential {
   @@unique([ownerId, agentId, key])
   @@index([ownerId], name: "ix_agent_credential_owner")
   @@map("agent_credential")
+}
+
+// ── Orchestration backbone (Milestone 1) ──────────────────────────────────────
+// Goal-based dynamic workflow runs. A WorkflowRun is the orchestration record:
+// the GoalSpec snapshot + the planned DAG + per-node run state + artifacts. It
+// sits BESIDE Campaign/Post (the marketing record) — the publisher node references
+// a real Post by id rather than copying its content, so there is no second source
+// of truth for copy/assets. Status is a free-form string (not a Prisma enum) so new
+// states scale without a migration, mirroring the config-as-data choice (T3).
+model WorkflowRun {
+  id            String   @id @default(uuid()) @db.Uuid
+  // Denormalized tenant key (every orchestration query filters on this, like Post).
+  ownerId       String   @map("owner_id") @db.Uuid
+  // Optional link to the chat that spawned the run (one chat may spawn many runs).
+  chatSessionId String?  @map("chat_session_id") @db.Uuid
+  // GoalSpec snapshot (extracted intent) and the WorkflowPlan DAG snapshot.
+  goal          Json
+  plan          Json?
+  // planning | awaiting_clarification | planned | running | needs_approval |
+  // completed | failed | cancelled
+  status        String   @default("planning")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner     User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  nodes     WorkflowNodeRun[]
+  artifacts Artifact[]
+
+  @@index([ownerId, status], name: "ix_wf_run_owner_status")
+  @@map("wf_run")
+}
+
+// One node's execution state within a run. dependsOn/inputRefs/outputRefs are
+// plan-local node ids / artifact ids — the executor topo-sorts on dependsOn.
+model WorkflowNodeRun {
+  id         String    @id @default(uuid()) @db.Uuid
+  runId      String    @map("run_id") @db.Uuid
+  ownerId    String    @map("owner_id") @db.Uuid
+  nodeId     String    @map("node_id") // plan-local, e.g. "n2"
+  agentId    String    @map("agent_id") // registry key
+  // pending | running | awaiting_approval | completed | failed | skipped
+  status     String    @default("pending")
+  dependsOn  String[]  @map("depends_on")
+  inputRefs  String[]  @map("input_refs")
+  outputRefs String[]  @map("output_refs")
+  error      String?
+  startedAt  DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId], name: "ix_wf_node_run")
+  @@map("wf_node_run")
+}
+
+// A typed agent output (brief §3, §5). data is validated against the matching
+// artifact Zod schema at the executor boundary before insert — not by the DB.
+model Artifact {
+  id        String   @id @default(uuid()) @db.Uuid
+  runId     String   @map("run_id") @db.Uuid
+  ownerId   String   @map("owner_id") @db.Uuid
+  nodeId    String   @map("node_id") // producing node
+  type      String   // research_summary | content_concept | publish_result | ...
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, type], name: "ix_wf_artifact_run_type")
+  @@map("wf_artifact")
 }
 
 // Chronological audit log; detail is free-form JSON. Ported from n8n mkt_run_log.

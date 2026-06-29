@@ -1,0 +1,79 @@
+// Orchestration mappers — DB row → DTO + clarification answer merge. Kept separate
+// from the router (decoupling boundary, like api/mappers.ts) and the GoalSpec
+// internal schema.
+import type { RunWithNodes } from '../db/repos/workflow-run-repo.ts';
+import { goalSpec, type GoalSpec } from '../orchestration/schemas/goal-spec.ts';
+import type { ClarificationQuestion } from '../orchestration/master/clarification-engine.ts';
+import type { WorkflowRunDto } from './schemas.ts';
+
+export type ClarifyQuestions = ClarificationQuestion[];
+
+export const toRunDto = (run: RunWithNodes, questions?: ClarifyQuestions): WorkflowRunDto => ({
+  id: run.id,
+  status: run.status,
+  goal: run.goal,
+  plan: run.plan ?? null,
+  ...(questions ? { questions } : {}),
+  nodes: run.nodes.map((n) => ({
+    nodeId: n.nodeId,
+    agentId: n.agentId,
+    status: n.status,
+    dependsOn: n.dependsOn,
+    error: n.error,
+  })),
+  artifacts: run.artifacts.map((a) => ({
+    id: a.id,
+    nodeId: a.nodeId,
+    type: a.type,
+    data: a.data,
+    createdAt: a.createdAt.toISOString(),
+  })),
+  createdAt: run.createdAt.toISOString(),
+  updatedAt: run.updatedAt.toISOString(),
+});
+
+// Merge clarification answers (slot → value) into a prior GoalSpec. The slot keys
+// match clarification-engine's question slots (product, output_format, platforms,
+// targetAudience, angle). output_format maps the multiple-choice label → flags.
+const first = (v: string | string[]): string => (Array.isArray(v) ? (v[0] ?? '') : v);
+
+const applyOutputFormat = (goal: GoalSpec, label: string): void => {
+  const l = label.toLowerCase();
+  goal.outputs.needsTextPost = true;
+  goal.outputs.needsInfographic = /infographic/.test(l);
+  goal.outputs.needsVideo = /video/.test(l);
+  goal.outputs.needsPublishing = true;
+};
+
+export const mergeAnswers = (
+  prior: GoalSpec,
+  answers: Record<string, string | string[]>,
+): GoalSpec => {
+  // Clone via the schema so we never mutate the stored object reference.
+  const goal = goalSpec.parse(prior);
+  for (const [slot, value] of Object.entries(answers)) {
+    switch (slot) {
+      case 'product':
+        goal.slots.product = first(value);
+        break;
+      case 'targetAudience':
+        goal.slots.targetAudience = first(value);
+        break;
+      case 'angle':
+        goal.slots.angle = first(value);
+        break;
+      case 'platforms': {
+        const arr = (Array.isArray(value) ? value : [value]).filter(Boolean);
+        const valid = arr.filter((p) => ['facebook', 'instagram', 'threads', 'linkedin', 'x'].includes(p)) as GoalSpec['platforms'];
+        if (valid.length) goal.platforms = valid;
+        break;
+      }
+      case 'output_format':
+        applyOutputFormat(goal, first(value));
+        break;
+      default:
+        break; // unknown slot → ignore (forward-compatible)
+    }
+  }
+  return goal;
+};

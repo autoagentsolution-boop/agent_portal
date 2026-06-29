@@ -17,6 +17,7 @@ import { connectRouter } from './api/connect-router.ts';
 import { eventsRouter } from './api/events-router.ts';
 import { leadsRouter } from './api/leads-router.ts';
 import { agentRouter } from './api/agent-router.ts';
+import { orchestrationRouter } from './api/orchestration-router.ts';
 
 const app = express();
 
@@ -50,6 +51,11 @@ app.use('/campaigns', requireAuth, campaignsRouter);
 // Master Agent typed intake. Draft-only parser that helps users set up the flow;
 // writes still happen through the explicit campaign/post APIs after UI confirmation.
 app.use('/agent', requireAuth, agentRouter);
+
+// Goal-based agent orchestration (Milestone 1). Master Agent → dynamic DAG plan →
+// executor with an approval gate before any external-write (publisher) node. Runs
+// BESIDE the template intake path; tenant-scoped via requireAuth.
+app.use('/orchestration', requireAuth, orchestrationRouter);
 
 // Per-user SSE stream (T5). Self-authenticates (Bearer header OR ?token= for the
 // browser EventSource API) so it is NOT behind requireAuth's header-only gate.

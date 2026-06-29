@@ -1,0 +1,108 @@
+// Phase 5 verification — live HTTP loop against a running server (:7100). Mints a
+// JWT for two throwaway tenants, exercises the orchestration lifecycle over real
+// fetch: 401 no-auth, create→clarify→approve→approve-node, cross-tenant 404, GET.
+// DRY-RUN: the publisher runs the live path but the materialized Post has no media
+// → publish_result faithfully errors (no real social post). Cleans up after.
+//
+// Run: server up on :7100 (ENABLE_*_CRON unset), then `npx tsx src/orchestration/verify-api.ts`.
+import { prisma } from '../db/client.ts';
+import { signSession } from '../lib/auth-jwt.ts';
+import { env } from '../config/env.ts';
+
+const BASE = `http://localhost:${env.PORT}`;
+let failures = 0;
+const check = (name: string, cond: boolean, extra?: unknown): void => {
+  if (cond) console.log(`  ok   ${name}`);
+  else { failures++; console.log(`  FAIL ${name}`, extra !== undefined ? JSON.stringify(extra).slice(0, 300) : ''); }
+};
+
+interface Json { status: number; body: any }
+const call = async (method: string, path: string, token?: string, body?: unknown): Promise<Json> => {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  const text = await res.text();
+  return { status: res.status, body: text ? JSON.parse(text) : null };
+};
+
+async function main(): Promise<void> {
+  // Health gate first — fail fast with a clear message if the server isn't up.
+  try {
+    const h = await fetch(`${BASE}/health`);
+    if (!h.ok) throw new Error(`health ${h.status}`);
+  } catch (e) {
+    console.error(`Server not reachable at ${BASE} — start it first (npx tsx src/server.ts). ${String(e)}`);
+    process.exit(2);
+  }
+
+  const userA = await prisma.user.create({ data: { email: `api-a-${Date.now()}@test.local`, defaultLanguage: 'en' } });
+  const userB = await prisma.user.create({ data: { email: `api-b-${Date.now()}@test.local` } });
+  const tokenA = signSession({ sub: userA.id, email: userA.email });
+  const tokenB = signSession({ sub: userB.id, email: userB.email });
+
+  try {
+    // Auth gate.
+    const noAuth = await call('POST', '/orchestration/runs', undefined, { message: 'Post about X on facebook' });
+    check('401 without token', noAuth.status === 401, noAuth);
+
+    // Vague request → awaiting_clarification (asks product).
+    const vague = await call('POST', '/orchestration/runs', tokenA, { message: 'help me with marketing' });
+    check('201 created (vague)', vague.status === 201, vague.status);
+    check('vague → awaiting_clarification', vague.body?.data?.status === 'awaiting_clarification', vague.body?.data?.status);
+    check('clarification questions present', (vague.body?.data?.questions?.length ?? 0) >= 1, vague.body?.data?.questions);
+    const vagueRunId = vague.body?.data?.id;
+
+    // Answer clarification → re-plan.
+    const clarified = await call('POST', `/orchestration/runs/${vagueRunId}/clarify`, tokenA, {
+      answers: { product: 'AI automation suite', output_format: 'Text + infographic', platforms: ['facebook'] },
+    });
+    check('clarify → planned', clarified.body?.data?.status === 'planned', clarified.body?.data?.status);
+    check('plan has nodes', (clarified.body?.data?.nodes?.length ?? 0) >= 2, clarified.body?.data?.nodes?.length);
+
+    // Complete request in one shot → planned immediately.
+    const complete = await call('POST', '/orchestration/runs', tokenA, {
+      message: 'Post about our AI automation product on facebook with file id 1bo4diy3vlH9VmRE-78Z15ux9053-KZci',
+    });
+    check('complete → planned', complete.body?.data?.status === 'planned', complete.body?.data?.status);
+    const runId = complete.body?.data?.id;
+
+    // Cross-tenant read → 404.
+    const leak = await call('GET', `/orchestration/runs/${runId}`, tokenB);
+    check('cross-tenant GET → 404', leak.status === 404, leak.status);
+
+    // Approve → executes, halts at publisher gate (needs_approval).
+    const approved = await call('POST', `/orchestration/runs/${runId}/approve`, tokenA);
+    check('approve → needs_approval', approved.body?.data?.status === 'needs_approval', approved.body?.data?.status);
+    const pub = approved.body?.data?.nodes?.find((n: any) => n.agentId === 'publisher');
+    check('publisher node awaiting_approval', pub?.status === 'awaiting_approval', pub?.status);
+    check('concept_writer completed', approved.body?.data?.nodes?.find((n: any) => n.agentId === 'concept_writer')?.status === 'completed');
+
+    // Wrong state guard: approve again → 409.
+    const reApprove = await call('POST', `/orchestration/runs/${runId}/approve`, tokenA);
+    check('re-approve → 409 not_planned', reApprove.status === 409, reApprove.status);
+
+    // Approve the publisher node → resume → completed (live publish path, real media id).
+    const resumed = await call('POST', `/orchestration/runs/${runId}/approve-node/${pub.nodeId}`, tokenA);
+    check('approve-node → completed', resumed.body?.data?.status === 'completed', resumed.body?.data?.status);
+    const pr = resumed.body?.data?.artifacts?.find((a: any) => a.type === 'publish_result');
+    check('publish_result artifact present', Boolean(pr), resumed.body?.data?.artifacts?.map((a: any) => a.type));
+
+    // List runs for A.
+    const list = await call('GET', '/orchestration/runs', tokenA);
+    check('list returns A\'s runs', (list.body?.data?.length ?? 0) >= 2, list.body?.data?.length);
+    check('list 401 for no token', (await call('GET', '/orchestration/runs')).status === 401);
+  } finally {
+    await prisma.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
+    console.log('cleanup: 2 throwaway tenants removed');
+  }
+}
+
+main()
+  .then(() => {
+    console.log(failures === 0 ? '\nPASS — orchestration API checks green' : `\nFAIL — ${failures} check(s) failed`);
+    process.exit(failures === 0 ? 0 : 1);
+  })
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => prisma.$disconnect());

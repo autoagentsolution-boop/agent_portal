@@ -17,7 +17,21 @@ export interface PostStatusEvent {
   at: string; // ISO 8601
 }
 
-type Subscriber = (event: PostStatusEvent) => void;
+// Orchestration node-level status (Milestone 1). Same per-tenant fan-out as post
+// status — the SSE endpoint streams both event types to the owner.
+export interface NodeStatusEvent {
+  type: 'node.status';
+  runId: string;
+  nodeId: string;
+  agentId: string;
+  status: string;
+  error?: string | null;
+  at: string; // ISO 8601
+}
+
+export type BusEvent = PostStatusEvent | NodeStatusEvent;
+
+type Subscriber = (event: BusEvent) => void;
 
 const subscribers = new Map<string, Set<Subscriber>>();
 
@@ -60,6 +74,32 @@ export const publishPostStatus = (
       fn(full);
     } catch {
       // isolate one bad subscriber; drop the event for it only.
+    }
+  }
+};
+
+// Fan a node status change out to one owner's live subscribers (orchestration).
+// Never throws — a broken SSE subscriber must not break the executor.
+export const publishNodeStatus = (
+  ownerId: string,
+  event: Omit<NodeStatusEvent, 'type' | 'at'> & { at?: string },
+): void => {
+  const set = subscribers.get(ownerId);
+  if (!set || set.size === 0) return;
+  const full: NodeStatusEvent = {
+    type: 'node.status',
+    at: event.at ?? new Date().toISOString(),
+    runId: event.runId,
+    nodeId: event.nodeId,
+    agentId: event.agentId,
+    status: event.status,
+    error: event.error ?? null,
+  };
+  for (const fn of set) {
+    try {
+      fn(full);
+    } catch {
+      // isolate one bad subscriber.
     }
   }
 };

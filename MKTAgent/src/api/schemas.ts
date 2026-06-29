@@ -150,6 +150,58 @@ export const saveAgentCredentialBody = z.object({
 });
 export type SaveAgentCredentialBody = z.infer<typeof saveAgentCredentialBody>;
 
+// ---- Orchestration (Milestone 1: goal-based agent workflows) -----------------
+// Request bodies + DTOs for /orchestration. The GoalSpec/WorkflowPlan internal Zod
+// schemas live in src/orchestration/schemas; these are the API-boundary shapes.
+export const createRunBody = z.object({
+  message: z.string().min(3).max(8000),
+  chatSessionId: z.string().uuid().optional(),
+});
+export type CreateRunBody = z.infer<typeof createRunBody>;
+
+// Clarification answers: slot → value (string) or string[] for multi-select.
+export const clarifyRunBody = z.object({
+  answers: z.record(z.union([z.string(), z.array(z.string())])),
+});
+export type ClarifyRunBody = z.infer<typeof clarifyRunBody>;
+
+export const clarificationQuestionDto = z.object({
+  slot: z.string(),
+  question: z.string(),
+  required: z.boolean(),
+  choices: z.array(z.string()).optional(),
+  multiSelect: z.boolean().optional(),
+});
+
+export const workflowNodeDto = z.object({
+  nodeId: z.string(),
+  agentId: z.string(),
+  status: z.string(),
+  dependsOn: z.array(z.string()),
+  error: z.string().nullable(),
+});
+
+export const artifactDto = z.object({
+  id: z.string().uuid(),
+  nodeId: z.string(),
+  type: z.string(),
+  data: z.unknown(),
+  createdAt: z.string(),
+});
+
+export const workflowRunDto = z.object({
+  id: z.string().uuid(),
+  status: z.string(),
+  goal: z.unknown(),
+  plan: z.unknown().nullable(),
+  questions: z.array(clarificationQuestionDto).optional(),
+  nodes: z.array(workflowNodeDto),
+  artifacts: z.array(artifactDto),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type WorkflowRunDto = z.infer<typeof workflowRunDto>;
+
 // ---- Response DTOs (what the UI renders; decoupled from the DB row) ----
 export const campaignDto = z.object({
   id: z.string().uuid(),

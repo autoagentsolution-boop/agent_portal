@@ -10,7 +10,7 @@
 import { Router } from 'express';
 import { verifySession } from '../lib/auth-jwt.ts';
 import { resolveRequestOwner } from './middleware-auth.ts';
-import { subscribe, type PostStatusEvent } from '../events/bus.ts';
+import { subscribe, type BusEvent } from '../events/bus.ts';
 import { logger } from '../lib/logger.ts';
 
 export const eventsRouter: Router = Router();
@@ -39,7 +39,7 @@ eventsRouter.get('/', async (req, res) => {
   res.write('retry: 3000\n\n'); // client reconnect backoff hint
   res.write(`event: ready\ndata: ${JSON.stringify({ ownerId })}\n\n`);
 
-  const send = (e: PostStatusEvent): void => {
+  const send = (e: BusEvent): void => {
     res.write(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
   };
   const unsubscribe = subscribe(ownerId, send);

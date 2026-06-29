@@ -999,6 +999,170 @@
           "status"
         ]
       },
+      "CreateRunBody": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 8000
+          },
+          "chatSessionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "ClarifyRunBody": {
+        "type": "object",
+        "properties": {
+          "answers": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "answers"
+        ]
+      },
+      "WorkflowRunDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "goal": {},
+          "plan": {},
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "slot": {
+                  "type": "string"
+                },
+                "question": {
+                  "type": "string"
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "choices": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "multiSelect": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "slot",
+                "question",
+                "required"
+              ]
+            }
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "nodeId": {
+                  "type": "string"
+                },
+                "agentId": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "dependsOn": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "nodeId",
+                "agentId",
+                "status",
+                "dependsOn",
+                "error"
+              ]
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "nodeId": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "data": {},
+                "createdAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "nodeId",
+                "type",
+                "createdAt"
+              ]
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "nodes",
+          "artifacts",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
       "ErrorEnvelope": {
         "type": "object",
         "properties": {
@@ -2591,13 +2755,494 @@
         }
       }
     },
+    "/orchestration/runs": {
+      "post": {
+        "tags": [
+          "orchestration"
+        ],
+        "summary": "Start a goal-based run: analyze a message → clarify or plan a DAG",
+        "description": "Master Agent extracts intent, asks clarification if required slots are missing, else plans a dynamic agent DAG. Returns the run (status awaiting_clarification | planned | failed).",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRunBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WorkflowRunDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "orchestration"
+        ],
+        "summary": "List the current user's workflow runs",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs (most recent first)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "nextCursor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "count",
+                        "nextCursor"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orchestration/runs/{id}/clarify": {
+      "post": {
+        "tags": [
+          "orchestration"
+        ],
+        "summary": "Answer clarification questions → re-plan the run",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClarifyRunBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Re-planned run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WorkflowRunDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Run is not awaiting clarification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orchestration/runs/{id}/approve": {
+      "post": {
+        "tags": [
+          "orchestration"
+        ],
+        "summary": "Approve a planned run → execute the DAG (halts at the publish gate)",
+        "description": "Runs nodes in dependency order. The executor halts BEFORE any external-write node (publisher) → status needs_approval.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run after this pass (needs_approval | completed | failed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WorkflowRunDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Run is not in planned state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orchestration/runs/{id}/approve-node/{nodeId}": {
+      "post": {
+        "tags": [
+          "orchestration"
+        ],
+        "summary": "Approve a gated node (e.g. publisher) → resume execution",
+        "description": "Releases the approval gate for one external-write node and resumes the run. Publishing runs the real publish path.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "nodeId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run after resume",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WorkflowRunDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Run is not awaiting approval",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orchestration/runs/{id}": {
+      "get": {
+        "tags": [
+          "orchestration"
+        ],
+        "summary": "Get a run with its nodes + artifacts",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WorkflowRunDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/events": {
       "get": {
         "tags": [
           "events"
         ],
-        "summary": "Server-Sent Events stream of this user's post status changes",
-        "description": "text/event-stream. Auth via Bearer header OR ?token= query (EventSource). Emits `ready` then `post.status` events: {postId,status,campaignId,postUrls,error,at}.",
+        "summary": "Server-Sent Events stream of this user's status changes",
+        "description": "text/event-stream. Auth via Bearer header OR ?token= query (EventSource). Emits `ready` then `post.status` {postId,status,campaignId,postUrls,error,at} and `node.status` {runId,nodeId,agentId,status,error,at} events.",
         "security": [
           {
             "bearerAuth": []

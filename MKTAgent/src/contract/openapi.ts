@@ -31,6 +31,9 @@ import {
   updateCampaignBody,
   createPostBody,
   updatePostBody,
+  createRunBody,
+  clarifyRunBody,
+  workflowRunDto,
 } from '../api/schemas.ts';
 
 extendZodWithOpenApi(z);
@@ -80,6 +83,9 @@ const UpdatePostBody = registry.register('UpdatePostBody', updatePostBody);
 registry.register('LeadSource', leadSource);
 const LeadDto = registry.register('LeadDto', leadDto);
 const LeadCaptureResult = registry.register('LeadCaptureResult', leadCaptureResult);
+const CreateRunBody = registry.register('CreateRunBody', createRunBody);
+const ClarifyRunBody = registry.register('ClarifyRunBody', clarifyRunBody);
+const WorkflowRunDto = registry.register('WorkflowRunDto', workflowRunDto);
 
 // ---- Envelopes: every response is { data, meta? } | { error, details? }. -------
 const listMeta = z.object({ count: z.number().int(), nextCursor: z.string().uuid().nullable() });
@@ -416,15 +422,108 @@ registry.registerPath({
   },
 });
 
+// ---- Orchestration (goal-based agent workflows, Milestone 1) --------------------
+const runIdParam = z.object({ id: z.string().uuid() });
+
+registry.registerPath({
+  method: 'post',
+  path: '/orchestration/runs',
+  tags: ['orchestration'],
+  summary: 'Start a goal-based run: analyze a message → clarify or plan a DAG',
+  description: 'Master Agent extracts intent, asks clarification if required slots are missing, else plans a dynamic agent DAG. Returns the run (status awaiting_clarification | planned | failed).',
+  security: userAuth,
+  request: { body: { content: json(CreateRunBody) } },
+  responses: {
+    201: { description: 'Created run', content: json(dataEnvelope(WorkflowRunDto)) },
+    401: errorResponse('Unauthorized'),
+    422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/orchestration/runs/{id}/clarify',
+  tags: ['orchestration'],
+  summary: 'Answer clarification questions → re-plan the run',
+  security: userAuth,
+  request: { params: runIdParam, body: { content: json(ClarifyRunBody) } },
+  responses: {
+    200: { description: 'Re-planned run', content: json(dataEnvelope(WorkflowRunDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Run is not awaiting clarification'),
+    422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/orchestration/runs/{id}/approve',
+  tags: ['orchestration'],
+  summary: 'Approve a planned run → execute the DAG (halts at the publish gate)',
+  description: 'Runs nodes in dependency order. The executor halts BEFORE any external-write node (publisher) → status needs_approval.',
+  security: userAuth,
+  request: { params: runIdParam },
+  responses: {
+    200: { description: 'Run after this pass (needs_approval | completed | failed)', content: json(dataEnvelope(WorkflowRunDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Run is not in planned state'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/orchestration/runs/{id}/approve-node/{nodeId}',
+  tags: ['orchestration'],
+  summary: 'Approve a gated node (e.g. publisher) → resume execution',
+  description: 'Releases the approval gate for one external-write node and resumes the run. Publishing runs the real publish path.',
+  security: userAuth,
+  request: { params: z.object({ id: z.string().uuid(), nodeId: z.string() }) },
+  responses: {
+    200: { description: 'Run after resume', content: json(dataEnvelope(WorkflowRunDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Run is not awaiting approval'),
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/orchestration/runs',
+  tags: ['orchestration'],
+  summary: 'List the current user\'s workflow runs',
+  security: userAuth,
+  responses: {
+    200: { description: 'Runs (most recent first)', content: json(listEnvelope(z.object({ id: z.string().uuid(), status: z.string(), createdAt: z.string(), updatedAt: z.string() }))) },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/orchestration/runs/{id}',
+  tags: ['orchestration'],
+  summary: 'Get a run with its nodes + artifacts',
+  security: userAuth,
+  request: { params: runIdParam },
+  responses: {
+    200: { description: 'Run detail', content: json(dataEnvelope(WorkflowRunDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+  },
+});
+
 // ---- SSE -----------------------------------------------------------------------
 registry.registerPath({
   method: 'get',
   path: '/events',
   tags: ['events'],
-  summary: 'Server-Sent Events stream of this user\'s post status changes',
+  summary: 'Server-Sent Events stream of this user\'s status changes',
   description:
     'text/event-stream. Auth via Bearer header OR ?token= query (EventSource). ' +
-    'Emits `ready` then `post.status` events: {postId,status,campaignId,postUrls,error,at}.',
+    'Emits `ready` then `post.status` {postId,status,campaignId,postUrls,error,at} ' +
+    'and `node.status` {runId,nodeId,agentId,status,error,at} events.',
   security: [{ [bearer.name]: [] }],
   responses: {
     200: { description: 'SSE stream (Content-Type: text/event-stream)' },
