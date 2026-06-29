@@ -1,7 +1,7 @@
 # Master Agent Investor Demo Plan
 
 ## Status
-- Blocked — Master Agent chat runtime does not respond; resume from `plans/reports/handoff-260628-1540-master-agent-chat-runtime-blocker.md`.
+- In progress — Phase 01-06 validated by backend typecheck + web build. Runtime chat blocker resolved; DB chat history, ChatGPT-style UI, Active Flows tree, and credential collection UI are implemented. Next: quick browser rehearsal + decide whether to wire collected AgentCredential values into live provider execution later.
 
 ## Target Date
 - Tuesday 2026-06-30

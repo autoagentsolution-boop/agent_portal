@@ -368,10 +368,38 @@ a { color: var(--accent); }
 .flow-tree-card .setup-card { max-width: none; }
 .flow-tree-card .camp-item { border-radius: 10px; }
 .agent-detail-panel { margin-top: 12px; }
+.credential-panel { margin-top: 10px; }
+.credential-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(280px, 1.2fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  padding: 10px;
+  margin-top: 8px;
+}
+.credential-meta strong { display: inline-block; font-size: 13px; margin-right: 8px; }
+.credential-meta p { color: var(--muted); font-size: 12px; line-height: 1.4; margin: 6px 0 0; }
+.credential-status { border-radius: 999px; padding: 2px 7px; font-size: 10px; text-transform: uppercase; font-weight: 700; }
+.credential-status.active { background: rgba(63,185,80,0.18); color: var(--green); }
+.credential-status.missing { background: rgba(154,163,178,0.16); color: var(--muted); }
+.credential-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
+.credential-actions input {
+  min-width: 0;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 13px;
+}
 
 @media (max-width: 900px) {
   .app-root { grid-template-columns: 1fr; }
   .app-sidebar { height: auto; max-height: 260px; }
   .master-toolbar { justify-content: flex-start; }
-  .setup-summary-grid { grid-template-columns: 1fr; }
+  .setup-summary-grid, .credential-row, .credential-actions { grid-template-columns: 1fr; }
 }

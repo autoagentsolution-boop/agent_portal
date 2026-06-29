@@ -2,7 +2,7 @@
 
 ## Overview
 Priority: P0  
-Status: Planned
+Status: Complete — implemented; pending fresh validation in Phase 05
 
 Make Master Agent respond like a reasoning assistant, not a template parser.
 

@@ -19,10 +19,33 @@ const agentIntakeProvider = new GeminiAgentIntakeProvider();
 
 const credentialAllowlist: Record<string, string[]> = {
   'concept-writer': ['gemini_api_key'],
-  infographic: ['design_provider_key'],
+  infographic: ['design_provider_key', 'design_client_id', 'design_client_secret'],
   storyboard: ['storyboard_provider_key'],
-  'voice-video': ['video_provider_key', 'tts_music_provider_key'],
-  publisher: ['facebook_token', 'instagram_token', 'threads_token', 'linkedin_token', 'x_token'],
+  'voice-video': ['video_provider_key', 'video_client_id', 'video_client_secret', 'tts_music_provider_key'],
+  publisher: [
+    'google_client_id',
+    'google_client_secret',
+    'google_refresh_token',
+    'facebook_app_id',
+    'facebook_app_secret',
+    'facebook_page_id',
+    'facebook_access_token',
+    'instagram_app_id',
+    'instagram_app_secret',
+    'instagram_business_account_id',
+    'instagram_access_token',
+    'threads_app_id',
+    'threads_app_secret',
+    'threads_access_token',
+    'linkedin_client_id',
+    'linkedin_client_secret',
+    'linkedin_access_token',
+    'linkedin_author_urn',
+    'x_client_id',
+    'x_client_secret',
+    'x_access_token',
+    'x_refresh_token',
+  ],
 };
 
 const titleFrom = (message: string): string => message.trim().replace(/\s+/g, ' ').slice(0, 80) || 'New setup chat';

@@ -31,7 +31,7 @@ cd /c/Users/Vincere/Desktop/Claude/AgentPortal/MKTAgent/web && npm run build
 10. Generate/review/approve schedule in Safe mode.
 
 ## Known Limitations To Say Out Loud
-- Chat history is browser-local for demo, DB persistence next.
+- Chat history is DB-backed; if the running app looks stale, rebuild/restart the serving API/container before code-diving.
 - Some agents are placeholders until media/design provider adapters are wired.
 - Live publish is intentionally guarded.
 

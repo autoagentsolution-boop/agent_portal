@@ -2,7 +2,7 @@
 
 ## Overview
 Priority: P1  
-Status: Planned
+Status: Complete — implemented; pending fresh validation in Phase 05
 
 Make Active Flows behave like a project folder tree and working area.
 
