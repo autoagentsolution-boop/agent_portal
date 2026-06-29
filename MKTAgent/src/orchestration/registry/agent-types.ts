@@ -5,6 +5,8 @@
 import type { ArtifactType } from '../schemas/artifact-schemas.ts';
 
 export type AgentId =
+  | 'ideation'
+  | 'strategy'
   | 'content_search'
   | 'concept_writer'
   | 'infographic'
@@ -34,4 +36,9 @@ export interface AgentDefinition {
   // M1: only `publisher` requires a connection / external-write approval.
   requiresConnection: boolean;
   requiresApproval: boolean;
+  // Capability skills this agent provides (brief §11.5). The publisher declares
+  // `social.post.*`; target platforms come from the GoalSpec and are resolved at
+  // run time (capability-based planning), NOT modeled as separate DAG nodes.
+  // Optional: non-capability agents omit it.
+  capabilities?: string[];
 }

@@ -20,6 +20,9 @@ const selectAgents = (goal: GoalSpec): RunnableAgentId[] => {
   const ids: RunnableAgentId[] = [];
   const { outputs } = goal;
   if (outputs.needsResearch) ids.push('content_search');
+  // strategy requires campaign_ideas → ideation is implied whenever strategy runs.
+  if (outputs.needsIdeation || outputs.needsStrategy) ids.push('ideation');
+  if (outputs.needsStrategy) ids.push('strategy');
   if (outputs.needsTextPost) ids.push('concept_writer');
   if (outputs.needsInfographic) ids.push('infographic');
   if (outputs.needsVideo) {

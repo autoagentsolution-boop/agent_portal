@@ -6,9 +6,10 @@ import { ActiveFlowsPage } from './components/ActiveFlowsPage';
 import { DemoModeToggle } from './components/DemoModeToggle';
 import { MasterAgentIntake } from './components/MasterAgentIntake';
 import { OrchestratePanel } from './components/OrchestratePanel';
+import { ConnectionsPanel } from './components/ConnectionsPanel';
 import type { DemoMode } from './flow/demo-flow';
 
-type Page = 'master' | 'flows' | 'orchestrate';
+type Page = 'master' | 'flows' | 'orchestrate' | 'connections';
 type Theme = 'light' | 'dark';
 
 const postTitle = (post: PostDto, index: number): string => {
@@ -103,6 +104,7 @@ export function App() {
         </div>
         <button className={`sidebar-item ${page === 'master' && !activeChatId ? 'active' : ''}`} onClick={() => { setActiveChatId(null); setPage('master'); }}>✎ New setup chat</button>
         <button className={`sidebar-item ${page === 'orchestrate' ? 'active' : ''}`} onClick={() => setPage('orchestrate')}>⚡ Orchestrate (M1)</button>
+        <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => setPage('connections')}>🔌 Connections</button>
         <button className={`sidebar-item ${page === 'flows' ? 'active' : ''}`} onClick={() => setPage('flows')}>▦ Active Flows</button>
         <div className="flow-sidebar-tree">
           <button className="tree-row level-1" onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setPage('flows'); }}>Branding / Social</button>
@@ -150,6 +152,10 @@ export function App() {
         ) : page === 'orchestrate' ? (
           <div className="master-home">
             <OrchestratePanel notify={show} />
+          </div>
+        ) : page === 'connections' ? (
+          <div className="master-home">
+            <ConnectionsPanel notify={show} />
           </div>
         ) : (
           <ActiveFlowsPage

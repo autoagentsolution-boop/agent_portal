@@ -45,13 +45,23 @@ const parseProduct = (m: string): string | null => {
 
 // Output-flag inference. Defaults: marketing requests need a text post + publishing
 // unless the user clearly only wants an asset. Media flags are opt-in by keyword.
-const inferOutputs = (t: string): GoalSpec['outputs'] => ({
-  needsResearch: /\b(research|nghiên cứu|nghien cuu|competitor|đối thủ|market)\b/i.test(t),
-  needsTextPost: true,
-  needsInfographic: /\b(infographic|visual|hình ảnh thông tin)\b/i.test(t),
-  needsVideo: /\b(video|reel|clip|short|tiktok)\b/i.test(t),
-  needsPublishing: !/\b(draft only|chỉ nháp|chi nhap|don't publish|do not publish|không đăng|khong dang)\b/i.test(t),
-});
+// A broad branding/campaign request runs the fuller idea→strategy flow (and an
+// image), versus a plain "write a post" which stays minimal.
+const isCampaign = (t: string): boolean =>
+  /\b(campaign|branding|brand|chiến dịch|chien dich|thương hiệu|thuong hieu|lên ý tưởng|len y tuong|chiến lược|chien luoc|strategy)\b/i.test(t);
+
+const inferOutputs = (t: string): GoalSpec['outputs'] => {
+  const campaign = isCampaign(t);
+  return {
+    needsIdeation: campaign,
+    needsStrategy: campaign,
+    needsResearch: /\b(research|nghiên cứu|nghien cuu|competitor|đối thủ|market)\b/i.test(t),
+    needsTextPost: true,
+    needsInfographic: campaign || /\b(infographic|visual|hình ảnh thông tin|hình ảnh|hinh anh|image)\b/i.test(t),
+    needsVideo: /\b(video|reel|clip|short|tiktok)\b/i.test(t),
+    needsPublishing: !/\b(draft only|chỉ nháp|chi nhap|don't publish|do not publish|không đăng|khong dang)\b/i.test(t),
+  };
+};
 
 export const analyzeDeterministic = (message: string): GoalSpec => {
   const m = message.trim();

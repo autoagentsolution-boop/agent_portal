@@ -18,6 +18,7 @@ import { eventsRouter } from './api/events-router.ts';
 import { leadsRouter } from './api/leads-router.ts';
 import { agentRouter } from './api/agent-router.ts';
 import { orchestrationRouter } from './api/orchestration-router.ts';
+import { connectionsRouter } from './api/connections-router.ts';
 
 const app = express();
 
@@ -56,6 +57,10 @@ app.use('/agent', requireAuth, agentRouter);
 // executor with an approval gate before any external-write (publisher) node. Runs
 // BESIDE the template intake path; tenant-scoped via requireAuth.
 app.use('/orchestration', requireAuth, orchestrationRouter);
+
+// Connections (M2-lite). Read-only view of the caller's social connection status
+// over the existing OAuthToken store; never touches the write path or token values.
+app.use('/connections', requireAuth, connectionsRouter);
 
 // Per-user SSE stream (T5). Self-authenticates (Bearer header OR ?token= for the
 // browser EventSource API) so it is NOT behind requireAuth's header-only gate.

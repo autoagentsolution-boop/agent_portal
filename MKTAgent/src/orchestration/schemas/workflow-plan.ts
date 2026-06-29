@@ -6,6 +6,8 @@ import { z } from 'zod';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 
 const runnableAgentId = z.enum([
+  'ideation',
+  'strategy',
   'content_search',
   'concept_writer',
   'infographic',

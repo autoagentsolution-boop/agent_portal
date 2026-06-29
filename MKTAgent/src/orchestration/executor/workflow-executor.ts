@@ -25,6 +25,8 @@ import { logRun } from '../../db/client.ts';
 export interface ExecuteOptions {
   geminiFn?: RunnerContext['geminiFn'];
   publishFn?: RunnerContext['publishFn'];
+  llmJsonFn?: RunnerContext['llmJsonFn'];
+  imageFn?: RunnerContext['imageFn'];
   // When true, the executor RUNS the gated node instead of halting (post-approval).
   approveNodeId?: string;
 }
@@ -79,7 +81,7 @@ export const runWorkflow = async (
     }
 
     const def = getAgent(planNode.agentId);
-    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn };
+    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn };
 
     await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
     publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'running' });

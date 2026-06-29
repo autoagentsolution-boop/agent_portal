@@ -39,8 +39,13 @@ const first = (v: string | string[]): string => (Array.isArray(v) ? (v[0] ?? '')
 
 const applyOutputFormat = (goal: GoalSpec, label: string): void => {
   const l = label.toLowerCase();
+  const fullCampaign = /campaign/.test(l);
   goal.outputs.needsTextPost = true;
-  goal.outputs.needsInfographic = /infographic/.test(l);
+  // A full multi-platform campaign runs the whole branding flow: ideate → strategy
+  // → copy → image. The narrower formats only enable the media they name.
+  goal.outputs.needsIdeation = fullCampaign;
+  goal.outputs.needsStrategy = fullCampaign;
+  goal.outputs.needsInfographic = /infographic/.test(l) || fullCampaign;
   goal.outputs.needsVideo = /video/.test(l);
   goal.outputs.needsPublishing = true;
 };

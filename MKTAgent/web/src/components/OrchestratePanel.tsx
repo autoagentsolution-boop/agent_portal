@@ -4,6 +4,7 @@
 //   approve the publish gate. Shows node statuses live as the executor advances.
 import { useState } from 'react';
 import { api, type WorkflowRunDto } from '../api/client';
+import { useRunEvents } from '../hooks/use-run-events';
 
 interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
@@ -65,6 +66,23 @@ export function OrchestratePanel({ notify }: Props) {
     setBusy(false);
   };
 
+  // Live node.status: while a run is executing, patch node dots in place as the
+  // executor advances; on a terminal node event (completed/failed) refetch the run
+  // so artifacts + publish results land without a manual action.
+  const liveRunId = run && (run.status === 'running' || run.status === 'needs_approval') ? run.id : null;
+  useRunEvents(liveRunId, (ev) => {
+    setRun((cur) => {
+      if (!cur || cur.id !== ev.runId) return cur;
+      const nodes = cur.nodes.map((n) =>
+        n.nodeId === ev.nodeId ? { ...n, status: ev.status, error: ev.error ?? n.error } : n,
+      );
+      return { ...cur, nodes };
+    });
+    if (ev.status === 'completed' || ev.status === 'failed') {
+      void api.getRun(ev.runId).then((r) => { if (r.ok) setRun(r.data); });
+    }
+  });
+
   const setAnswer = (slot: string, value: string | string[]) => setAnswers((a) => ({ ...a, [slot]: value }));
 
   const toggleMulti = (slot: string, choice: string) => {
@@ -73,6 +91,11 @@ export function OrchestratePanel({ notify }: Props) {
   };
 
   const gateNode = run?.nodes.find((n) => n.status === 'awaiting_approval');
+
+  // Per-platform publish outcome (publisher = one agent, many platform skills).
+  const publishArtifact = run?.artifacts.find((a) => a.type === 'publish_result');
+  const publishData = publishArtifact?.data as { postUrls?: Record<string, string> | null; status?: string } | undefined;
+  const platformRows = Object.entries(publishData?.postUrls ?? {});
 
   return (
     <section className="orchestrate-panel">
@@ -148,6 +171,17 @@ export function OrchestratePanel({ notify }: Props) {
                     <span className="dag-agent">{n.agentId.replace(/_/g, ' ')}</span>
                     {n.dependsOn.length > 0 && <span className="dag-dep">after {n.dependsOn.join(', ')}</span>}
                     {n.error && <span className="dag-err">{n.error}</span>}
+                    {/* Publisher fans out to platform skills — show per-platform results as sub-rows. */}
+                    {n.agentId === 'publisher' && platformRows.length > 0 && (
+                      <ul className="publish-subrows">
+                        {platformRows.map(([platform, url]) => (
+                          <li key={platform} className="publish-subrow">
+                            <span className="publish-platform">{platform}</span>
+                            {url ? <a href={url} target="_blank" rel="noreferrer">view post ↗</a> : <span className="muted small">no url</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </li>
                 ))}
               </ol>

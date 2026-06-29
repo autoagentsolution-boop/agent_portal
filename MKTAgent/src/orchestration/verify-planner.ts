@@ -70,6 +70,36 @@ const mkGoal = (outputs: Partial<GoalSpec['outputs']>, platforms: string[] = ['f
   }
 }
 
+// Variant D — full branding campaign: ideation → strategy → concept_writer →
+// infographic → publisher. strategy implies ideation; copy depends on strategy.
+{
+  console.log('Variant D: full branding campaign');
+  const r = planWorkflow(mkGoal({ needsIdeation: true, needsStrategy: true, needsTextPost: true, needsInfographic: true, needsPublishing: true }));
+  check('plan ok', r.ok, r);
+  if (r.ok) {
+    const ids = agentIdList(r.plan);
+    check('agents = [ideation, strategy, concept_writer, infographic, publisher]',
+      JSON.stringify(ids) === JSON.stringify(['ideation', 'strategy', 'concept_writer', 'infographic', 'publisher']), ids);
+    const idea = r.plan.nodes.find((n) => n.agentId === 'ideation')!;
+    const strat = r.plan.nodes.find((n) => n.agentId === 'strategy')!;
+    const cw = r.plan.nodes.find((n) => n.agentId === 'concept_writer')!;
+    check('strategy depends_on ideation', strat.dependsOn.includes(idea.nodeId), strat.dependsOn);
+    check('concept_writer depends_on strategy (optional satisfied)', cw.dependsOn.includes(strat.nodeId), cw.dependsOn);
+  }
+}
+
+// Variant E — strategy requested without ideation flag → planner implies ideation
+// (strategy.requires campaign_ideas must be satisfiable).
+{
+  console.log('Variant E: strategy implies ideation');
+  const r = planWorkflow(mkGoal({ needsStrategy: true, needsTextPost: true, needsPublishing: true }));
+  check('plan ok', r.ok, r);
+  if (r.ok) {
+    const ids = agentIdList(r.plan);
+    check('ideation present before strategy', ids.indexOf('ideation') >= 0 && ids.indexOf('ideation') < ids.indexOf('strategy'), ids);
+  }
+}
+
 // Negative — empty outputs → recoverable error, no throw.
 {
   console.log('Negative: empty goal');

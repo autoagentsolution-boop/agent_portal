@@ -82,3 +82,19 @@ export const markTokenStatus = async (
 // Returns identity only (owner, platform); the cron re-reads each via getToken.
 export const listAllTokenKeys = (): Promise<Array<{ ownerId: string; platform: SocialPlatform }>> =>
   prisma.oAuthToken.findMany({ select: { ownerId: true, platform: true } });
+
+// Owner-scoped connection status, for the read-only Connections panel. Returns
+// metadata ONLY (no token/refresh ciphertext or plaintext) — the secret never
+// leaves this layer. Used by GET /connections.
+export interface TokenStatusRow {
+  platform: SocialPlatform;
+  status: TokenStatus;
+  expiresAt: Date | null;
+  lastCheckedAt: Date | null;
+}
+
+export const listTokenStatusForOwner = (ownerId: string): Promise<TokenStatusRow[]> =>
+  prisma.oAuthToken.findMany({
+    where: { ownerId },
+    select: { platform: true, status: true, expiresAt: true, lastCheckedAt: true },
+  });

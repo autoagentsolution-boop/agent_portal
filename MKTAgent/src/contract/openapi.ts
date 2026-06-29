@@ -378,6 +378,33 @@ registry.registerPath({
   },
 });
 
+// ---- Connections (M2-lite, read-only social connection status) -----------------
+const ConnectionDto = registry.register(
+  'ConnectionDto',
+  z.object({
+    platformKey: socialPlatform,
+    displayName: z.string(),
+    state: z.enum(['connected', 'needs_attention', 'not_connected']),
+    expiresAt: z.string().nullable(),
+    lastCheckedAt: z.string().nullable(),
+    capabilities: z.array(z.string()),
+    connectUrl: z.string(),
+  }),
+);
+
+registry.registerPath({
+  method: 'get',
+  path: '/connections',
+  tags: ['connections'],
+  summary: 'List the caller\'s social connections + status (read-only)',
+  description: 'Metadata-only view over the OAuthToken store. Never returns token values and never touches the publish path. Unconnected platforms appear as not_connected with a connectUrl.',
+  security: userAuth,
+  responses: {
+    200: { description: 'Connection status per platform', content: json(listEnvelope(ConnectionDto)) },
+    401: errorResponse('Unauthorized'),
+  },
+});
+
 // ---- Leads (T6) ----------------------------------------------------------------
 const leadIntakeBody = z.object({}).passthrough().openapi({
   description: 'Open-shaped funnel payload (fields vary by source); email is required after normalization.',

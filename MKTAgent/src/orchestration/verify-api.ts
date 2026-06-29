@@ -93,6 +93,17 @@ async function main(): Promise<void> {
     const list = await call('GET', '/orchestration/runs', tokenA);
     check('list returns A\'s runs', (list.body?.data?.length ?? 0) >= 2, list.body?.data?.length);
     check('list 401 for no token', (await call('GET', '/orchestration/runs')).status === 401);
+
+    // ---- Connections (M2-lite, read-only) ----
+    check('GET /connections 401 without token', (await call('GET', '/connections')).status === 401);
+    const conns = await call('GET', '/connections', tokenA);
+    check('GET /connections 200 for A', conns.status === 200, conns.status);
+    // Always lists all 5 platforms (connected or not) — fresh tenant A has none yet.
+    const rows = conns.body?.data ?? [];
+    check('connections lists 5 platforms', rows.length === 5, rows.length);
+    check('fresh tenant → all not_connected', rows.every((r: any) => r.state === 'not_connected'), rows.map((r: any) => r.state));
+    check('each row carries capabilities + connectUrl', rows.every((r: any) => Array.isArray(r.capabilities) && typeof r.connectUrl === 'string'), rows[0]);
+    check('no token value leaked in connection rows', rows.every((r: any) => !('token' in r) && !('refreshToken' in r)), rows[0]);
   } finally {
     await prisma.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
     console.log('cleanup: 2 throwaway tenants removed');

@@ -200,6 +200,22 @@ export const updatePostFields = async (
   return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
 };
 
+// Orchestration-internal: attach generated media to a post the executor owns.
+// Unlike updatePostFields this is NOT user-edit-gated (the post is already `ready`
+// after concept_writer's auto-approve), but it still refuses a row the scheduler is
+// actively publishing (status=posting) to avoid racing the worker. Owner-scoped.
+export const setPostHeroFile = async (
+  id: string,
+  ownerId: string,
+  heroFile: string,
+): Promise<Post | null> => {
+  const r = await prisma.post.updateMany({
+    where: { id, ownerId, status: { not: 'posting' } },
+    data: { heroFile },
+  });
+  return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
+};
+
 // Scoped delete, blocked only while the scheduler holds the row (status=posting).
 // Returns: 'ok' | 'locked' (in-flight → 409). Not-found/wrong-tenant is handled by
 // the route's prior 404 probe, so a 0-count here means the locked guard tripped.

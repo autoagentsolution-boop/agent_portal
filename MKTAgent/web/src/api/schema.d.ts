@@ -1017,6 +1017,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's social connections + status (read-only)
+         * @description Metadata-only view over the OAuthToken store. Never returns token values and never touches the publish path. Unconnected platforms appear as not_connected with a connectUrl.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Connection status per platform */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["ConnectionDto"][];
+                            meta: {
+                                count: number;
+                                /** Format: uuid */
+                                nextCursor: string | null;
+                            };
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/leads/webhook": {
         parameters: {
             query?: never;
@@ -1937,6 +1992,17 @@ export interface components {
         ErrorEnvelope: {
             error: string;
             details?: unknown;
+        };
+        ConnectionDto: {
+            /** @enum {string} */
+            platformKey: "facebook" | "instagram" | "threads" | "linkedin" | "x";
+            displayName: string;
+            /** @enum {string} */
+            state: "connected" | "needs_attention" | "not_connected";
+            expiresAt: string | null;
+            lastCheckedAt: string | null;
+            capabilities: string[];
+            connectUrl: string;
         };
     };
     responses: never;

@@ -9,6 +9,10 @@ import { socialPlatform } from '../../api/schemas.ts';
 // (brief §10): each maps to "add agent X" in the planner. Kept explicit (not a
 // free enum) so the rule engine is exhaustive and testable.
 export const outputFlags = z.object({
+  // Full-campaign framing: ideate directions, then a strategy brief, before copy.
+  // Default false so a plain "write a post" goal keeps the minimal copy→publish DAG.
+  needsIdeation: z.boolean().default(false),
+  needsStrategy: z.boolean().default(false),
   needsResearch: z.boolean().default(false),
   needsTextPost: z.boolean().default(true), // marketing posts almost always need copy
   needsInfographic: z.boolean().default(false),

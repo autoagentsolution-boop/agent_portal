@@ -10,6 +10,8 @@ import { copyBag } from '../../api/schemas.ts';
 // shapes as future live agents will, so wiring a stub→live agent later needs no
 // schema change (only the producing code changes).
 export const artifactType = z.enum([
+  'campaign_ideas',
+  'strategy_brief',
   'research_summary',
   'content_concept',
   'infographic_brief',
@@ -18,6 +20,22 @@ export const artifactType = z.enum([
   'publish_result',
 ]);
 export type ArtifactType = z.infer<typeof artifactType>;
+
+// ideation → campaign_ideas. A handful of campaign directions plus the one the
+// agent recommends pursuing, which strategy/concept downstream build on.
+export const campaignIdeas = z.object({
+  ideas: z.array(z.string()).min(1),
+  chosen: z.string(),
+});
+
+// strategy → strategy_brief. Positioning + audience + content pillars + funnel
+// stage — the narrative spine the concept writer turns into copy.
+export const strategyBrief = z.object({
+  positioning: z.string(),
+  audience: z.string(),
+  pillars: z.array(z.string()).default([]),
+  funnelStage: z.string(),
+});
 
 // content_search → research_summary (stub in M1).
 export const researchSummary = z.object({
@@ -37,10 +55,12 @@ export const contentConcept = z.object({
   postId: z.string().uuid(),
 });
 
-// infographic_agent → infographic_brief (stub in M1).
+// infographic_agent → infographic_brief. imageRef points at the generated image
+// (an AssetStore ref, e.g. `local:<path>`); null when no image was produced.
 export const infographicBrief = z.object({
   visualBrief: z.string(),
   imagePrompt: z.string(),
+  imageRef: z.string().nullable().default(null),
 });
 
 // storyboard_agent → storyboard (stub in M1).
@@ -66,6 +86,8 @@ export const publishResult = z.object({
 // Lookup: artifactType → its payload schema. The executor uses this to validate
 // an agent's output by its declared `produces` type.
 export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
+  campaign_ideas: campaignIdeas,
+  strategy_brief: strategyBrief,
   research_summary: researchSummary,
   content_concept: contentConcept,
   infographic_brief: infographicBrief,

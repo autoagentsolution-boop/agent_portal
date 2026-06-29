@@ -7,6 +7,28 @@ import type { AgentDefinition, RunnableAgentId } from './agent-types.ts';
 
 export const AGENTS: AgentDefinition[] = [
   {
+    id: 'ideation',
+    name: 'Ideation Agent',
+    description: 'Brainstorm campaign directions and pick the strongest angle.',
+    implStatus: 'live',
+    requires: [],
+    optional: ['research_summary'],
+    produces: ['campaign_ideas'],
+    requiresConnection: false,
+    requiresApproval: false,
+  },
+  {
+    id: 'strategy',
+    name: 'Strategy Agent',
+    description: 'Turn the chosen idea into positioning, audience and content pillars.',
+    implStatus: 'live',
+    requires: ['campaign_ideas'],
+    optional: [],
+    produces: ['strategy_brief'],
+    requiresConnection: false,
+    requiresApproval: false,
+  },
+  {
     id: 'content_search',
     name: 'Content Search Agent',
     description: 'Gather research, references, pain points and proof for the topic.',
@@ -23,7 +45,7 @@ export const AGENTS: AgentDefinition[] = [
     description: 'Generate campaign angle + copy variants (live via copy-gen).',
     implStatus: 'live',
     requires: [],
-    optional: ['research_summary'],
+    optional: ['research_summary', 'strategy_brief'],
     produces: ['content_concept'],
     requiresConnection: false,
     // The copy review is a POST-execution gate on the Post (status=review), not an
@@ -74,6 +96,10 @@ export const AGENTS: AgentDefinition[] = [
     produces: ['publish_result'],
     requiresConnection: true,
     requiresApproval: true, // external-write gate (brief §11.12)
+    // ONE publisher, many platforms: these capability skills are fanned out to the
+    // GoalSpec's target platforms by the live publish path (publishTo), not split
+    // into per-platform nodes. Per-platform outcomes surface as UI sub-rows.
+    capabilities: ['social.post.image', 'social.post.video', 'social.post.carousel'],
   },
 ];
 

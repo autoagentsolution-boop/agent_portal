@@ -1174,6 +1174,62 @@
         "required": [
           "error"
         ]
+      },
+      "ConnectionDto": {
+        "type": "object",
+        "properties": {
+          "platformKey": {
+            "type": "string",
+            "enum": [
+              "facebook",
+              "instagram",
+              "threads",
+              "linkedin",
+              "x"
+            ]
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "needs_attention",
+              "not_connected"
+            ]
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastCheckedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "connectUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "platformKey",
+          "displayName",
+          "state",
+          "expiresAt",
+          "lastCheckedAt",
+          "capabilities",
+          "connectUrl"
+        ]
       }
     },
     "parameters": {}
@@ -2446,6 +2502,76 @@
           },
           "500": {
             "description": "Platform OAuth client not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connections": {
+      "get": {
+        "tags": [
+          "connections"
+        ],
+        "summary": "List the caller's social connections + status (read-only)",
+        "description": "Metadata-only view over the OAuthToken store. Never returns token values and never touches the publish path. Unconnected platforms appear as not_connected with a connectUrl.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connection status per platform",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ConnectionDto"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "nextCursor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "count",
+                        "nextCursor"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
             "content": {
               "application/json": {
                 "schema": {

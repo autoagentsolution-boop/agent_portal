@@ -40,6 +40,9 @@ export type AgentCredentialStatusDto = { agentId: string; key: string; status: s
 // Orchestration (M1 backbone) — the goal-based agent workflow surface.
 export type WorkflowRunDto = Dto['WorkflowRunDto'];
 
+// Connections (M2-lite) — read-only social connection status.
+export type ConnectionDto = Dto['ConnectionDto'];
+
 export interface ApiError {
   status: number;
   error: string;
@@ -145,7 +148,13 @@ export const api = {
     request<WorkflowRunDto>(`/orchestration/runs/${id}/approve-node/${nodeId}`, { method: 'POST' }),
   getRun: (id: string) => request<WorkflowRunDto>(`/orchestration/runs/${id}`),
   listRuns: () => request<Array<{ id: string; status: string; createdAt: string; updatedAt: string }>>('/orchestration/runs'),
+
+  // ---- Connections (M2-lite, read-only) ----
+  listConnections: () => request<ConnectionDto[]>('/connections'),
 };
+
+// Social OAuth connect is a full-page navigation (platform redirect), not a fetch.
+export const connectUrl = (path: string): string => `${BASE}${path}`;
 
 // Login is a full-page navigation (OAuth redirect), not a fetch.
 export const loginUrl = (): string => `${BASE}/auth/google/start`;
