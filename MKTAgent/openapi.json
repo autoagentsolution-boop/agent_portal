@@ -1052,6 +1052,16 @@
           },
           "goal": {},
           "plan": {},
+          "chatSessionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "assistantMessage": {
+            "type": "string"
+          },
           "questions": {
             "type": "array",
             "items": {
@@ -3284,6 +3294,74 @@
           },
           "409": {
             "description": "Run is not awaiting approval",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orchestration/runs/by-chat/{chatSessionId}": {
+      "get": {
+        "tags": [
+          "orchestration"
+        ],
+        "summary": "Get the latest run for a chat session (history restore)",
+        "description": "Conversational unify: reopen the run a chat spawned. 404 when the chat has no run (legacy intake-only chat).",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "chatSessionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest run for the chat",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WorkflowRunDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No run for this chat / cross-tenant",
             "content": {
               "application/json": {
                 "schema": {

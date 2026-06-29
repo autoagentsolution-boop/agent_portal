@@ -47,25 +47,44 @@ async function main(): Promise<void> {
     const noAuth = await call('POST', '/orchestration/runs', undefined, { message: 'Post about X on facebook' });
     check('401 without token', noAuth.status === 401, noAuth);
 
-    // Vague request → awaiting_clarification (asks product).
+    // Vague request → awaiting_clarification (asks product). Conversational unify: the
+    // run is now backed by a chat session and carries an authored assistant message.
     const vague = await call('POST', '/orchestration/runs', tokenA, { message: 'help me with marketing' });
     check('201 created (vague)', vague.status === 201, vague.status);
     check('vague → awaiting_clarification', vague.body?.data?.status === 'awaiting_clarification', vague.body?.data?.status);
     check('clarification questions present', (vague.body?.data?.questions?.length ?? 0) >= 1, vague.body?.data?.questions);
+    check('run carries chatSessionId', typeof vague.body?.data?.chatSessionId === 'string', vague.body?.data?.chatSessionId);
+    check('run carries assistantMessage', typeof vague.body?.data?.assistantMessage === 'string' && vague.body.data.assistantMessage.length > 1, vague.body?.data?.assistantMessage);
     const vagueRunId = vague.body?.data?.id;
+    const chatId = vague.body?.data?.chatSessionId;
 
-    // Answer clarification → re-plan.
+    // Richness gate: product + a single platform is now too thin to plan — the agent
+    // must ASK first (audience/angle), not jump to a bare DAG. This is the core fix.
+    const thin = await call('POST', '/orchestration/runs', tokenA, {
+      message: 'Post about our AI automation product on facebook with file id 1bo4diy3vlH9VmRE-78Z15ux9053-KZci',
+    });
+    check('thin (product+platform) → awaiting_clarification', thin.body?.data?.status === 'awaiting_clarification', thin.body?.data?.status);
+    check('thin asks audience or angle', (thin.body?.data?.questions ?? []).some((q: any) => (q.slot === 'targetAudience' || q.slot === 'angle') && q.required), thin.body?.data?.questions);
+
+    // Answer clarification on the vague run → re-plan. Reuses the same chat session.
     const clarified = await call('POST', `/orchestration/runs/${vagueRunId}/clarify`, tokenA, {
-      answers: { product: 'AI automation suite', output_format: 'Text + infographic', platforms: ['facebook'] },
+      answers: { product: 'AI automation suite', output_format: 'Text + infographic', platforms: ['facebook'], targetAudience: 'small business owners', angle: 'save operational time' },
     });
     check('clarify → planned', clarified.body?.data?.status === 'planned', clarified.body?.data?.status);
     check('plan has nodes', (clarified.body?.data?.nodes?.length ?? 0) >= 2, clarified.body?.data?.nodes?.length);
+    check('clarify keeps same chat session', clarified.body?.data?.chatSessionId === chatId, clarified.body?.data?.chatSessionId);
+    check('clarify carries assistantMessage', typeof clarified.body?.data?.assistantMessage === 'string', clarified.body?.data?.assistantMessage);
 
-    // Complete request in one shot → planned immediately.
+    // History restore: latest run for the chat session.
+    const byChat = await call('GET', `/orchestration/runs/by-chat/${chatId}`, tokenA);
+    check('by-chat restore → 200 latest run', byChat.status === 200 && byChat.body?.data?.id === vagueRunId, byChat.status);
+    check('by-chat cross-tenant → 404', (await call('GET', `/orchestration/runs/by-chat/${chatId}`, tokenB)).status === 404);
+
+    // Fully-specified request in one shot → planned immediately (rich = no gate).
     const complete = await call('POST', '/orchestration/runs', tokenA, {
-      message: 'Post about our AI automation product on facebook with file id 1bo4diy3vlH9VmRE-78Z15ux9053-KZci',
+      message: 'Post about our AI automation product on facebook, audience small business owners, angle saving operational time, with file id 1bo4diy3vlH9VmRE-78Z15ux9053-KZci',
     });
-    check('complete → planned', complete.body?.data?.status === 'planned', complete.body?.data?.status);
+    check('rich one-shot → planned', complete.body?.data?.status === 'planned', complete.body?.data?.status);
     const runId = complete.body?.data?.id;
 
     // Cross-tenant read → 404.

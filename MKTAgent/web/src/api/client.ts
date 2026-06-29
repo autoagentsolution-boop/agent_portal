@@ -147,6 +147,8 @@ export const api = {
   approveRunNode: (id: string, nodeId: string) =>
     request<WorkflowRunDto>(`/orchestration/runs/${id}/approve-node/${nodeId}`, { method: 'POST' }),
   getRun: (id: string) => request<WorkflowRunDto>(`/orchestration/runs/${id}`),
+  // History restore: latest run behind a chat session (404 → chat has no run).
+  getRunByChat: (chatSessionId: string) => request<WorkflowRunDto>(`/orchestration/runs/by-chat/${chatSessionId}`),
   listRuns: () => request<Array<{ id: string; status: string; createdAt: string; updatedAt: string }>>('/orchestration/runs'),
 
   // ---- Connections (M2-lite, read-only) ----

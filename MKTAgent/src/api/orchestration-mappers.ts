@@ -8,12 +8,19 @@ import type { WorkflowRunDto } from './schemas.ts';
 
 export type ClarifyQuestions = ClarificationQuestion[];
 
-export const toRunDto = (run: RunWithNodes, questions?: ClarifyQuestions): WorkflowRunDto => ({
+export interface RunDtoExtras {
+  questions?: ClarifyQuestions;
+  assistantMessage?: string;
+}
+
+export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): WorkflowRunDto => ({
   id: run.id,
   status: run.status,
   goal: run.goal,
   plan: run.plan ?? null,
-  ...(questions ? { questions } : {}),
+  chatSessionId: run.chatSessionId ?? null,
+  ...(extras.questions ? { questions: extras.questions } : {}),
+  ...(extras.assistantMessage ? { assistantMessage: extras.assistantMessage } : {}),
   nodes: run.nodes.map((n) => ({
     nodeId: n.nodeId,
     agentId: n.agentId,

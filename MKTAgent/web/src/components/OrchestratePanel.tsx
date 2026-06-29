@@ -1,226 +1,189 @@
-// Orchestrate panel — the M1 goal-based Master Agent surface (distinct from the
-// legacy /agent template chat). Drives the full lifecycle over /orchestration:
-//   type a goal → clarification questions (chips) → DAG preview → approve →
-//   approve the publish gate. Shows node statuses live as the executor advances.
+// Orchestrate panel — the M1 goal-based Master Agent as a CONVERSATIONAL surface
+// (was a form; brought up to the legacy MasterAgentIntake bar). One unified chat:
+// the user types a goal, the agent restates intent + asks the high-impact missing
+// questions, then presents the planned DAG as an in-chat card with approve/publish
+// gates. Reuses the legacy chat-bubble / thinking-bubble / floating-composer markup +
+// CSS. Runs persist to a chat session, so they live in the sidebar and restore.
 import { useState } from 'react';
 import { api, type WorkflowRunDto } from '../api/client';
 import { useRunEvents } from '../hooks/use-run-events';
+import { ClarifyCard, PlanCard } from './orchestrate-run-cards';
 
-interface Props {
-  notify: (msg: string, kind?: 'ok' | 'err') => void;
+export interface OrchestrateRestore {
+  sessionId: string;
+  messages: Array<{ role: 'user' | 'agent'; content: string }>;
+  run: WorkflowRunDto | null;
 }
 
-type Question = NonNullable<WorkflowRunDto['questions']>[number];
+interface Props {
+  restore: OrchestrateRestore | null;
+  notify: (msg: string, kind?: 'ok' | 'err') => void;
+  onRunActivity: (sessionId: string) => void;
+}
 
-const STATUS_LABEL: Record<string, string> = {
-  awaiting_clarification: 'Needs a few details',
-  planned: 'Plan ready — review & approve',
-  running: 'Running…',
-  needs_approval: 'Awaiting your approval to publish',
-  completed: 'Completed',
-  failed: 'Failed',
+interface Msg { role: 'user' | 'agent'; content: string }
+
+const starters = [
+  'Launch a Facebook + Instagram post for our AI automation course',
+  'Build a full branding campaign from idea to published post',
+  'Write a short LinkedIn post about our new feature',
+];
+
+const answerSummary = (answers: Record<string, string | string[]>): string => {
+  const parts = Object.entries(answers)
+    .filter(([, v]) => (Array.isArray(v) ? v.length : String(v).trim()))
+    .map(([, v]) => (Array.isArray(v) ? v.join(', ') : v));
+  return parts.length ? parts.join(' · ') : 'Continue';
 };
 
-const NODE_DOT: Record<string, string> = {
-  pending: '○', running: '◐', awaiting_approval: '⏸', completed: '●', failed: '✕', skipped: '–',
-};
-
-export function OrchestratePanel({ notify }: Props) {
+export function OrchestratePanel({ restore, notify, onRunActivity }: Props) {
+  const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
+  const [run, setRun] = useState<WorkflowRunDto | null>(restore?.run ?? null);
+  const [sessionId, setSessionId] = useState<string | null>(restore?.sessionId ?? null);
   const [input, setInput] = useState('');
-  const [run, setRun] = useState<WorkflowRunDto | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<string | null>(null);
 
-  const apply = (r: { ok: true; data: WorkflowRunDto } | { ok: false; error: { error: string } }, okMsg?: string) => {
-    if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
-    setRun(r.data);
-    if (okMsg) notify(okMsg);
+  const hasStarted = messages.length > 0 || Boolean(pending) || busy;
+  const push = (m: Msg) => setMessages((prev) => [...prev, m]);
+
+  // Apply a run response: update the card, thread the chat session, surface the
+  // authored assistant reply as a bubble, and tell App to refresh the sidebar.
+  const applyRun = (data: WorkflowRunDto) => {
+    setRun(data);
+    if (data.chatSessionId) { setSessionId(data.chatSessionId); onRunActivity(data.chatSessionId); }
+    if (data.assistantMessage) push({ role: 'agent', content: data.assistantMessage });
   };
 
-  const start = async () => {
-    if (input.trim().length < 3) { notify('Describe your goal first', 'err'); return; }
-    setBusy(true); setAnswers({});
-    apply(await api.createRun(input.trim()));
-    setBusy(false);
+  const start = async (text: string) => {
+    if (text.trim().length < 3) { notify('Describe your goal first', 'err'); return; }
+    setInput(''); setAnswers({}); setPending(text.trim()); setBusy(true);
+    try {
+      const r = await api.createRun(text.trim(), sessionId ?? undefined);
+      if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
+      push({ role: 'user', content: text.trim() });
+      applyRun(r.data);
+    } finally { setPending(null); setBusy(false); }
   };
 
   const submitAnswers = async () => {
     if (!run) return;
-    setBusy(true);
-    apply(await api.clarifyRun(run.id, answers));
-    setAnswers({});
-    setBusy(false);
+    const summary = answerSummary(answers);
+    setPending(summary); setBusy(true);
+    try {
+      const r = await api.clarifyRun(run.id, answers);
+      if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
+      push({ role: 'user', content: summary });
+      setAnswers({});
+      applyRun(r.data);
+    } finally { setPending(null); setBusy(false); }
   };
 
   const approve = async () => {
     if (!run) return;
     setBusy(true);
-    apply(await api.approveRun(run.id), 'Workflow executing…');
-    setBusy(false);
+    try {
+      const r = await api.approveRun(run.id);
+      if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
+      setRun(r.data); notify('Workflow executing…');
+    } finally { setBusy(false); }
   };
 
   const approveNode = async (nodeId: string) => {
     if (!run) return;
     setBusy(true);
-    apply(await api.approveRunNode(run.id, nodeId), 'Publishing…');
-    setBusy(false);
+    try {
+      const r = await api.approveRunNode(run.id, nodeId);
+      if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
+      setRun(r.data); notify('Publishing…');
+    } finally { setBusy(false); }
   };
 
-  // Live node.status: while a run is executing, patch node dots in place as the
-  // executor advances; on a terminal node event (completed/failed) refetch the run
-  // so artifacts + publish results land without a manual action.
+  // Live node.status: patch dots while running; on a terminal event refetch so
+  // artifacts + publish results land, and nudge the sidebar (Active Flows).
   const liveRunId = run && (run.status === 'running' || run.status === 'needs_approval') ? run.id : null;
   useRunEvents(liveRunId, (ev) => {
     setRun((cur) => {
       if (!cur || cur.id !== ev.runId) return cur;
-      const nodes = cur.nodes.map((n) =>
-        n.nodeId === ev.nodeId ? { ...n, status: ev.status, error: ev.error ?? n.error } : n,
-      );
-      return { ...cur, nodes };
+      return { ...cur, nodes: cur.nodes.map((n) => n.nodeId === ev.nodeId ? { ...n, status: ev.status, error: ev.error ?? n.error } : n) };
     });
     if (ev.status === 'completed' || ev.status === 'failed') {
-      void api.getRun(ev.runId).then((r) => { if (r.ok) setRun(r.data); });
+      void api.getRun(ev.runId).then((r) => { if (r.ok) { setRun(r.data); if (r.data.chatSessionId) onRunActivity(r.data.chatSessionId); } });
     }
   });
 
   const setAnswer = (slot: string, value: string | string[]) => setAnswers((a) => ({ ...a, [slot]: value }));
-
   const toggleMulti = (slot: string, choice: string) => {
     const cur = (answers[slot] as string[] | undefined) ?? [];
     setAnswer(slot, cur.includes(choice) ? cur.filter((c) => c !== choice) : [...cur, choice]);
   };
 
-  const gateNode = run?.nodes.find((n) => n.status === 'awaiting_approval');
-
-  // Per-platform publish outcome (publisher = one agent, many platform skills).
-  const publishArtifact = run?.artifacts.find((a) => a.type === 'publish_result');
-  const publishData = publishArtifact?.data as { postUrls?: Record<string, string> | null; status?: string } | undefined;
-  const platformRows = Object.entries(publishData?.postUrls ?? {});
+  const showClarify = run?.status === 'awaiting_clarification' && run.questions;
+  const showPlan = run && run.nodes.length > 0;
 
   return (
-    <section className="orchestrate-panel">
-      <div className="orchestrate-head">
-        <h2>Master Agent · Goal Orchestration</h2>
-        <p className="muted small">
-          Describe what you want. The agent extracts intent, asks only what's missing, plans a dynamic
-          workflow, and runs it step-by-step — pausing for your approval before anything is published.
-        </p>
-      </div>
-
-      <div className="orchestrate-composer">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="e.g. Post about our AI automation course on Facebook and LinkedIn with an infographic"
-        />
-        <button className="btn primary" disabled={busy} onClick={() => void start()}>
-          {busy && !run ? 'Thinking…' : 'Plan workflow'}
-        </button>
-      </div>
-
-      {run && (
-        <div className="orchestrate-run">
-          <div className="run-status-row">
-            <span className={`run-badge st-${run.status}`}>{STATUS_LABEL[run.status] ?? run.status}</span>
-          </div>
-
-          {/* Clarification */}
-          {run.status === 'awaiting_clarification' && run.questions && (
-            <div className="clarify-block">
-              {run.questions.map((q: Question) => (
-                <div className="clarify-q" key={q.slot}>
-                  <label>{q.question}{q.required && <span className="req"> *</span>}</label>
-                  {q.choices ? (
-                    <div className="chip-row">
-                      {q.choices.map((c) => {
-                        const active = q.multiSelect
-                          ? ((answers[q.slot] as string[] | undefined) ?? []).includes(c)
-                          : answers[q.slot] === c;
-                        return (
-                          <button
-                            key={c}
-                            className={`chip ${active ? 'active' : ''}`}
-                            onClick={() => (q.multiSelect ? toggleMulti(q.slot, c) : setAnswer(q.slot, c))}
-                          >{c}</button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <input
-                      value={(answers[q.slot] as string) ?? ''}
-                      onChange={(e) => setAnswer(q.slot, e.target.value)}
-                      placeholder="Type your answer"
-                    />
-                  )}
-                </div>
-              ))}
-              <button className="btn primary" disabled={busy} onClick={() => void submitAnswers()}>
-                {busy ? 'Re-planning…' : 'Submit answers'}
-              </button>
-            </div>
-          )}
-
-          {/* DAG preview + node states */}
-          {run.nodes.length > 0 && (
-            <div className="dag-block">
-              <div className="eyebrow">Workflow plan</div>
-              <ol className="dag-list">
-                {run.nodes.map((n) => (
-                  <li key={n.nodeId} className={`dag-node st-${n.status}`}>
-                    <span className="dag-dot">{NODE_DOT[n.status] ?? '○'}</span>
-                    <span className="dag-agent">{n.agentId.replace(/_/g, ' ')}</span>
-                    {n.dependsOn.length > 0 && <span className="dag-dep">after {n.dependsOn.join(', ')}</span>}
-                    {n.error && <span className="dag-err">{n.error}</span>}
-                    {/* Publisher fans out to platform skills — show per-platform results as sub-rows. */}
-                    {n.agentId === 'publisher' && platformRows.length > 0 && (
-                      <ul className="publish-subrows">
-                        {platformRows.map(([platform, url]) => (
-                          <li key={platform} className="publish-subrow">
-                            <span className="publish-platform">{platform}</span>
-                            {url ? <a href={url} target="_blank" rel="noreferrer">view post ↗</a> : <span className="muted small">no url</span>}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
-
-          {/* Approve to run */}
-          {run.status === 'planned' && (
-            <button className="btn primary" disabled={busy} onClick={() => void approve()}>
-              {busy ? 'Starting…' : 'Approve & run workflow'}
-            </button>
-          )}
-
-          {/* Publish gate */}
-          {run.status === 'needs_approval' && gateNode && (
-            <div className="gate-block">
-              <p className="muted small">The workflow paused before <strong>{gateNode.agentId.replace(/_/g, ' ')}</strong> — an external action. Approve to proceed.</p>
-              <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId)}>
-                {busy ? 'Publishing…' : `Approve ${gateNode.agentId.replace(/_/g, ' ')}`}
-              </button>
-            </div>
-          )}
-
-          {/* Artifacts */}
-          {run.artifacts.length > 0 && (
-            <details className="artifacts-block">
-              <summary>{run.artifacts.length} artifact(s)</summary>
-              {run.artifacts.map((a) => (
-                <div className="artifact-row" key={a.id}>
-                  <span className="artifact-type">{a.type}</span>
-                  <pre>{JSON.stringify(a.data, null, 2).slice(0, 600)}</pre>
-                </div>
-              ))}
-            </details>
-          )}
-
-          <button className="btn ghost" onClick={() => { setRun(null); setInput(''); setAnswers({}); }}>New goal</button>
+    <section className={`master-chat-main ${hasStarted ? 'started' : ''}`}>
+      {!hasStarted && (
+        <div className="empty-chat-hero">
+          <h1>What should we orchestrate?</h1>
+          <p>Describe a marketing goal. The Master Agent reasons about it, asks only what materially shapes the result, then plans a dynamic agent workflow you approve before anything publishes.</p>
         </div>
       )}
+
+      {hasStarted && (
+        <div className="chat-transcript">
+          {messages.map((m, i) => (
+            <div key={i} className={`chat-bubble ${m.role}`}>{m.content}</div>
+          ))}
+          {pending && <div className="chat-bubble user">{pending}</div>}
+          {busy && (
+            <div className="chat-bubble agent thinking-bubble" role="status" aria-live="polite">
+              <span className="thinking-copy">Thinking</span>
+              <span className="thinking-dots" aria-hidden="true"><span /><span /><span /></span>
+            </div>
+          )}
+
+          {!busy && showClarify && (
+            <ClarifyCard
+              questions={run!.questions!}
+              answers={answers}
+              busy={busy}
+              onAnswer={setAnswer}
+              onToggleMulti={toggleMulti}
+              onSubmit={() => void submitAnswers()}
+            />
+          )}
+          {!busy && showPlan && (
+            <PlanCard run={run!} busy={busy} onApprove={() => void approve()} onApproveNode={(id) => void approveNode(id)} />
+          )}
+        </div>
+      )}
+
+      <div className="floating-composer">
+        <div className="composer-box">
+          <button className="composer-plus" aria-label="Add context">+</button>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void start(input); } }}
+            placeholder="Describe a marketing goal to orchestrate…"
+          />
+          <button
+            className={`composer-send ${busy ? 'loading' : ''}`}
+            disabled={busy}
+            onClick={() => void start(input)}
+            aria-label={busy ? 'Working' : 'Send'}
+          >{busy ? '…' : '↑'}</button>
+        </div>
+        {!hasStarted && (
+          <div className="prompt-chip-row">
+            {starters.map((chip) => (
+              <button className="prompt-chip" key={chip} onClick={() => setInput(chip)}>{chip}</button>
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

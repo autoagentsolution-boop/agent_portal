@@ -20,19 +20,22 @@ import {
   createNodes,
   getRunForOwner,
   getRunWithNodes,
+  getLatestRunWithNodesForChat,
   listRuns,
   setRunStatus,
 } from '../db/repos/workflow-run-repo.ts';
 import { mergeAnswers, toRunDto, type ClarifyQuestions } from './orchestration-mappers.ts';
+import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
+import { ensureChatSession, recordTurn, summarizeAnswers } from './orchestration-chat.ts';
 
 export const orchestrationRouter: Router = Router();
 
 // Persist a fresh MasterAgent outcome as a WorkflowRun (+ nodes when planned).
 const persistOutcome = async (
   ownerId: string,
-  chatSessionId: string | undefined,
+  chatSessionId: string,
   goal: GoalSpec,
-  outcome: ReturnType<typeof masterAgent.planFromGoal>,
+  outcome: MasterAgentOutcome,
 ): Promise<{ id: string; questions?: ClarifyQuestions }> => {
   if (outcome.status === 'awaiting_clarification') {
     const run = await createRun({ ownerId, chatSessionId, goal, status: 'awaiting_clarification' });
@@ -47,19 +50,24 @@ const persistOutcome = async (
   return { id: run.id };
 };
 
-const respondRun = async (res: Parameters<typeof ok>[0], id: string, ownerId: string, questions?: ClarifyQuestions): Promise<void> => {
+interface RespondExtras { questions?: ClarifyQuestions; assistantMessage?: string }
+const respondRun = async (res: Parameters<typeof ok>[0], id: string, ownerId: string, extras: RespondExtras = {}): Promise<void> => {
   const full = await getRunWithNodes(id, ownerId);
   if (!full) { fail(res as never, 404, 'run_not_found'); return; }
-  ok(res, toRunDto(full, questions));
+  ok(res, toRunDto(full, extras));
 };
 
 orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   const body = parseOr422(res, createRunBody, req.body ?? {});
   if (!body) return;
+  // Conversational unify: every run lives on a chat session (sidebar + history). Open
+  // or reuse one, then author a natural reply for this turn alongside the run row.
+  const sessionId = await ensureChatSession(req.userId!, body.chatSessionId, body.message);
   const outcome = await masterAgent.handle(body.message);
-  const { id, questions } = await persistOutcome(req.userId!, body.chatSessionId, outcome.goal, outcome);
+  const assistantMessage = await recordTurn(sessionId, body.message, outcome);
+  const { id, questions } = await persistOutcome(req.userId!, sessionId, outcome.goal, outcome);
   res.status(201);
-  await respondRun(res, id, req.userId!, questions);
+  await respondRun(res, id, req.userId!, { questions, assistantMessage });
 }));
 
 orchestrationRouter.post('/runs/:id/clarify', asyncHandler(async (req, res) => {
@@ -72,18 +80,23 @@ orchestrationRouter.post('/runs/:id/clarify', asyncHandler(async (req, res) => {
   const prior = goalSpec.parse(run.goal);
   const merged = mergeAnswers(prior, body.answers);
   const outcome = masterAgent.planFromGoal(merged);
+  // Record the clarification turn (user's answers → authored assistant reply) on the
+  // same chat session the run belongs to, when present.
+  const assistantMessage = run.chatSessionId
+    ? await recordTurn(run.chatSessionId, summarizeAnswers(body.answers), outcome)
+    : undefined;
   // Re-plan into the SAME run row (update goal/status + nodes if planned).
   if (outcome.status === 'planned') {
     await setRunStatus(run.id, 'planned', { goal: merged, plan: outcome.plan });
     await createNodes(run.id, req.userId!, outcome.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
-    return respondRun(res, run.id, req.userId!);
+    return respondRun(res, run.id, req.userId!, { assistantMessage });
   }
   if (outcome.status === 'awaiting_clarification') {
     await setRunStatus(run.id, 'awaiting_clarification', { goal: merged });
-    return respondRun(res, run.id, req.userId!, outcome.questions);
+    return respondRun(res, run.id, req.userId!, { questions: outcome.questions, assistantMessage });
   }
   await setRunStatus(run.id, 'failed', { goal: merged });
-  return respondRun(res, run.id, req.userId!);
+  return respondRun(res, run.id, req.userId!, { assistantMessage });
 }));
 
 orchestrationRouter.post('/runs/:id/approve', asyncHandler(async (req, res) => {
@@ -109,6 +122,15 @@ orchestrationRouter.post('/runs/:id/approve-node/:nodeId', asyncHandler(async (r
 orchestrationRouter.get('/runs', asyncHandler(async (req, res) => {
   const rows = await listRuns(req.userId!);
   ok(res, rows.map((r) => ({ id: r.id, status: r.status, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })), { count: rows.length, nextCursor: null });
+}));
+
+// History restore: the latest run for a chat session (conversational unify). The
+// panel calls this when the user reopens a chat that spawned a run. 404 → that chat
+// has no run (legacy intake-only chat) → caller falls back to the master surface.
+orchestrationRouter.get('/runs/by-chat/:chatSessionId', asyncHandler(async (req, res) => {
+  const full = await getLatestRunWithNodesForChat(req.params.chatSessionId, req.userId!);
+  if (!full) return fail(res, 404, 'run_not_found');
+  ok(res, toRunDto(full));
 }));
 
 orchestrationRouter.get('/runs/:id', asyncHandler(async (req, res) => {

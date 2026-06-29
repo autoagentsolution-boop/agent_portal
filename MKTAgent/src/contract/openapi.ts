@@ -529,6 +529,21 @@ registry.registerPath({
 
 registry.registerPath({
   method: 'get',
+  path: '/orchestration/runs/by-chat/{chatSessionId}',
+  tags: ['orchestration'],
+  summary: 'Get the latest run for a chat session (history restore)',
+  description: 'Conversational unify: reopen the run a chat spawned. 404 when the chat has no run (legacy intake-only chat).',
+  security: userAuth,
+  request: { params: z.object({ chatSessionId: z.string().uuid() }) },
+  responses: {
+    200: { description: 'Latest run for the chat', content: json(dataEnvelope(WorkflowRunDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('No run for this chat / cross-tenant'),
+  },
+});
+
+registry.registerPath({
+  method: 'get',
   path: '/orchestration/runs/{id}',
   tags: ['orchestration'],
   summary: 'Get a run with its nodes + artifacts',

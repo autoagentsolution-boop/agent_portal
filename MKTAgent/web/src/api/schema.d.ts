@@ -1659,6 +1659,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orchestration/runs/by-chat/{chatSessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the latest run for a chat session (history restore)
+         * @description Conversational unify: reopen the run a chat spawned. 404 when the chat has no run (legacy intake-only chat).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    chatSessionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Latest run for the chat */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["WorkflowRunDto"];
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description No run for this chat / cross-tenant */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orchestration/runs/{id}": {
         parameters: {
             query?: never;
@@ -1964,6 +2025,9 @@ export interface components {
             status: string;
             goal?: unknown;
             plan?: unknown;
+            /** Format: uuid */
+            chatSessionId?: string | null;
+            assistantMessage?: string;
             questions?: {
                 slot: string;
                 question: string;

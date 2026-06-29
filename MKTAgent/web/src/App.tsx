@@ -5,7 +5,7 @@ import { api, loginUrl, type AgentChatSessionDto, type CampaignDto, type PostDto
 import { ActiveFlowsPage } from './components/ActiveFlowsPage';
 import { DemoModeToggle } from './components/DemoModeToggle';
 import { MasterAgentIntake } from './components/MasterAgentIntake';
-import { OrchestratePanel } from './components/OrchestratePanel';
+import { OrchestratePanel, type OrchestrateRestore } from './components/OrchestratePanel';
 import { ConnectionsPanel } from './components/ConnectionsPanel';
 import type { DemoMode } from './flow/demo-flow';
 
@@ -31,6 +31,7 @@ export function App() {
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [chatSessions, setChatSessions] = useState<AgentChatSessionDto[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [orchestrateRestore, setOrchestrateRestore] = useState<OrchestrateRestore | null>(null);
   const activeChat = chatSessions.find((chat) => chat.id === activeChatId) ?? null;
   const bump = () => setRefreshKey((k) => k + 1);
 
@@ -47,12 +48,27 @@ export function App() {
 
   const selectChat = async (id: string) => {
     const r = await api.getAgentChat(id);
-    if (r.ok) {
-      setChatSessions((prev) => [r.data, ...prev.filter((chat) => chat.id !== id)]);
-      setActiveChatId(id);
+    if (!r.ok) return;
+    setChatSessions((prev) => [r.data, ...prev.filter((chat) => chat.id !== id)]);
+    setActiveChatId(id);
+
+    // Conversational unify: a chat that spawned an orchestration run opens the
+    // Orchestrate surface restored; a legacy intake-only chat opens the master setup.
+    const runRes = await api.getRunByChat(id);
+    if (runRes.ok) {
+      setOrchestrateRestore({
+        sessionId: id,
+        messages: r.data.messages.map((m) => ({ role: m.role, content: m.content })),
+        run: runRes.data,
+      });
+      setPage('orchestrate');
+    } else {
+      setOrchestrateRestore(null);
       setPage('master');
     }
   };
+
+  const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setPage('orchestrate'); };
 
   const deleteChat = async (event: MouseEvent<HTMLButtonElement>, chat: AgentChatSessionDto) => {
     event.stopPropagation();
@@ -103,7 +119,7 @@ export function App() {
           <button className="icon-btn" aria-label="Toggle theme" onClick={() => setTheme((t) => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '◐' : '☼'}</button>
         </div>
         <button className={`sidebar-item ${page === 'master' && !activeChatId ? 'active' : ''}`} onClick={() => { setActiveChatId(null); setPage('master'); }}>✎ New setup chat</button>
-        <button className={`sidebar-item ${page === 'orchestrate' ? 'active' : ''}`} onClick={() => setPage('orchestrate')}>⚡ Orchestrate (M1)</button>
+        <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>⚡ Orchestrate (M1)</button>
         <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => setPage('connections')}>🔌 Connections</button>
         <button className={`sidebar-item ${page === 'flows' ? 'active' : ''}`} onClick={() => setPage('flows')}>▦ Active Flows</button>
         <div className="flow-sidebar-tree">
@@ -151,7 +167,12 @@ export function App() {
           </div>
         ) : page === 'orchestrate' ? (
           <div className="master-home">
-            <OrchestratePanel notify={show} />
+            <OrchestratePanel
+              key={orchestrateRestore?.sessionId ?? 'new'}
+              restore={orchestrateRestore}
+              notify={show}
+              onRunActivity={(sessionId) => { void loadChats(); if (!activeChatId) setActiveChatId(sessionId); bump(); }}
+            />
           </div>
         ) : page === 'connections' ? (
           <div className="master-home">

@@ -194,6 +194,11 @@ export const workflowRunDto = z.object({
   status: z.string(),
   goal: z.unknown(),
   plan: z.unknown().nullable(),
+  // Chat session this run belongs to (M1 conversational unify) + the assistant's
+  // natural-language reply for this turn. Both optional for forward-compat with rows
+  // created before the conversational layer.
+  chatSessionId: z.string().uuid().nullable().optional(),
+  assistantMessage: z.string().optional(),
   questions: z.array(clarificationQuestionDto).optional(),
   nodes: z.array(workflowNodeDto),
   artifacts: z.array(artifactDto),

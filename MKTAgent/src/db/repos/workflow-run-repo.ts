@@ -67,6 +67,19 @@ export const getRunWithNodes = (id: string, ownerId: string): Promise<RunWithNod
 export const listRuns = (ownerId: string, limit = 50): Promise<WorkflowRun[]> =>
   prisma.workflowRun.findMany({ where: { ownerId }, orderBy: { updatedAt: 'desc' }, take: limit });
 
+// Restore the run behind a chat session (conversational unify): a chat may spawn
+// many runs over its life; the latest is the live one the panel re-opens. Scoped by
+// ownerId (tenant isolation) and returns null when the chat has no run yet.
+export const getLatestRunWithNodesForChat = (
+  chatSessionId: string,
+  ownerId: string,
+): Promise<RunWithNodes | null> =>
+  prisma.workflowRun.findFirst({
+    where: { chatSessionId, ownerId },
+    orderBy: { updatedAt: 'desc' },
+    include: { nodes: { orderBy: { nodeId: 'asc' } }, artifacts: { orderBy: { createdAt: 'asc' } } },
+  });
+
 // ── Transitions ──────────────────────────────────────────────────────────────
 // Guarded status transition: only advance if currently in `from` AND owned by
 // the caller. Returns the row or null (stale/wrong-tenant) — route maps null→409.

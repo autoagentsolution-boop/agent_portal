@@ -4,6 +4,7 @@
 import { analyzeDeterministic } from './master/deterministic-analyzer.ts';
 import { evaluateClarification } from './master/clarification-engine.ts';
 import { MasterAgent } from './master/master-agent.ts';
+import { deterministicReply } from './master/conversation-author.ts';
 import { agentIdList } from './schemas/workflow-plan.ts';
 import { env } from '../config/env.ts';
 
@@ -37,24 +38,43 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
     check('≤5 questions', r.questions.length <= 5, r.questions.length);
   }
 
-  const complete = analyzeDeterministic('Post about our AI automation product on facebook');
-  const r2 = evaluateClarification(complete);
-  check('complete (has product) → ready', r2.status === 'ready', r2);
+  // RICHNESS GATE: product + a single platform but no audience/angle is too thin to
+  // plan well — the old engine jumped straight to a bare DAG ("it's dumb"). Now it
+  // must ask the high-impact targeting questions first.
+  const thin = analyzeDeterministic('Post about our AI automation product on facebook');
+  const rThin = evaluateClarification(thin);
+  check('thin (product+platform only) → needs_clarification', rThin.status === 'needs_clarification', rThin);
+  if (rThin.status === 'needs_clarification') {
+    check('thin asks audience (required)', rThin.questions.some((q) => q.slot === 'targetAudience' && q.required), rThin.questions);
+    check('thin asks angle (required)', rThin.questions.some((q) => q.slot === 'angle' && q.required), rThin.questions);
+  }
 
-  // platforms multiple-choice surfaces when publishing with no platform — but only
-  // when product is present (else product is the blocking required question first).
+  // No platform either → also thin, and the platforms question becomes required.
   const noPlatform = analyzeDeterministic('Post about our AI automation product');
-  const r3 = evaluateClarification(noPlatform);
-  check('no-platform complete → ready (platforms optional)', r3.status === 'ready', r3);
+  const rNo = evaluateClarification(noPlatform);
+  check('no-platform thin → needs_clarification', rNo.status === 'needs_clarification', rNo);
+  check('thin promotes platforms to required', rNo.status === 'needs_clarification' && rNo.questions.some((q) => q.slot === 'platforms' && q.required), rNo);
+
+  // RICH: product + audience + angle (≥2 high-impact slots) → enough to plan, no gate.
+  const rich = analyzeDeterministic('Post about our AI automation product on facebook, target audience is small business owners, angle is saving operational time');
+  const rRich = evaluateClarification(rich);
+  check('rich (product+audience+angle) → ready', rRich.status === 'ready', { status: rRich.status, slots: rich.slots, platforms: rich.platforms });
 }
 
-// Master agent end-to-end (deterministic): ready goal → planned DAG.
+// Master agent end-to-end (deterministic): thin → clarify, rich → planned DAG.
 {
   console.log('MasterAgent.planFromGoal');
   const agent = new MasterAgent();
-  const goal = analyzeDeterministic('Post about our AI automation product on facebook with an infographic');
-  const out = agent.planFromGoal(goal);
-  check('status planned', out.status === 'planned', out.status);
+
+  // The FB-post example from the screenshot: now asks before planning.
+  const thin = analyzeDeterministic('Post about our AI automation product on facebook with an infographic');
+  const outThin = agent.planFromGoal(thin);
+  check('thin FB example → awaiting_clarification', outThin.status === 'awaiting_clarification', outThin.status);
+
+  // Richly specified → plans the full DAG.
+  const rich = analyzeDeterministic('Post about our AI automation product on facebook with an infographic, target audience is small business owners, angle is saving operational time');
+  const out = agent.planFromGoal(rich);
+  check('rich → planned', out.status === 'planned', out.status);
   if (out.status === 'planned') {
     check('plan has concept_writer + infographic + publisher',
       ['concept_writer', 'infographic', 'publisher'].every((a) => agentIdList(out.plan).includes(a as never)),
@@ -64,6 +84,19 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   const vague = analyzeDeterministic('help me with marketing');
   const out2 = agent.planFromGoal(vague);
   check('vague → awaiting_clarification', out2.status === 'awaiting_clarification', out2.status);
+}
+
+// Conversation author (deterministic fallback — no LLM needed). Voices each outcome.
+{
+  console.log('ConversationAuthor (deterministic fallback)');
+  const agent = new MasterAgent();
+  const thin = agent.planFromGoal(analyzeDeterministic('Post about our AI automation product on facebook'));
+  const clarifyReply = deterministicReply(thin);
+  check('clarify reply mentions a question', /audience|angle|platform/i.test(clarifyReply), clarifyReply);
+
+  const rich = agent.planFromGoal(analyzeDeterministic('Post about our AI automation product on facebook, target audience is small business owners, angle is saving time'));
+  const planReply = deterministicReply(rich);
+  check('plan reply names approval + a step', /approve/i.test(planReply) && /publish|step|concept/i.test(planReply), planReply);
 }
 
 // Optional live Gemini smoke.

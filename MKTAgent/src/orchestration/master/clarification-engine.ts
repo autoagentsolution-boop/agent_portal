@@ -23,10 +23,15 @@ export type ClarificationResult =
   | { status: 'needs_clarification'; questions: ClarificationQuestion[] };
 
 const MAX_QUESTIONS = 5;
+// A marketing plan is only as good as its targeting. These three slots most change
+// the output; when too few are known the DAG would be generic, so we ask first.
+const RICHNESS_THRESHOLD = 2;
 
 // product is the one slot we cannot plan without (concept_writer needs something to
-// write about). Everything else is optional — copy-gen resolves language/voice from
-// the campaign/user config layer (T3), and platforms defaults to facebook.
+// write about). The richness gate then prevents the OTHER failure mode the M1 panel
+// hit: a request with product + a platform jumping straight to a 2-node DAG with zero
+// questions ("it's dumb"). When high-impact context (audience / angle / platforms) is
+// thin, we promote those questions to required so the agent reasons before planning.
 export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
   const q: ClarificationQuestion[] = [];
 
@@ -51,24 +56,36 @@ export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
     });
   }
 
-  // Publishing with no platform named → ask (optional; planner defaults to facebook
-  // but a multi-platform intent should be explicit before an external write).
+  // Richness gate: count the high-impact context we already have. Only engages once a
+  // product is known and an output is chosen (otherwise the required questions above
+  // are the blockers). When thin, the audience/angle/platforms questions below become
+  // required — that is the fix for "jumped straight to the DAG".
+  const highImpactFilled =
+    (goal.slots.targetAudience ? 1 : 0) +
+    (goal.slots.angle ? 1 : 0) +
+    (goal.platforms.length > 0 ? 1 : 0);
+  const thin =
+    Boolean(goal.slots.product) && anyOutput && highImpactFilled < RICHNESS_THRESHOLD;
+
+  // Publishing with no platform named → ask. Required under the richness gate (a
+  // multi-platform intent must be explicit before an external write), else optional.
   if (goal.outputs.needsPublishing && goal.platforms.length === 0) {
     q.push({
       slot: 'platforms',
       question: 'Which platforms should this publish to?',
-      required: false,
+      required: thin,
       choices: ['facebook', 'instagram', 'threads', 'linkedin', 'x'],
       multiSelect: true,
     });
   }
 
-  // Optional context that materially improves copy quality — asked only if room.
+  // Context that materially improves copy quality. Required when the request is thin,
+  // optional once enough high-impact slots are already filled.
   if (!goal.slots.targetAudience) {
-    q.push({ slot: 'targetAudience', question: 'Who is the target audience?', required: false });
+    q.push({ slot: 'targetAudience', question: 'Who is the target audience?', required: thin });
   }
   if (!goal.slots.angle) {
-    q.push({ slot: 'angle', question: 'Any specific angle or key message to emphasize?', required: false });
+    q.push({ slot: 'angle', question: 'Any specific angle or key message to emphasize?', required: thin });
   }
 
   const trimmed = q.slice(0, MAX_QUESTIONS);
