@@ -39,6 +39,20 @@ See `plans/.../synthetic-twirling-ripple.md`. P0 scaffold → P1 domain models �
 P2 social adapters → P3 scheduler → P4 copy-gen → P5 lead capture → P6 token
 refresh → P7 REST API → P8 deploy + parity cutover.
 
+## Orchestration (goal-based agents)
+
+A second control plane built BESIDE the data plane (live publish path untouched):
+
+- **M1 backbone** — Master Agent extracts intent → rule-based planner builds a
+  dynamic agent DAG → executor runs it with an approval gate before any
+  external-write (publisher) node. `src/orchestration/`, API under `/orchestration`.
+- **M2-lite demo slice** — full branding flow `ideation → strategy → concept_writer
+  → infographic (real image) → publisher`. Image gen is vendored in-process
+  (`src/imagegen/`, no render-service dependency); the infographic agent attaches
+  the generated file to the post via the `local:` AssetStore scheme. Read-only
+  `GET /connections` surfaces social connection status; the Orchestrate UI animates
+  node status live over SSE. Track B (full §11 connector refactor) is post-sale.
+
 ## Layout
 
 ```
@@ -53,5 +67,10 @@ src/
   leads/             webhook + form + calcom + dedupe (P5)
   tokens/            encrypted store + refresh cron (P6)
   routes/            REST CRUD + approval (P7)
+  imagegen/          in-process image gen (Nano Banana), local cache (M2-lite)
+  orchestration/     goal→DAG planner, executor, agent runners (M1/M2)
+    registry/        agent capability menu the planner selects from
+    master/          requirement analyzer, clarification, llm-json
+    schemas/         goal-spec, workflow-plan, artifact contracts
 prisma/schema.prisma domain models
 ```
