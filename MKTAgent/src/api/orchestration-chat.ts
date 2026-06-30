@@ -4,6 +4,7 @@
 // AgentChatSession, so runs appear in the sidebar "Chats" list and history restores.
 import { prisma } from '../db/client.ts';
 import { conversationAuthor, type PriorMessage } from '../orchestration/master/conversation-author.ts';
+import { detectLanguage } from '../orchestration/master/detect-language.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
 
 const titleFrom = (message: string): string =>
@@ -44,7 +45,10 @@ export const recordTurn = async (
 ): Promise<string> => {
   await prisma.agentChatMessage.create({ data: { sessionId, role: 'user', content: userMessage } });
   const prior = await priorMessages(sessionId);
-  const assistantMessage = await conversationAuthor.author(outcome, prior);
+  // Detect the reply language from THIS turn's raw message (an explicit
+  // goal.slots.language still wins inside the author). Fixes EN users getting VN replies.
+  const language = detectLanguage(userMessage);
+  const assistantMessage = await conversationAuthor.author(outcome, prior, { language });
   await prisma.agentChatMessage.create({ data: { sessionId, role: 'agent', content: assistantMessage } });
   // Touch the session so it sorts to the top of the sidebar (child message inserts
   // don't bump the parent's @updatedAt on their own).

@@ -77,6 +77,25 @@ export function App() {
     if (r.ok) setSavedRuns(r.data);
   };
 
+  // Load ALL of the user's posts for the sidebar tree, independent of which campaign
+  // is open. Without this, flowPosts only ever held the currently-viewed campaign's
+  // posts, so every OTHER campaign in the tree showed "No briefs loaded" until clicked.
+  const loadAllPosts = async () => {
+    const r = await api.listPosts({ limit: 100 });
+    if (r.ok) setFlowPosts(r.data);
+  };
+
+  // Merge PostBoard's updates (one campaign's posts, incl. live SSE patches) INTO the
+  // global set by id, rather than replacing it — so opening one campaign never wipes
+  // the briefs the sidebar shows for the others.
+  const mergePosts = (incoming: PostDto[]) => {
+    setFlowPosts((prev) => {
+      const byId = new Map(prev.map((p) => [p.id, p]));
+      for (const p of incoming) byId.set(p.id, p);
+      return [...byId.values()];
+    });
+  };
+
   // Open a Saved Flow in Active Flows (from the sidebar branch or after saving).
   const openSavedFlow = (runId: string) => {
     setSelectedRunId(runId);
@@ -111,6 +130,7 @@ export function App() {
     void api.listCampaigns().then((r) => { if (r.ok) setCampaigns(r.data); });
     void loadChats();
     void loadSavedRuns();
+    void loadAllPosts();
   }, [auth.user, refreshKey]);
 
   if (auth.loading) return <div className="center"><div className="muted">Loading…</div></div>;
@@ -215,7 +235,7 @@ export function App() {
             onCampaignSelect={setActiveCampaign}
             onDemoModeChange={setDemoMode}
             onRefresh={() => { bump(); void loadSavedRuns(); }}
-            onPostsChange={setFlowPosts}
+            onPostsChange={mergePosts}
             notify={show}
           />
         )}

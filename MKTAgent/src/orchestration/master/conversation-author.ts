@@ -6,11 +6,20 @@
 // plan the DAG — those are already computed; this only voices the outcome.
 import { env } from '../../config/env.ts';
 import { conversationSystemPrompt } from '../prompts/conversation-prompt.ts';
+import { languageName, type ReplyLanguage } from './detect-language.ts';
 import type { MasterAgentOutcome } from './master-agent.ts';
 
 export interface PriorMessage {
   role: 'user' | 'agent';
   content: string;
+}
+
+// The language the reply MUST be written in (caller detects it from the user's raw
+// message; the explicit goal.slots.language wins when present). Threaded all the way
+// to the prompt so the model never infers language from the mixed-language seed
+// strings in the clarification questions (the bug behind an EN user getting a VN reply).
+export interface AuthorOptions {
+  language?: ReplyLanguage | string | null;
 }
 
 const endpoint = (model: string): string =>
@@ -22,9 +31,16 @@ const extractText = (raw: unknown): string =>
     .join('')
     .trim() ?? '';
 
+// Resolve the authoritative reply language: an explicit analyzer-detected
+// goal.slots.language wins; otherwise the caller-detected language; else English.
+const resolveLanguage = (outcome: MasterAgentOutcome, opts: AuthorOptions): string =>
+  languageName(outcome.goal.slots.language ?? opts.language ?? 'en');
+
 // Compact, model-agnostic context describing the turn. Slot names + flags only —
 // the prompt forbids restating them verbatim, so this stays a hint, not the output.
-const outcomeContext = (outcome: MasterAgentOutcome): unknown => {
+// `replyLanguage` is authoritative: the model writes EVERYTHING (including translating
+// each clarification question) in it, regardless of the question seeds' own language.
+const outcomeContext = (outcome: MasterAgentOutcome, replyLanguage: string): unknown => {
   const goal = {
     product: outcome.goal.slots.product ?? null,
     productDetails: outcome.goal.slots.productDetails ?? null,
@@ -35,13 +51,13 @@ const outcomeContext = (outcome: MasterAgentOutcome): unknown => {
     outputs: outcome.goal.outputs,
   };
   if (outcome.status === 'awaiting_clarification') {
-    return { status: outcome.status, goal, questions: outcome.questions.map((q) => ({ slot: q.slot, question: q.question, required: q.required })) };
+    return { replyLanguage, status: outcome.status, goal, questions: outcome.questions.map((q) => ({ slot: q.slot, question: q.question, required: q.required })) };
   }
   if (outcome.status === 'planned') {
     const agents = outcome.plan.nodes.map((n) => n.agentId);
-    return { status: outcome.status, goal, plan: { agents, nodeCount: outcome.plan.nodes.length, platforms: outcome.goal.platforms } };
+    return { replyLanguage, status: outcome.status, goal, plan: { agents, nodeCount: outcome.plan.nodes.length, platforms: outcome.goal.platforms } };
   }
-  return { status: outcome.status, goal, error: outcome.error, detail: outcome.detail };
+  return { replyLanguage, status: outcome.status, goal, error: outcome.error, detail: outcome.detail };
 };
 
 // Plain-language fallback composed from the structured outcome — no LLM. Keeps the
@@ -67,13 +83,14 @@ export const deterministicReply = (outcome: MasterAgentOutcome): string => {
 };
 
 export interface ConversationAuthor {
-  author(outcome: MasterAgentOutcome, prior?: PriorMessage[]): Promise<string>;
+  author(outcome: MasterAgentOutcome, prior?: PriorMessage[], opts?: AuthorOptions): Promise<string>;
 }
 
 export class GeminiConversationAuthor implements ConversationAuthor {
-  async author(outcome: MasterAgentOutcome, prior: PriorMessage[] = []): Promise<string> {
+  async author(outcome: MasterAgentOutcome, prior: PriorMessage[] = [], opts: AuthorOptions = {}): Promise<string> {
     const fallback = deterministicReply(outcome);
     if (!env.GEMINI_API_KEY) return fallback;
+    const replyLanguage = resolveLanguage(outcome, opts);
     try {
       const history = prior.slice(-6).map((m) => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.content }] }));
       const res = await fetch(endpoint(env.GEMINI_MODEL), {
@@ -83,7 +100,14 @@ export class GeminiConversationAuthor implements ConversationAuthor {
           systemInstruction: { parts: [{ text: conversationSystemPrompt }] },
           contents: [
             ...history,
-            { role: 'user', parts: [{ text: `Turn context:\n${JSON.stringify(outcomeContext(outcome))}` }] },
+            {
+              role: 'user',
+              parts: [{
+                // Hard language directive FIRST so it dominates any language cue the
+                // (mixed-language) question seeds carry, then the structured context.
+                text: `Write your entire reply in ${replyLanguage}. Translate every clarification question into ${replyLanguage} — do not copy a question's original wording if it is in another language.\n\nTurn context:\n${JSON.stringify(outcomeContext(outcome, replyLanguage))}`,
+              }],
+            },
           ],
           generationConfig: { temperature: 0.5 },
         }),

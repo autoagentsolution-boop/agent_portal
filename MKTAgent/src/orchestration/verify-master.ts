@@ -4,7 +4,8 @@
 import { analyzeDeterministic } from './master/deterministic-analyzer.ts';
 import { evaluateClarification } from './master/clarification-engine.ts';
 import { MasterAgent } from './master/master-agent.ts';
-import { deterministicReply } from './master/conversation-author.ts';
+import { deterministicReply, conversationAuthor } from './master/conversation-author.ts';
+import { detectLanguage } from './master/detect-language.ts';
 import { mergeGoals, applyRemovals } from './master/goal-merge.ts';
 import { parseRemovals } from './master/deterministic-analyzer.ts';
 import { agentIdList } from './schemas/workflow-plan.ts';
@@ -193,6 +194,16 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   check('plan reply names approval + a step', /approve/i.test(planReply) && /publish|step|concept/i.test(planReply), planReply);
 }
 
+// Language detection (the EN-user-gets-VN-reply bug). Pure, no LLM.
+{
+  console.log('detectLanguage');
+  check('explicit English message → en', detectLanguage('Write a short LinkedIn post about our new feature') === 'en');
+  check('VN diacritics → vi', detectLanguage('Lên chiến dịch branding cho sản phẩm của tôi') === 'vi');
+  check('unaccented VN → vi', detectLanguage('toi muon dang bai ban hang moi ngay') === 'vi');
+  check('English with a brand name → en', detectLanguage('AgentPortal helps users automate daily tasks') === 'en');
+  check('empty → en (default)', detectLanguage('') === 'en');
+}
+
 // Optional live Gemini smoke.
 async function geminiSmoke(): Promise<void> {
   if (!env.GEMINI_API_KEY) { console.log('Gemini smoke: SKIPPED (no GEMINI_API_KEY)'); return; }
@@ -202,6 +213,15 @@ async function geminiSmoke(): Promise<void> {
   check('gemini returns valid GoalSpec', g.goal === 'marketing_content', g);
   check('gemini detects instagram', g.platforms.includes('instagram'), g.platforms);
   check('gemini provider tagged', g.provider.startsWith('gemini') || g.provider === 'deterministic-v1', g.provider);
+
+  // Language fidelity: an English message must get an English reply even though the
+  // clarification seed strings are partly Vietnamese (the reported bug). Assert the
+  // reply has NO Vietnamese diacritics.
+  const enAgent = new MasterAgent();
+  const enOutcome = enAgent.planFromGoal(analyzeDeterministic('Write a short LinkedIn post about our new feature'));
+  const enReply = await conversationAuthor.author(enOutcome, [], { language: 'en' });
+  const hasViDiacritics = /[ăâđêôơưàáạảãằắặẳẵầấậẩẫèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]/i.test(enReply);
+  check('EN message → reply has NO Vietnamese diacritics', !hasViDiacritics, enReply.slice(0, 160));
 }
 
 await geminiSmoke();
