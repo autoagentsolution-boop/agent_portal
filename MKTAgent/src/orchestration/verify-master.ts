@@ -194,14 +194,20 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   check('plan reply names approval + a step', /approve/i.test(planReply) && /publish|step|concept/i.test(planReply), planReply);
 }
 
-// Language detection (the EN-user-gets-VN-reply bug). Pure, no LLM.
+// Language detection (the wrong-language-reply bug). Pure, no LLM. Non-Latin scripts
+// resolve to a code; Latin-script messages return null (the LLM mirrors the message).
 {
-  console.log('detectLanguage');
-  check('explicit English message → en', detectLanguage('Write a short LinkedIn post about our new feature') === 'en');
+  console.log('detectLanguage (multi-script)');
+  check('Latin/English → null (model mirrors)', detectLanguage('Write a short LinkedIn post about our new feature') === null);
   check('VN diacritics → vi', detectLanguage('Lên chiến dịch branding cho sản phẩm của tôi') === 'vi');
   check('unaccented VN → vi', detectLanguage('toi muon dang bai ban hang moi ngay') === 'vi');
-  check('English with a brand name → en', detectLanguage('AgentPortal helps users automate daily tasks') === 'en');
-  check('empty → en (default)', detectLanguage('') === 'en');
+  check('Thai → th', detectLanguage('เขียนโพสต์สั้นๆ เกี่ยวกับฟีเจอร์ใหม่') === 'th');
+  check('Japanese (kana) → ja', detectLanguage('新機能についての短い投稿を書いて') === 'ja');
+  check('Korean → ko', detectLanguage('새로운 기능에 대한 짧은 게시물을 작성해줘') === 'ko');
+  check('Russian (Cyrillic) → ru', detectLanguage('Напишите короткий пост о новой функции') === 'ru');
+  check('Arabic → ar', detectLanguage('اكتب منشورًا قصيرًا عن الميزة الجديدة') === 'ar');
+  check('French (Latin) → null (model mirrors)', detectLanguage('Rédige un court post LinkedIn sur notre nouvelle fonctionnalité') === null);
+  check('empty → null', detectLanguage('') === null);
 }
 
 // Optional live Gemini smoke.
@@ -214,14 +220,20 @@ async function geminiSmoke(): Promise<void> {
   check('gemini detects instagram', g.platforms.includes('instagram'), g.platforms);
   check('gemini provider tagged', g.provider.startsWith('gemini') || g.provider === 'deterministic-v1', g.provider);
 
-  // Language fidelity: an English message must get an English reply even though the
-  // clarification seed strings are partly Vietnamese (the reported bug). Assert the
-  // reply has NO Vietnamese diacritics.
-  const enAgent = new MasterAgent();
-  const enOutcome = enAgent.planFromGoal(analyzeDeterministic('Write a short LinkedIn post about our new feature'));
-  const enReply = await conversationAuthor.author(enOutcome, [], { language: 'en' });
-  const hasViDiacritics = /[ăâđêôơưàáạảãằắặẳẵầấậẩẫèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]/i.test(enReply);
-  check('EN message → reply has NO Vietnamese diacritics', !hasViDiacritics, enReply.slice(0, 160));
+  // Language fidelity: the reply must mirror the user's message language even though the
+  // clarification seeds are partly Vietnamese (the reported bug). Pass the raw message so
+  // the model mirrors it. (a) English message → NO Vietnamese diacritics.
+  const VI_DIA = /[ăâđêôơưàáạảãằắặẳẵầấậẩẫèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]/i;
+  const agentL = new MasterAgent();
+  const enMsg = 'Write a short LinkedIn post about our new feature';
+  const enReply = await conversationAuthor.author(agentL.planFromGoal(analyzeDeterministic(enMsg)), [], { userMessage: enMsg, language: null });
+  check('EN message → reply has NO Vietnamese diacritics', !VI_DIA.test(enReply), enReply.slice(0, 160));
+
+  // (b) A NON-Latin, non-VN language (Thai) → reply is in Thai script (proves the fix
+  // covers languages beyond vi/en — the user's point). Detected code 'th' pins it.
+  const thMsg = 'เขียนโพสต์ LinkedIn สั้นๆ เกี่ยวกับฟีเจอร์ใหม่ของเรา';
+  const thReply = await conversationAuthor.author(agentL.planFromGoal(analyzeDeterministic(thMsg)), [], { userMessage: thMsg, language: 'th' });
+  check('Thai message → reply contains Thai script', /[฀-๿]/.test(thReply), thReply.slice(0, 160));
 }
 
 await geminiSmoke();

@@ -6,7 +6,7 @@
 // plan the DAG — those are already computed; this only voices the outcome.
 import { env } from '../../config/env.ts';
 import { conversationSystemPrompt } from '../prompts/conversation-prompt.ts';
-import { languageName, type ReplyLanguage } from './detect-language.ts';
+import { languageName } from './detect-language.ts';
 import type { MasterAgentOutcome } from './master-agent.ts';
 
 export interface PriorMessage {
@@ -14,12 +14,15 @@ export interface PriorMessage {
   content: string;
 }
 
-// The language the reply MUST be written in (caller detects it from the user's raw
-// message; the explicit goal.slots.language wins when present). Threaded all the way
-// to the prompt so the model never infers language from the mixed-language seed
-// strings in the clarification questions (the bug behind an EN user getting a VN reply).
+// Language steering for the reply. The AUTHORITATIVE signal is `userMessage` — the
+// model reads it and mirrors its language (works for ANY language, including Latin-
+// script ones a code can't disambiguate). `language` is an optional code hint (an
+// explicit analyzer goal.slots.language, or a script-detected one) that pins the
+// language when the writing system is unambiguous. Both exist so the model never has
+// to infer language from the mixed-language clarification question seeds.
 export interface AuthorOptions {
-  language?: ReplyLanguage | string | null;
+  userMessage?: string | null;
+  language?: string | null;
 }
 
 const endpoint = (model: string): string =>
@@ -31,16 +34,17 @@ const extractText = (raw: unknown): string =>
     .join('')
     .trim() ?? '';
 
-// Resolve the authoritative reply language: an explicit analyzer-detected
-// goal.slots.language wins; otherwise the caller-detected language; else English.
-const resolveLanguage = (outcome: MasterAgentOutcome, opts: AuthorOptions): string =>
-  languageName(outcome.goal.slots.language ?? opts.language ?? 'en');
+// Resolve a language NAME hint, or null when we can't confidently name one (Latin-
+// script message). Explicit analyzer goal.slots.language wins, else the caller's
+// detected code. Null → the model mirrors the user's message language directly.
+const resolveLanguage = (outcome: MasterAgentOutcome, opts: AuthorOptions): string | null =>
+  languageName(outcome.goal.slots.language ?? opts.language ?? null);
 
 // Compact, model-agnostic context describing the turn. Slot names + flags only —
 // the prompt forbids restating them verbatim, so this stays a hint, not the output.
-// `replyLanguage` is authoritative: the model writes EVERYTHING (including translating
-// each clarification question) in it, regardless of the question seeds' own language.
-const outcomeContext = (outcome: MasterAgentOutcome, replyLanguage: string): unknown => {
+// `replyLanguage` (when known) pins the output language; when null the model mirrors
+// the user's message. Either way it translates every clarification question seed.
+const outcomeContext = (outcome: MasterAgentOutcome, replyLanguage: string | null): unknown => {
   const goal = {
     product: outcome.goal.slots.product ?? null,
     productDetails: outcome.goal.slots.productDetails ?? null,
@@ -50,14 +54,15 @@ const outcomeContext = (outcome: MasterAgentOutcome, replyLanguage: string): unk
     platforms: outcome.goal.platforms,
     outputs: outcome.goal.outputs,
   };
+  const lang = replyLanguage ? { replyLanguage } : {};
   if (outcome.status === 'awaiting_clarification') {
-    return { replyLanguage, status: outcome.status, goal, questions: outcome.questions.map((q) => ({ slot: q.slot, question: q.question, required: q.required })) };
+    return { ...lang, status: outcome.status, goal, questions: outcome.questions.map((q) => ({ slot: q.slot, question: q.question, required: q.required })) };
   }
   if (outcome.status === 'planned') {
     const agents = outcome.plan.nodes.map((n) => n.agentId);
-    return { replyLanguage, status: outcome.status, goal, plan: { agents, nodeCount: outcome.plan.nodes.length, platforms: outcome.goal.platforms } };
+    return { ...lang, status: outcome.status, goal, plan: { agents, nodeCount: outcome.plan.nodes.length, platforms: outcome.goal.platforms } };
   }
-  return { replyLanguage, status: outcome.status, goal, error: outcome.error, detail: outcome.detail };
+  return { ...lang, status: outcome.status, goal, error: outcome.error, detail: outcome.detail };
 };
 
 // Plain-language fallback composed from the structured outcome — no LLM. Keeps the
@@ -91,6 +96,13 @@ export class GeminiConversationAuthor implements ConversationAuthor {
     const fallback = deterministicReply(outcome);
     if (!env.GEMINI_API_KEY) return fallback;
     const replyLanguage = resolveLanguage(outcome, opts);
+    // Language directive: pin to a named language when we confidently have one, else
+    // tell the model to MIRROR the user's message — which covers every language,
+    // including Latin-script ones (French, Spanish, German…) a code can't disambiguate.
+    const userMessage = (opts.userMessage ?? '').trim();
+    const languageDirective = replyLanguage
+      ? `Write your entire reply in ${replyLanguage}.`
+      : `Write your entire reply in the SAME language as the user's latest message${userMessage ? ` (quoted below)` : ''}. Detect it from their words; do not default to English.`;
     try {
       const history = prior.slice(-6).map((m) => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.content }] }));
       const res = await fetch(endpoint(env.GEMINI_MODEL), {
@@ -103,9 +115,9 @@ export class GeminiConversationAuthor implements ConversationAuthor {
             {
               role: 'user',
               parts: [{
-                // Hard language directive FIRST so it dominates any language cue the
-                // (mixed-language) question seeds carry, then the structured context.
-                text: `Write your entire reply in ${replyLanguage}. Translate every clarification question into ${replyLanguage} — do not copy a question's original wording if it is in another language.\n\nTurn context:\n${JSON.stringify(outcomeContext(outcome, replyLanguage))}`,
+                // Language directive FIRST so it dominates the (mixed-language) question
+                // seeds, then the user's raw message to mirror, then the structured context.
+                text: `${languageDirective} Translate every clarification question into that language — never copy a question's original wording when it is in another language.\n\n${userMessage ? `User's latest message: """${userMessage}"""\n\n` : ''}Turn context:\n${JSON.stringify(outcomeContext(outcome, replyLanguage))}`,
               }],
             },
           ],
