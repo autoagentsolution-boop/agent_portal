@@ -14,6 +14,7 @@ import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
 import { ideationSystemPrompt, strategySystemPrompt } from '../prompts/agent-prompts.ts';
 import { generate as generateImage, type ImageResult } from '../../imagegen/nano-banana.ts';
+import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
 
 // Per-run mutable context threaded through node executions. Artifacts already
 // produced upstream are addressable by type (the executor passes them in).
@@ -106,7 +107,10 @@ const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 const runPublisher = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const postId = ctx.postId;
   if (!postId) throw new Error('publisher: no postId from concept_writer');
-  const out = await publishPostNow(postId, ctx.ownerId, ctx.publishFn);
+  // Default the live publish path through the Connector Runtime (§11.7) so external
+  // writes travel one validated, auditable chokepoint. A DRY-RUN stub (ctx.publishFn)
+  // still overrides it for verification; the runtime falls back to publishTo internally.
+  const out = await publishPostNow(postId, ctx.ownerId, ctx.publishFn ?? runtimePublishFn);
   const post = await getPostForOwner(postId, ctx.ownerId);
   return {
     type: 'publish_result',

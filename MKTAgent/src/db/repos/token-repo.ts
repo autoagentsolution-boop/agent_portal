@@ -3,8 +3,13 @@
 // T4: per-user. Every fn is keyed by the composite PK (ownerId, platform); a
 // missing ownerId is a compile error (same explicit-arg rule as T2 tenancy).
 import { prisma } from '../client.ts';
-import { encryptToken, decryptToken } from '../../lib/crypto.ts';
+import { encryptedDbVault } from '../../connectors/vault/encrypted-db-vault.ts';
 import type { SocialPlatform, TokenStatus } from '../../../prisma/generated/prisma/client.ts';
+
+// Secret sealing goes through the Credential Vault (§11.2). The MVP impl is the
+// encrypted-DB vault (AES-256-GCM ciphertext stored inline) — swapping to an external
+// vault later is a one-line change here, not a callsite sweep.
+const vault = encryptedDbVault;
 
 export interface TokenRecord {
   ownerId: string;
@@ -25,8 +30,8 @@ export const upsertToken = async (input: {
   status?: TokenStatus;
   meta?: Record<string, unknown> | null;
 }): Promise<void> => {
-  const enc = encryptToken(input.token);
-  const encRefresh = input.refreshToken ? encryptToken(input.refreshToken) : null;
+  const enc = await vault.seal(input.token);
+  const encRefresh = input.refreshToken ? await vault.seal(input.refreshToken) : null;
   await prisma.oAuthToken.upsert({
     where: { ownerId_platform: { ownerId: input.ownerId, platform: input.platform } },
     create: {
@@ -59,8 +64,8 @@ export const getToken = async (
   return {
     ownerId: row.ownerId,
     platform: row.platform,
-    token: decryptToken(row.token),
-    refreshToken: row.refreshToken ? decryptToken(row.refreshToken) : null,
+    token: await vault.open(row.token),
+    refreshToken: row.refreshToken ? await vault.open(row.refreshToken) : null,
     expiresAt: row.expiresAt,
     status: row.status,
     meta: (row.meta as Record<string, unknown> | null) ?? null,

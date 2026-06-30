@@ -392,3 +392,27 @@ model MktRunLog {
   @@index([ownerId], name: "ix_mkt_log_owner")
   @@map("mkt_run_log")
 }
+
+// External-action audit log (brief §11.13) — one row per outward-writing action the
+// Connector Runtime performs (publish to a platform, future email/CRM/upload). Records
+// who/what/where/outcome with REDACTED request/response (no token, no secret — the
+// runtime strips them before writing). Nullable owner + no FK so rows survive user
+// deletion (audit must outlive the tenant). Append-only; never updated.
+model ExternalActionAuditLog {
+  id         BigInt   @id @default(autoincrement())
+  ownerId    String?  @map("owner_id") @db.Uuid
+  runId      String?  @map("run_id") @db.Uuid // orchestration run, when invoked from a DAG
+  nodeId     String?  @map("node_id") // plan-local node id
+  platform   String   // social platform / connector key
+  actionKey  String   @map("action_key") // capability skill, e.g. social.post.image
+  status     String   // ok | error
+  externalId String?  @map("external_id") // published url/id when ok
+  error      String?  // failure message (redacted)
+  detail     Json?    // redacted request/response metadata (NEVER a secret)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], name: "ix_ext_audit_created")
+  @@index([ownerId], name: "ix_ext_audit_owner")
+  @@index([runId], name: "ix_ext_audit_run")
+  @@map("external_action_audit_log")
+}
