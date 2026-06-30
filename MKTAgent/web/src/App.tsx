@@ -3,13 +3,11 @@ import { useAuth } from './hooks/use-auth';
 import { useToast } from './hooks/use-toast';
 import { api, loginUrl, type AgentChatSessionDto, type CampaignDto, type PostDto, type SavedRunDto } from './api/client';
 import { ActiveFlowsPage } from './components/ActiveFlowsPage';
-import { DemoModeToggle } from './components/DemoModeToggle';
-import { MasterAgentIntake } from './components/MasterAgentIntake';
 import { OrchestratePanel, type OrchestrateRestore } from './components/OrchestratePanel';
 import { ConnectionsPanel } from './components/ConnectionsPanel';
 import type { DemoMode } from './flow/demo-flow';
 
-type Page = 'master' | 'flows' | 'orchestrate' | 'connections';
+type Page = 'flows' | 'orchestrate' | 'connections';
 type Theme = 'light' | 'dark';
 
 const postTitle = (post: PostDto, index: number): string => {
@@ -21,7 +19,7 @@ const postTitle = (post: PostDto, index: number): string => {
 export function App() {
   const auth = useAuth();
   const { toast, show } = useToast();
-  const [page, setPage] = useState<Page>('master');
+  const [page, setPage] = useState<Page>('orchestrate');
   const [theme, setTheme] = useState<Theme>('light');
   const [activeCampaign, setActiveCampaign] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState<DemoMode>('safe');
@@ -34,7 +32,6 @@ export function App() {
   const [chatSessions, setChatSessions] = useState<AgentChatSessionDto[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [orchestrateRestore, setOrchestrateRestore] = useState<OrchestrateRestore | null>(null);
-  const activeChat = chatSessions.find((chat) => chat.id === activeChatId) ?? null;
   const bump = () => setRefreshKey((k) => k + 1);
 
   const loadChats = async () => {
@@ -54,20 +51,17 @@ export function App() {
     setChatSessions((prev) => [r.data, ...prev.filter((chat) => chat.id !== id)]);
     setActiveChatId(id);
 
-    // Conversational unify: a chat that spawned an orchestration run opens the
-    // Orchestrate surface restored; a legacy intake-only chat opens the master setup.
+    // All chats open the Orchestrate surface, restored from their messages. A chat that
+    // spawned an orchestration run also restores that run (plan/exec card); a legacy
+    // intake-only chat restores with no run (run: null) — the user can continue it as a
+    // normal Orchestrate conversation. (The old Master Agent setup surface is retired.)
     const runRes = await api.getRunByChat(id);
-    if (runRes.ok) {
-      setOrchestrateRestore({
-        sessionId: id,
-        messages: r.data.messages.map((m) => ({ role: m.role, content: m.content })),
-        run: runRes.data,
-      });
-      setPage('orchestrate');
-    } else {
-      setOrchestrateRestore(null);
-      setPage('master');
-    }
+    setOrchestrateRestore({
+      sessionId: id,
+      messages: r.data.messages.map((m) => ({ role: m.role, content: m.content })),
+      run: runRes.ok ? runRes.data : null,
+    });
+    setPage('orchestrate');
   };
 
   const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setPage('orchestrate'); };
@@ -118,13 +112,8 @@ export function App() {
 
     setChatSessions((prev) => prev.filter((item) => item.id !== chat.id));
     setActiveChatId((current) => current === chat.id ? null : current);
-    if (activeChatId === chat.id) setPage('master');
+    if (activeChatId === chat.id) { setOrchestrateRestore(null); setPage('orchestrate'); }
     show('Chat deleted');
-  };
-
-  const upsertChat = (chat: AgentChatSessionDto) => {
-    setChatSessions((prev) => [chat, ...prev.filter((item) => item.id !== chat.id)]);
-    setActiveChatId(chat.id);
   };
 
   // Delete a Saved Flow (run) from the sidebar. Refuses while executing (backend 409).
@@ -221,8 +210,7 @@ export function App() {
           <strong>AgentPortal</strong>
           <button className="icon-btn" aria-label="Toggle theme" onClick={() => setTheme((t) => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '◐' : '☼'}</button>
         </div>
-        <button className={`sidebar-item ${page === 'master' && !activeChatId ? 'active' : ''}`} onClick={() => { setActiveChatId(null); setSelectedRunId(null); setPage('master'); }}>✎ New setup chat</button>
-        <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>⚡ Orchestrate (M1)</button>
+        <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>✎ New chat</button>
         <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('connections'); }}>🔌 Connections</button>
         <div className="flow-sidebar-tree">
           <div className="tree-section-head">
@@ -257,7 +245,7 @@ export function App() {
 
         <div className="sidebar-section">Chats</div>
         {chatSessions.length === 0 ? (
-          <div className="sidebar-empty">No setup chats yet</div>
+          <div className="sidebar-empty">No chats yet — start one with New chat</div>
         ) : chatSessions.map((chat) => (
           <div className={`sidebar-chat-row ${activeChatId === chat.id ? 'active' : ''}`} key={chat.id}>
             <button className="sidebar-link" onClick={() => void selectChat(chat.id)}>{chat.title}</button>
@@ -268,18 +256,7 @@ export function App() {
       </aside>
 
       <main className="app-main">
-        {page === 'master' ? (
-          <div className="master-home">
-            <div className="master-toolbar"><DemoModeToggle mode={demoMode} onChange={setDemoMode} /></div>
-            <MasterAgentIntake
-              session={activeChat}
-              notify={show}
-              onSessionChange={upsertChat}
-              onOpenFlows={() => setPage('flows')}
-              onCreated={(campaign) => { setActiveCampaign(campaign.id); bump(); }}
-            />
-          </div>
-        ) : page === 'orchestrate' ? (
+        {page === 'orchestrate' ? (
           <div className="master-home">
             <OrchestratePanel
               key={orchestrateRestore?.sessionId ?? 'new'}

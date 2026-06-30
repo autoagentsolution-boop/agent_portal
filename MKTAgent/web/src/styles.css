@@ -306,7 +306,6 @@ a { color: var(--accent); }
 .sidebar-user { margin-top: auto; color: var(--muted); font-size: 12px; padding: 12px 8px 4px; overflow-wrap: anywhere; }
 .app-main { height: 100vh; overflow-y: auto; background: var(--bg); }
 .master-home { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
-.master-toolbar { display: flex; justify-content: flex-end; padding: 12px 18px; }
 .master-chat-main {
   min-height: calc(100vh - 62px);
   max-width: 980px;
@@ -418,7 +417,6 @@ a { color: var(--accent); }
 @media (max-width: 900px) {
   .app-root { grid-template-columns: 1fr; }
   .app-sidebar { height: auto; max-height: 260px; }
-  .master-toolbar { justify-content: flex-start; }
   .setup-summary-grid, .credential-row, .credential-actions { grid-template-columns: 1fr; }
 }
 
