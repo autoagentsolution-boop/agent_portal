@@ -15,6 +15,7 @@ import {
   updateCampaign,
   deleteCampaign,
 } from '../db/repos/campaign-repo.ts';
+import { getRunForOwner } from '../db/repos/workflow-run-repo.ts';
 
 export const campaignsRouter: Router = Router();
 
@@ -41,6 +42,11 @@ campaignsRouter.post(
   asyncHandler(async (req, res) => {
     const body = parseOr422(res, createCampaignBody, req.body ?? {});
     if (!body) return;
+    // If attaching to a flow, it must be the caller's own flow (tenancy) — else 404
+    // so a user can't graft a campaign onto another tenant's run.
+    if (body.flowId && !(await getRunForOwner(body.flowId, req.userId!))) {
+      return fail(res, 404, 'flow_not_found');
+    }
     // ownerId from the JWT — never the body.
     const c = await createCampaign({ ...body, ownerId: req.userId! });
     res.status(201);

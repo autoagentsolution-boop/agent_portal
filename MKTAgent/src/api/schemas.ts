@@ -47,6 +47,8 @@ export type RejectPostBody = z.infer<typeof rejectPostBody>;
 // Config-as-data fields are nullable: null = "clear / inherit from user default".
 export const createCampaignBody = z.object({
   product: z.string().min(1).max(200),
+  // Optional parent Flow — set when creating a campaign under a flow in the sidebar.
+  flowId: z.string().uuid().nullish(),
   angle: z.string().max(2000).nullish(),
   brandContext: z.string().max(4000).nullish(),
   leadsForm: z.string().url().max(500).nullish(),
@@ -244,6 +246,9 @@ export type WorkflowRunDto = z.infer<typeof workflowRunDto>;
 // ---- Response DTOs (what the UI renders; decoupled from the DB row) ----
 export const campaignDto = z.object({
   id: z.string().uuid(),
+  // Parent Flow (orchestration run) that spawned this campaign; null for direct-created
+  // campaigns or after the flow was deleted (FK SetNull). Drives the sidebar tree.
+  flowId: z.string().uuid().nullable(),
   product: z.string(),
   angle: z.string().nullable(),
   brandContext: z.string().nullable(),

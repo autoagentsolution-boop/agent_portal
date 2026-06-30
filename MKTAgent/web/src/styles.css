@@ -284,14 +284,23 @@ a { color: var(--accent); }
 .tree-row.level-3 { padding-left: 30px; color: var(--text); font-size: 12px; font-weight: 600; }
 .tree-row.level-4 { padding-left: 42px; color: var(--muted); font-size: 12px; }
 
-/* Deletable tree row: main label + a × that reveals on hover/focus. */
-.tree-row-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 24px; align-items: center; border-radius: 7px; }
+/* Deletable tree row: main label + a + (create) and × (delete) that reveal on hover. */
+.tree-row-wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; border-radius: 7px; }
 .tree-row-wrap:hover, .tree-row-wrap.active { background: var(--panel2); }
-.tree-row-main { border: 0; background: transparent; color: var(--muted); text-align: left; border-radius: 7px; padding: 5px 8px 5px 18px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-row-main { border: 0; background: transparent; color: var(--muted); text-align: left; border-radius: 7px; padding: 5px 8px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-row-wrap.level-2 .tree-row-main { padding-left: 18px; }
+.tree-row-wrap.level-3 .tree-row-main { padding-left: 30px; }
 .tree-row-wrap.active .tree-row-main, .tree-row-main:hover { color: var(--text); }
-.tree-row-delete { width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 15px; line-height: 1; opacity: 0; cursor: pointer; }
-.tree-row-wrap:hover .tree-row-delete, .tree-row-delete:focus-visible { opacity: 1; }
+.tree-row-add, .tree-row-delete { width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 15px; line-height: 1; opacity: 0; cursor: pointer; }
+.tree-row-wrap:hover .tree-row-add, .tree-row-wrap:hover .tree-row-delete, .tree-row-add:focus-visible, .tree-row-delete:focus-visible { opacity: 1; }
+.tree-row-add:hover, .tree-row-add:focus-visible { background: rgba(63,185,80,0.14); color: var(--green, #3fb950); outline: none; }
 .tree-row-delete:hover, .tree-row-delete:focus-visible { background: rgba(248,81,73,0.12); color: var(--red); outline: none; }
+
+/* Section head ("Flows") with an inline + to create a top-level campaign. */
+.tree-section-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.tree-section-head .tree-row-add { opacity: 0.7; }
+.tree-section-head:hover .tree-row-add { opacity: 1; }
+.flow-head { cursor: pointer; }
 .tree-empty { color: var(--muted); font-size: 12px; padding: 5px 8px 5px 30px; }
 .tree-empty.nested { padding-left: 42px; }
 .sidebar-user { margin-top: auto; color: var(--muted); font-size: 12px; padding: 12px 8px 4px; overflow-wrap: anywhere; }

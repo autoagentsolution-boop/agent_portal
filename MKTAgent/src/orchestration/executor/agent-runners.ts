@@ -61,6 +61,7 @@ const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const brandVoice = clean(goal.slots.brandVoice) ?? (isBrand ? 'Professional, trustworthy brand voice' : null);
   const campaign = await createCampaign({
     ownerId,
+    flowId: ctx.runId, // link the campaign to the flow that spawned it (sidebar tree)
     product: goal.slots.product ?? 'Untitled product',
     angle: clean(goal.slots.angle),
     brandVoice,

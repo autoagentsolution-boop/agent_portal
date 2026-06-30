@@ -2027,6 +2027,8 @@ export interface components {
         CampaignDto: {
             /** Format: uuid */
             id: string;
+            /** Format: uuid */
+            flowId: string | null;
             product: string;
             angle: string | null;
             brandContext: string | null;
@@ -2101,6 +2103,8 @@ export interface components {
             campaign: {
                 /** Format: uuid */
                 id: string;
+                /** Format: uuid */
+                flowId: string | null;
                 product: string;
                 angle: string | null;
                 brandContext: string | null;
@@ -2124,6 +2128,8 @@ export interface components {
         };
         CreateCampaignBody: {
             product: string;
+            /** Format: uuid */
+            flowId?: string | null;
             angle?: string | null;
             brandContext?: string | null;
             /** Format: uri */
@@ -2138,6 +2144,8 @@ export interface components {
         };
         UpdateCampaignBody: {
             product?: string;
+            /** Format: uuid */
+            flowId?: string | null;
             angle?: string | null;
             brandContext?: string | null;
             /** Format: uri */

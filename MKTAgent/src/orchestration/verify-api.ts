@@ -255,6 +255,27 @@ async function main(): Promise<void> {
     check('delete: run gone (GET → 404)', (await call('GET', `/orchestration/runs/${delRunId}`, tokenA)).status === 404);
     check('delete: already-deleted → 404', (await call('DELETE', `/orchestration/runs/${delRunId}`, tokenA)).status === 404);
 
+    // ---- Campaign ↔ Flow link (sidebar tree) ----
+    // Create a flow, attach a campaign to it, verify the link, then delete the flow and
+    // assert the campaign SURVIVES with flowId nulled (SetNull — content outlives flow).
+    const flowForCamp = await call('POST', '/orchestration/runs', tokenA, {
+      message: 'Post about our AI automation product on facebook, audience SMBs, angle save time, with file id 1bo4diy3vlH9VmRE-78Z15ux9053-KZci',
+    });
+    const flowCampId = flowForCamp.body?.data?.id;
+    const campUnderFlow = await call('POST', '/campaigns', tokenA, { product: 'Flow-linked campaign', flowId: flowCampId });
+    check('campaign create under flow → 201 with flowId', campUnderFlow.status === 201 && campUnderFlow.body?.data?.flowId === flowCampId, { s: campUnderFlow.status, f: campUnderFlow.body?.data?.flowId });
+    const campUnderFlowId = campUnderFlow.body?.data?.id;
+    check('campaign create under another tenant flow → 404', (await call('POST', '/campaigns', tokenB, { product: 'x', flowId: flowCampId })).status === 404);
+    // List campaigns shows the flowId so the sidebar can nest it.
+    const campList = await call('GET', '/campaigns', tokenA);
+    check('campaign list carries flowId', campList.body?.data?.some((c: any) => c.id === campUnderFlowId && c.flowId === flowCampId), campList.body?.data?.find((c: any) => c.id === campUnderFlowId));
+    // Delete the flow → campaign survives, flowId nulled (NOT cascaded away).
+    check('delete flow with a campaign → 204', (await call('DELETE', `/orchestration/runs/${flowCampId}`, tokenA)).status === 204);
+    const orphan = await call('GET', `/campaigns/${campUnderFlowId}`, tokenA);
+    check('campaign survives flow delete (SetNull)', orphan.status === 200 && orphan.body?.data?.flowId === null, { s: orphan.status, f: orphan.body?.data?.flowId });
+    // Cleanup the orphan campaign.
+    await call('DELETE', `/campaigns/${campUnderFlowId}`, tokenA);
+
     // ---- Connections (M2-lite, read-only) ----
     check('GET /connections 401 without token', (await call('GET', '/connections')).status === 401);
     const conns = await call('GET', '/connections', tokenA);

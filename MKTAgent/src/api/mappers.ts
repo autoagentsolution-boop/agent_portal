@@ -9,6 +9,7 @@ const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
 export const toCampaignDto = (c: Campaign): CampaignDto => ({
   id: c.id,
+  flowId: c.flowId,
   product: c.product,
   angle: c.angle,
   brandContext: c.brandContext,

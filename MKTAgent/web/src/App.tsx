@@ -150,6 +150,30 @@ export function App() {
     show('Campaign deleted');
   };
 
+  // Create a campaign, optionally under a flow (sidebar +). A lightweight prompt for
+  // the product name keeps this a quick management action (full config is editable later).
+  const createCampaignUnder = async (event: MouseEvent<HTMLButtonElement>, flowId: string | null) => {
+    event.stopPropagation();
+    const product = prompt('New campaign — product or offer name:')?.trim();
+    if (!product) return;
+    const r = await api.createCampaign({ product, ...(flowId ? { flowId } : {}) });
+    if (!r.ok) { show(`Create failed: ${r.error.error}`, 'err'); return; }
+    setCampaigns((prev) => [r.data, ...prev]);
+    setActiveCampaign(r.data.id); setSelectedPostId(null); setSelectedRunId(null); setPage('flows');
+    show(`Campaign “${product}” created`);
+  };
+
+  // Create an empty post/brief under a campaign (sidebar +). Opens it in the board.
+  const createPostUnder = async (event: MouseEvent<HTMLButtonElement>, campaignId: string) => {
+    event.stopPropagation();
+    const r = await api.createPost({ campaignId });
+    if (!r.ok) { show(`Create failed: ${r.error.error}`, 'err'); return; }
+    setFlowPosts((prev) => [r.data, ...prev]);
+    setActiveCampaign(campaignId); setSelectedPostId(r.data.id); setSelectedRunId(null); setPage('flows');
+    bump();
+    show('Post created');
+  };
+
   useEffect(() => {
     if (!auth.user) return;
     void api.listCampaigns().then((r) => { if (r.ok) setCampaigns(r.data); });
@@ -172,6 +196,24 @@ export function App() {
     );
   }
 
+  // One campaign row + its posts (level-3) under it, with create/delete controls.
+  // Reused for both flow-nested campaigns and the Ungrouped section.
+  const renderCampaign = (campaign: CampaignDto) => {
+    const campaignPosts = flowPosts.filter((post) => post.campaignId === campaign.id);
+    return (
+      <div key={campaign.id}>
+        <div className={`tree-row-wrap level-3 ${activeCampaign === campaign.id && !selectedPostId && !selectedRunId ? 'active' : ''}`}>
+          <button className="tree-row-main" onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>📁 {campaign.product}</button>
+          <button className="tree-row-add" aria-label={`New post in ${campaign.product}`} title="New post" onClick={(e) => void createPostUnder(e, campaign.id)}>+</button>
+          <button className="tree-row-delete" aria-label={`Delete campaign ${campaign.product}`} onClick={(e) => void deleteCampaignRow(e, campaign)}>×</button>
+        </div>
+        {campaignPosts.slice(0, 8).map((post, index) => (
+          <button className={`tree-row level-4 ${selectedPostId === post.id ? 'active' : ''}`} key={post.id} onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(post.id); setSelectedRunId(null); setPage('flows'); }}>{postTitle(post, index)}</button>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className={`app-root theme-${theme}`}>
       <aside className="app-sidebar">
@@ -182,37 +224,33 @@ export function App() {
         <button className={`sidebar-item ${page === 'master' && !activeChatId ? 'active' : ''}`} onClick={() => { setActiveChatId(null); setSelectedRunId(null); setPage('master'); }}>✎ New setup chat</button>
         <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>⚡ Orchestrate (M1)</button>
         <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('connections'); }}>🔌 Connections</button>
-        <button className={`sidebar-item ${page === 'flows' && !selectedRunId ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('flows'); }}>▦ Active Flows</button>
         <div className="flow-sidebar-tree">
-          <button className="tree-row level-1" onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>Branding / Social</button>
-          <div className="tree-row level-1 tree-label">Saved Flows</div>
-          {savedRuns.length === 0 ? (
-            <div className="tree-empty">No saved flows yet</div>
-          ) : savedRuns.map((flow) => (
-            <div className={`tree-row-wrap level-2 ${selectedRunId === flow.id ? 'active' : ''}`} key={flow.id}>
-              <button
-                className="tree-row-main"
-                onClick={() => openSavedFlow(flow.id)}
-              >{flow.name ?? 'Untitled flow'} <span className="tree-badge">{flow.nodeCount}</span></button>
-              <button className="tree-row-delete" aria-label={`Delete flow ${flow.name ?? 'Untitled'}`} onClick={(e) => void deleteSavedFlow(e, flow)}>×</button>
-            </div>
-          ))}
-          {campaigns.length === 0 ? (
-            <div className="tree-empty">No campaigns yet</div>
-          ) : campaigns.map((campaign) => {
-            const campaignPosts = flowPosts.filter((post) => post.campaignId === campaign.id);
+          <div className="tree-section-head">
+            <button className={`tree-row level-1 tree-label flow-head ${page === 'flows' && !selectedRunId && !activeCampaign ? 'active' : ''}`} onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>▦ Flows</button>
+            <button className="tree-row-add" aria-label="New campaign" title="New campaign" onClick={(e) => void createCampaignUnder(e, null)}>+</button>
+          </div>
+          {savedRuns.length === 0 && campaigns.length === 0 && (
+            <div className="tree-empty">No flows yet — orchestrate one to begin</div>
+          )}
+          {savedRuns.map((flow) => {
+            const flowCampaigns = campaigns.filter((c) => c.flowId === flow.id);
             return (
-              <div key={campaign.id}>
-                <div className={`tree-row-wrap level-2 ${activeCampaign === campaign.id && !selectedPostId && !selectedRunId ? 'active' : ''}`}>
-                  <button className="tree-row-main" onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>{campaign.product}</button>
-                  <button className="tree-row-delete" aria-label={`Delete campaign ${campaign.product}`} onClick={(e) => void deleteCampaignRow(e, campaign)}>×</button>
+              <div key={flow.id}>
+                <div className={`tree-row-wrap level-2 ${selectedRunId === flow.id ? 'active' : ''}`}>
+                  <button className="tree-row-main" onClick={() => openSavedFlow(flow.id)}>⚡ {flow.name ?? 'Untitled flow'} <span className="tree-badge">{flow.nodeCount}</span></button>
+                  <button className="tree-row-add" aria-label={`New campaign in ${flow.name ?? 'flow'}`} title="New campaign" onClick={(e) => void createCampaignUnder(e, flow.id)}>+</button>
+                  <button className="tree-row-delete" aria-label={`Delete flow ${flow.name ?? 'Untitled'}`} onClick={(e) => void deleteSavedFlow(e, flow)}>×</button>
                 </div>
-                {campaignPosts.length === 0 ? <div className="tree-empty nested">No briefs loaded</div> : campaignPosts.slice(0, 6).map((post, index) => (
-                  <button className={`tree-row level-3 ${selectedPostId === post.id ? 'active' : ''}`} key={post.id} onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(post.id); setSelectedRunId(null); setPage('flows'); }}>{postTitle(post, index)}</button>
-                ))}
+                {flowCampaigns.map(renderCampaign)}
               </div>
             );
           })}
+          {campaigns.some((c) => !c.flowId) && (
+            <>
+              <div className="tree-row level-2 tree-label">Ungrouped campaigns</div>
+              {campaigns.filter((c) => !c.flowId).map(renderCampaign)}
+            </>
+          )}
         </div>
         <button className="sidebar-item muted-action">⌕ Search chats</button>
         <button className="sidebar-item muted-action">◷ Scheduled</button>

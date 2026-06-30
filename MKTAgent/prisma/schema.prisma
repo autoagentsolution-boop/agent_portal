@@ -143,6 +143,11 @@ model Session {
 model Campaign {
   id           String   @id @default(uuid()) @db.Uuid
   ownerId      String   @map("owner_id") @db.Uuid
+  // Optional parent Flow (the orchestration run that spawned this campaign). Nullable:
+  // campaigns created directly (not via a flow) have none, and deleting a flow nulls
+  // this (SetNull) rather than cascading — generated content (incl. paid images) must
+  // outlive its flow. Drives the sidebar Flow → Campaign → Post tree.
+  flowId       String?  @map("flow_id") @db.Uuid
   product      String
   angle        String?
   brandContext String?  @map("brand_context")
@@ -160,10 +165,12 @@ model Campaign {
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   owner User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  flow  WorkflowRun? @relation(fields: [flowId], references: [id], onDelete: SetNull)
   posts Post[]
 
   @@index([active], name: "ix_campaign_active")
   @@index([ownerId], name: "ix_campaign_owner")
+  @@index([flowId], name: "ix_campaign_flow")
   @@map("mkt_campaign")
 }
 
@@ -332,6 +339,7 @@ model WorkflowRun {
   owner     User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   nodes     WorkflowNodeRun[]
   artifacts Artifact[]
+  campaigns Campaign[]
 
   @@index([ownerId, status], name: "ix_wf_run_owner_status")
   @@map("wf_run")

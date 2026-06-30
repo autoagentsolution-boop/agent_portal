@@ -87,6 +87,13 @@
             "type": "string",
             "format": "uuid"
           },
+          "flowId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "product": {
             "type": "string"
           },
@@ -163,6 +170,7 @@
         },
         "required": [
           "id",
+          "flowId",
           "product",
           "angle",
           "brandContext",
@@ -466,6 +474,13 @@
                 "type": "string",
                 "format": "uuid"
               },
+              "flowId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
               "product": {
                 "type": "string"
               },
@@ -542,6 +557,7 @@
             },
             "required": [
               "id",
+              "flowId",
               "product",
               "angle",
               "brandContext",
@@ -610,6 +626,13 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+          },
+          "flowId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "angle": {
             "type": [
@@ -696,6 +719,13 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+          },
+          "flowId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "angle": {
             "type": [
