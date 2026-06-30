@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { api, type WorkflowRunDto } from '../api/client';
 import { useRunEvents } from '../hooks/use-run-events';
 import { RunDagView } from './run-dag-view';
+import { ConnectionRequired } from './connection-required';
 import { formatArtifact } from '../flow/artifact-format';
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
 const STATUS_LABEL: Record<string, string> = {
   planned: 'Ready to run', running: 'Running…', needs_approval: 'Paused — approve to publish',
   completed: 'Completed', failed: 'Failed', awaiting_clarification: 'Needs detail',
+  needs_connection: 'Connect a platform to run',
 };
 
 export function SavedFlowDetail({ runId, notify, onStatusChange }: Props) {
@@ -65,7 +67,14 @@ export function SavedFlowDetail({ runId, notify, onStatusChange }: Props) {
   const gateNode = run.nodes.find((n) => n.status === 'awaiting_approval');
   const publishArtifact = run.artifacts.find((a) => a.type === 'publish_result');
   const publishUrls = (publishArtifact?.data as { postUrls?: Record<string, string> | null } | undefined)?.postUrls ?? null;
-  const canExecute = run.status === 'planned' || run.status === 'failed';
+  const requiredActions = run.requiredActions ?? [];
+  // needs_connection with cards loaded is handled by the ConnectionRequired block (its
+  // own continue button re-resolves). But requiredActions only rides the POST /execute
+  // response — a reopened/reloaded gated run (GET) has none, so without this the user
+  // would see no actionable control. Re-executing re-runs the resolver server-side.
+  const canExecute =
+    run.status === 'planned' || run.status === 'failed' ||
+    (run.status === 'needs_connection' && requiredActions.length === 0);
   const selectedArtifact = selectedNode ? run.artifacts.find((a) => a.nodeId === selectedNode) : null;
   const selectedView = selectedArtifact ? formatArtifact(selectedArtifact.type, selectedArtifact.data) : null;
 
@@ -79,13 +88,17 @@ export function SavedFlowDetail({ runId, notify, onStatusChange }: Props) {
         </div>
         {canExecute && (
           <button className="btn primary" disabled={busy} onClick={() => void execute()}>
-            {busy ? 'Starting…' : run.status === 'failed' ? 'Re-run flow' : 'Execute flow'}
+            {busy ? 'Starting…' : run.status === 'failed' ? 'Re-run flow' : run.status === 'needs_connection' ? 'Check connection & run' : 'Execute flow'}
           </button>
         )}
       </div>
 
       <p className="muted small">Click a step to view its output. Publishing pauses for your approval (safe / dry-run by default).</p>
       <RunDagView nodes={run.nodes} publishUrls={publishUrls} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} />
+
+      {run.status === 'needs_connection' && requiredActions.length > 0 && (
+        <ConnectionRequired actions={requiredActions} busy={busy} onContinue={() => void execute()} />
+      )}
 
       {run.status === 'needs_approval' && gateNode && (
         <div className="gate-block">

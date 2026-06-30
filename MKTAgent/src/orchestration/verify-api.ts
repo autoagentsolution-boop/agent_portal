@@ -8,6 +8,7 @@
 import { prisma } from '../db/client.ts';
 import { signSession } from '../lib/auth-jwt.ts';
 import { env } from '../config/env.ts';
+import { upsertToken } from '../db/repos/token-repo.ts';
 
 const BASE = `http://localhost:${env.PORT}`;
 let failures = 0;
@@ -127,6 +128,29 @@ async function main(): Promise<void> {
     check('saved list includes the named run with nodeCount', savedList.body?.data?.some((r: any) => r.id === runId && r.name === 'Verify demo flow' && r.nodeCount > 0), savedList.body?.data);
     check('saved list 401 no token', (await call('GET', '/orchestration/runs/saved')).status === 401);
 
+    // ---- CONNECTION GATE (§11): publisher needs facebook, tenant A has NO token ----
+    // The run is planned + targets facebook. /execute must STOP at the gate ($0 spent,
+    // no executor, no nodes run) and return needs_connection + a connect action — not
+    // run the DAG to a late publisher failure.
+    const gatedExec = await call('POST', `/orchestration/runs/${runId}/execute`, tokenA);
+    check('gate: execute → 200 needs_connection', gatedExec.status === 200 && gatedExec.body?.data?.status === 'needs_connection', { s: gatedExec.status, st: gatedExec.body?.data?.status });
+    const reqActions = gatedExec.body?.data?.requiredActions ?? [];
+    check('gate: requiredActions present', reqActions.length >= 1, reqActions);
+    check('gate: action targets facebook (connect_platform)', reqActions.some((a: any) => a.platform === 'facebook' && a.type === 'connect_platform'), reqActions);
+    check('gate: action carries connectUrl', reqActions.every((a: any) => typeof a.connectUrl === 'string' && a.connectUrl.includes('/connect/')), reqActions[0]);
+    // Secrecy: the gate response must not leak token metadata beyond the closed DTO
+    // shape (no token/refreshToken/expiresAt/status fields ride the connect action).
+    const allowedKeys = ['type', 'platform', 'displayName', 'connectUrl', 'reason', 'capabilities'];
+    check('gate: requiredActions expose no token/extra fields', reqActions.every((a: any) => Object.keys(a).every((k) => allowedKeys.includes(k))), reqActions[0]);
+    // $0 proof: no node ran, no artifact produced while gated.
+    const gatedState = await call('GET', `/orchestration/runs/${runId}`, tokenA);
+    check('gate: 0 artifacts produced (no spend)', (gatedState.body?.data?.artifacts?.length ?? 0) === 0, gatedState.body?.data?.artifacts?.length);
+    check('gate: no node left running', !gatedState.body?.data?.nodes?.some((n: any) => n.status === 'running' || n.status === 'completed'), gatedState.body?.data?.nodes?.map((n: any) => n.status));
+
+    // Seed an ACTIVE facebook token for A (the "user connected" step) so the gate now
+    // resolves and the happy path proceeds. DRY: a fake token value, never posted live.
+    await upsertToken({ ownerId: userA.id, platform: 'facebook', token: 'verify-fake-fb-token', status: 'active' });
+
     // EXECUTE (async) → must return IMMEDIATELY as running (the stuck-Thinking fix).
     const t0 = Date.now();
     const exec = await call('POST', `/orchestration/runs/${runId}/execute`, tokenA);
@@ -224,7 +248,10 @@ async function main(): Promise<void> {
     // Always lists all 5 platforms (connected or not) — fresh tenant A has none yet.
     const rows = conns.body?.data ?? [];
     check('connections lists 5 platforms', rows.length === 5, rows.length);
-    check('fresh tenant → all not_connected', rows.every((r: any) => r.state === 'not_connected'), rows.map((r: any) => r.state));
+    // facebook was seeded active above (the connection-gate happy path); the other 4
+    // remain not_connected for this tenant.
+    check('seeded facebook → connected', rows.find((r: any) => r.platformKey === 'facebook')?.state === 'connected', rows.map((r: any) => [r.platformKey, r.state]));
+    check('other platforms → not_connected', rows.filter((r: any) => r.platformKey !== 'facebook').every((r: any) => r.state === 'not_connected'), rows.map((r: any) => [r.platformKey, r.state]));
     check('each row carries capabilities + connectUrl', rows.every((r: any) => Array.isArray(r.capabilities) && typeof r.connectUrl === 'string'), rows[0]);
     check('no token value leaked in connection rows', rows.every((r: any) => !('token' in r) && !('refreshToken' in r)), rows[0]);
 

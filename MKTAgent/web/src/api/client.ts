@@ -40,6 +40,8 @@ export type AgentCredentialStatusDto = { agentId: string; key: string; status: s
 // Orchestration (M1 backbone) — the goal-based agent workflow surface.
 export type WorkflowRunDto = Dto['WorkflowRunDto'];
 export type SavedRunDto = Dto['SavedRunDto'];
+// Connection Resolver output — connect/reconnect actions on a needs_connection run.
+export type RequiredActionDto = NonNullable<WorkflowRunDto['requiredActions']>[number];
 
 // Connections (M2-lite) — read-only social connection status.
 export type ConnectionDto = Dto['ConnectionDto'];

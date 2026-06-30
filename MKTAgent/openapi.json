@@ -1147,6 +1147,54 @@
               ]
             }
           },
+          "requiredActions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "connect_platform",
+                    "reconnect_platform"
+                  ]
+                },
+                "platform": {
+                  "type": "string",
+                  "enum": [
+                    "facebook",
+                    "instagram",
+                    "threads",
+                    "linkedin",
+                    "x"
+                  ]
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "connectUrl": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "capabilities": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "type",
+                "platform",
+                "displayName",
+                "connectUrl",
+                "reason",
+                "capabilities"
+              ]
+            }
+          },
           "nodes": {
             "type": "array",
             "items": {

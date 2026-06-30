@@ -8,6 +8,7 @@ type Node = WorkflowRunDto['nodes'][number];
 
 export const NODE_DOT: Record<string, string> = {
   pending: '○', running: '◐', awaiting_approval: '⏸', completed: '●', failed: '✕', skipped: '–',
+  needs_connection: '⚷',
 };
 
 const agentLabel = (id: string): string => id.replace(/_/g, ' ');

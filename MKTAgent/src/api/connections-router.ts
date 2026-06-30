@@ -6,20 +6,10 @@
 import { Router } from 'express';
 import { ok, asyncHandler } from './http.ts';
 import { listTokenStatusForOwner, type TokenStatusRow } from '../db/repos/token-repo.ts';
+import { CONNECTORS, connectStartPath } from '../connectors/registry/connector-registry.ts';
 import type { SocialPlatform, TokenStatus } from '../../prisma/generated/prisma/client.ts';
 
 export const connectionsRouter: Router = Router();
-
-// The platforms the product can connect, with display metadata + the capability
-// skills each supports (mirrors the publisher's social.post.* capabilities, scoped
-// to what each platform accepts). Static config — no per-request cost.
-const PLATFORMS: Array<{ platformKey: SocialPlatform; displayName: string; capabilities: string[] }> = [
-  { platformKey: 'facebook', displayName: 'Facebook', capabilities: ['social.post.image', 'social.post.video', 'social.post.carousel'] },
-  { platformKey: 'instagram', displayName: 'Instagram', capabilities: ['social.post.image', 'social.post.video', 'social.post.carousel'] },
-  { platformKey: 'threads', displayName: 'Threads', capabilities: ['social.post.image', 'social.post.video'] },
-  { platformKey: 'linkedin', displayName: 'LinkedIn', capabilities: ['social.post.image', 'social.post.video'] },
-  { platformKey: 'x', displayName: 'X', capabilities: ['social.post.image', 'social.post.video'] },
-];
 
 // UI-facing connection state. `not_connected` = no token row; otherwise derived
 // from the token's liveness status maintained by the token cron.
@@ -46,7 +36,7 @@ connectionsRouter.get(
   asyncHandler(async (req, res) => {
     const rows: TokenStatusRow[] = await listTokenStatusForOwner(req.userId!);
     const byPlatform = new Map(rows.map((r) => [r.platform, r]));
-    const data: ConnectionDto[] = PLATFORMS.map((p) => {
+    const data: ConnectionDto[] = CONNECTORS.map((p) => {
       const row = byPlatform.get(p.platformKey);
       return {
         platformKey: p.platformKey,
@@ -55,7 +45,7 @@ connectionsRouter.get(
         expiresAt: row?.expiresAt ? row.expiresAt.toISOString() : null,
         lastCheckedAt: row?.lastCheckedAt ? row.lastCheckedAt.toISOString() : null,
         capabilities: p.capabilities,
-        connectUrl: `/connect/${p.platformKey}/start`,
+        connectUrl: connectStartPath(p.platformKey),
       };
     });
     ok(res, data, { count: data.length, nextCursor: null });

@@ -2183,6 +2183,16 @@ export interface components {
                 choices?: string[];
                 multiSelect?: boolean;
             }[];
+            requiredActions?: {
+                /** @enum {string} */
+                type: "connect_platform" | "reconnect_platform";
+                /** @enum {string} */
+                platform: "facebook" | "instagram" | "threads" | "linkedin" | "x";
+                displayName: string;
+                connectUrl: string;
+                reason: string;
+                capabilities: string[];
+            }[];
             nodes: {
                 nodeId: string;
                 agentId: string;

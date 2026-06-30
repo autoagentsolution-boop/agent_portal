@@ -198,6 +198,19 @@ export const workflowNodeDto = z.object({
   error: z.string().nullable(),
 });
 
+// Connection Resolver output (§11.11 requires_user_action). Present when a run is
+// `needs_connection`: one entry per platform the user must connect/reconnect before
+// the DAG can run. Carries the connect link to the existing per-user OAuth flow.
+export const requiredActionDto = z.object({
+  type: z.enum(['connect_platform', 'reconnect_platform']),
+  platform: socialPlatform,
+  displayName: z.string(),
+  connectUrl: z.string(),
+  reason: z.string(),
+  capabilities: z.array(z.string()),
+});
+export type RequiredActionDto = z.infer<typeof requiredActionDto>;
+
 export const artifactDto = z.object({
   id: z.string().uuid(),
   nodeId: z.string(),
@@ -219,6 +232,8 @@ export const workflowRunDto = z.object({
   chatSessionId: z.string().uuid().nullable().optional(),
   assistantMessage: z.string().optional(),
   questions: z.array(clarificationQuestionDto).optional(),
+  // Set when status==='needs_connection' — platforms to connect before /execute.
+  requiredActions: z.array(requiredActionDto).optional(),
   nodes: z.array(workflowNodeDto),
   artifacts: z.array(artifactDto),
   createdAt: z.string(),

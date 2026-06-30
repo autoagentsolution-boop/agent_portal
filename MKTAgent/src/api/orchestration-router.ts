@@ -32,6 +32,8 @@ import { logger } from '../lib/logger.ts';
 import { mergeAnswers, toRunDto, type ClarifyQuestions } from './orchestration-mappers.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
 import { ensureChatSession, recordTurn, summarizeAnswers } from './orchestration-chat.ts';
+import { resolveConnections } from '../connectors/runtime/connection-resolver.ts';
+import type { RequiredActionDto } from './schemas.ts';
 
 export const orchestrationRouter: Router = Router();
 
@@ -78,7 +80,7 @@ const applyOutcomeToRun = async (
   return {};
 };
 
-interface RespondExtras { questions?: ClarifyQuestions; assistantMessage?: string }
+interface RespondExtras { questions?: ClarifyQuestions; assistantMessage?: string; requiredActions?: RequiredActionDto[] }
 const respondRun = async (res: Parameters<typeof ok>[0], id: string, ownerId: string, extras: RespondExtras = {}): Promise<void> => {
   const full = await getRunWithNodes(id, ownerId);
   if (!full) { fail(res as never, 404, 'run_not_found'); return; }
@@ -173,11 +175,25 @@ const launchWorkflow = (
 orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
   const run = await getRunForOwner(req.params.id, req.userId!);
   if (!run) return fail(res, 404, 'run_not_found');
-  // Allow execute from planned, or re-run a failed flow. Reject if already in flight.
+  // Allow execute from planned, a re-run of a failed flow, OR a re-resolve after the
+  // user connected a platform (needs_connection). Reject if already in flight.
   if (run.status === 'running' || run.status === 'needs_approval') return fail(res, 409, 'run_in_flight');
-  if (run.status !== 'planned' && run.status !== 'failed') return fail(res, 409, 'run_not_executable');
+  if (run.status !== 'planned' && run.status !== 'failed' && run.status !== 'needs_connection') {
+    return fail(res, 409, 'run_not_executable');
+  }
   const goal = goalSpec.parse(run.goal);
   const plan: WorkflowPlan = workflowPlan.parse(run.plan);
+
+  // Connection gate (§11.6/11.11): resolve every requiresConnection agent's platforms
+  // against the user's connections BEFORE spending money. A gap stops the run here
+  // ($0 — no executor, no image-gen) with the connect actions the UI needs.
+  const resolution = await resolveConnections(req.userId!, goal, plan);
+  if (resolution.status !== 'resolved') {
+    await setRunStatus(run.id, 'needs_connection');
+    logger.info('wf_execute_gated_needs_connection', { runId: run.id, count: resolution.required.length });
+    return respondRun(res, run.id, req.userId!, { requiredActions: resolution.required });
+  }
+
   // Claim into running before responding so a double-click can't spawn two executors.
   await setRunStatus(run.id, 'running');
   launchWorkflow(run.id, req.userId!, goal, plan);

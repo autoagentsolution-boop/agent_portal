@@ -5,13 +5,15 @@ import type { RunWithNodes } from '../db/repos/workflow-run-repo.ts';
 import { goalSpec, type GoalSpec } from '../orchestration/schemas/goal-spec.ts';
 import type { ClarificationQuestion } from '../orchestration/master/clarification-engine.ts';
 import { parseAccountType } from '../orchestration/master/deterministic-analyzer.ts';
-import type { WorkflowRunDto } from './schemas.ts';
+import type { WorkflowRunDto, RequiredActionDto } from './schemas.ts';
 
 export type ClarifyQuestions = ClarificationQuestion[];
 
 export interface RunDtoExtras {
   questions?: ClarifyQuestions;
   assistantMessage?: string;
+  // Connection Resolver output — present when the run is gated as needs_connection.
+  requiredActions?: RequiredActionDto[];
 }
 
 export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): WorkflowRunDto => ({
@@ -23,6 +25,7 @@ export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): Workflow
   chatSessionId: run.chatSessionId ?? null,
   ...(extras.questions ? { questions: extras.questions } : {}),
   ...(extras.assistantMessage ? { assistantMessage: extras.assistantMessage } : {}),
+  ...(extras.requiredActions ? { requiredActions: extras.requiredActions } : {}),
   nodes: run.nodes.map((n) => ({
     nodeId: n.nodeId,
     agentId: n.agentId,
