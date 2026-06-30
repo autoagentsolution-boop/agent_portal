@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useState, type MouseEvent } from 'react';
 import { useAuth } from './hooks/use-auth';
 import { useToast } from './hooks/use-toast';
 import { api, loginUrl, type AgentChatSessionDto, type CampaignDto, type PostDto, type SavedRunDto } from './api/client';
@@ -87,14 +87,16 @@ export function App() {
 
   // Merge PostBoard's updates (one campaign's posts, incl. live SSE patches) INTO the
   // global set by id, rather than replacing it — so opening one campaign never wipes
-  // the briefs the sidebar shows for the others.
-  const mergePosts = (incoming: PostDto[]) => {
+  // the briefs the sidebar shows for the others. MUST be useCallback-stable: PostBoard's
+  // load() depends on onPostsChange, so a new closure each render → infinite reload loop
+  // (the "Posts • Loading…" hang). Empty deps: it only touches the stable setFlowPosts.
+  const mergePosts = useCallback((incoming: PostDto[]) => {
     setFlowPosts((prev) => {
       const byId = new Map(prev.map((p) => [p.id, p]));
       for (const p of incoming) byId.set(p.id, p);
       return [...byId.values()];
     });
-  };
+  }, []);
 
   // Open a Saved Flow in Active Flows (from the sidebar branch or after saving).
   const openSavedFlow = (runId: string) => {
@@ -123,6 +125,29 @@ export function App() {
   const upsertChat = (chat: AgentChatSessionDto) => {
     setChatSessions((prev) => [chat, ...prev.filter((item) => item.id !== chat.id)]);
     setActiveChatId(chat.id);
+  };
+
+  // Delete a Saved Flow (run) from the sidebar. Refuses while executing (backend 409).
+  const deleteSavedFlow = async (event: MouseEvent<HTMLButtonElement>, flow: SavedRunDto) => {
+    event.stopPropagation();
+    if (!confirm(`Delete flow “${flow.name ?? 'Untitled'}”? This removes its steps and outputs.`)) return;
+    const r = await api.deleteRun(flow.id);
+    if (!r.ok) { show(r.error.error === 'run_in_flight' ? 'Flow is running — stop it first' : `Delete failed: ${r.error.error}`, 'err'); return; }
+    setSavedRuns((prev) => prev.filter((x) => x.id !== flow.id));
+    if (selectedRunId === flow.id) { setSelectedRunId(null); setPage('flows'); }
+    show('Flow deleted');
+  };
+
+  // Delete a campaign from the sidebar (cascades to its posts/briefs).
+  const deleteCampaignRow = async (event: MouseEvent<HTMLButtonElement>, campaign: CampaignDto) => {
+    event.stopPropagation();
+    if (!confirm(`Delete campaign “${campaign.product}”? This removes its posts too.`)) return;
+    const r = await api.deleteCampaign(campaign.id);
+    if (!r.ok) { show(`Delete failed: ${r.error.error}`, 'err'); return; }
+    setCampaigns((prev) => prev.filter((x) => x.id !== campaign.id));
+    setFlowPosts((prev) => prev.filter((p) => p.campaignId !== campaign.id));
+    if (activeCampaign === campaign.id) { setActiveCampaign(null); setSelectedPostId(null); }
+    show('Campaign deleted');
   };
 
   useEffect(() => {
@@ -164,11 +189,13 @@ export function App() {
           {savedRuns.length === 0 ? (
             <div className="tree-empty">No saved flows yet</div>
           ) : savedRuns.map((flow) => (
-            <button
-              key={flow.id}
-              className={`tree-row level-2 ${selectedRunId === flow.id ? 'active' : ''}`}
-              onClick={() => openSavedFlow(flow.id)}
-            >{flow.name ?? 'Untitled flow'} <span className="tree-badge">{flow.nodeCount}</span></button>
+            <div className={`tree-row-wrap level-2 ${selectedRunId === flow.id ? 'active' : ''}`} key={flow.id}>
+              <button
+                className="tree-row-main"
+                onClick={() => openSavedFlow(flow.id)}
+              >{flow.name ?? 'Untitled flow'} <span className="tree-badge">{flow.nodeCount}</span></button>
+              <button className="tree-row-delete" aria-label={`Delete flow ${flow.name ?? 'Untitled'}`} onClick={(e) => void deleteSavedFlow(e, flow)}>×</button>
+            </div>
           ))}
           {campaigns.length === 0 ? (
             <div className="tree-empty">No campaigns yet</div>
@@ -176,7 +203,10 @@ export function App() {
             const campaignPosts = flowPosts.filter((post) => post.campaignId === campaign.id);
             return (
               <div key={campaign.id}>
-                <button className={`tree-row level-2 ${activeCampaign === campaign.id && !selectedPostId && !selectedRunId ? 'active' : ''}`} onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>{campaign.product}</button>
+                <div className={`tree-row-wrap level-2 ${activeCampaign === campaign.id && !selectedPostId && !selectedRunId ? 'active' : ''}`}>
+                  <button className="tree-row-main" onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>{campaign.product}</button>
+                  <button className="tree-row-delete" aria-label={`Delete campaign ${campaign.product}`} onClick={(e) => void deleteCampaignRow(e, campaign)}>×</button>
+                </div>
                 {campaignPosts.length === 0 ? <div className="tree-empty nested">No briefs loaded</div> : campaignPosts.slice(0, 6).map((post, index) => (
                   <button className={`tree-row level-3 ${selectedPostId === post.id ? 'active' : ''}`} key={post.id} onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(post.id); setSelectedRunId(null); setPage('flows'); }}>{postTitle(post, index)}</button>
                 ))}

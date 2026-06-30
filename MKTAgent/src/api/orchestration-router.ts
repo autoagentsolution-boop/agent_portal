@@ -19,6 +19,7 @@ import {
   createRun,
   createNodes,
   deleteNodes,
+  deleteRun,
   getRunForOwner,
   getRunWithNodes,
   getLatestRunWithNodesForChat,
@@ -237,4 +238,13 @@ orchestrationRouter.get('/runs/:id', asyncHandler(async (req, res) => {
   const full = await getRunWithNodes(req.params.id, req.userId!);
   if (!full) return fail(res, 404, 'run_not_found');
   ok(res, toRunDto(full));
+}));
+
+// Delete a run (Saved Flow). Cascades to its nodes + artifacts. A run mid-execution
+// (running) is refused with 409 so a detached executor never writes to a deleted run.
+orchestrationRouter.delete('/runs/:id', asyncHandler(async (req, res) => {
+  const outcome = await deleteRun(req.params.id, req.userId!);
+  if (outcome === 'not_found') return fail(res, 404, 'run_not_found');
+  if (outcome === 'in_flight') return fail(res, 409, 'run_in_flight');
+  res.status(204).end();
 }));

@@ -241,6 +241,20 @@ async function main(): Promise<void> {
     check('list returns A\'s runs', (list.body?.data?.length ?? 0) >= 2, list.body?.data?.length);
     check('list 401 for no token', (await call('GET', '/orchestration/runs')).status === 401);
 
+    // ---- DELETE a run (Saved Flow) ----
+    // Spin up a fresh planned run, then delete it: 204, gone on re-GET, cross-tenant 404.
+    const delRun = await call('POST', '/orchestration/runs', tokenA, {
+      message: 'Post about our AI automation product on facebook, audience SMBs, angle save time, with file id 1bo4diy3vlH9VmRE-78Z15ux9053-KZci',
+    });
+    const delRunId = delRun.body?.data?.id;
+    check('delete: fresh run created', Boolean(delRunId), delRun.body?.data?.status);
+    check('delete: cross-tenant → 404', (await call('DELETE', `/orchestration/runs/${delRunId}`, tokenB)).status === 404);
+    check('delete: no token → 401', (await call('DELETE', `/orchestration/runs/${delRunId}`)).status === 401);
+    const del = await call('DELETE', `/orchestration/runs/${delRunId}`, tokenA);
+    check('delete: owner → 204', del.status === 204, del.status);
+    check('delete: run gone (GET → 404)', (await call('GET', `/orchestration/runs/${delRunId}`, tokenA)).status === 404);
+    check('delete: already-deleted → 404', (await call('DELETE', `/orchestration/runs/${delRunId}`, tokenA)).status === 404);
+
     // ---- Connections (M2-lite, read-only) ----
     check('GET /connections 401 without token', (await call('GET', '/connections')).status === 401);
     const conns = await call('GET', '/connections', tokenA);

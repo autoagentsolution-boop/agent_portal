@@ -589,6 +589,22 @@ registry.registerPath({
   },
 });
 
+registry.registerPath({
+  method: 'delete',
+  path: '/orchestration/runs/{id}',
+  tags: ['orchestration'],
+  summary: 'Delete a run / Saved Flow (cascades to nodes + artifacts)',
+  description: 'Removes the run and all its nodes + artifacts. A run mid-execution (running) is refused with 409.',
+  security: userAuth,
+  request: { params: runIdParam },
+  responses: {
+    204: { description: 'Deleted' },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Run is executing; cannot delete'),
+  },
+});
+
 // ---- SSE -----------------------------------------------------------------------
 registry.registerPath({
   method: 'get',

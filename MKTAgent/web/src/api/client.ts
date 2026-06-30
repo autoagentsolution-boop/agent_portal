@@ -159,6 +159,7 @@ export const api = {
   listRuns: () => request<Array<{ id: string; status: string; createdAt: string; updatedAt: string }>>('/orchestration/runs'),
   // Saved Flows (named runs) for the sidebar + Active Flows surface.
   listSavedRuns: () => request<SavedRunDto[]>('/orchestration/runs/saved'),
+  deleteRun: (id: string) => request<void>(`/orchestration/runs/${id}`, { method: 'DELETE' }),
 
   // ---- Connections (M2-lite, read-only) ----
   listConnections: () => request<ConnectionDto[]>('/connections'),

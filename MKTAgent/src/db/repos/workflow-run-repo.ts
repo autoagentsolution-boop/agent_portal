@@ -64,6 +64,20 @@ export const deleteNodes = async (runId: string, ownerId: string): Promise<void>
 export const getRunForOwner = (id: string, ownerId: string): Promise<WorkflowRun | null> =>
   prisma.workflowRun.findFirst({ where: { id, ownerId } });
 
+// Scoped delete (cascades to child nodes + artifacts via FK onDelete: Cascade).
+// Refuses a run that is mid-execution (running) so a detached executor can't write to
+// a deleted run. Returns: 'deleted' | 'not_found' (wrong tenant / id) | 'in_flight'.
+export const deleteRun = async (
+  id: string,
+  ownerId: string,
+): Promise<'deleted' | 'not_found' | 'in_flight'> => {
+  const run = await prisma.workflowRun.findFirst({ where: { id, ownerId }, select: { status: true } });
+  if (!run) return 'not_found';
+  if (run.status === 'running') return 'in_flight';
+  const r = await prisma.workflowRun.deleteMany({ where: { id, ownerId } });
+  return r.count === 1 ? 'deleted' : 'not_found';
+};
+
 export const getRunWithNodes = (id: string, ownerId: string): Promise<RunWithNodes | null> =>
   prisma.workflowRun.findFirst({
     where: { id, ownerId },
