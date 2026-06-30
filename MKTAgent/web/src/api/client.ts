@@ -39,6 +39,7 @@ export type AgentCredentialStatusDto = { agentId: string; key: string; status: s
 
 // Orchestration (M1 backbone) — the goal-based agent workflow surface.
 export type WorkflowRunDto = Dto['WorkflowRunDto'];
+export type SavedRunDto = Dto['SavedRunDto'];
 
 // Connections (M2-lite) — read-only social connection status.
 export type ConnectionDto = Dto['ConnectionDto'];
@@ -143,13 +144,19 @@ export const api = {
     request<WorkflowRunDto>('/orchestration/runs', { method: 'POST', body: { message, ...(chatSessionId ? { chatSessionId } : {}) } }),
   clarifyRun: (id: string, answers: Record<string, string | string[]>) =>
     request<WorkflowRunDto>(`/orchestration/runs/${id}/clarify`, { method: 'POST', body: { answers } }),
-  approveRun: (id: string) => request<WorkflowRunDto>(`/orchestration/runs/${id}/approve`, { method: 'POST' }),
+  // Save a planned run as a named Saved Flow (chat "Approve" → name + redirect).
+  saveRun: (id: string, name: string) =>
+    request<WorkflowRunDto>(`/orchestration/runs/${id}/save`, { method: 'POST', body: { name } }),
+  // Execute a saved/planned flow (async — returns running immediately; SSE drives the DAG).
+  executeRun: (id: string) => request<WorkflowRunDto>(`/orchestration/runs/${id}/execute`, { method: 'POST' }),
   approveRunNode: (id: string, nodeId: string) =>
     request<WorkflowRunDto>(`/orchestration/runs/${id}/approve-node/${nodeId}`, { method: 'POST' }),
   getRun: (id: string) => request<WorkflowRunDto>(`/orchestration/runs/${id}`),
   // History restore: latest run behind a chat session (404 → chat has no run).
   getRunByChat: (chatSessionId: string) => request<WorkflowRunDto>(`/orchestration/runs/by-chat/${chatSessionId}`),
   listRuns: () => request<Array<{ id: string; status: string; createdAt: string; updatedAt: string }>>('/orchestration/runs'),
+  // Saved Flows (named runs) for the sidebar + Active Flows surface.
+  listSavedRuns: () => request<SavedRunDto[]>('/orchestration/runs/saved'),
 
   // ---- Connections (M2-lite, read-only) ----
   listConnections: () => request<ConnectionDto[]>('/connections'),

@@ -1,0 +1,107 @@
+// Artifact → human-readable view model. Replaces the raw JSON.stringify dump with a
+// clean per-type rendering (the feedback: don't show users JSON). Each artifact type
+// maps to a title + a list of labeled text fields, plus an optional image URL for the
+// infographic. Defensive: artifact.data is unknown (server-validated but typed loose
+// at the API boundary), so every accessor is guarded.
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
+
+// imageRef is an AssetStore ref: `local:<abspath>/<hash>.png`. The server serves the
+// image dir at /media/images, so map to /media/images/<basename>. Non-local refs
+// (future remote URLs) pass through. Returns null when there's no usable ref.
+export const imageUrlFromRef = (ref: unknown): string | null => {
+  if (typeof ref !== 'string' || !ref) return null;
+  if (ref.startsWith('local:')) {
+    const file = ref.slice('local:'.length).replace(/\\/g, '/').split('/').pop();
+    return file ? `${API_BASE}/media/images/${file}` : null;
+  }
+  if (/^https?:\/\//.test(ref)) return ref;
+  return null;
+};
+
+export interface ArtifactField { label: string; value: string }
+export interface ArtifactView {
+  title: string;
+  fields: ArtifactField[];
+  imageUrl?: string | null;
+}
+
+const ARTIFACT_TITLES: Record<string, string> = {
+  campaign_ideas: 'Campaign ideas',
+  strategy_brief: 'Strategy brief',
+  research_summary: 'Research summary',
+  content_concept: 'Content & copy',
+  infographic_brief: 'Infographic',
+  storyboard: 'Storyboard',
+  video_prompt: 'Video prompt',
+  publish_result: 'Publish result',
+};
+
+const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
+const list = (v: unknown): string => (Array.isArray(v) ? v.map(str).filter(Boolean).join('\n• ') : '');
+
+export const formatArtifact = (type: string, data: unknown): ArtifactView => {
+  const d = (data ?? {}) as Record<string, unknown>;
+  const title = ARTIFACT_TITLES[type] ?? type.replace(/_/g, ' ');
+
+  switch (type) {
+    case 'campaign_ideas':
+      return { title, fields: [
+        { label: 'Chosen', value: str(d.chosen) },
+        { label: 'Ideas', value: '• ' + list(d.ideas) },
+      ].filter((f) => f.value.trim()) };
+    case 'strategy_brief':
+      return { title, fields: [
+        { label: 'Positioning', value: str(d.positioning) },
+        { label: 'Audience', value: str(d.audience) },
+        { label: 'Funnel stage', value: str(d.funnelStage) },
+        { label: 'Pillars', value: '• ' + list(d.pillars) },
+      ].filter((f) => f.value.trim()) };
+    case 'research_summary':
+      return { title, fields: [
+        { label: 'Summary', value: str(d.summary) },
+        { label: 'Sources', value: '• ' + list(d.sourceNotes) },
+      ].filter((f) => f.value.trim()) };
+    case 'content_concept': {
+      const copy = (d.copy ?? {}) as Record<string, unknown>;
+      return { title, fields: [
+        { label: 'Angle', value: str(d.mainAngle) },
+        { label: 'Key message', value: str(d.keyMessage) },
+        { label: 'Post body', value: str(copy.body) },
+        { label: 'Threads', value: str(copy.threads) },
+        { label: 'X', value: str(copy.x) },
+      ].filter((f) => f.value.trim()) };
+    }
+    case 'infographic_brief':
+      return {
+        title,
+        imageUrl: imageUrlFromRef(d.imageRef),
+        fields: [
+          { label: 'Visual brief', value: str(d.visualBrief) },
+          { label: 'Image prompt', value: str(d.imagePrompt) },
+        ].filter((f) => f.value.trim()),
+      };
+    case 'storyboard': {
+      const scenes = Array.isArray(d.scenes) ? d.scenes as Array<Record<string, unknown>> : [];
+      return { title, fields: [
+        { label: 'Script', value: str(d.videoScript) },
+        { label: 'Scenes', value: scenes.map((s) => `• ${str(s.instruction)}`).join('\n') },
+      ].filter((f) => f.value.trim()) };
+    }
+    case 'video_prompt':
+      return { title, fields: [
+        { label: 'Prompt', value: str(d.prompt) },
+        { label: 'Duration', value: d.durationSec ? `${str(d.durationSec)}s` : '' },
+      ].filter((f) => f.value.trim()) };
+    case 'publish_result': {
+      const urls = (d.postUrls ?? null) as Record<string, string> | null;
+      const urlLines = urls ? Object.entries(urls).map(([p, u]) => `• ${p}: ${u}`).join('\n') : '';
+      return { title, fields: [
+        { label: 'Status', value: str(d.status) },
+        { label: 'Posts', value: urlLines },
+        { label: 'Error', value: str(d.error) },
+      ].filter((f) => f.value.trim()) };
+    }
+    default:
+      return { title, fields: Object.entries(d).map(([k, v]) => ({ label: k, value: str(v) })).filter((f) => f.value.trim()) };
+  }
+};

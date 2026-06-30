@@ -1518,7 +1518,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/orchestration/runs/{id}/approve": {
+    "/orchestration/runs/{id}/save": {
         parameters: {
             query?: never;
             header?: never;
@@ -1528,8 +1528,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Approve a planned run → execute the DAG (halts at the publish gate)
-         * @description Runs nodes in dependency order. The executor halts BEFORE any external-write node (publisher) → status needs_approval.
+         * Save a planned run as a named Saved Flow (no execution)
+         * @description Names a planned run so it appears in Saved Flows. Does NOT execute — execution happens later via /execute from Active Flows.
          */
         post: {
             parameters: {
@@ -1540,9 +1540,13 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["SaveRunBody"];
+                };
+            };
             responses: {
-                /** @description Run after this pass (needs_approval | completed | failed) */
+                /** @description Named run (still planned) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1580,6 +1584,85 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorEnvelope"];
                     };
                 };
+                /** @description Invalid body */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orchestration/runs/{id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute a planned/failed run (async) → returns immediately as running
+         * @description Flips the run to running and executes the DAG DETACHED (the request returns at once — no long hang). SSE (/events) drives live node status; the executor halts BEFORE the external-write node (publisher) → needs_approval. Re-runnable from a failed state.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Run now running (live status via SSE) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["WorkflowRunDto"];
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found / cross-tenant */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Run already in flight or not executable */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -1598,8 +1681,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Approve a gated node (e.g. publisher) → resume execution
-         * @description Releases the approval gate for one external-write node and resumes the run. Publishing runs the real publish path.
+         * Approve a gated node (e.g. publisher) → resume execution (async)
+         * @description Releases the approval gate for one external-write node and resumes the run DETACHED (returns at once; SSE drives status). Publishing runs the real publish path.
          */
         post: {
             parameters: {
@@ -1613,7 +1696,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Run after resume */
+                /** @description Run now running (live status via SSE) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1653,6 +1736,58 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orchestration/runs/saved": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List named Saved Flows (for the sidebar + Active Flows) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Saved flows (most recent first) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["SavedRunDto"][];
+                            meta: {
+                                count: number;
+                                /** Format: uuid */
+                                nextCursor: string | null;
+                            };
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2019,10 +2154,23 @@ export interface components {
                 [key: string]: string | string[];
             };
         };
+        SaveRunBody: {
+            name: string;
+        };
+        SavedRunDto: {
+            /** Format: uuid */
+            id: string;
+            name: string | null;
+            status: string;
+            nodeCount: number;
+            createdAt: string;
+            updatedAt: string;
+        };
         WorkflowRunDto: {
             /** Format: uuid */
             id: string;
             status: string;
+            name?: string | null;
             goal?: unknown;
             plan?: unknown;
             /** Format: uuid */

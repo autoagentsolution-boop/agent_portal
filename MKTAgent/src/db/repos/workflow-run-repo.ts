@@ -73,6 +73,36 @@ export const getRunWithNodes = (id: string, ownerId: string): Promise<RunWithNod
 export const listRuns = (ownerId: string, limit = 50): Promise<WorkflowRun[]> =>
   prisma.workflowRun.findMany({ where: { ownerId }, orderBy: { updatedAt: 'desc' }, take: limit });
 
+// Saved Flows list item — a named run plus its node count (for the sidebar/Active
+// Flows summary, without shipping the whole plan + artifacts).
+export interface RunListItem {
+  id: string;
+  name: string | null;
+  status: string;
+  nodeCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Named ("saved") runs for the Saved Flows surface. Only rows the user explicitly
+// saved (name not null) — transient draft runs stay out of the list.
+export const listSavedRuns = async (ownerId: string, limit = 50): Promise<RunListItem[]> => {
+  const rows = await prisma.workflowRun.findMany({
+    where: { ownerId, name: { not: null } },
+    orderBy: { updatedAt: 'desc' },
+    take: limit,
+    select: { id: true, name: true, status: true, createdAt: true, updatedAt: true, _count: { select: { nodes: true } } },
+  });
+  return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, nodeCount: r._count.nodes, createdAt: r.createdAt, updatedAt: r.updatedAt }));
+};
+
+// Name a planned run (Saved Flows). Guarded transition keeps it scoped + only names
+// a run that is still planned (can't name a half-executed run). Returns row or null.
+export const nameRun = async (id: string, ownerId: string, name: string): Promise<WorkflowRun | null> => {
+  const r = await prisma.workflowRun.updateMany({ where: { id, ownerId, status: 'planned' }, data: { name } });
+  return r.count === 1 ? prisma.workflowRun.findFirst({ where: { id, ownerId } }) : null;
+};
+
 // Restore the run behind a chat session (conversational unify): a chat may spawn
 // many runs over its life; the latest is the live one the panel re-opens. Scoped by
 // ownerId (tenant isolation) and returns null when the chat has no run yet.

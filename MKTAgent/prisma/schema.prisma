@@ -317,6 +317,9 @@ model WorkflowRun {
   ownerId       String   @map("owner_id") @db.Uuid
   // Optional link to the chat that spawned the run (one chat may spawn many runs).
   chatSessionId String?  @map("chat_session_id") @db.Uuid
+  // User-given name once the planned flow is saved (Saved Flows). Null while still a
+  // transient draft run; set via POST /runs/:id/save before execution.
+  name          String?
   // GoalSpec snapshot (extracted intent) and the WorkflowPlan DAG snapshot.
   goal          Json
   plan          Json?

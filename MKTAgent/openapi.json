@@ -1040,6 +1040,54 @@
           "answers"
         ]
       },
+      "SaveRunBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "SavedRunDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "nodeCount": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "nodeCount",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
       "WorkflowRunDto": {
         "type": "object",
         "properties": {
@@ -1049,6 +1097,12 @@
           },
           "status": {
             "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "goal": {},
           "plan": {},
@@ -3141,13 +3195,13 @@
         }
       }
     },
-    "/orchestration/runs/{id}/approve": {
+    "/orchestration/runs/{id}/save": {
       "post": {
         "tags": [
           "orchestration"
         ],
-        "summary": "Approve a planned run → execute the DAG (halts at the publish gate)",
-        "description": "Runs nodes in dependency order. The executor halts BEFORE any external-write node (publisher) → status needs_approval.",
+        "summary": "Save a planned run as a named Saved Flow (no execution)",
+        "description": "Names a planned run so it appears in Saved Flows. Does NOT execute — execution happens later via /execute from Active Flows.",
         "security": [
           {
             "bearerAuth": []
@@ -3167,9 +3221,18 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveRunBody"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "Run after this pass (needs_approval | completed | failed)",
+            "description": "Named run (still planned)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3215,6 +3278,94 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Invalid body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orchestration/runs/{id}/execute": {
+      "post": {
+        "tags": [
+          "orchestration"
+        ],
+        "summary": "Execute a planned/failed run (async) → returns immediately as running",
+        "description": "Flips the run to running and executes the DAG DETACHED (the request returns at once — no long hang). SSE (/events) drives live node status; the executor halts BEFORE the external-write node (publisher) → needs_approval. Re-runnable from a failed state.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run now running (live status via SSE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WorkflowRunDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Run already in flight or not executable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -3224,8 +3375,8 @@
         "tags": [
           "orchestration"
         ],
-        "summary": "Approve a gated node (e.g. publisher) → resume execution",
-        "description": "Releases the approval gate for one external-write node and resumes the run. Publishing runs the real publish path.",
+        "summary": "Approve a gated node (e.g. publisher) → resume execution (async)",
+        "description": "Releases the approval gate for one external-write node and resumes the run DETACHED (returns at once; SSE drives status). Publishing runs the real publish path.",
         "security": [
           {
             "bearerAuth": []
@@ -3255,7 +3406,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Run after resume",
+            "description": "Run now running (live status via SSE)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3294,6 +3445,75 @@
           },
           "409": {
             "description": "Run is not awaiting approval",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orchestration/runs/saved": {
+      "get": {
+        "tags": [
+          "orchestration"
+        ],
+        "summary": "List named Saved Flows (for the sidebar + Active Flows)",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved flows (most recent first)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SavedRunDto"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "nextCursor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "count",
+                        "nextCursor"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
             "content": {
               "application/json": {
                 "schema": {

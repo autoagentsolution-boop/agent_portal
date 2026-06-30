@@ -27,6 +27,29 @@ const MAX_QUESTIONS = 5;
 // the output; when too few are known the DAG would be generic, so we ask first.
 const RICHNESS_THRESHOLD = 2;
 
+// Placeholder product strings that pass `!product` but carry no real knowledge. The
+// root bug: "sản phẩm của tôi" satisfied the old gate. Exact-match (anchored ^…$) so a
+// genuine answer that merely starts with "sản phẩm" (e.g. "sản phẩm dưỡng da ABC…", which
+// the analyzer anyway strips to "dưỡng da ABC…") isn't wrongly flagged.
+const PLACEHOLDER_PRODUCT =
+  /^(sản phẩm|san pham|dịch vụ|dich vu|sản phẩm của (tôi|mình)|san pham cua (toi|minh)|dịch vụ của (tôi|mình)|my product|the product|product|my service|service)$/i;
+
+// A dangling possessive — the analyzer's `sentenceAfter` grabbed only the words AFTER
+// "sản phẩm" so a "...sản phẩm của tôi trên facebook" message yields a product like
+// "của tôi trên facebook": noise, not a product name. Start-anchored on the possessive.
+const DANGLING_POSSESSIVE = /^của\s+(tôi|mình|chúng tôi|chung toi|toi|minh)\b/i;
+
+// Knowledge gate: the product is "thin" when we have nothing concrete to build copy or
+// an image from — productDetails empty AND the product string is itself empty, a
+// placeholder, a dangling possessive, or too short to describe anything. A rich
+// productDetails (≥12 chars) or a descriptive product name clears it, so a real
+// description is never re-asked.
+const isThinProduct = (product?: string | null, productDetails?: string | null): boolean => {
+  if (productDetails && productDetails.trim().length >= 12) return false;
+  const p = (product ?? '').trim();
+  return !p || PLACEHOLDER_PRODUCT.test(p) || DANGLING_POSSESSIVE.test(p) || p.length < 12;
+};
+
 // product is the one slot we cannot plan without (concept_writer needs something to
 // write about). The richness gate then prevents the OTHER failure mode the M1 panel
 // hit: a request with product + a platform jumping straight to a 2-node DAG with zero
@@ -35,10 +58,22 @@ const RICHNESS_THRESHOLD = 2;
 export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
   const q: ClarificationQuestion[] = [];
 
+  const thinProduct = isThinProduct(goal.slots.product, goal.slots.productDetails);
+
   if (!goal.slots.product) {
     q.push({
       slot: 'product',
       question: 'What product, service, or topic is this for?',
+      required: true,
+    });
+  } else if (thinProduct) {
+    // We have a name but no substance ("sản phẩm của tôi") → ask for the real product
+    // knowledge. Required: the agent must reason about the product before planning
+    // (the "ask hard, never reject" rule). The conversation author voices it in the
+    // user's own language regardless of the literal text here.
+    q.push({
+      slot: 'productDetails',
+      question: 'Sản phẩm/dịch vụ của bạn là gì — nó làm được gì, cho ai, và điểm khác biệt là gì?',
       required: true,
     });
   }
@@ -59,8 +94,11 @@ export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
   // Richness gate: count the high-impact context we already have. Only engages once a
   // product is known and an output is chosen (otherwise the required questions above
   // are the blockers). When thin, the audience/angle/platforms questions below become
-  // required — that is the fix for "jumped straight to the DAG".
+  // required — that is the fix for "jumped straight to the DAG". productDetails counts
+  // as high-impact context: real product knowledge is the strongest signal of a
+  // plannable request.
   const highImpactFilled =
+    (goal.slots.productDetails ? 1 : 0) +
     (goal.slots.targetAudience ? 1 : 0) +
     (goal.slots.angle ? 1 : 0) +
     (goal.platforms.length > 0 ? 1 : 0);
@@ -76,6 +114,19 @@ export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
       required: thin,
       choices: ['facebook', 'instagram', 'threads', 'linkedin', 'x'],
       multiSelect: true,
+    });
+  }
+
+  // Who is marketing — sets scope, voice, and the compliance note. Required only when
+  // the product is thin (then the agent is already reasoning hard before planning);
+  // otherwise high-impact-but-optional, like audience/angle, so a rich request isn't
+  // gated on it. Multiple-choice so the answer maps cleanly to the accountType enum.
+  if (!goal.slots.accountType) {
+    q.push({
+      slot: 'accountType',
+      question: 'Bạn đang quảng bá với tư cách nào — cá nhân, thương hiệu/shop, hay công ty?',
+      required: thinProduct,
+      choices: ['cá nhân', 'thương hiệu', 'công ty'],
     });
   }
 

@@ -1,13 +1,13 @@
-// Orchestrate panel — the M1 goal-based Master Agent as a CONVERSATIONAL surface
-// (was a form; brought up to the legacy MasterAgentIntake bar). One unified chat:
-// the user types a goal, the agent restates intent + asks the high-impact missing
-// questions, then presents the planned DAG as an in-chat card with approve/publish
-// gates. Reuses the legacy chat-bubble / thinking-bubble / floating-composer markup +
-// CSS. Runs persist to a chat session, so they live in the sidebar and restore.
+// Orchestrate panel — the M1 goal-based Master Agent as a CONVERSATIONAL surface.
+// One unified chat: the user types a goal, the agent restates intent + asks the
+// high-impact missing questions AS PROSE (no form — the assistant bubble carries the
+// questions in the user's language), then presents the planned DAG as an in-chat card.
+// Answering is free text (routed through refine); add/remove a step is free text too.
+// Approving SAVES the plan as a named Saved Flow and hands off to Active Flows for
+// execution — nothing runs on this surface (keeps the chat responsive, no JSON dump).
 import { useState } from 'react';
 import { api, type WorkflowRunDto } from '../api/client';
-import { useRunEvents } from '../hooks/use-run-events';
-import { ClarifyCard, PlanCard } from './orchestrate-run-cards';
+import { PlanCard } from './orchestrate-run-cards';
 
 export interface OrchestrateRestore {
   sessionId: string;
@@ -19,6 +19,8 @@ interface Props {
   restore: OrchestrateRestore | null;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
   onRunActivity: (sessionId: string) => void;
+  // Saved a flow → hand off to Active Flows (App redirects + refreshes the list).
+  onSaved: (runId: string) => void;
 }
 
 interface Msg { role: 'user' | 'agent'; content: string }
@@ -29,19 +31,11 @@ const starters = [
   'Write a short LinkedIn post about our new feature',
 ];
 
-const answerSummary = (answers: Record<string, string | string[]>): string => {
-  const parts = Object.entries(answers)
-    .filter(([, v]) => (Array.isArray(v) ? v.length : String(v).trim()))
-    .map(([, v]) => (Array.isArray(v) ? v.join(', ') : v));
-  return parts.length ? parts.join(' · ') : 'Continue';
-};
-
-export function OrchestratePanel({ restore, notify, onRunActivity }: Props) {
+export function OrchestratePanel({ restore, notify, onRunActivity, onSaved }: Props) {
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   const [run, setRun] = useState<WorkflowRunDto | null>(restore?.run ?? null);
   const [sessionId, setSessionId] = useState<string | null>(restore?.sessionId ?? null);
   const [input, setInput] = useState('');
-  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
 
@@ -56,70 +50,33 @@ export function OrchestratePanel({ restore, notify, onRunActivity }: Props) {
     if (data.assistantMessage) push({ role: 'agent', content: data.assistantMessage });
   };
 
+  // Every message goes through createRun — the backend treats a follow-up on a
+  // pre-execution run as a refinement (additive + subtractive), so typing answers,
+  // "add a video", or "bỏ infographic" all flow through here. No client-side form.
   const start = async (text: string) => {
-    if (text.trim().length < 3) { notify('Describe your goal first', 'err'); return; }
-    setInput(''); setAnswers({}); setPending(text.trim()); setBusy(true);
+    const trimmed = text.trim();
+    if (trimmed.length < 3) { notify('Describe your goal first', 'err'); return; }
+    setInput(''); setPending(trimmed); setBusy(true);
     try {
-      const r = await api.createRun(text.trim(), sessionId ?? undefined);
+      const r = await api.createRun(trimmed, sessionId ?? undefined);
       if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
-      push({ role: 'user', content: text.trim() });
+      push({ role: 'user', content: trimmed });
       applyRun(r.data);
     } finally { setPending(null); setBusy(false); }
   };
 
-  const submitAnswers = async () => {
-    if (!run) return;
-    const summary = answerSummary(answers);
-    setPending(summary); setBusy(true);
-    try {
-      const r = await api.clarifyRun(run.id, answers);
-      if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
-      push({ role: 'user', content: summary });
-      setAnswers({});
-      applyRun(r.data);
-    } finally { setPending(null); setBusy(false); }
-  };
-
-  const approve = async () => {
+  const save = async (name: string) => {
     if (!run) return;
     setBusy(true);
     try {
-      const r = await api.approveRun(run.id);
-      if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
-      setRun(r.data); notify('Workflow executing…');
+      const r = await api.saveRun(run.id, name);
+      if (!r.ok) { notify(`Save flow: ${r.error.error}`, 'err'); return; }
+      setRun(r.data);
+      notify(`Flow “${name}” saved`);
+      onSaved(run.id);
     } finally { setBusy(false); }
   };
 
-  const approveNode = async (nodeId: string) => {
-    if (!run) return;
-    setBusy(true);
-    try {
-      const r = await api.approveRunNode(run.id, nodeId);
-      if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
-      setRun(r.data); notify('Publishing…');
-    } finally { setBusy(false); }
-  };
-
-  // Live node.status: patch dots while running; on a terminal event refetch so
-  // artifacts + publish results land, and nudge the sidebar (Active Flows).
-  const liveRunId = run && (run.status === 'running' || run.status === 'needs_approval') ? run.id : null;
-  useRunEvents(liveRunId, (ev) => {
-    setRun((cur) => {
-      if (!cur || cur.id !== ev.runId) return cur;
-      return { ...cur, nodes: cur.nodes.map((n) => n.nodeId === ev.nodeId ? { ...n, status: ev.status, error: ev.error ?? n.error } : n) };
-    });
-    if (ev.status === 'completed' || ev.status === 'failed') {
-      void api.getRun(ev.runId).then((r) => { if (r.ok) { setRun(r.data); if (r.data.chatSessionId) onRunActivity(r.data.chatSessionId); } });
-    }
-  });
-
-  const setAnswer = (slot: string, value: string | string[]) => setAnswers((a) => ({ ...a, [slot]: value }));
-  const toggleMulti = (slot: string, choice: string) => {
-    const cur = (answers[slot] as string[] | undefined) ?? [];
-    setAnswer(slot, cur.includes(choice) ? cur.filter((c) => c !== choice) : [...cur, choice]);
-  };
-
-  const showClarify = run?.status === 'awaiting_clarification' && run.questions;
   const showPlan = run && run.nodes.length > 0;
 
   return (
@@ -127,7 +84,7 @@ export function OrchestratePanel({ restore, notify, onRunActivity }: Props) {
       {!hasStarted && (
         <div className="empty-chat-hero">
           <h1>What should we orchestrate?</h1>
-          <p>Describe a marketing goal. The Master Agent reasons about it, asks only what materially shapes the result, then plans a dynamic agent workflow you approve before anything publishes.</p>
+          <p>Describe a marketing goal. The Master Agent reasons about it, asks only what materially shapes the result, then plans a dynamic agent workflow. Save it as a flow and run it from Active Flows.</p>
         </div>
       )}
 
@@ -144,18 +101,13 @@ export function OrchestratePanel({ restore, notify, onRunActivity }: Props) {
             </div>
           )}
 
-          {!busy && showClarify && (
-            <ClarifyCard
-              questions={run!.questions!}
-              answers={answers}
-              busy={busy}
-              onAnswer={setAnswer}
-              onToggleMulti={toggleMulti}
-              onSubmit={() => void submitAnswers()}
-            />
-          )}
           {!busy && showPlan && (
-            <PlanCard run={run!} busy={busy} onApprove={() => void approve()} onApproveNode={(id) => void approveNode(id)} />
+            <PlanCard
+              run={run!}
+              busy={busy}
+              defaultName={(run!.goal as { slots?: { product?: string } } | null)?.slots?.product ?? ''}
+              onSave={(name) => void save(name)}
+            />
           )}
         </div>
       )}
@@ -167,7 +119,7 @@ export function OrchestratePanel({ restore, notify, onRunActivity }: Props) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void start(input); } }}
-            placeholder="Describe a marketing goal to orchestrate…"
+            placeholder={showPlan ? 'Refine the plan — e.g. “thêm video” or “bỏ infographic”…' : 'Describe a marketing goal to orchestrate…'}
           />
           <button
             className={`composer-send ${busy ? 'loading' : ''}`}

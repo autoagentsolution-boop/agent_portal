@@ -26,9 +26,18 @@ export type OutputFlags = z.infer<typeof outputFlags>;
 // length are codes/labels, not enums, so any language scales without a schema change.
 export const goalSlots = z.object({
   product: z.string().max(200).nullish(), // required slot — the thing being marketed
+  // The real KNOWLEDGE about the product — what it is / does / its differentiator.
+  // Distinct from `product` (the short name): this is the substance that grounds copy
+  // (→ Campaign.brandContext) and the image prompt so neither comes out generic. A
+  // bare "sản phẩm của tôi" fills `product` but leaves this empty (the thin-product gate).
+  productDetails: z.string().max(4000).nullish(),
   targetAudience: z.string().max(400).nullish(),
   angle: z.string().max(2000).nullish(),
   brandVoice: z.string().max(2000).nullish(),
+  // Who is marketing + the scope. Drives persona/voice and a compliance note. Maps onto
+  // the existing User.accountType (business|personal); `company` collapses to business
+  // for the copy persona path but keeps a distinct compliance/voice note.
+  accountType: z.enum(['personal', 'business', 'company']).nullish(),
   language: z.string().max(40).nullish(),
   lengthSpec: z.string().max(40).nullish(),
   // Drive media file id(s) — 1 for image/video, CSV for carousel. The publisher

@@ -17,6 +17,8 @@ Convert the user's marketing request into ONLY valid JSON of this exact shape:
   "platforms":["facebook","instagram","threads","linkedin","x"],
   "slots":{
     "product":"",
+    "productDetails":"",
+    "accountType":"personal|business|company",
     "targetAudience":"",
     "angle":"",
     "brandVoice":"",
@@ -24,11 +26,15 @@ Convert the user's marketing request into ONLY valid JSON of this exact shape:
     "lengthSpec":"short|medium|long|<number>"
   },
   "confidence":0.0,
-  "provider":"gemini"
+  "provider":"gemini",
+  "removals":{ "disableOutputs":[], "dropPlatforms":[] }
 }
 Rules:
+- removals: ONLY for a follow-up that asks to TAKE SOMETHING AWAY ("bỏ video", "remove the infographic", "drop facebook", "không cần ảnh nữa"). disableOutputs ⊆ ["ideation","strategy","research","infographic","video","publishing"]; dropPlatforms ⊆ the platform list. Leave both empty [] for any additive or first request. Adding something ("thêm video") is NOT a removal.
 - Set output flags from what the user actually asks for. needsInfographic/needsVideo only when the user wants that media. needsPublishing=false only if they say draft-only / don't publish.
 - needsIdeation/needsStrategy=true when the user wants a fuller branding campaign (e.g. "build a campaign", "from idea to post", "branding", "chiến lược", "lên ý tưởng"), not just a single quick post. When uncertain for a broad branding request, prefer true so the flow shows idea→strategy→copy.
 - platforms: include only platforms the user names; empty array if none stated.
 - slots: fill only what is stated or strongly implied. Omit or null unknown fields — DO NOT invent a product, audience, proof, or language.
+- productDetails: the real description of WHAT the product is / does / its differentiator — distinct from "product" (the short name). Fill ONLY from facts the user actually stated; if they only gave a name or a placeholder like "sản phẩm của tôi"/"my product", leave productDetails empty. NEVER invent capabilities, audience, or claims.
+- accountType: infer who is marketing — "personal" (cá nhân / bản thân / a person promoting themselves), "business" (a brand / shop / store), or "company" (công ty / doanh nghiệp / enterprise). Leave null if not inferable.
 - This is intent extraction ONLY. Never plan steps, never choose agents, never publish.`;

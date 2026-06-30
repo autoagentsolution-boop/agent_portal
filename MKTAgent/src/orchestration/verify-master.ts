@@ -5,7 +5,8 @@ import { analyzeDeterministic } from './master/deterministic-analyzer.ts';
 import { evaluateClarification } from './master/clarification-engine.ts';
 import { MasterAgent } from './master/master-agent.ts';
 import { deterministicReply } from './master/conversation-author.ts';
-import { mergeGoals } from './master/goal-merge.ts';
+import { mergeGoals, applyRemovals } from './master/goal-merge.ts';
+import { parseRemovals } from './master/deterministic-analyzer.ts';
 import { agentIdList } from './schemas/workflow-plan.ts';
 import { env } from '../config/env.ts';
 
@@ -106,6 +107,77 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
 
   const mergedOut = new MasterAgent().planFromGoal(merged);
   check('merged still plans (no re-clarify)', mergedOut.status === 'planned', mergedOut.status);
+}
+
+// Subtractive refinement: a removal phrase ("bỏ video") must un-set the named output
+// AFTER the additive merge, keep everything else, and never produce an empty plan.
+{
+  console.log('Subtractive refinement (applyRemovals)');
+  const base = analyzeDeterministic('Full branding campaign for our AI automation product on facebook, audience small business owners, angle saving time, with infographic and video');
+  check('base has video+infographic', base.outputs.needsVideo && base.outputs.needsInfographic, base.outputs);
+
+  // "bỏ video" — removal verb + target. parseRemovals should flag video only.
+  const rmVideo = parseRemovals('bỏ video đi, giữ nguyên phần còn lại');
+  check('parseRemovals detects video', rmVideo.disableOutputs.includes('video'), rmVideo);
+  check('parseRemovals no false platform', rmVideo.dropPlatforms.length === 0, rmVideo);
+
+  const afterRemove = applyRemovals(base, rmVideo);
+  check('video removed', afterRemove.outputs.needsVideo === false, afterRemove.outputs);
+  check('infographic kept', afterRemove.outputs.needsInfographic === true, afterRemove.outputs);
+  check('product kept after removal', Boolean(afterRemove.slots.product), afterRemove.slots.product);
+  check('platforms kept after removal', afterRemove.platforms.includes('facebook'), afterRemove.platforms);
+
+  // "thêm video" is additive, NOT a removal — must not trip the parser.
+  const notRemoval = parseRemovals('thêm video nữa nhé');
+  check('additive phrase is not a removal', notRemoval.disableOutputs.length === 0 && notRemoval.dropPlatforms.length === 0, notRemoval);
+
+  // Drop a platform.
+  const rmFb = parseRemovals('remove facebook');
+  const afterDrop = applyRemovals(base, rmFb);
+  check('facebook dropped', !afterDrop.platforms.includes('facebook'), afterDrop.platforms);
+
+  // Empty-plan guard: removing every output must fall back to a text post (plannable).
+  const rmAll = { disableOutputs: ['ideation', 'strategy', 'research', 'infographic', 'video', 'publishing'] as const, dropPlatforms: [] };
+  const guarded = applyRemovals({ ...base, outputs: { ...base.outputs, needsTextPost: false } }, { disableOutputs: [...rmAll.disableOutputs], dropPlatforms: [] });
+  check('empty-plan guard keeps a text post', guarded.outputs.needsTextPost === true, guarded.outputs);
+  const guardedOut = new MasterAgent().planFromGoal(guarded);
+  check('guarded goal still plannable', guardedOut.status === 'planned' || guardedOut.status === 'awaiting_clarification', guardedOut.status);
+}
+
+// Product KNOWLEDGE + persona capture. A placeholder product ("sản phẩm của tôi") must
+// not satisfy the gate; the agent must ask for real product knowledge + who's marketing.
+{
+  console.log('Product knowledge + persona gate');
+
+  // Thin: a placeholder product with no details → must ask productDetails (required) +
+  // accountType (required). This is the exact screenshot bug.
+  const thin = analyzeDeterministic('tôi muốn quảng cáo sản phẩm của tôi trên facebook');
+  check('placeholder product yields no productDetails', !thin.slots.productDetails, thin.slots.productDetails);
+  const rThin = evaluateClarification(thin);
+  check('thin product → needs_clarification', rThin.status === 'needs_clarification', rThin.status);
+  if (rThin.status === 'needs_clarification') {
+    check('asks productDetails (required)', rThin.questions.some((q) => q.slot === 'productDetails' && q.required), rThin.questions);
+    check('asks accountType (required)', rThin.questions.some((q) => q.slot === 'accountType' && q.required), rThin.questions);
+  }
+
+  // Rich product knowledge → productDetails filled, gate cleared, NOT re-asked.
+  const rich = analyzeDeterministic('Quảng cáo trên facebook, sản phẩm của tôi chuyên cung cấp phần mềm quản lý kho cho doanh nghiệp vừa và nhỏ, giúp tiết kiệm thời gian, đối tượng là chủ shop online');
+  check('rich product fills productDetails', Boolean(rich.slots.productDetails), rich.slots.productDetails);
+  const rRich = evaluateClarification(rich);
+  check('rich product → ready (no productDetails re-ask)', rRich.status === 'ready', { status: rRich.status, details: rich.slots.productDetails });
+
+  // accountType inference from phrasing.
+  check('infers company from "doanh nghiệp"', rich.slots.accountType === 'company', rich.slots.accountType);
+  const personal = analyzeDeterministic('mình muốn quảng bá cá nhân, sản phẩm là khoá học dạy vẽ online cho người mới bắt đầu');
+  check('infers personal from "cá nhân"', personal.slots.accountType === 'personal', personal.slots.accountType);
+  const brand = analyzeDeterministic('quảng cáo cho thương hiệu thời trang của shop, sản phẩm là áo thun in hình theo yêu cầu');
+  check('infers business from "thương hiệu/shop"', brand.slots.accountType === 'business', brand.slots.accountType);
+
+  // mergeGoals keeps the two new slots across a refinement turn.
+  const delta = analyzeDeterministic('thêm infographic nữa');
+  const merged = mergeGoals(rich, delta);
+  check('merge keeps productDetails', Boolean(merged.slots.productDetails), merged.slots.productDetails);
+  check('merge keeps accountType', merged.slots.accountType === 'company', merged.slots.accountType);
 }
 
 // Conversation author (deterministic fallback — no LLM needed). Voices each outcome.

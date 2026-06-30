@@ -3,6 +3,7 @@
 // are mounted in later phases; P0 ships /health only.
 import { env } from './config/env.ts';
 import express, { type ErrorRequestHandler } from 'express';
+import { mkdirSync } from 'node:fs';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { logger } from './lib/logger.ts';
@@ -19,6 +20,7 @@ import { leadsRouter } from './api/leads-router.ts';
 import { agentRouter } from './api/agent-router.ts';
 import { orchestrationRouter } from './api/orchestration-router.ts';
 import { connectionsRouter } from './api/connections-router.ts';
+import { IMAGE_OUTPUT_DIR } from './imagegen/nano-banana.ts';
 
 const app = express();
 
@@ -35,6 +37,14 @@ app.use(express.json({ limit: '1mb' }));
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'mktagent', env: env.NODE_ENV });
 });
+
+// Generated media (M2-lite). Serves images the imagegen agent wrote to disk so the
+// UI can render the real artifact (infographic_brief.imageRef = local:<abspath> →
+// /media/images/<hash>.png). Read-only static; filenames are content hashes (non-
+// guessable). NOTE (production): move behind auth or signed URLs before public use.
+// Ensure the dir exists so static doesn't 500 on a fresh container (no images yet).
+mkdirSync(IMAGE_OUTPUT_DIR, { recursive: true });
+app.use('/media/images', express.static(IMAGE_OUTPUT_DIR, { fallthrough: false, maxAge: '1h' }));
 
 // Auth (Google login → JWT). Public start/callback; /auth/me self-guards.
 app.use('/auth', authRouter);
@@ -76,6 +86,13 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   // with a `.type` of 'entity.parse.failed').
   if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
     res.status(400).json({ error: 'invalid_json' });
+    return;
+  }
+  // Respect an error that already carries an HTTP status (e.g. express.static passes a
+  // 404 for a missing file when fallthrough:false). Only unexpected errors are 500s.
+  const status = (err && (err.status || err.statusCode)) as number | undefined;
+  if (status && status >= 400 && status < 500) {
+    res.status(status).json({ error: status === 404 ? 'not_found' : 'request_error' });
     return;
   }
   logger.error('request_failed', { error: String(err) });

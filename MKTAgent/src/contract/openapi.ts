@@ -33,6 +33,8 @@ import {
   updatePostBody,
   createRunBody,
   clarifyRunBody,
+  saveRunBody,
+  savedRunDto,
   workflowRunDto,
 } from '../api/schemas.ts';
 
@@ -85,6 +87,8 @@ const LeadDto = registry.register('LeadDto', leadDto);
 const LeadCaptureResult = registry.register('LeadCaptureResult', leadCaptureResult);
 const CreateRunBody = registry.register('CreateRunBody', createRunBody);
 const ClarifyRunBody = registry.register('ClarifyRunBody', clarifyRunBody);
+const SaveRunBody = registry.register('SaveRunBody', saveRunBody);
+const SavedRunDto = registry.register('SavedRunDto', savedRunDto);
 const WorkflowRunDto = registry.register('WorkflowRunDto', workflowRunDto);
 
 // ---- Envelopes: every response is { data, meta? } | { error, details? }. -------
@@ -485,17 +489,34 @@ registry.registerPath({
 
 registry.registerPath({
   method: 'post',
-  path: '/orchestration/runs/{id}/approve',
+  path: '/orchestration/runs/{id}/save',
   tags: ['orchestration'],
-  summary: 'Approve a planned run → execute the DAG (halts at the publish gate)',
-  description: 'Runs nodes in dependency order. The executor halts BEFORE any external-write node (publisher) → status needs_approval.',
+  summary: 'Save a planned run as a named Saved Flow (no execution)',
+  description: 'Names a planned run so it appears in Saved Flows. Does NOT execute — execution happens later via /execute from Active Flows.',
   security: userAuth,
-  request: { params: runIdParam },
+  request: { params: runIdParam, body: { content: json(SaveRunBody) } },
   responses: {
-    200: { description: 'Run after this pass (needs_approval | completed | failed)', content: json(dataEnvelope(WorkflowRunDto)) },
+    200: { description: 'Named run (still planned)', content: json(dataEnvelope(WorkflowRunDto)) },
     401: errorResponse('Unauthorized'),
     404: errorResponse('Not found / cross-tenant'),
     409: errorResponse('Run is not in planned state'),
+    422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/orchestration/runs/{id}/execute',
+  tags: ['orchestration'],
+  summary: 'Execute a planned/failed run (async) → returns immediately as running',
+  description: 'Flips the run to running and executes the DAG DETACHED (the request returns at once — no long hang). SSE (/events) drives live node status; the executor halts BEFORE the external-write node (publisher) → needs_approval. Re-runnable from a failed state.',
+  security: userAuth,
+  request: { params: runIdParam },
+  responses: {
+    200: { description: 'Run now running (live status via SSE)', content: json(dataEnvelope(WorkflowRunDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Run already in flight or not executable'),
   },
 });
 
@@ -503,15 +524,27 @@ registry.registerPath({
   method: 'post',
   path: '/orchestration/runs/{id}/approve-node/{nodeId}',
   tags: ['orchestration'],
-  summary: 'Approve a gated node (e.g. publisher) → resume execution',
-  description: 'Releases the approval gate for one external-write node and resumes the run. Publishing runs the real publish path.',
+  summary: 'Approve a gated node (e.g. publisher) → resume execution (async)',
+  description: 'Releases the approval gate for one external-write node and resumes the run DETACHED (returns at once; SSE drives status). Publishing runs the real publish path.',
   security: userAuth,
   request: { params: z.object({ id: z.string().uuid(), nodeId: z.string() }) },
   responses: {
-    200: { description: 'Run after resume', content: json(dataEnvelope(WorkflowRunDto)) },
+    200: { description: 'Run now running (live status via SSE)', content: json(dataEnvelope(WorkflowRunDto)) },
     401: errorResponse('Unauthorized'),
     404: errorResponse('Not found / cross-tenant'),
     409: errorResponse('Run is not awaiting approval'),
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/orchestration/runs/saved',
+  tags: ['orchestration'],
+  summary: 'List named Saved Flows (for the sidebar + Active Flows)',
+  security: userAuth,
+  responses: {
+    200: { description: 'Saved flows (most recent first)', content: json(listEnvelope(SavedRunDto)) },
+    401: errorResponse('Unauthorized'),
   },
 });
 

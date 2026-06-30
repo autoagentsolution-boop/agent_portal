@@ -49,12 +49,22 @@ export interface RunnerOutput {
 // review is represented by the Post's status lifecycle, not an executor halt.
 const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const { ownerId, goal } = ctx;
+  // brandContext = the real product knowledge → copy-gen's resolveCopyConfig reads it
+  // ("facts you may use, do not invent beyond these") so copy is grounded, not generic.
+  // For a brand/company, ensure SOME brandVoice so copy-gen takes the company-persona
+  // path rather than persona-free; a personal account keeps whatever (possibly null)
+  // voice the user gave. Use trim()||null not `?? `: the Gemini analyzer can emit an
+  // empty string for an unfilled slot, which `??` would NOT replace (only null/undefined).
+  const clean = (s?: string | null): string | null => (s && s.trim() ? s.trim() : null);
+  const isBrand = goal.slots.accountType === 'business' || goal.slots.accountType === 'company';
+  const brandVoice = clean(goal.slots.brandVoice) ?? (isBrand ? 'Professional, trustworthy brand voice' : null);
   const campaign = await createCampaign({
     ownerId,
     product: goal.slots.product ?? 'Untitled product',
-    angle: goal.slots.angle ?? null,
-    brandVoice: goal.slots.brandVoice ?? null,
-    language: goal.slots.language ?? null,
+    angle: clean(goal.slots.angle),
+    brandVoice,
+    brandContext: clean(goal.slots.productDetails),
+    language: clean(goal.slots.language),
     platforms: goal.platforms.length ? goal.platforms : ['facebook'],
   });
   const post = await createPost({
@@ -115,6 +125,8 @@ const goalContext = (ctx: RunnerContext): string => {
   const { goal, upstream } = ctx;
   const lines = [
     `Product: ${goal.slots.product ?? 'Unspecified product'}`,
+    goal.slots.productDetails ? `Product knowledge (use these facts, do not invent beyond them): ${goal.slots.productDetails}` : null,
+    goal.slots.accountType ? `Marketer type: ${goal.slots.accountType}` : null,
     goal.slots.targetAudience ? `Audience: ${goal.slots.targetAudience}` : null,
     goal.slots.angle ? `Angle: ${goal.slots.angle}` : null,
     goal.slots.brandVoice ? `Brand voice: ${goal.slots.brandVoice}` : null,
@@ -147,21 +159,55 @@ const runStrategy = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   return { type: 'strategy_brief', data: parsed.data };
 };
 
-// Build an image prompt from the concept/strategy upstream. Falls back to the
-// product when richer context is absent so the agent always has something to draw.
+// Build an image prompt from the concept/strategy upstream. Two deliberately distinct
+// outputs (the fix for the mixed-language + generic-image bugs):
+//   - imagePrompt  → sent to nano-banana. Kept in ENGLISH on purpose: the image model is
+//                    English-trained and produces best results in English. DO NOT localize
+//                    this — it is not a user-facing string. Packed with real product facts
+//                    (productDetails + concept + strategy) so the scene is specific, not
+//                    generic cubes.
+//   - visualBrief  → stored on the artifact and shown to the USER. Composed in the user's
+//                    language (Vietnamese when goal.language=vi) so the brief never mixes
+//                    English scaffolding around Vietnamese content.
 const buildImagePrompt = (ctx: RunnerContext): { visualBrief: string; imagePrompt: string } => {
   const { goal, upstream } = ctx;
   const concept = upstream.content_concept as { mainAngle?: string; keyMessage?: string } | undefined;
   const strat = upstream.strategy_brief as { positioning?: string; pillars?: string[] } | undefined;
   const product = goal.slots.product ?? 'the product';
+  const details = goal.slots.productDetails?.trim();
   const angle = concept?.mainAngle ?? goal.slots.angle ?? product;
-  const visualBrief = strat?.positioning
-    ? `Marketing visual for ${product}. Positioning: ${strat.positioning}. Angle: ${angle}.`
-    : `Marketing visual for ${product}. Angle: ${angle}.`;
-  const pillars = strat?.pillars?.length ? ` Themes: ${strat.pillars.join(', ')}.` : '';
+  const keyMessage = concept?.keyMessage?.trim();
+  const positioning = strat?.positioning?.trim();
+  const pillars = strat?.pillars?.length ? strat.pillars.join(', ') : null;
+  const isVi = /^vi/i.test(goal.slots.language ?? '');
+
+  // imagePrompt — ENGLISH, knowledge-rich. Subject derived from real product facts.
+  const subject = details ? `${product} — ${details}` : product;
   const imagePrompt =
-    `A high-quality, professional marketing image for a social media post about ${product}. ` +
-    `${angle}.${pillars} Clean composition, vibrant, brand-friendly, no text overlay.`;
+    `A high-quality, photorealistic marketing image for a social media post about ${subject}. ` +
+    `Visual angle: ${angle}.` +
+    (keyMessage ? ` Key message to evoke: ${keyMessage}.` : '') +
+    (positioning ? ` Positioning: ${positioning}.` : '') +
+    (pillars ? ` Themes: ${pillars}.` : '') +
+    ` Clean, professional composition, vibrant and brand-friendly, no text overlay.`;
+
+  // visualBrief — user-facing, localized. No English scaffolding when lang=vi.
+  const visualBrief = isVi
+    ? [
+        `Hình ảnh marketing cho ${product}.`,
+        details ? `Sản phẩm: ${details}.` : null,
+        positioning ? `Định vị: ${positioning}.` : null,
+        `Góc nhìn: ${angle}.`,
+        pillars ? `Chủ đề: ${pillars}.` : null,
+      ].filter(Boolean).join(' ')
+    : [
+        `Marketing visual for ${product}.`,
+        details ? `Product: ${details}.` : null,
+        positioning ? `Positioning: ${positioning}.` : null,
+        `Angle: ${angle}.`,
+        pillars ? `Themes: ${pillars}.` : null,
+      ].filter(Boolean).join(' ');
+
   return { visualBrief, imagePrompt };
 };
 

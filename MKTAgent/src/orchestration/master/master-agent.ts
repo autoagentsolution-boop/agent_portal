@@ -8,7 +8,7 @@ import type { WorkflowPlan } from '../schemas/workflow-plan.ts';
 import { requirementAnalyzer, type RequirementAnalyzer } from './requirement-analyzer.ts';
 import { evaluateClarification, type ClarificationQuestion } from './clarification-engine.ts';
 import { planWorkflow } from './workflow-planner.ts';
-import { mergeGoals } from './goal-merge.ts';
+import { mergeGoals, applyRemovals } from './goal-merge.ts';
 
 export type MasterAgentOutcome =
   | { status: 'awaiting_clarification'; goal: GoalSpec; questions: ClarificationQuestion[] }
@@ -44,8 +44,12 @@ export class MasterAgent {
   // then re-plan. This is what keeps the conversation cumulative instead of each
   // turn re-asking everything.
   async refine(prior: GoalSpec, message: string): Promise<MasterAgentOutcome> {
-    const delta = await this.analyzer.analyze(message);
-    return this.planFromGoal(mergeGoals(prior, delta));
+    const { goal: delta, removals } = await this.analyzer.analyzeWithRemovals(message);
+    // Additive merge first (keep everything gathered + add new), THEN subtract any
+    // removals the turn expressed ("bỏ video"). Order matters: a turn that both adds
+    // and removes resolves to add-then-remove.
+    const merged = applyRemovals(mergeGoals(prior, delta), removals);
+    return this.planFromGoal(merged);
   }
 }
 

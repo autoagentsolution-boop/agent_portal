@@ -165,6 +165,23 @@ export const clarifyRunBody = z.object({
 });
 export type ClarifyRunBody = z.infer<typeof clarifyRunBody>;
 
+// Save a planned run as a named Saved Flow (before execution).
+export const saveRunBody = z.object({
+  name: z.string().min(1).max(120),
+});
+export type SaveRunBody = z.infer<typeof saveRunBody>;
+
+// Saved Flows list item — summary row for the sidebar + Active Flows list.
+export const savedRunDto = z.object({
+  id: z.string().uuid(),
+  name: z.string().nullable(),
+  status: z.string(),
+  nodeCount: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SavedRunDto = z.infer<typeof savedRunDto>;
+
 export const clarificationQuestionDto = z.object({
   slot: z.string(),
   question: z.string(),
@@ -192,6 +209,8 @@ export const artifactDto = z.object({
 export const workflowRunDto = z.object({
   id: z.string().uuid(),
   status: z.string(),
+  // User-given name once saved as a flow (Saved Flows); null while a draft run.
+  name: z.string().nullable().optional(),
   goal: z.unknown(),
   plan: z.unknown().nullable(),
   // Chat session this run belongs to (M1 conversational unify) + the assistant's

@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import { useAuth } from './hooks/use-auth';
 import { useToast } from './hooks/use-toast';
-import { api, loginUrl, type AgentChatSessionDto, type CampaignDto, type PostDto } from './api/client';
+import { api, loginUrl, type AgentChatSessionDto, type CampaignDto, type PostDto, type SavedRunDto } from './api/client';
 import { ActiveFlowsPage } from './components/ActiveFlowsPage';
 import { DemoModeToggle } from './components/DemoModeToggle';
 import { MasterAgentIntake } from './components/MasterAgentIntake';
@@ -29,6 +29,8 @@ export function App() {
   const [flowPosts, setFlowPosts] = useState<PostDto[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignDto[]>([]);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [savedRuns, setSavedRuns] = useState<SavedRunDto[]>([]);
   const [chatSessions, setChatSessions] = useState<AgentChatSessionDto[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [orchestrateRestore, setOrchestrateRestore] = useState<OrchestrateRestore | null>(null);
@@ -68,7 +70,20 @@ export function App() {
     }
   };
 
-  const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setPage('orchestrate'); };
+  const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setPage('orchestrate'); };
+
+  const loadSavedRuns = async () => {
+    const r = await api.listSavedRuns();
+    if (r.ok) setSavedRuns(r.data);
+  };
+
+  // Open a Saved Flow in Active Flows (from the sidebar branch or after saving).
+  const openSavedFlow = (runId: string) => {
+    setSelectedRunId(runId);
+    setSelectedPostId(null);
+    setActiveCampaign(null);
+    setPage('flows');
+  };
 
   const deleteChat = async (event: MouseEvent<HTMLButtonElement>, chat: AgentChatSessionDto) => {
     event.stopPropagation();
@@ -95,6 +110,7 @@ export function App() {
     if (!auth.user) return;
     void api.listCampaigns().then((r) => { if (r.ok) setCampaigns(r.data); });
     void loadChats();
+    void loadSavedRuns();
   }, [auth.user, refreshKey]);
 
   if (auth.loading) return <div className="center"><div className="muted">Loading…</div></div>;
@@ -118,21 +134,31 @@ export function App() {
           <strong>AgentPortal</strong>
           <button className="icon-btn" aria-label="Toggle theme" onClick={() => setTheme((t) => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '◐' : '☼'}</button>
         </div>
-        <button className={`sidebar-item ${page === 'master' && !activeChatId ? 'active' : ''}`} onClick={() => { setActiveChatId(null); setPage('master'); }}>✎ New setup chat</button>
+        <button className={`sidebar-item ${page === 'master' && !activeChatId ? 'active' : ''}`} onClick={() => { setActiveChatId(null); setSelectedRunId(null); setPage('master'); }}>✎ New setup chat</button>
         <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>⚡ Orchestrate (M1)</button>
-        <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => setPage('connections')}>🔌 Connections</button>
-        <button className={`sidebar-item ${page === 'flows' ? 'active' : ''}`} onClick={() => setPage('flows')}>▦ Active Flows</button>
+        <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('connections'); }}>🔌 Connections</button>
+        <button className={`sidebar-item ${page === 'flows' && !selectedRunId ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('flows'); }}>▦ Active Flows</button>
         <div className="flow-sidebar-tree">
-          <button className="tree-row level-1" onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setPage('flows'); }}>Branding / Social</button>
+          <button className="tree-row level-1" onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>Branding / Social</button>
+          <div className="tree-row level-1 tree-label">Saved Flows</div>
+          {savedRuns.length === 0 ? (
+            <div className="tree-empty">No saved flows yet</div>
+          ) : savedRuns.map((flow) => (
+            <button
+              key={flow.id}
+              className={`tree-row level-2 ${selectedRunId === flow.id ? 'active' : ''}`}
+              onClick={() => openSavedFlow(flow.id)}
+            >{flow.name ?? 'Untitled flow'} <span className="tree-badge">{flow.nodeCount}</span></button>
+          ))}
           {campaigns.length === 0 ? (
             <div className="tree-empty">No campaigns yet</div>
           ) : campaigns.map((campaign) => {
             const campaignPosts = flowPosts.filter((post) => post.campaignId === campaign.id);
             return (
               <div key={campaign.id}>
-                <button className={`tree-row level-2 ${activeCampaign === campaign.id && !selectedPostId ? 'active' : ''}`} onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(null); setPage('flows'); }}>{campaign.product}</button>
+                <button className={`tree-row level-2 ${activeCampaign === campaign.id && !selectedPostId && !selectedRunId ? 'active' : ''}`} onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>{campaign.product}</button>
                 {campaignPosts.length === 0 ? <div className="tree-empty nested">No briefs loaded</div> : campaignPosts.slice(0, 6).map((post, index) => (
-                  <button className={`tree-row level-3 ${selectedPostId === post.id ? 'active' : ''}`} key={post.id} onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(post.id); setPage('flows'); }}>{postTitle(post, index)}</button>
+                  <button className={`tree-row level-3 ${selectedPostId === post.id ? 'active' : ''}`} key={post.id} onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(post.id); setSelectedRunId(null); setPage('flows'); }}>{postTitle(post, index)}</button>
                 ))}
               </div>
             );
@@ -172,6 +198,7 @@ export function App() {
               restore={orchestrateRestore}
               notify={show}
               onRunActivity={(sessionId) => { void loadChats(); if (!activeChatId) setActiveChatId(sessionId); bump(); }}
+              onSaved={(runId) => { void loadSavedRuns().then(() => openSavedFlow(runId)); }}
             />
           </div>
         ) : page === 'connections' ? (
@@ -184,9 +211,10 @@ export function App() {
             demoMode={demoMode}
             refreshKey={refreshKey}
             selectedPostId={selectedPostId}
+            selectedRunId={selectedRunId}
             onCampaignSelect={setActiveCampaign}
             onDemoModeChange={setDemoMode}
-            onRefresh={bump}
+            onRefresh={() => { bump(); void loadSavedRuns(); }}
             onPostsChange={setFlowPosts}
             notify={show}
           />

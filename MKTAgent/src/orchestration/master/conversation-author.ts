@@ -27,6 +27,8 @@ const extractText = (raw: unknown): string =>
 const outcomeContext = (outcome: MasterAgentOutcome): unknown => {
   const goal = {
     product: outcome.goal.slots.product ?? null,
+    productDetails: outcome.goal.slots.productDetails ?? null,
+    accountType: outcome.goal.slots.accountType ?? null,
     targetAudience: outcome.goal.slots.targetAudience ?? null,
     angle: outcome.goal.slots.angle ?? null,
     platforms: outcome.goal.platforms,

@@ -4,6 +4,7 @@
 import type { RunWithNodes } from '../db/repos/workflow-run-repo.ts';
 import { goalSpec, type GoalSpec } from '../orchestration/schemas/goal-spec.ts';
 import type { ClarificationQuestion } from '../orchestration/master/clarification-engine.ts';
+import { parseAccountType } from '../orchestration/master/deterministic-analyzer.ts';
 import type { WorkflowRunDto } from './schemas.ts';
 
 export type ClarifyQuestions = ClarificationQuestion[];
@@ -16,6 +17,7 @@ export interface RunDtoExtras {
 export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): WorkflowRunDto => ({
   id: run.id,
   status: run.status,
+  name: run.name ?? null,
   goal: run.goal,
   plan: run.plan ?? null,
   chatSessionId: run.chatSessionId ?? null,
@@ -68,6 +70,16 @@ export const mergeAnswers = (
       case 'product':
         goal.slots.product = first(value);
         break;
+      case 'productDetails':
+        goal.slots.productDetails = first(value);
+        break;
+      case 'accountType': {
+        // Answer is a localized choice label (cá nhân/thương hiệu/công ty) or free
+        // text — map through the same parser the analyzer uses so the enum is consistent.
+        const mapped = parseAccountType(first(value));
+        if (mapped) goal.slots.accountType = mapped;
+        break;
+      }
       case 'targetAudience':
         goal.slots.targetAudience = first(value);
         break;

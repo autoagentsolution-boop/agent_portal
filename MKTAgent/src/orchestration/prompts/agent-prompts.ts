@@ -9,9 +9,10 @@ Return ONLY valid JSON of this exact shape:
   "chosen": "the single direction you recommend pursuing"
 }
 Rules:
+- Ground every idea in the "Product knowledge" facts provided — do not invent capabilities or claims beyond them.
 - 3-5 ideas, each one concise sentence describing an angle/hook.
 - "chosen" must be one of the ideas (verbatim or a tightened version).
-- Write in the campaign's language if stated; otherwise match the product's language.
+- Write in the campaign's "Language" if stated; otherwise match the product's language. Write ALL idea text in that one language — do not mix languages.
 - Output JSON only. No prose, no markdown fences.`;
 
 export const strategySystemPrompt = `You are AgentPortal's strategy agent for a marketing campaign.
@@ -24,7 +25,8 @@ Return ONLY valid JSON of this exact shape:
   "funnelStage": "awareness|consideration|conversion|retention"
 }
 Rules:
+- Ground the brief in the "Product knowledge" facts provided — do not invent capabilities or claims beyond them.
 - 2-4 pillars, each a short phrase.
 - funnelStage must be one of the four listed values.
-- Write in the campaign's language if stated; otherwise match the product's language.
+- Write in the campaign's "Language" if stated; otherwise match the product's language. Write ALL text in that one language — do not mix languages.
 - Output JSON only. No prose, no markdown fences.`;

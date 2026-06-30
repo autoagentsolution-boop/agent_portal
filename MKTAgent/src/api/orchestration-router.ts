@@ -10,7 +10,7 @@
 // external-write control (brief §11.12).
 import { Router } from 'express';
 import { ok, fail, parseOr422, asyncHandler } from './http.ts';
-import { createRunBody, clarifyRunBody } from './schemas.ts';
+import { createRunBody, clarifyRunBody, saveRunBody } from './schemas.ts';
 import { masterAgent } from '../orchestration/master/master-agent.ts';
 import { goalSpec, type GoalSpec } from '../orchestration/schemas/goal-spec.ts';
 import { workflowPlan, type WorkflowPlan } from '../orchestration/schemas/workflow-plan.ts';
@@ -23,8 +23,12 @@ import {
   getRunWithNodes,
   getLatestRunWithNodesForChat,
   listRuns,
+  listSavedRuns,
+  nameRun,
   replanRun,
+  setRunStatus,
 } from '../db/repos/workflow-run-repo.ts';
+import { logger } from '../lib/logger.ts';
 import { mergeAnswers, toRunDto, type ClarifyQuestions } from './orchestration-mappers.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
 import { ensureChatSession, recordTurn, summarizeAnswers } from './orchestration-chat.ts';
@@ -135,13 +139,48 @@ orchestrationRouter.post('/runs/:id/clarify', asyncHandler(async (req, res) => {
   return respondRun(res, run.id, req.userId!, { questions, assistantMessage });
 }));
 
-orchestrationRouter.post('/runs/:id/approve', asyncHandler(async (req, res) => {
+// Save a planned run as a named Saved Flow (no execution). The chat "Approve" button
+// calls this; execution happens later from Active Flows via /execute.
+orchestrationRouter.post('/runs/:id/save', asyncHandler(async (req, res) => {
+  const body = parseOr422(res, saveRunBody, req.body ?? {});
+  if (!body) return;
   const run = await getRunForOwner(req.params.id, req.userId!);
   if (!run) return fail(res, 404, 'run_not_found');
   if (run.status !== 'planned') return fail(res, 409, 'run_not_planned');
+  const named = await nameRun(run.id, req.userId!, body.name.trim());
+  if (!named) return fail(res, 409, 'run_not_planned');
+  return respondRun(res, run.id, req.userId!);
+}));
+
+// Execute (or re-execute a failed) saved/planned flow. ASYNC by design: the DAG runs
+// ideation→…→real image gen (~30-60s) then halts at the publisher gate. Running it on
+// the request thread hangs the UI with no progress (the old "stuck Thinking" bug).
+// Instead we flip status→running synchronously (so a concurrent execute 409s) and let
+// the executor run detached — SSE (node.status) drives the live DAG; the panel refetches
+// artifacts on the terminal event. All executor writes are keyed by runId → safe detached.
+const launchWorkflow = (
+  runId: string,
+  ownerId: string,
+  goal: GoalSpec,
+  plan: WorkflowPlan,
+  opts: Parameters<typeof runWorkflow>[4] = {},
+): void => {
+  void runWorkflow(runId, ownerId, goal, plan, opts).catch((e) => {
+    logger.error('wf_execute_detached_failed', { runId, error: String(e instanceof Error ? e.message : e) });
+  });
+};
+
+orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
+  const run = await getRunForOwner(req.params.id, req.userId!);
+  if (!run) return fail(res, 404, 'run_not_found');
+  // Allow execute from planned, or re-run a failed flow. Reject if already in flight.
+  if (run.status === 'running' || run.status === 'needs_approval') return fail(res, 409, 'run_in_flight');
+  if (run.status !== 'planned' && run.status !== 'failed') return fail(res, 409, 'run_not_executable');
   const goal = goalSpec.parse(run.goal);
   const plan: WorkflowPlan = workflowPlan.parse(run.plan);
-  await runWorkflow(run.id, req.userId!, goal, plan);
+  // Claim into running before responding so a double-click can't spawn two executors.
+  await setRunStatus(run.id, 'running');
+  launchWorkflow(run.id, req.userId!, goal, plan);
   return respondRun(res, run.id, req.userId!);
 }));
 
@@ -151,8 +190,17 @@ orchestrationRouter.post('/runs/:id/approve-node/:nodeId', asyncHandler(async (r
   if (run.status !== 'needs_approval') return fail(res, 409, 'run_not_awaiting_approval');
   const goal = goalSpec.parse(run.goal);
   const plan: WorkflowPlan = workflowPlan.parse(run.plan);
-  await runWorkflow(run.id, req.userId!, goal, plan, { approveNodeId: req.params.nodeId });
+  // Resume past the approval gate, also detached (the publisher step itself can take
+  // seconds). Flip to running first for the same double-submit guard as /execute.
+  await setRunStatus(run.id, 'running');
+  launchWorkflow(run.id, req.userId!, goal, plan, { approveNodeId: req.params.nodeId });
   return respondRun(res, run.id, req.userId!);
+}));
+
+// Saved Flows list (named runs only) for the sidebar + Active Flows surface.
+orchestrationRouter.get('/runs/saved', asyncHandler(async (req, res) => {
+  const rows = await listSavedRuns(req.userId!);
+  ok(res, rows.map((r) => ({ id: r.id, name: r.name, status: r.status, nodeCount: r.nodeCount, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })), { count: rows.length, nextCursor: null });
 }));
 
 orchestrationRouter.get('/runs', asyncHandler(async (req, res) => {

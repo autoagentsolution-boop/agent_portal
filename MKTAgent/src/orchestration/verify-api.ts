@@ -105,22 +105,112 @@ async function main(): Promise<void> {
     const leak = await call('GET', `/orchestration/runs/${runId}`, tokenB);
     check('cross-tenant GET → 404', leak.status === 404, leak.status);
 
-    // Approve → executes, halts at publisher gate (needs_approval).
-    const approved = await call('POST', `/orchestration/runs/${runId}/approve`, tokenA);
-    check('approve → needs_approval', approved.body?.data?.status === 'needs_approval', approved.body?.data?.status);
-    const pub = approved.body?.data?.nodes?.find((n: any) => n.agentId === 'publisher');
+    // SUBTRACTIVE REFINEMENT over HTTP: drop the infographic we just added. Same run,
+    // still planned, infographic node gone, product/audience kept (no re-clarify).
+    const subtracted = await call('POST', '/orchestration/runs', tokenA, { message: 'bỏ infographic đi', chatSessionId: completeChat });
+    check('subtractive → same run', subtracted.body?.data?.id === runId, { got: subtracted.body?.data?.id, want: runId });
+    check('subtractive → still planned (no re-clarify)', subtracted.body?.data?.status === 'planned', subtracted.body?.data?.status);
+    check('subtractive removed infographic node', !subtracted.body?.data?.nodes?.some((n: any) => n.agentId === 'infographic'), subtracted.body?.data?.nodes?.map((n: any) => n.agentId));
+    check('subtractive kept product', Boolean((subtracted.body?.data?.goal as any)?.slots?.product), (subtracted.body?.data?.goal as any)?.slots?.product);
+
+    // SAVE as a named flow (chat "Approve"). Does NOT execute — stays planned.
+    const saveBad = await call('POST', `/orchestration/runs/${runId}/save`, tokenA, { name: '' });
+    check('save empty name → 422', saveBad.status === 422, saveBad.status);
+    const saved = await call('POST', `/orchestration/runs/${runId}/save`, tokenA, { name: 'Verify demo flow' });
+    check('save → 200 still planned', saved.status === 200 && saved.body?.data?.status === 'planned', { s: saved.status, st: saved.body?.data?.status });
+    check('save sets name', saved.body?.data?.name === 'Verify demo flow', saved.body?.data?.name);
+    check('save cross-tenant → 404', (await call('POST', `/orchestration/runs/${runId}/save`, tokenB, { name: 'x' })).status === 404);
+
+    // Saved Flows list (named only) — must include the run we just named.
+    const savedList = await call('GET', '/orchestration/runs/saved', tokenA);
+    check('GET /runs/saved 200', savedList.status === 200, savedList.status);
+    check('saved list includes the named run with nodeCount', savedList.body?.data?.some((r: any) => r.id === runId && r.name === 'Verify demo flow' && r.nodeCount > 0), savedList.body?.data);
+    check('saved list 401 no token', (await call('GET', '/orchestration/runs/saved')).status === 401);
+
+    // EXECUTE (async) → must return IMMEDIATELY as running (the stuck-Thinking fix).
+    const t0 = Date.now();
+    const exec = await call('POST', `/orchestration/runs/${runId}/execute`, tokenA);
+    const execMs = Date.now() - t0;
+    check('execute → 200 running', exec.status === 200 && exec.body?.data?.status === 'running', { s: exec.status, st: exec.body?.data?.status });
+    check('execute returns FAST (<3s, not the 30-60s sync hang)', execMs < 3000, `${execMs}ms`);
+    // Double-execute while in flight → 409 (no second detached executor).
+    check('execute while in flight → 409', (await call('POST', `/orchestration/runs/${runId}/execute`, tokenA)).status === 409);
+
+    // Poll for the detached executor to reach the publisher gate (needs_approval).
+    let gated: any = null;
+    for (let i = 0; i < 40; i++) {
+      const r = await call('GET', `/orchestration/runs/${runId}`, tokenA);
+      if (r.body?.data?.status === 'needs_approval' || r.body?.data?.status === 'failed') { gated = r.body.data; break; }
+      await new Promise((res) => setTimeout(res, 500));
+    }
+    check('execution reached needs_approval (gate)', gated?.status === 'needs_approval', gated?.status);
+    const pub = gated?.nodes?.find((n: any) => n.agentId === 'publisher');
     check('publisher node awaiting_approval', pub?.status === 'awaiting_approval', pub?.status);
-    check('concept_writer completed', approved.body?.data?.nodes?.find((n: any) => n.agentId === 'concept_writer')?.status === 'completed');
+    check('concept_writer completed', gated?.nodes?.find((n: any) => n.agentId === 'concept_writer')?.status === 'completed');
 
-    // Wrong state guard: approve again → 409.
-    const reApprove = await call('POST', `/orchestration/runs/${runId}/approve`, tokenA);
-    check('re-approve → 409 not_planned', reApprove.status === 409, reApprove.status);
+    // Approve the publisher node → resume (async) → poll to terminal. DRY: the live
+    // publish path runs but the materialized Post has fake media → faithful error,
+    // ZERO real social posts (the no-burst-posts rule). Guard on the gate being reached.
+    if (pub?.nodeId) {
+      const resumed = await call('POST', `/orchestration/runs/${runId}/approve-node/${pub.nodeId}`, tokenA);
+      check('approve-node → 200 running', resumed.status === 200, resumed.status);
+      let done: any = null;
+      for (let i = 0; i < 40; i++) {
+        const r = await call('GET', `/orchestration/runs/${runId}`, tokenA);
+        if (r.body?.data?.status === 'completed' || r.body?.data?.status === 'failed') { done = r.body.data; break; }
+        await new Promise((res) => setTimeout(res, 500));
+      }
+      check('resume reached terminal (completed|failed)', done?.status === 'completed' || done?.status === 'failed', done?.status);
+      const pr = done?.artifacts?.find((a: any) => a.type === 'publish_result');
+      check('publish_result artifact present', Boolean(pr), done?.artifacts?.map((a: any) => a.type));
+    } else {
+      check('publisher gate reached (skipped resume — gate not hit)', false, gated?.status);
+    }
 
-    // Approve the publisher node → resume → completed (live publish path, real media id).
-    const resumed = await call('POST', `/orchestration/runs/${runId}/approve-node/${pub.nodeId}`, tokenA);
-    check('approve-node → completed', resumed.body?.data?.status === 'completed', resumed.body?.data?.status);
-    const pr = resumed.body?.data?.artifacts?.find((a: any) => a.type === 'publish_result');
-    check('publish_result artifact present', Boolean(pr), resumed.body?.data?.artifacts?.map((a: any) => a.type));
+    // ---- PRODUCT KNOWLEDGE + PERSONA + language-clean image (the demo fix) ----
+    // (a) A thin product over HTTP must trigger the productDetails knowledge gate.
+    const thinKnow = await call('POST', '/orchestration/runs', tokenA, { message: 'tôi muốn quảng cáo sản phẩm của tôi trên facebook' });
+    check('thin product → awaiting_clarification', thinKnow.body?.data?.status === 'awaiting_clarification', thinKnow.body?.data?.status);
+    check('thin product asks productDetails (required)', (thinKnow.body?.data?.questions ?? []).some((q: any) => q.slot === 'productDetails' && q.required), thinKnow.body?.data?.questions?.map((q: any) => q.slot));
+
+    // (b) A rich vi full-campaign with REAL product knowledge → planned, then executed.
+    // The infographic node runs BEFORE the publisher gate, so its artifact is available
+    // at needs_approval without ever approving a publish (stays DRY — 0 social posts).
+    const vi = await call('POST', '/orchestration/runs', tokenA, {
+      message: 'Lên chiến dịch branding bằng tiếng Việt cho thương hiệu của công ty tôi: sản phẩm là máy lọc nước thông minh chuyên cung cấp nước sạch cho gia đình, giúp tiết kiệm điện và lọc khuẩn, đối tượng là các gia đình trẻ ở thành phố, đăng facebook kèm infographic',
+    });
+    check('vi rich campaign → planned', vi.body?.data?.status === 'planned', { st: vi.body?.data?.status, q: vi.body?.data?.questions });
+    const viRunId = vi.body?.data?.id;
+    check('vi goal captured productDetails', Boolean((vi.body?.data?.goal as any)?.slots?.productDetails), (vi.body?.data?.goal as any)?.slots?.productDetails);
+    check('vi goal inferred accountType=company', (vi.body?.data?.goal as any)?.slots?.accountType === 'company', (vi.body?.data?.goal as any)?.slots?.accountType);
+
+    if (viRunId && vi.body?.data?.status === 'planned') {
+      await call('POST', `/orchestration/runs/${viRunId}/execute`, tokenA);
+      let viGated: any = null;
+      for (let i = 0; i < 60; i++) {
+        const r = await call('GET', `/orchestration/runs/${viRunId}`, tokenA);
+        const st = r.body?.data?.status;
+        if (st === 'needs_approval' || st === 'failed' || st === 'completed') { viGated = r.body.data; break; }
+        await new Promise((res) => setTimeout(res, 1000));
+      }
+      check('vi run executed to gate (not failed)', viGated?.status === 'needs_approval', { st: viGated?.status, nodes: viGated?.nodes?.map((n: any) => ({ a: n.agentId, s: n.status, e: n.error })) });
+      const info = viGated?.artifacts?.find((a: any) => a.type === 'infographic_brief');
+      check('infographic_brief artifact present', Boolean(info), viGated?.artifacts?.map((a: any) => a.type));
+      if (info) {
+        const brief = String(info.data?.visualBrief ?? '');
+        const prompt = String(info.data?.imagePrompt ?? '');
+        // Point-2 fix: the USER-FACING brief is Vietnamese — no English scaffolding.
+        check('visualBrief has NO English scaffold (vi)', !/Marketing visual for|Positioning:|Angle:|Themes:/i.test(brief), brief);
+        check('visualBrief is Vietnamese', /Hình ảnh marketing|Định vị|Góc nhìn|Sản phẩm:/i.test(brief), brief);
+        // Point-3 fix: the image prompt (English, sent to the model) is grounded in real
+        // product facts, not generic. "lọc nước"/"nước" knowledge must surface.
+        check('imagePrompt references product facts', /lọc nước|nước|water|filter/i.test(prompt), prompt);
+      }
+      // concept_writer must have set Campaign.brandContext from productDetails.
+      const camp = await prisma.campaign.findFirst({ where: { ownerId: userA.id }, orderBy: { createdAt: 'desc' } });
+      check('Campaign.brandContext set from productDetails', Boolean(camp?.brandContext), camp?.brandContext?.slice(0, 80));
+      check('Campaign.brandVoice set for company persona', Boolean(camp?.brandVoice), camp?.brandVoice);
+    }
 
     // List runs for A.
     const list = await call('GET', '/orchestration/runs', tokenA);
@@ -137,6 +227,15 @@ async function main(): Promise<void> {
     check('fresh tenant → all not_connected', rows.every((r: any) => r.state === 'not_connected'), rows.map((r: any) => r.state));
     check('each row carries capabilities + connectUrl', rows.every((r: any) => Array.isArray(r.capabilities) && typeof r.connectUrl === 'string'), rows[0]);
     check('no token value leaked in connection rows', rows.every((r: any) => !('token' in r) && !('refreshToken' in r)), rows[0]);
+
+    // ---- Generated media route (/media/images) ----
+    // Unknown file → 404 (route mounted, fallthrough:false, errorHandler respects the
+    // 404 status). The 200-serve of a real PNG is exercised in the manual e2e: this
+    // script runs on the HOST but the API serves the CONTAINER filesystem (separate
+    // disks), so a host-side PNG isn't fetchable here — checking it would be a false
+    // negative. The route + error mapping is what we assert programmatically.
+    const missing = await fetch(`${BASE}/media/images/does-not-exist.png`);
+    check('media unknown file → 404 (route mounted)', missing.status === 404, missing.status);
   } finally {
     await prisma.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
     console.log('cleanup: 2 throwaway tenants removed');

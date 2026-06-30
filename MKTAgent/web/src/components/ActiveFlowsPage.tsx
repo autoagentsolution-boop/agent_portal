@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DemoModeToggle } from './DemoModeToggle';
 import { PostBoard } from './PostBoard';
+import { SavedFlowDetail } from './saved-flow-detail';
 import { api, type AgentCredentialStatusDto, type PostDto } from '../api/client';
 import { brandingVideoFlow, type DemoMode, type FlowAgentNode } from '../flow/demo-flow';
 
@@ -9,6 +10,7 @@ interface Props {
   demoMode: DemoMode;
   refreshKey: number;
   selectedPostId: string | null;
+  selectedRunId: string | null;
   onCampaignSelect: (id: string | null) => void;
   onDemoModeChange: (mode: DemoMode) => void;
   onRefresh: () => void;
@@ -207,6 +209,21 @@ export function ActiveFlowsPage(props: Props) {
     setCredentialValues((current) => ({ ...current, [key]: '' }));
     props.notify('Credential deleted');
   };
+
+  // A selected Saved Flow takes over the workspace with its real run detail
+  // (DAG + execute + per-node output). Otherwise the static demo flow shows.
+  if (props.selectedRunId) {
+    return (
+      <div className="active-flow-workspace">
+        <SavedFlowDetail
+          key={props.selectedRunId}
+          runId={props.selectedRunId}
+          notify={props.notify}
+          onStatusChange={props.onRefresh}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="active-flow-workspace">
