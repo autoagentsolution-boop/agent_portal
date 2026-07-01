@@ -12,6 +12,9 @@
 import { publishTo } from '../../social/index.ts';
 import { getConnector, getConnectorAction } from '../registry/connector-registry.ts';
 import { recordExternalAction } from '../audit/external-action-audit-log.ts';
+import { findPriorSuccess, publishIdempotencyKey } from './idempotency-manager.ts';
+import { acquireSlot } from './rate-limit-manager.ts';
+import { withRetry } from '../../lib/retry.ts';
 import { logger } from '../../lib/logger.ts';
 import type { PublishInput, PublishResult } from '../../social/types.ts';
 import type { SocialPlatform } from '../../../prisma/generated/prisma/client.ts';
@@ -22,7 +25,8 @@ export interface InvokeActionArgs {
   // Capability skill, e.g. 'social.post.image'. Resolved to a connector action.
   actionKey: string;
   input: PublishInput;
-  // Optional idempotency key — reserved for §11.15 (dedupe). Carried now, enforced later.
+  // Optional idempotency key (§11.15). When set, a prior successful audit row for the
+  // same (ownerId, key) short-circuits — the action is NOT re-sent to the platform.
   idempotencyKey?: string;
 }
 
@@ -66,8 +70,24 @@ export const invokeAction = async (args: InvokeActionArgs): Promise<InvokeResult
     return { ok: false, platform, actionKey, externalId: null, error: `missing required input(s): ${missing.join(', ')}` };
   }
 
+  // Idempotency (§11.15): if this exact action already succeeded, return the cached
+  // externalId — never post twice. Owner-scoped, durable (audit-log backed).
+  if (args.idempotencyKey) {
+    const prior = await findPriorSuccess(ownerId, args.idempotencyKey);
+    if (prior) {
+      logger.info('connector_idempotent_hit', { ownerId, platform, actionKey, idempotencyKey: args.idempotencyKey });
+      return { ok: true, platform, actionKey, externalId: prior.externalId, error: null };
+    }
+  }
+
+  // Rate-limit (§11.15): space bursts per owner+platform before the network call.
+  await acquireSlot(ownerId, platform);
+
   logger.info('connector_invoke', { ownerId, platform, actionKey, postId: input.postId });
-  const result = await publishTo(platform, input);
+  // Retry (§11.15): the adapter swallows most failures into ok:false (no throw), so
+  // withRetry mainly guards against genuine transport throws — a documented seam. It does
+  // NOT retry an ok:false result (that's a semantic failure, not a transient fault).
+  const result = await withRetry(() => publishTo(platform, input), { label: `publish:${platform}`, attempts: 3 });
   const invoked = toInvokeResult(platform, actionKey, result);
 
   // Audit every REAL external attempt (§11.13) — after the network call, with redacted
@@ -110,6 +130,7 @@ export const runtimePublishFn = async (
     platform,
     actionKey: actionKeyForAsset(input.assetType),
     input,
+    idempotencyKey: publishIdempotencyKey(input.postId, platform, input.assetType),
   });
   return { platform, ok: res.ok, url: res.externalId, error: res.error };
 };

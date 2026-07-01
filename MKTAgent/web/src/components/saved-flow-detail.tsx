@@ -8,7 +8,9 @@ import { api, type WorkflowRunDto } from '../api/client';
 import { useRunEvents } from '../hooks/use-run-events';
 import { RunDagView } from './run-dag-view';
 import { ConnectionRequired } from './connection-required';
+import { AgentCredentialPanel } from './agent-credential-panel';
 import { formatArtifact } from '../flow/artifact-format';
+import { hasCredentialSetup } from '../flow/agent-credentials';
 
 interface Props {
   runId: string;
@@ -26,12 +28,26 @@ export function SavedFlowDetail({ runId, notify, onStatusChange }: Props) {
   const [run, setRun] = useState<WorkflowRunDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
 
   const load = async () => {
     const r = await api.getRun(runId);
     if (r.ok) setRun(r.data); else notify(`Load flow: ${r.error.error}`, 'err');
   };
-  useEffect(() => { setRun(null); setSelectedNode(null); void load(); }, [runId]);
+  useEffect(() => { setRun(null); setSelectedNode(null); setRenaming(false); void load(); }, [runId]);
+
+  const commitRename = async () => {
+    if (!run) return;
+    const next = nameDraft.trim();
+    if (!next || next === (run.name ?? '')) { setRenaming(false); return; }
+    setBusy(true);
+    try {
+      const r = await api.renameRun(run.id, next);
+      if (!r.ok) { notify(`Rename: ${r.error.error}`, 'err'); return; }
+      setRun(r.data); setRenaming(false); onStatusChange(); notify('Flow renamed');
+    } finally { setBusy(false); }
+  };
 
   // Live node status while executing. Terminal events refetch so artifacts land.
   const liveId = run && (run.status === 'running' || run.status === 'needs_approval') ? run.id : null;
@@ -75,6 +91,7 @@ export function SavedFlowDetail({ runId, notify, onStatusChange }: Props) {
   const canExecute =
     run.status === 'planned' || run.status === 'failed' ||
     (run.status === 'needs_connection' && requiredActions.length === 0);
+  const selectedNodeRun = selectedNode ? run.nodes.find((n) => n.nodeId === selectedNode) : null;
   const selectedArtifact = selectedNode ? run.artifacts.find((a) => a.nodeId === selectedNode) : null;
   const selectedView = selectedArtifact ? formatArtifact(selectedArtifact.type, selectedArtifact.data) : null;
 
@@ -83,7 +100,25 @@ export function SavedFlowDetail({ runId, notify, onStatusChange }: Props) {
       <div className="spread">
         <div>
           <div className="eyebrow">Saved flow</div>
-          <h3>{run.name ?? 'Untitled flow'}</h3>
+          {renaming ? (
+            <div className="flow-rename">
+              <input
+                aria-label="Flow name"
+                autoFocus
+                value={nameDraft}
+                disabled={busy}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void commitRename(); if (e.key === 'Escape') setRenaming(false); }}
+              />
+              <button className="btn primary" disabled={busy} onClick={() => void commitRename()}>{busy ? 'Saving…' : 'Save'}</button>
+              <button className="btn" disabled={busy} onClick={() => setRenaming(false)}>Cancel</button>
+            </div>
+          ) : (
+            <h3 className="flow-title">
+              {run.name ?? 'Untitled flow'}
+              <button className="icon-btn rename-btn" aria-label="Rename flow" title="Rename flow" onClick={() => { setNameDraft(run.name ?? ''); setRenaming(true); }}>✎</button>
+            </h3>
+          )}
           <span className={`flow-status st-${run.status}`}>{STATUS_LABEL[run.status] ?? run.status}</span>
         </div>
         {canExecute && (
@@ -127,6 +162,9 @@ export function SavedFlowDetail({ runId, notify, onStatusChange }: Props) {
             </>
           ) : (
             <p className="muted small">This step hasn't produced output yet — run the flow to populate it.</p>
+          )}
+          {selectedNodeRun && hasCredentialSetup(selectedNodeRun.agentId) && (
+            <AgentCredentialPanel agentId={selectedNodeRun.agentId} notify={notify} />
           )}
         </div>
       )}

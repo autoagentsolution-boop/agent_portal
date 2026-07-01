@@ -26,6 +26,7 @@ import {
   listRuns,
   listSavedRuns,
   nameRun,
+  renameRun,
   replanRun,
   setRunStatus,
 } from '../db/repos/workflow-run-repo.ts';
@@ -153,6 +154,16 @@ orchestrationRouter.post('/runs/:id/save', asyncHandler(async (req, res) => {
   const named = await nameRun(run.id, req.userId!, body.name.trim());
   if (!named) return fail(res, 409, 'run_not_planned');
   return respondRun(res, run.id, req.userId!);
+}));
+
+// Rename a saved flow (any status). Unlike /save (planned-only, the initial naming),
+// this lets the user relabel a flow they've already executed. Reuses the {name} body.
+orchestrationRouter.patch('/runs/:id', asyncHandler(async (req, res) => {
+  const body = parseOr422(res, saveRunBody, req.body ?? {});
+  if (!body) return;
+  const named = await renameRun(req.params.id, req.userId!, body.name.trim());
+  if (!named) return fail(res, 404, 'run_not_found');
+  return respondRun(res, req.params.id, req.userId!);
 }));
 
 // Execute (or re-execute a failed) saved/planned flow. ASYNC by design: the DAG runs

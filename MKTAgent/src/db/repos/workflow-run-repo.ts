@@ -117,6 +117,14 @@ export const nameRun = async (id: string, ownerId: string, name: string): Promis
   return r.count === 1 ? prisma.workflowRun.findFirst({ where: { id, ownerId } }) : null;
 };
 
+// Rename an EXISTING saved flow regardless of status (unlike nameRun, which only stamps
+// a fresh planned run). Owner-scoped; returns null on wrong tenant / missing id. Used by
+// PATCH /runs/:id so a user can rename a flow they've already executed.
+export const renameRun = async (id: string, ownerId: string, name: string): Promise<WorkflowRun | null> => {
+  const r = await prisma.workflowRun.updateMany({ where: { id, ownerId }, data: { name } });
+  return r.count === 1 ? prisma.workflowRun.findFirst({ where: { id, ownerId } }) : null;
+};
+
 // Restore the run behind a chat session (conversational unify): a chat may spawn
 // many runs over its life; the latest is the live one the panel re-opens. Scoped by
 // ownerId (tenant isolation) and returns null when the chat has no run yet.

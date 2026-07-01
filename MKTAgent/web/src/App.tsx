@@ -215,7 +215,7 @@ export function App() {
         <div className="flow-sidebar-tree">
           <div className="tree-section-head">
             <button className={`tree-row level-1 tree-label flow-head ${page === 'flows' && !selectedRunId && !activeCampaign ? 'active' : ''}`} onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>▦ Flows</button>
-            <button className="tree-row-add" aria-label="New campaign" title="New campaign" onClick={(e) => void createCampaignUnder(e, null)}>+</button>
+            <button className="tree-row-add" aria-label="New flow" title="New flow — describe it to the Master Agent" onClick={(e) => { e.stopPropagation(); openOrchestrate(); }}>+</button>
           </div>
           {savedRuns.length === 0 && campaigns.length === 0 && (
             <div className="tree-empty">No flows yet — orchestrate one to begin</div>
@@ -277,10 +277,10 @@ export function App() {
             refreshKey={refreshKey}
             selectedPostId={selectedPostId}
             selectedRunId={selectedRunId}
-            onCampaignSelect={setActiveCampaign}
             onDemoModeChange={setDemoMode}
             onRefresh={() => { bump(); void loadSavedRuns(); }}
             onPostsChange={mergePosts}
+            onNewFlow={openOrchestrate}
             notify={show}
           />
         )}

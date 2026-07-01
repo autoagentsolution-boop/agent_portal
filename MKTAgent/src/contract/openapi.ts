@@ -505,6 +505,22 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: 'patch',
+  path: '/orchestration/runs/{id}',
+  tags: ['orchestration'],
+  summary: 'Rename a saved flow (any status)',
+  description: 'Updates the flow name regardless of run status. Unlike /save (planned-only), this relabels an already-executed flow.',
+  security: userAuth,
+  request: { params: runIdParam, body: { content: json(SaveRunBody) } },
+  responses: {
+    200: { description: 'Renamed run', content: json(dataEnvelope(WorkflowRunDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
   method: 'post',
   path: '/orchestration/runs/{id}/execute',
   tags: ['orchestration'],

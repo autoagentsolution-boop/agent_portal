@@ -149,6 +149,9 @@ export const api = {
   // Save a planned run as a named Saved Flow (chat "Approve" → name + redirect).
   saveRun: (id: string, name: string) =>
     request<WorkflowRunDto>(`/orchestration/runs/${id}/save`, { method: 'POST', body: { name } }),
+  // Rename an existing saved flow (any status) — inline rename in SavedFlowDetail.
+  renameRun: (id: string, name: string) =>
+    request<WorkflowRunDto>(`/orchestration/runs/${id}`, { method: 'PATCH', body: { name } }),
   // Execute a saved/planned flow (async — returns running immediately; SSE drives the DAG).
   executeRun: (id: string) => request<WorkflowRunDto>(`/orchestration/runs/${id}/execute`, { method: 'POST' }),
   approveRunNode: (id: string, nodeId: string) =>

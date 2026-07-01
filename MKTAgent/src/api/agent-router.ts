@@ -17,11 +17,14 @@ import { encryptToken } from '../lib/crypto.ts';
 export const agentRouter: Router = Router();
 const agentIntakeProvider = new GeminiAgentIntakeProvider();
 
+// Keyed by CANONICAL registry agent id (snake_case) — the same id the DAG carries on
+// WorkflowNode.agentId and the web credential config (web/src/flow/agent-credentials.ts).
+// Keep the two in lockstep: a field here missing there (or vice-versa) breaks setup.
 const credentialAllowlist: Record<string, string[]> = {
-  'concept-writer': ['gemini_api_key'],
+  concept_writer: ['gemini_api_key'],
   infographic: ['design_provider_key', 'design_client_id', 'design_client_secret'],
   storyboard: ['storyboard_provider_key'],
-  'voice-video': ['video_provider_key', 'video_client_id', 'video_client_secret', 'tts_music_provider_key'],
+  video: ['video_provider_key', 'video_client_id', 'video_client_secret', 'tts_music_provider_key'],
   publisher: [
     'google_client_id',
     'google_client_secret',
