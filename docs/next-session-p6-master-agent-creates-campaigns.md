@@ -1,8 +1,30 @@
-# Next Session — P6: Master Agent creates & sets up campaigns/posts
+# P6: Master Agent creates & sets up campaigns/posts — DONE 2026-07-01 (commit `b2415eb`)
 
-Resume of the Flow↔Post convergence work. **P1–P5 are DONE** (not committed). This doc is the P6 brief + the manual-test / commit checklist for what's already built.
+Flow↔Post convergence is complete. **P1–P6 all DONE, committed + pushed** (`b2415eb` on
+`pivot/video-content-farm`, 48 files, 2 migrations). This doc kept the original P6 brief
+below for context; the outcome is captured here + in memory `project_flow_post_convergence`.
 
-Plan: `plans/260701-1304-flow-post-convergence/plan.md`. Memory: `project_flow_post_convergence`.
+Plan: `plans/260701-1304-flow-post-convergence/plan.md`. Changelog: `docs/project-changelog.md`.
+
+## What shipped (P6)
+- `src/orchestration/master/save-offer-author.ts` — voices the "flow saved, what next?"
+  turn (Gemini + deterministic fallback, never throws; mirrors user language).
+- `recordSaveOffer()` in `orchestration-chat.ts` — persists ONE agent turn (no user msg),
+  bumps the session so it survives history restore.
+- `/runs/:id/save` returns the offer as `assistantMessage` (best-effort, guarded).
+- Web `SaveOfferCard` (set up first campaign $0 / run test post ~$0.06 / open flow) +
+  hero "flows without strategy" chips (saved runs with no campaign yet).
+- ⚠ Idempotency fix: `nameRun` now guards on `name: null` (first-save-only; renames go
+  through PATCH). Without it a re-`/save` re-posted the offer — caught by the live-HTTP e2e.
+
+## Verified
+verify-save-offer 9/9 · verify-save-offer-http 13/13 · rerun-node / connect-form / api
+regression green · backend+web tsc + web build clean · Puppeteer browser e2e on :5173
+(offer card + 3 buttons + "Set up first campaign"→board) green. All DRY — no real posts.
+
+---
+
+## Original P6 brief (for context)
 
 ## First: manual e2e + commit P1–P5 (before starting P6)
 
