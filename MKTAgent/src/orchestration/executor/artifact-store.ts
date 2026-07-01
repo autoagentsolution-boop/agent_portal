@@ -49,3 +49,15 @@ export const listArtifacts = async (runId: string): Promise<StoredArtifact[]> =>
   const rows = await prisma.artifact.findMany({ where: { runId }, orderBy: { createdAt: 'asc' } });
   return rows.map((r) => ({ id: r.id, type: r.type as ArtifactType, nodeId: r.nodeId, data: r.data }));
 };
+
+// Drop the artifacts a set of nodes produced — used when re-running a node so its old
+// output (and its now-stale dependents') doesn't linger. Scoped by owner for safety.
+export const deleteArtifactsByNodes = async (
+  runId: string,
+  ownerId: string,
+  nodeIds: string[],
+): Promise<number> => {
+  if (nodeIds.length === 0) return 0;
+  const r = await prisma.artifact.deleteMany({ where: { runId, ownerId, nodeId: { in: nodeIds } } });
+  return r.count;
+};

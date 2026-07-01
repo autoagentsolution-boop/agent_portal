@@ -29,6 +29,10 @@ export interface ExecuteOptions {
   imageFn?: RunnerContext['imageFn'];
   // When true, the executor RUNS the gated node instead of halting (post-approval).
   approveNodeId?: string;
+  // Single-node re-execute: run ONLY this node (its upstream artifacts are seeded from
+  // what's already stored), then stop. Its downstream dependents are reset to pending by
+  // the caller (marked stale) but NOT auto-run — the user re-runs them explicitly.
+  rerunOnly?: string;
 }
 
 export type ExecuteOutcome =
@@ -66,6 +70,38 @@ export const runWorkflow = async (
   }
 
   await setRunStatus(runId, 'running');
+
+  // Single-node re-execute: run exactly the requested node and return. Upstream is
+  // already seeded above from stored artifacts, so the node reads the same inputs it
+  // did on the first run. Downstream dependents were reset to pending (stale) by the
+  // caller and are left for the user to re-run — we do NOT cascade here.
+  if (opts.rerunOnly) {
+    const planNode = nodeByPlanId.get(opts.rerunOnly);
+    const nodeRow = nodeRowByPlanId.get(opts.rerunOnly);
+    if (!planNode || !nodeRow) {
+      await setRunStatus(runId, 'failed');
+      return { status: 'failed', nodeId: opts.rerunOnly, error: 'node_not_found' };
+    }
+    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn };
+    await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
+    publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'running' });
+    try {
+      const result = await executeNode(planNode, ctx);
+      await setNodeStatus(nodeRow.id, 'completed', { finishedAt: new Date(), outputRefs: [result.artifactId] });
+      publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'completed' });
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e).slice(0, 500);
+      await setNodeStatus(nodeRow.id, 'failed', { finishedAt: new Date(), error: msg });
+      await setRunStatus(runId, 'failed');
+      publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'failed', error: msg });
+      await logRun('error', 'wf_node_rerun', { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, error: msg }, ownerId);
+      return { status: 'failed', nodeId: planNode.nodeId, error: msg };
+    }
+    // A re-run leaves the run before publishing again — the downstream (incl. publisher)
+    // is stale/pending, so park the run at needs_approval for the user to review + resume.
+    await setRunStatus(runId, 'needs_approval');
+    return { status: 'needs_approval', nodeId: opts.rerunOnly };
+  }
 
   for (const planNodeId of validated.order) {
     const planNode = nodeByPlanId.get(planNodeId)!;

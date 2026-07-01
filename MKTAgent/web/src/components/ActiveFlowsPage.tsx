@@ -2,8 +2,9 @@
 //   1. A Saved Flow is selected  → SavedFlowDetail (real run: DAG, execute, gate, node setup).
 //   2. A campaign is selected     → its PostBoard (briefs/posts).
 //   3. Nothing selected           → empty-state that routes flow creation into Orchestrate chat.
-// The old hardcoded brandingVideoFlow template + its fake agent-strip/AgentDetail are retired;
-// per-agent credential setup now lives on REAL flow nodes inside SavedFlowDetail.
+// The old hardcoded brandingVideoFlow template + its fake agent-strip/AgentDetail are retired.
+// Node setup is read-only status only (NodeSetupStatus) — all credential setup lives in
+// the Connections panel, never in per-node secret inputs.
 import { DemoModeToggle } from './DemoModeToggle';
 import { PostBoard } from './PostBoard';
 import { SavedFlowDetail } from './saved-flow-detail';
@@ -20,6 +21,9 @@ interface Props {
   onRefresh: () => void;
   onPostsChange: (posts: PostDto[]) => void;
   onNewFlow: () => void;
+  onOpenConnections: () => void;
+  flowLabel?: string | null;
+  campaignLabel?: string | null;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
@@ -33,6 +37,7 @@ export function ActiveFlowsPage(props: Props) {
           runId={props.selectedRunId}
           notify={props.notify}
           onStatusChange={props.onRefresh}
+          onOpenConnections={props.onOpenConnections}
         />
       </div>
     );
@@ -46,6 +51,15 @@ export function ActiveFlowsPage(props: Props) {
         <div className="active-flow-header card compact">
           <div>
             <div className="eyebrow">Campaign</div>
+            <div className="flow-breadcrumb">
+              {props.flowLabel
+                ? <span className="crumb"><span className="crumb-icon">⚡</span>{props.flowLabel}</span>
+                : <span className="crumb muted">Ungrouped</span>}
+              {props.campaignLabel && <>
+                <span className="crumb-sep">▸</span>
+                <span className="crumb"><span className="crumb-icon">📁</span>{props.campaignLabel}</span>
+              </>}
+            </div>
             <p className="muted small">Review and edit this campaign's briefs. Publishing respects the mode on the right.</p>
           </div>
           <DemoModeToggle mode={props.demoMode} onChange={props.onDemoModeChange} />

@@ -11,8 +11,9 @@ import type { SocialPlatform, TokenStatus } from '../../../prisma/generated/pris
 import type { GoalSpec } from '../../orchestration/schemas/goal-spec.ts';
 import type { WorkflowPlan } from '../../orchestration/schemas/workflow-plan.ts';
 import { getAgent } from '../../orchestration/registry/agent-registry.ts';
-import { getConnector, connectStartPath } from '../registry/connector-registry.ts';
+import { getConnector, connectStartPath, CONNECTORS } from '../registry/connector-registry.ts';
 import { listTokenStatusForOwner } from '../../db/repos/token-repo.ts';
+import { listPublisherPlatformTokenKeys, platformTokenKey } from '../../db/repos/agent-credential-repo.ts';
 
 // One platform the user must act on before the run can proceed.
 export interface RequiredAction {
@@ -36,6 +37,22 @@ export interface TokenStatusLike {
   expiresAt: Date | null;
 }
 export type TokenStatusReader = (ownerId: string) => Promise<TokenStatusLike[]>;
+
+// Default reader: OAuthToken rows UNION form-entered platform credentials. A token
+// pasted into the Connections form (vault, no OAuthToken row) must satisfy preflight
+// the same as an OAuth connection — otherwise a form-connected user is wrongly gated.
+// A real OAuthToken row always wins (keeps its true status/expiry); a form credential
+// only fills a platform that has no token row, as a synthetic `active` connection.
+export const defaultTokenStatusReader: TokenStatusReader = async (ownerId) => {
+  const rows = await listTokenStatusForOwner(ownerId);
+  const present = new Set(rows.map((r) => r.platform));
+  const formKeys = await listPublisherPlatformTokenKeys(ownerId);
+  const synthetic: TokenStatusLike[] = CONNECTORS
+    .map((c) => c.platformKey)
+    .filter((p) => !present.has(p) && formKeys.has(platformTokenKey(p)))
+    .map((platform) => ({ platform, status: 'active' as TokenStatus, expiresAt: null }));
+  return [...rows, ...synthetic];
+};
 
 // Per-platform liveness, derived from the token row. `connected` only when a row
 // exists, status=active, and it isn't past expiry.
@@ -61,7 +78,7 @@ export const resolveConnections = async (
   ownerId: string,
   goal: GoalSpec,
   plan: WorkflowPlan,
-  reader: TokenStatusReader = listTokenStatusForOwner,
+  reader: TokenStatusReader = defaultTokenStatusReader,
 ): Promise<ConnectionResolution> => {
   // Capabilities required by any connection-needing agent in this plan. Empty set =>
   // no external-write agent => nothing to resolve.

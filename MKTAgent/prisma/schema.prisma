@@ -183,6 +183,10 @@ model Post {
   // gives T4 the owner directly (post.ownerId → token lookup). Kept consistent
   // at write time; campaign reassignment (not a v1 feature) must re-sync.
   ownerId     String           @map("owner_id") @db.Uuid
+  // Optional link to the orchestration run that produced this post (concept_writer
+  // stamps it). Lets the post show its own workflow DAG + drive per-node re-runs.
+  // SetNull on run delete: the post's content survives if the flow is deleted.
+  runId       String?          @map("run_id") @db.Uuid
   status      PostStatus       @default(brief)
   assetType   AssetType        @default(image) @map("asset_type")
   // Generated copy (by copy-gen, approved by human) as a language-agnostic bag:
@@ -193,6 +197,10 @@ model Post {
   // Free-form language override (null → inherit campaign.language → user.defaultLanguage).
   language    String?          @map("language")
   lengthSpec  String?          @map("length_spec") // short|medium|long|<wordcount>
+  // Per-post overrides for its own strategy/voice (null → inherit campaign → user).
+  // Lets one post in a campaign carry a distinct angle or brand voice.
+  angle       String?          @map("angle")
+  brandVoice  String?          @map("brand_voice")
   feedback    String? // rework feedback fed back into copy-gen
   // Asset reference (Drive-backed for now; AssetStore abstracts the source).
   driveFolderId String?        @map("drive_folder_id")
@@ -207,12 +215,14 @@ model Post {
   createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  owner    User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  campaign Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  owner    User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  run      WorkflowRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   @@index([status, scheduledAt], name: "ix_post_status_sched")
   @@index([campaignId], name: "ix_post_campaign")
   @@index([ownerId], name: "ix_post_owner")
+  @@index([runId], name: "ix_post_run")
   @@map("mkt_post")
 }
 
@@ -340,6 +350,7 @@ model WorkflowRun {
   nodes     WorkflowNodeRun[]
   artifacts Artifact[]
   campaigns Campaign[]
+  posts     Post[]
 
   @@index([ownerId, status], name: "ix_wf_run_owner_status")
   @@map("wf_run")

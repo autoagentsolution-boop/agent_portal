@@ -110,10 +110,12 @@ export const listSavedRuns = async (ownerId: string, limit = 50): Promise<RunLis
   return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, nodeCount: r._count.nodes, createdAt: r.createdAt, updatedAt: r.updatedAt }));
 };
 
-// Name a planned run (Saved Flows). Guarded transition keeps it scoped + only names
-// a run that is still planned (can't name a half-executed run). Returns row or null.
+// Name a planned run (Saved Flows). Guarded transition keeps it scoped + only names a
+// run that is still planned AND not yet named — /save is the FIRST-time save, so a
+// second call must no-op (renames go through renameRun/PATCH). Without the `name: null`
+// guard a re-save would re-stamp the name and re-post the P6 offer turn. Returns row/null.
 export const nameRun = async (id: string, ownerId: string, name: string): Promise<WorkflowRun | null> => {
-  const r = await prisma.workflowRun.updateMany({ where: { id, ownerId, status: 'planned' }, data: { name } });
+  const r = await prisma.workflowRun.updateMany({ where: { id, ownerId, status: 'planned', name: null }, data: { name } });
   return r.count === 1 ? prisma.workflowRun.findFirst({ where: { id, ownerId } }) : null;
 };
 
@@ -187,3 +189,44 @@ export const setNodeStatus = (
 
 export const listNodes = (runId: string): Promise<WorkflowNodeRun[]> =>
   prisma.workflowNodeRun.findMany({ where: { runId }, orderBy: { nodeId: 'asc' } });
+
+// Reset a set of nodes back to `pending` (clearing error + timing) so they can re-run.
+// Used by single-node re-execute: the target node plus its transitive dependents (which
+// are now stale). Owner-scoped. Returns the count reset.
+export const resetNodes = async (
+  runId: string,
+  ownerId: string,
+  nodeIds: string[],
+): Promise<number> => {
+  if (nodeIds.length === 0) return 0;
+  const r = await prisma.workflowNodeRun.updateMany({
+    where: { runId, ownerId, nodeId: { in: nodeIds } },
+    data: { status: 'pending', error: null, startedAt: null, finishedAt: null, outputRefs: [] },
+  });
+  return r.count;
+};
+
+// Transitive dependents of a node within a run (everything downstream that must be
+// considered stale when the node re-runs). Pure graph walk over dependsOn edges.
+export const collectDownstream = (
+  nodes: Array<{ nodeId: string; dependsOn: string[] }>,
+  startNodeId: string,
+): string[] => {
+  const dependentsOf = new Map<string, string[]>();
+  for (const n of nodes) {
+    for (const dep of n.dependsOn) {
+      const arr = dependentsOf.get(dep) ?? [];
+      arr.push(n.nodeId);
+      dependentsOf.set(dep, arr);
+    }
+  }
+  const out = new Set<string>();
+  const stack = [startNodeId];
+  while (stack.length) {
+    const cur = stack.pop()!;
+    for (const child of dependentsOf.get(cur) ?? []) {
+      if (!out.has(child)) { out.add(child); stack.push(child); }
+    }
+  }
+  return [...out];
+};

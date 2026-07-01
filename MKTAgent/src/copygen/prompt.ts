@@ -47,9 +47,18 @@ function personaLines(cfg: ResolvedCopyConfig): string[] {
   ];
 }
 
-export function buildGeminiBody(post: PostWithCampaignOwner): GeminiRequestBody {
+// Optional refine directive: an instruction to tweak the EXISTING copy in place
+// (text-refine, not a from-scratch rework). Threaded into the user message so the
+// model edits the current variants rather than regenerating blindly.
+export interface RefineDirective {
+  instruction: string;
+  current: { body: string; threads: string; x: string };
+}
+
+export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDirective): GeminiRequestBody {
   const product = (post.campaign.product ?? '').trim();
-  const angle = (post.campaign.angle ?? '').trim();
+  // Post-level angle overrides the campaign's (per-post strategy).
+  const angle = (post.angle ?? post.campaign.angle ?? '').trim();
   const leadsForm = (post.campaign.leadsForm ?? '').trim();
   const feedback = (post.feedback ?? '').trim();
   const isRework = post.status === 'rework';
@@ -80,7 +89,13 @@ export function buildGeminiBody(post: PostWithCampaignOwner): GeminiRequestBody 
   const systemText = system.join('\n');
 
   let user = `Product/service: ${product}\nAngle: ${angle || '(choose a fitting angle, emphasize the real operational benefit)'}\nWrite the body, threads, and x variants — all in ${lang}.`;
-  if (isRework && feedback) {
+  if (refine) {
+    // Text-refine: keep the existing copy and apply a targeted edit. This preserves the
+    // audit trail (all copy changes go through the LLM, never a raw hand-edit) while
+    // giving the user precise control over small tweaks.
+    user += `\n\nThis is a TARGETED REFINEMENT of existing approved copy — do NOT rewrite from scratch. Apply ONLY this change: "${refine.instruction}". Keep everything else (hook strength, structure, CTA, hashtags) intact unless the change requires it. Re-emit all three variants (body, threads, x) with the change applied, honoring every hard guardrail (hook ≤50 chars, threads ≤480, x ≤280, no HTML).`;
+    user += `\n\nCURRENT body:\n${refine.current.body}\n\nCURRENT threads:\n${refine.current.threads}\n\nCURRENT x:\n${refine.current.x}`;
+  } else if (isRework && feedback) {
     user += `\n\nNOTE: the previous version was REJECTED. Reviewer feedback: "${feedback}". Rewrite to FIX exactly these points; do not repeat the old mistakes.`;
   } else if (isRework) {
     user += `\n\nNOTE: the previous version was rejected (no specific notes). Write a SUBSTANTIALLY DIFFERENT hook and approach.`;

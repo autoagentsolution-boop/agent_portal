@@ -26,6 +26,8 @@ const initialState = (post?: PostDto | null): PostBody => ({
   assetType: post?.assetType ?? 'image',
   language: post?.language ?? '',
   lengthSpec: post?.lengthSpec ?? '',
+  angle: post?.angle ?? '',
+  brandVoice: post?.brandVoice ?? '',
   driveFolderId: post?.driveFolderId ?? '',
   heroFile: post?.heroFile ?? '',
   platforms: post?.platforms ?? ['facebook'],
@@ -46,6 +48,8 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
     assetType: form.assetType,
     language: emptyToNull(form.language ?? ''),
     lengthSpec: emptyToNull(form.lengthSpec ?? ''),
+    angle: emptyToNull(form.angle ?? ''),
+    brandVoice: emptyToNull(form.brandVoice ?? ''),
     driveFolderId: emptyToNull(form.driveFolderId ?? ''),
     heroFile: emptyToNull(form.heroFile ?? ''),
     platforms: form.platforms?.length ? form.platforms : [],
@@ -104,6 +108,17 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
         <div className="field">
           <label>Hero file ID(s)</label>
           <input value={form.heroFile ?? ''} onChange={(e) => setField('heroFile', e.target.value)} placeholder={currentAsset?.hint ?? 'Drive file ID'} />
+        </div>
+      </div>
+
+      <div className="form-grid two">
+        <div className="field">
+          <label>Angle (override)</label>
+          <input value={form.angle ?? ''} onChange={(e) => setField('angle', e.target.value)} placeholder="Per-post angle — blank inherits the campaign" />
+        </div>
+        <div className="field">
+          <label>Brand voice (override)</label>
+          <input value={form.brandVoice ?? ''} onChange={(e) => setField('brandVoice', e.target.value)} placeholder="Per-post voice — blank inherits the campaign" />
         </div>
       </div>
 

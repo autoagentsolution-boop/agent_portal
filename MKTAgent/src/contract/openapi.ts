@@ -20,6 +20,7 @@ import {
   listPostsQuery,
   approvePostBody,
   rejectPostBody,
+  refinePostBody,
   campaignDto,
   postDto,
   postDetailDto,
@@ -78,6 +79,7 @@ const PostDto = registry.register('PostDto', postDto);
 const PostDetailDto = registry.register('PostDetailDto', postDetailDto);
 registry.register('ApprovePostBody', approvePostBody);
 registry.register('RejectPostBody', rejectPostBody);
+registry.register('RefinePostBody', refinePostBody);
 const CreateCampaignBody = registry.register('CreateCampaignBody', createCampaignBody);
 const UpdateCampaignBody = registry.register('UpdateCampaignBody', updateCampaignBody);
 const CreatePostBody = registry.register('CreatePostBody', createPostBody);
@@ -197,6 +199,26 @@ registry.registerPath({
     401: errorResponse('Unauthorized'),
     404: errorResponse('Not found / cross-tenant'),
     409: errorResponse('Post is not in review state'),
+    422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/posts/{id}/refine',
+  tags: ['posts'],
+  summary: 'Refine a post\'s copy with a targeted instruction (review|ready → review)',
+  description: 'Applies a small, targeted edit to the existing copy via the LLM (keeps the audit trail — no raw hand-edit). The result lands at review for re-approval. Shares the copy-gen advisory lock.',
+  security: userAuth,
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { content: json(refinePostBody) },
+  },
+  responses: {
+    200: { description: 'Refined post (status=review)', content: json(dataEnvelope(PostDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Copy-gen busy, post not in review/ready, or no copy yet'),
     422: errorResponse('Invalid body'),
   },
 });
@@ -549,6 +571,22 @@ registry.registerPath({
     401: errorResponse('Unauthorized'),
     404: errorResponse('Not found / cross-tenant'),
     409: errorResponse('Run is not awaiting approval'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/orchestration/runs/{id}/rerun-node/{nodeId}',
+  tags: ['orchestration'],
+  summary: 'Re-run one finished node (control surface under a post)',
+  description: 'Re-executes a single completed/failed node so the user can regenerate its output (e.g. concept or image) before publishing. The node + its downstream dependents are reset to pending (stale) and their artifacts dropped; only the target re-runs. The publisher node cannot be re-run (use approve-node). Returns at once; SSE drives status.',
+  security: userAuth,
+  request: { params: z.object({ id: z.string().uuid(), nodeId: z.string() }) },
+  responses: {
+    200: { description: 'Run re-running the node (live status via SSE)', content: json(dataEnvelope(WorkflowRunDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Run or node not found / cross-tenant'),
+    409: errorResponse('Node not re-runnable, upstream not ready, or run in flight'),
   },
 });
 

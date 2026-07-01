@@ -31,10 +31,10 @@ export function resolveCopyConfig(post: PostWithCampaignOwner): ResolvedCopyConf
 
   const lengthRaw = firstNonEmpty(post.lengthSpec, campaign.defaultLength) ?? '';
 
-  // Brand persona: campaign overrides user. Personal accounts leave both null →
-  // null here → prompt builder runs persona-free. brandContext kept distinct from
-  // voice (context = facts, voice = tone) and inherits the same way.
-  const brandVoice = firstNonEmpty(campaign.brandVoice, user.brandVoice);
+  // Brand persona: post overrides campaign overrides user. Personal accounts leave
+  // all null → null here → prompt builder runs persona-free. brandContext kept distinct
+  // from voice (context = facts, voice = tone) and inherits campaign → user.
+  const brandVoice = firstNonEmpty(post.brandVoice, campaign.brandVoice, user.brandVoice);
   const brandContext = firstNonEmpty(campaign.brandContext, user.brandContext);
   const brandName = firstNonEmpty(user.brandName);
 

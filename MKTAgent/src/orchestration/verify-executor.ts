@@ -100,6 +100,7 @@ async function main(): Promise<void> {
     const postId = (concept?.data as { postId?: string })?.postId;
     const post = postId ? await prisma.post.findFirst({ where: { id: postId, ownerId: user.id } }) : null;
     check('Post materialized + posted (dry)', post?.status === 'posted', post?.status);
+    check('Post.runId links back to the flow (DAG under post)', post?.runId === run.id, { runId: post?.runId, run: run.id });
 
     // Faithfulness: a goal WITHOUT media must fail-loud at the live publish path
     // (the executor does not bypass resolvePublishInput validation).

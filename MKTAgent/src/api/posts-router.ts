@@ -7,12 +7,13 @@ import {
   listPostsQuery,
   approvePostBody,
   rejectPostBody,
+  refinePostBody,
   createPostBody,
   updatePostBody,
 } from './schemas.ts';
 import { toPostDto, toPostDetailDto } from './mappers.ts';
 import { publishPostStatus } from '../events/bus.ts';
-import { generateForPost } from '../copygen/service.ts';
+import { generateForPost, refineForPost } from '../copygen/service.ts';
 import { publishPostNow } from '../scheduler/tick.ts';
 import { getCampaign } from '../db/repos/campaign-repo.ts';
 import {
@@ -116,6 +117,27 @@ postsRouter.post(
       return fail(res, 502, 'copygen_failed', r.error?.slice(0, 300) ?? 'generation failed');
     if (r.status !== 'review') return fail(res, 500, 'copygen_error');
     // Success → return the now-review post.
+    const post = await getPostForOwner(req.params.id, req.userId!);
+    ok(res, post ? toPostDto(post) : { id: req.params.id, status: 'review' });
+  }),
+);
+
+// Text-refine trigger — apply a targeted instruction to existing copy (review|ready →
+// review) via the LLM, preserving the audit trail (no raw hand-edit). Shares the
+// copy-gen advisory lock (held → 409 busy).
+postsRouter.post(
+  '/:id/refine',
+  asyncHandler(async (req, res) => {
+    const body = parseOr422(res, refinePostBody, req.body ?? {});
+    if (!body) return;
+    if (!(await getPostForOwner(req.params.id, req.userId!))) return fail(res, 404, 'post_not_found');
+    const r = await refineForPost(req.params.id, req.userId!, body.instruction);
+    if (r.reason === 'lock_held') return fail(res, 409, 'copygen_busy', 'copy-gen is already running; retry shortly');
+    if (r.reason === 'not_refinable') return fail(res, 409, 'not_refinable', 'post must be in review or ready state');
+    if (r.reason === 'no_copy') return fail(res, 409, 'no_copy', 'post has no copy to refine yet');
+    if (r.reason === 'not_found') return fail(res, 404, 'post_not_found');
+    if (r.status === 'retry') return fail(res, 502, 'copygen_failed', r.error?.slice(0, 300) ?? 'refine failed');
+    if (r.status !== 'review') return fail(res, 500, 'copygen_error');
     const post = await getPostForOwner(req.params.id, req.userId!);
     ok(res, post ? toPostDto(post) : { id: req.params.id, status: 'review' });
   }),

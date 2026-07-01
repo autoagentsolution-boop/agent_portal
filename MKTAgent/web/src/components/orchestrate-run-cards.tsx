@@ -42,8 +42,29 @@ export function PlanCard({ run, busy, defaultName, onSave }: PlanProps) {
       )}
 
       {savedName && (
-        <p className="muted small saved-confirm">✓ Saved as “{savedName}” — open Active Flows to execute.</p>
+        <p className="muted small saved-confirm">✓ Saved as “{savedName}”.</p>
       )}
+    </div>
+  );
+}
+
+interface OfferProps {
+  busy: boolean;
+  onSetupCampaign: () => void;
+  onRunTest: () => void;
+  onOpenFlow: () => void;
+}
+
+// P6 — the "flow saved, what next?" card. The Master Agent's guiding prose is rendered
+// as the preceding assistant bubble; this card carries the three concrete actions.
+// Set up campaign = $0 (create the container, begin strategy). Run a test post = executes
+// the DAG (image-gen spend, publisher still gated). Open flow = just redirect, no action.
+export function SaveOfferCard({ busy, onSetupCampaign, onRunTest, onOpenFlow }: OfferProps) {
+  return (
+    <div className="save-offer">
+      <button className="btn primary" disabled={busy} onClick={onSetupCampaign}>Set up first campaign</button>
+      <button className="btn" disabled={busy} onClick={onRunTest}>Run a test post</button>
+      <button className="btn ghost" disabled={busy} onClick={onOpenFlow}>Just open the flow</button>
     </div>
   );
 }

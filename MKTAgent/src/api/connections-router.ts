@@ -6,6 +6,7 @@
 import { Router } from 'express';
 import { ok, asyncHandler } from './http.ts';
 import { listTokenStatusForOwner, type TokenStatusRow } from '../db/repos/token-repo.ts';
+import { listPublisherPlatformTokenKeys, platformTokenKey } from '../db/repos/agent-credential-repo.ts';
 import { CONNECTORS, connectStartPath } from '../connectors/registry/connector-registry.ts';
 import type { SocialPlatform, TokenStatus } from '../../prisma/generated/prisma/client.ts';
 
@@ -36,12 +37,17 @@ connectionsRouter.get(
   asyncHandler(async (req, res) => {
     const rows: TokenStatusRow[] = await listTokenStatusForOwner(req.userId!);
     const byPlatform = new Map(rows.map((r) => [r.platform, r]));
+    // A form-entered access token (vault) also counts as connected, even without an
+    // OAuthToken row — so the OAuth-less publish path shows the right state + passes preflight.
+    const formKeys = await listPublisherPlatformTokenKeys(req.userId!);
     const data: ConnectionDto[] = CONNECTORS.map((p) => {
       const row = byPlatform.get(p.platformKey);
+      const hasFormToken = formKeys.has(platformTokenKey(p.platformKey));
+      const state = row?.status ? toState(row.status) : hasFormToken ? 'connected' : 'not_connected';
       return {
         platformKey: p.platformKey,
         displayName: p.displayName,
-        state: toState(row?.status),
+        state,
         expiresAt: row?.expiresAt ? row.expiresAt.toISOString() : null,
         lastCheckedAt: row?.lastCheckedAt ? row.lastCheckedAt.toISOString() : null,
         capabilities: p.capabilities,

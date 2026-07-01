@@ -35,7 +35,6 @@ export type AgentChatSessionDto = {
   updatedAt: string;
   messages: AgentChatMessageDto[];
 };
-export type AgentCredentialStatusDto = { agentId: string; key: string; status: string; updatedAt: string };
 
 // Orchestration (M1 backbone) — the goal-based agent workflow surface.
 export type WorkflowRunDto = Dto['WorkflowRunDto'];
@@ -111,11 +110,6 @@ export const api = {
   appendAgentChatMessage: (id: string, message: string, timezone = Intl.DateTimeFormat().resolvedOptions().timeZone) =>
     request<AgentChatSessionDto>(`/agent/chats/${id}/messages`, { method: 'POST', body: { message, timezone } }),
   deleteAgentChat: (id: string) => request<void>(`/agent/chats/${id}`, { method: 'DELETE' }),
-  listAgentCredentialStatus: () => request<AgentCredentialStatusDto[]>('/agent/credentials/status'),
-  saveAgentCredential: (agentId: string, key: string, value: string) =>
-    request<AgentCredentialStatusDto>(`/agent/credentials/${agentId}/${key}`, { method: 'PUT', body: { value } }),
-  deleteAgentCredential: (agentId: string, key: string) =>
-    request<{ deleted: boolean }>(`/agent/credentials/${agentId}/${key}`, { method: 'DELETE' }),
 
   listCampaigns: () => request<CampaignDto[]>('/campaigns'),
   createCampaign: (body: Dto['CreateCampaignBody']) =>
@@ -133,6 +127,8 @@ export const api = {
   deletePost: (id: string) => request<void>(`/posts/${id}`, { method: 'DELETE' }),
 
   generate: (id: string) => request<PostDto>(`/posts/${id}/generate`, { method: 'POST' }),
+  refine: (id: string, instruction: string) =>
+    request<PostDto>(`/posts/${id}/refine`, { method: 'POST', body: { instruction } }),
   approve: (id: string, scheduledAt?: string) =>
     request<PostDto>(`/posts/${id}/approve`, { method: 'POST', body: scheduledAt ? { scheduledAt } : {} }),
   reject: (id: string, feedback: string) =>
@@ -156,6 +152,8 @@ export const api = {
   executeRun: (id: string) => request<WorkflowRunDto>(`/orchestration/runs/${id}/execute`, { method: 'POST' }),
   approveRunNode: (id: string, nodeId: string) =>
     request<WorkflowRunDto>(`/orchestration/runs/${id}/approve-node/${nodeId}`, { method: 'POST' }),
+  rerunRunNode: (id: string, nodeId: string) =>
+    request<WorkflowRunDto>(`/orchestration/runs/${id}/rerun-node/${nodeId}`, { method: 'POST' }),
   getRun: (id: string) => request<WorkflowRunDto>(`/orchestration/runs/${id}`),
   // History restore: latest run behind a chat session (404 → chat has no run).
   getRunByChat: (chatSessionId: string) => request<WorkflowRunDto>(`/orchestration/runs/by-chat/${chatSessionId}`),
@@ -164,8 +162,14 @@ export const api = {
   listSavedRuns: () => request<SavedRunDto[]>('/orchestration/runs/saved'),
   deleteRun: (id: string) => request<void>(`/orchestration/runs/${id}`, { method: 'DELETE' }),
 
-  // ---- Connections (M2-lite, read-only) ----
+  // ---- Connections (M2-lite) ----
   listConnections: () => request<ConnectionDto[]>('/connections'),
+  // Store a platform credential (OAuth-less form path) encrypted in the vault under
+  // the publisher agent. Value is write-only — never read back.
+  savePublisherCredential: (key: string, value: string) =>
+    request<{ key: string; status: string }>(`/agent/credentials/publisher/${key}`, { method: 'PUT', body: { value } }),
+  listPublisherCredentialKeys: () =>
+    request<Array<{ agentId: string; key: string; status: string }>>('/agent/credentials/status'),
 };
 
 // Social OAuth connect is a full-page navigation (platform redirect), not a fetch.

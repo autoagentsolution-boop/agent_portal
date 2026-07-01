@@ -2,6 +2,7 @@
 // Adapters call getActiveToken(ownerId, platform); the refresh cron calls
 // runTokenMaintenance() (walks every tenant's tokens).
 import { getToken, upsertToken, markTokenStatus, listAllTokenKeys } from '../db/repos/token-repo.ts';
+import { getPublisherPlatformToken } from '../db/repos/agent-credential-repo.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
 import { env } from '../config/env.ts';
@@ -15,10 +16,18 @@ export const getActiveToken = async (
   ownerId: string,
   platform: SocialPlatform,
 ): Promise<string> => {
+  // OAuth-first: a live OAuthToken (minted via /connect) always wins — it refreshes.
   const rec = await getToken(ownerId, platform);
-  if (!rec) throw new Error(`token: no token stored for ${platform}`);
-  if (rec.status === 'revoked') throw new Error(`token: ${platform} revoked, needs re-mint`);
-  return rec.token;
+  if (rec && rec.status !== 'revoked') return rec.token;
+
+  // Fallback: a token entered directly in the Connections form, stored encrypted in
+  // the credential vault under publisher/<platform>_access_token. Lets a workspace
+  // publish without running the full OAuth app setup (no META_APP_ID etc. required).
+  const formToken = await getPublisherPlatformToken(ownerId, platform);
+  if (formToken) return formToken;
+
+  if (rec && rec.status === 'revoked') throw new Error(`token: ${platform} revoked, needs re-mint`);
+  throw new Error(`token: no token stored for ${platform}`);
 };
 
 export const getTokenMeta = async (

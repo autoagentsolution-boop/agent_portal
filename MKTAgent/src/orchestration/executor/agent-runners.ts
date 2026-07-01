@@ -72,6 +72,7 @@ const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const post = await createPost({
     campaignId: campaign.id,
     ownerId,
+    runId: ctx.runId, // link the post to the flow that produced it (DAG under post)
     status: 'brief',
     platforms: goal.platforms.length ? goal.platforms : ['facebook'],
     language: goal.slots.language ?? null,

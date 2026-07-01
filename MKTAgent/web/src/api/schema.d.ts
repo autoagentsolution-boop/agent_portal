@@ -523,6 +523,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/posts/{id}/refine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refine a post's copy with a targeted instruction (review|ready → review)
+         * @description Applies a small, targeted edit to the existing copy via the LLM (keeps the audit trail — no raw hand-edit). The result lands at review for re-approval. Shares the copy-gen advisory lock.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        instruction: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Refined post (status=review) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["PostDto"];
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found / cross-tenant */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Copy-gen busy, post not in review/ready, or no copy yet */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Invalid body */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/logout": {
         parameters: {
             query?: never;
@@ -1908,6 +1993,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orchestration/runs/{id}/rerun-node/{nodeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-run one finished node (control surface under a post)
+         * @description Re-executes a single completed/failed node so the user can regenerate its output (e.g. concept or image) before publishing. The node + its downstream dependents are reset to pending (stale) and their artifacts dropped; only the target re-runs. The publisher node cannot be re-run (use approve-node). Returns at once; SSE drives status.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    nodeId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Run re-running the node (live status via SSE) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["WorkflowRunDto"];
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Run or node not found / cross-tenant */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Node not re-runnable, upstream not ready, or run in flight */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orchestration/runs/saved": {
         parameters: {
             query?: never;
@@ -2106,6 +2262,8 @@ export interface components {
             id: string;
             /** Format: uuid */
             campaignId: string;
+            /** Format: uuid */
+            runId: string | null;
             /** @enum {string} */
             status: "brief" | "review" | "rework" | "ready" | "posting" | "posted" | "partial" | "error";
             /** @enum {string} */
@@ -2117,6 +2275,8 @@ export interface components {
             } | null;
             language: string | null;
             lengthSpec: string | null;
+            angle: string | null;
+            brandVoice: string | null;
             feedback: string | null;
             driveFolderId: string | null;
             heroFile: string | null;
@@ -2135,6 +2295,8 @@ export interface components {
             id: string;
             /** Format: uuid */
             campaignId: string;
+            /** Format: uuid */
+            runId: string | null;
             /** @enum {string} */
             status: "brief" | "review" | "rework" | "ready" | "posting" | "posted" | "partial" | "error";
             /** @enum {string} */
@@ -2146,6 +2308,8 @@ export interface components {
             } | null;
             language: string | null;
             lengthSpec: string | null;
+            angle: string | null;
+            brandVoice: string | null;
             feedback: string | null;
             driveFolderId: string | null;
             heroFile: string | null;
@@ -2183,6 +2347,9 @@ export interface components {
         };
         RejectPostBody: {
             feedback: string;
+        };
+        RefinePostBody: {
+            instruction: string;
         };
         CreateCampaignBody: {
             product: string;
@@ -2223,6 +2390,8 @@ export interface components {
             assetType?: "image" | "carousel" | "video";
             language?: string | null;
             lengthSpec?: string | null;
+            angle?: string | null;
+            brandVoice?: string | null;
             driveFolderId?: string | null;
             heroFile?: string | null;
             platforms?: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];
@@ -2233,6 +2402,8 @@ export interface components {
             assetType?: "image" | "carousel" | "video";
             language?: string | null;
             lengthSpec?: string | null;
+            angle?: string | null;
+            brandVoice?: string | null;
             driveFolderId?: string | null;
             heroFile?: string | null;
             platforms?: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];

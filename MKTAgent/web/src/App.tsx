@@ -100,6 +100,18 @@ export function App() {
     setPage('flows');
   };
 
+  // P6 "Set up first campaign" — create a campaign under the just-saved flow (seamless,
+  // labeled from the flow name; full config is editable later) and open it in the board.
+  const setupFirstCampaign = async (runId: string) => {
+    const flow = savedRuns.find((r) => r.id === runId);
+    const product = (flow?.name ?? '').trim() || 'Campaign';
+    const r = await api.createCampaign({ product, flowId: runId });
+    if (!r.ok) { show(`Create failed: ${r.error.error}`, 'err'); return; }
+    setCampaigns((prev) => [r.data, ...prev]);
+    setActiveCampaign(r.data.id); setSelectedPostId(null); setSelectedRunId(null); setPage('flows');
+    show(`Campaign “${product}” created`);
+  };
+
   const deleteChat = async (event: MouseEvent<HTMLButtonElement>, chat: AgentChatSessionDto) => {
     event.stopPropagation();
     if (!confirm(`Delete “${chat.title}”?`)) return;
@@ -185,6 +197,25 @@ export function App() {
     );
   }
 
+  // P6 "flows without strategy" hint (shown on the New chat hero): saved flows that have
+  // no campaign attached yet — i.e. the user created a workflow but never started a
+  // strategy on it. Pure client compute from the two lists already loaded.
+  const strategizedFlowIds = new Set(campaigns.map((c) => c.flowId).filter(Boolean));
+  const flowsWithoutStrategy = savedRuns
+    .filter((r) => !strategizedFlowIds.has(r.id))
+    .map((r) => ({ id: r.id, name: r.name ?? 'Untitled flow' }));
+
+  // Breadcrumb labels for the campaign board: resolve the open campaign (directly, or
+  // via the selected post) → its parent flow. Lets the board show "⚡ Flow ▸ 📁 Campaign"
+  // so a user never loses track of which flow/agent-graph a campaign belongs to.
+  const crumbCampaignId = activeCampaign ?? flowPosts.find((p) => p.id === selectedPostId)?.campaignId ?? null;
+  const crumbCampaign = campaigns.find((c) => c.id === crumbCampaignId) ?? null;
+  const crumbFlow = crumbCampaign?.flowId ? savedRuns.find((r) => r.id === crumbCampaign.flowId) ?? null : null;
+  const activeCampaignCrumb = {
+    flow: crumbFlow ? (crumbFlow.name ?? 'Untitled flow') : null,
+    campaign: crumbCampaign?.product ?? null,
+  };
+
   // One campaign row + its posts (level-3) under it, with create/delete controls.
   // Reused for both flow-nested campaigns and the Ungrouped section.
   const renderCampaign = (campaign: CampaignDto) => {
@@ -261,9 +292,12 @@ export function App() {
             <OrchestratePanel
               key={orchestrateRestore?.sessionId ?? 'new'}
               restore={orchestrateRestore}
+              flowsWithoutStrategy={flowsWithoutStrategy}
               notify={show}
               onRunActivity={(sessionId) => { void loadChats(); if (!activeChatId) setActiveChatId(sessionId); bump(); }}
-              onSaved={(runId) => { void loadSavedRuns().then(() => openSavedFlow(runId)); }}
+              onSaved={() => { void loadSavedRuns(); }}
+              onSetupCampaign={(runId) => { void loadSavedRuns().then(() => setupFirstCampaign(runId)); }}
+              onOpenFlow={(runId) => { void loadSavedRuns().then(() => openSavedFlow(runId)); }}
             />
           </div>
         ) : page === 'connections' ? (
@@ -281,6 +315,9 @@ export function App() {
             onRefresh={() => { bump(); void loadSavedRuns(); }}
             onPostsChange={mergePosts}
             onNewFlow={openOrchestrate}
+            onOpenConnections={() => { setSelectedRunId(null); setPage('connections'); }}
+            flowLabel={activeCampaignCrumb.flow}
+            campaignLabel={activeCampaignCrumb.campaign}
             notify={show}
           />
         )}

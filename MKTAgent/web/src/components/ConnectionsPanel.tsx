@@ -4,6 +4,7 @@
 // per-user OAuth flow (/connect/:platform/start). No token value is ever shown.
 import { useEffect, useState } from 'react';
 import { api, connectUrl, type ConnectionDto } from '../api/client';
+import { ConnectionCredentialForm } from './connection-credential-form';
 
 interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
@@ -31,6 +32,7 @@ const fmtExpiry = (iso: string | null): string => {
 export function ConnectionsPanel({ notify }: Props) {
   const [rows, setRows] = useState<ConnectionDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -72,12 +74,28 @@ export function ConnectionsPanel({ notify }: Props) {
                   <span className="cap-chip" key={cap}>{cap.replace('social.post.', '')}</span>
                 ))}
               </div>
-              <a
-                className={`btn ${c.state === 'connected' ? 'ghost' : 'primary'} small`}
-                href={connectUrl(c.connectUrl)}
-              >
-                {c.state === 'connected' ? 'Reconnect' : 'Connect'}
-              </a>
+              <div className="conn-actions">
+                <a
+                  className={`btn ${c.state === 'connected' ? 'ghost' : 'primary'} small`}
+                  href={connectUrl(c.connectUrl)}
+                >
+                  {c.state === 'connected' ? 'Reconnect (OAuth)' : 'Connect (OAuth)'}
+                </a>
+                <button
+                  className="btn small"
+                  onClick={() => setFormOpen((cur) => (cur === c.platformKey ? null : c.platformKey))}
+                >
+                  {formOpen === c.platformKey ? 'Close' : c.state === 'connected' ? 'Update token' : 'Enter token'}
+                </button>
+              </div>
+              {formOpen === c.platformKey && (
+                <ConnectionCredentialForm
+                  platformKey={c.platformKey}
+                  displayName={c.displayName}
+                  notify={notify}
+                  onSaved={() => { setFormOpen(null); void load(); }}
+                />
+              )}
             </div>
           ))}
         </div>

@@ -29,11 +29,15 @@ import {
   renameRun,
   replanRun,
   setRunStatus,
+  resetNodes,
+  collectDownstream,
 } from '../db/repos/workflow-run-repo.ts';
+import { deleteArtifactsByNodes } from '../orchestration/executor/artifact-store.ts';
+import { getAgent } from '../orchestration/registry/agent-registry.ts';
 import { logger } from '../lib/logger.ts';
 import { mergeAnswers, toRunDto, type ClarifyQuestions } from './orchestration-mappers.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
-import { ensureChatSession, recordTurn, summarizeAnswers } from './orchestration-chat.ts';
+import { ensureChatSession, recordTurn, recordSaveOffer, summarizeAnswers } from './orchestration-chat.ts';
 import { resolveConnections } from '../connectors/runtime/connection-resolver.ts';
 import type { RequiredActionDto } from './schemas.ts';
 
@@ -153,7 +157,19 @@ orchestrationRouter.post('/runs/:id/save', asyncHandler(async (req, res) => {
   if (run.status !== 'planned') return fail(res, 409, 'run_not_planned');
   const named = await nameRun(run.id, req.userId!, body.name.trim());
   if (!named) return fail(res, 409, 'run_not_planned');
-  return respondRun(res, run.id, req.userId!);
+  // P6: the flow is saved — the Master Agent now guides the user into using it. Record
+  // a conversational offer turn (set up first campaign / run a test post / open flow) on
+  // the run's chat session so it surfaces in-chat and survives restore. Best-effort:
+  // never let the offer break the save (author already degrades, but guard persistence).
+  let assistantMessage: string | undefined;
+  if (run.chatSessionId) {
+    try {
+      assistantMessage = await recordSaveOffer(run.chatSessionId, body.name.trim(), goalSpec.parse(run.goal));
+    } catch (e) {
+      logger.warn('save_offer_record_failed', { runId: run.id, error: String(e instanceof Error ? e.message : e) });
+    }
+  }
+  return respondRun(res, run.id, req.userId!, { assistantMessage });
 }));
 
 // Rename a saved flow (any status). Unlike /save (planned-only, the initial naming),
@@ -223,6 +239,42 @@ orchestrationRouter.post('/runs/:id/approve-node/:nodeId', asyncHandler(async (r
   await setRunStatus(run.id, 'running');
   launchWorkflow(run.id, req.userId!, goal, plan, { approveNodeId: req.params.nodeId });
   return respondRun(res, run.id, req.userId!);
+}));
+
+// Re-run ONE node of a completed/failed run (control surface under a post): the user
+// didn't like a step's output (e.g. the concept or the image) and wants that agent to
+// run again before publishing. Guards: the node must exist, be re-runnable (completed or
+// failed, not the publisher — that's the gated external write), and its upstream deps
+// must be completed. We reset the node + its transitive dependents to pending (stale),
+// delete their artifacts, then launch the executor in single-node mode. Downstream is
+// NOT auto-run — the user re-runs each explicitly (keeps image/video spend deliberate).
+orchestrationRouter.post('/runs/:id/rerun-node/:nodeId', asyncHandler(async (req, res) => {
+  const full = await getRunWithNodes(req.params.id, req.userId!);
+  if (!full) return fail(res, 404, 'run_not_found');
+  if (full.status === 'running') return fail(res, 409, 'run_in_flight');
+
+  const node = full.nodes.find((n) => n.nodeId === req.params.nodeId);
+  if (!node) return fail(res, 404, 'node_not_found');
+  if (getAgent(node.agentId as Parameters<typeof getAgent>[0])?.requiresApproval) return fail(res, 409, 'node_not_rerunnable', 'the publish step runs via approval, not re-run');
+  if (node.status !== 'completed' && node.status !== 'failed') return fail(res, 409, 'node_not_rerunnable', 'only a finished step can be re-run');
+
+  // Upstream deps must be completed so the node has valid inputs to read.
+  const byId = new Map(full.nodes.map((n) => [n.nodeId, n]));
+  const depsReady = node.dependsOn.every((d) => byId.get(d)?.status === 'completed');
+  if (!depsReady) return fail(res, 409, 'upstream_not_ready', 'run the earlier steps first');
+
+  const goal = goalSpec.parse(full.goal);
+  const plan: WorkflowPlan = workflowPlan.parse(full.plan);
+
+  // Reset the target + everything downstream of it (now stale), and drop their artifacts.
+  const downstream = collectDownstream(full.nodes, node.nodeId);
+  const toReset = [node.nodeId, ...downstream];
+  await deleteArtifactsByNodes(full.id, req.userId!, toReset);
+  await resetNodes(full.id, req.userId!, toReset);
+
+  await setRunStatus(full.id, 'running');
+  launchWorkflow(full.id, req.userId!, goal, plan, { rerunOnly: node.nodeId });
+  return respondRun(res, full.id, req.userId!);
 }));
 
 // Saved Flows list (named runs only) for the sidebar + Active Flows surface.

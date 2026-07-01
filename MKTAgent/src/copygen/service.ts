@@ -116,6 +116,47 @@ export async function runCopyGenTick(callFn: GeminiFn = callGemini): Promise<Cop
 // checked ownership + that status ∈ {brief,rework}. Shares the global copy-gen
 // advisory lock so a manual run and the cron never double-generate the same row;
 // if the lock is held → 'lock_held' (route maps to 409 busy, UI retries).
+// Text-refine (T-refine): apply a targeted edit to a post's EXISTING copy via the LLM
+// (keeps the audit trail — no raw hand-edit). Works on review|ready posts; the result
+// lands back at `review` so the user re-approves before it publishes. Shares the copy-gen
+// advisory lock so a cron tick can't clobber the refine mid-flight.
+export async function refineForPost(
+  postId: string,
+  ownerId: string,
+  instruction: string,
+  callFn: GeminiFn = callGemini,
+): Promise<CopyGenResult> {
+  const lock = await acquireAdvisoryLock(LOCK_KEY);
+  if (!lock.acquired) return { picked: false, reason: 'lock_held' };
+  try {
+    const post = await getPostForCopyGen(postId, ownerId);
+    if (!post) return { picked: false, reason: 'not_found' };
+    if (post.status !== 'review' && post.status !== 'ready') {
+      return { picked: false, postId, reason: 'not_refinable' };
+    }
+    const current = post.copy as { body: string; threads: string; x: string } | null;
+    if (!current) return { picked: false, postId, reason: 'no_copy' };
+
+    const body = buildGeminiBody(post, { instruction, current });
+    const raw = await callFn(body);
+    const result = parseGeminiResponse(raw);
+    if (!result.ok) {
+      logger.warn('copygen_refine_failed', { postId, error: result.error.slice(0, 200) });
+      return { picked: true, postId, status: 'retry', error: result.error };
+    }
+    const cfg = resolveCopyConfig(post);
+    await updatePost(post.id, { copy: result.copy as unknown as object, language: cfg.language, status: 'review', error: null });
+    await logRun('info', 'mkt_copygen_refine', { id: post.id, instruction: instruction.slice(0, 120) }, post.ownerId);
+    publishPostStatus(post.ownerId, { postId: post.id, status: 'review', campaignId: post.campaignId });
+    return { picked: true, postId: post.id, status: 'review' };
+  } catch (e) {
+    logger.error('copygen_refine_error', { postId, error: String(e).slice(0, 300) });
+    return { picked: false, postId, reason: 'error' };
+  } finally {
+    await lock.release();
+  }
+}
+
 export async function generateForPost(
   postId: string,
   ownerId: string,

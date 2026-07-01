@@ -7,7 +7,7 @@
 // execution — nothing runs on this surface (keeps the chat responsive, no JSON dump).
 import { useState } from 'react';
 import { api, type WorkflowRunDto } from '../api/client';
-import { PlanCard } from './orchestrate-run-cards';
+import { PlanCard, SaveOfferCard } from './orchestrate-run-cards';
 
 export interface OrchestrateRestore {
   sessionId: string;
@@ -15,12 +15,20 @@ export interface OrchestrateRestore {
   run: WorkflowRunDto | null;
 }
 
+export interface FlowHint { id: string; name: string }
+
 interface Props {
   restore: OrchestrateRestore | null;
+  // P6 "on return" hint — saved flows with no campaign/strategy yet; nudged on the hero.
+  flowsWithoutStrategy: FlowHint[];
   notify: (msg: string, kind?: 'ok' | 'err') => void;
   onRunActivity: (sessionId: string) => void;
-  // Saved a flow → hand off to Active Flows (App redirects + refreshes the list).
+  // Saved a flow → refresh the sidebar list (no redirect — the P6 offer stays in chat).
   onSaved: (runId: string) => void;
+  // P6 offer actions. Set up campaign = create the container under the flow + open it.
+  // Open flow = plain redirect to Active Flows. (Run a test post is handled in-panel.)
+  onSetupCampaign: (runId: string) => void;
+  onOpenFlow: (runId: string) => void;
 }
 
 interface Msg { role: 'user' | 'agent'; content: string }
@@ -31,7 +39,7 @@ const starters = [
   'Write a short LinkedIn post about our new feature',
 ];
 
-export function OrchestratePanel({ restore, notify, onRunActivity, onSaved }: Props) {
+export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow }: Props) {
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   const [run, setRun] = useState<WorkflowRunDto | null>(restore?.run ?? null);
   const [sessionId, setSessionId] = useState<string | null>(restore?.sessionId ?? null);
@@ -65,6 +73,9 @@ export function OrchestratePanel({ restore, notify, onRunActivity, onSaved }: Pr
     } finally { setPending(null); setBusy(false); }
   };
 
+  // Save names the flow and (P6) returns the Master Agent's guiding offer as
+  // assistantMessage. We stay in the chat, surface the offer bubble + action card, and
+  // only refresh the sidebar — the user chooses the next step (set up / test / open).
   const save = async (name: string) => {
     if (!run) return;
     setBusy(true);
@@ -72,12 +83,27 @@ export function OrchestratePanel({ restore, notify, onRunActivity, onSaved }: Pr
       const r = await api.saveRun(run.id, name);
       if (!r.ok) { notify(`Save flow: ${r.error.error}`, 'err'); return; }
       setRun(r.data);
+      if (r.data.assistantMessage) push({ role: 'agent', content: r.data.assistantMessage });
       notify(`Flow “${name}” saved`);
       onSaved(run.id);
     } finally { setBusy(false); }
   };
 
+  // P6 "Run a test post" — execute the saved flow, then hand off to Active Flows where
+  // SSE drives the live DAG (and needs_connection degrades to the connect card there).
+  const runTest = async () => {
+    if (!run) return;
+    setBusy(true);
+    try {
+      const r = await api.executeRun(run.id);
+      if (!r.ok) { notify(`Run flow: ${r.error.error}`, 'err'); return; }
+      onOpenFlow(run.id);
+    } finally { setBusy(false); }
+  };
+
   const showPlan = run && run.nodes.length > 0;
+  // Offer appears once the flow is named (saved) and still holds a plan to act on.
+  const showOffer = Boolean(run?.name) && showPlan;
 
   return (
     <section className={`master-chat-main ${hasStarted ? 'started' : ''}`}>
@@ -85,6 +111,16 @@ export function OrchestratePanel({ restore, notify, onRunActivity, onSaved }: Pr
         <div className="empty-chat-hero">
           <h1>What should we orchestrate?</h1>
           <p>Describe a marketing goal. The Master Agent reasons about it, asks only what materially shapes the result, then plans a dynamic agent workflow. Save it as a flow and run it from Active Flows.</p>
+          {flowsWithoutStrategy.length > 0 && (
+            <div className="flow-hint">
+              <span className="muted small">Pick up where you left off — flows with no campaign yet:</span>
+              <div className="flow-hint-row">
+                {flowsWithoutStrategy.slice(0, 4).map((f) => (
+                  <button key={f.id} className="prompt-chip" onClick={() => onSetupCampaign(f.id)}>⚡ {f.name}</button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -107,6 +143,15 @@ export function OrchestratePanel({ restore, notify, onRunActivity, onSaved }: Pr
               busy={busy}
               defaultName={(run!.goal as { slots?: { product?: string } } | null)?.slots?.product ?? ''}
               onSave={(name) => void save(name)}
+            />
+          )}
+
+          {!busy && showOffer && (
+            <SaveOfferCard
+              busy={busy}
+              onSetupCampaign={() => onSetupCampaign(run!.id)}
+              onRunTest={() => void runTest()}
+              onOpenFlow={() => onOpenFlow(run!.id)}
             />
           )}
         </div>

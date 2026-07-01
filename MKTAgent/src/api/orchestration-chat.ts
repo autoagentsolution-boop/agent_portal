@@ -4,8 +4,10 @@
 // AgentChatSession, so runs appear in the sidebar "Chats" list and history restores.
 import { prisma } from '../db/client.ts';
 import { conversationAuthor, type PriorMessage } from '../orchestration/master/conversation-author.ts';
+import { saveOfferAuthor } from '../orchestration/master/save-offer-author.ts';
 import { detectLanguage } from '../orchestration/master/detect-language.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
+import type { GoalSpec } from '../orchestration/schemas/goal-spec.ts';
 
 const titleFrom = (message: string): string =>
   message.trim().replace(/\s+/g, ' ').slice(0, 80) || 'Orchestration goal';
@@ -55,6 +57,23 @@ export const recordTurn = async (
   // don't bump the parent's @updatedAt on their own).
   await prisma.agentChatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
   return assistantMessage;
+};
+
+// Record the "flow saved — what next?" agent turn (P6). Unlike recordTurn there is no
+// user message: saving is a UI action, so we persist only the agent's guiding offer so
+// it shows in the transcript + survives history restore. Language mirrors the saved
+// goal (name/product). Author never throws (deterministic fallback). Returns the text.
+export const recordSaveOffer = async (
+  sessionId: string,
+  flowName: string | null,
+  goal: GoalSpec,
+): Promise<string> => {
+  const product = goal.slots.product ?? null;
+  const language = goal.slots.language ?? detectLanguage(flowName ?? product ?? '');
+  const message = await saveOfferAuthor.author({ flowName, product, language });
+  await prisma.agentChatMessage.create({ data: { sessionId, role: 'agent', content: message } });
+  await prisma.agentChatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+  return message;
 };
 
 // Readable one-line summary of clarification answers → the user-side chat message

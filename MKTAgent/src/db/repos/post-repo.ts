@@ -163,6 +163,8 @@ export interface CreatePostForOwnerArgs {
   assetType?: Post['assetType'];
   language?: string | null;
   lengthSpec?: string | null;
+  angle?: string | null;
+  brandVoice?: string | null;
   driveFolderId?: string | null;
   heroFile?: string | null;
   platforms?: Post['platforms'];
@@ -178,6 +180,8 @@ export const createPostForOwner = (args: CreatePostForOwnerArgs): Promise<Post> 
       ...(args.assetType ? { assetType: args.assetType } : {}),
       ...(args.language !== undefined ? { language: args.language } : {}),
       ...(args.lengthSpec !== undefined ? { lengthSpec: args.lengthSpec } : {}),
+      ...(args.angle !== undefined ? { angle: args.angle } : {}),
+      ...(args.brandVoice !== undefined ? { brandVoice: args.brandVoice } : {}),
       ...(args.driveFolderId !== undefined ? { driveFolderId: args.driveFolderId } : {}),
       ...(args.heroFile !== undefined ? { heroFile: args.heroFile } : {}),
       ...(args.platforms ? { platforms: args.platforms } : {}),

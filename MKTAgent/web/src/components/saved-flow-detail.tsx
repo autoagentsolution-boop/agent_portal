@@ -8,14 +8,14 @@ import { api, type WorkflowRunDto } from '../api/client';
 import { useRunEvents } from '../hooks/use-run-events';
 import { RunDagView } from './run-dag-view';
 import { ConnectionRequired } from './connection-required';
-import { AgentCredentialPanel } from './agent-credential-panel';
+import { NodeSetupStatus } from './node-setup-status';
 import { formatArtifact } from '../flow/artifact-format';
-import { hasCredentialSetup } from '../flow/agent-credentials';
 
 interface Props {
   runId: string;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
   onStatusChange: () => void; // bump the saved-flows list when status changes
+  onOpenConnections?: () => void;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -24,7 +24,7 @@ const STATUS_LABEL: Record<string, string> = {
   needs_connection: 'Connect a platform to run',
 };
 
-export function SavedFlowDetail({ runId, notify, onStatusChange }: Props) {
+export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnections }: Props) {
   const [run, setRun] = useState<WorkflowRunDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -163,8 +163,8 @@ export function SavedFlowDetail({ runId, notify, onStatusChange }: Props) {
           ) : (
             <p className="muted small">This step hasn't produced output yet — run the flow to populate it.</p>
           )}
-          {selectedNodeRun && hasCredentialSetup(selectedNodeRun.agentId) && (
-            <AgentCredentialPanel agentId={selectedNodeRun.agentId} notify={notify} />
+          {selectedNodeRun && (
+            <NodeSetupStatus agentId={selectedNodeRun.agentId} onOpenConnections={onOpenConnections} />
           )}
         </div>
       )}

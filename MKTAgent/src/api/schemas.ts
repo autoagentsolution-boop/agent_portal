@@ -40,6 +40,12 @@ export const rejectPostBody = z.object({
 });
 export type RejectPostBody = z.infer<typeof rejectPostBody>;
 
+// Text-refine: a targeted instruction to tweak existing copy (review|ready → review).
+export const refinePostBody = z.object({
+  instruction: z.string().min(1).max(2000),
+});
+export type RefinePostBody = z.infer<typeof refinePostBody>;
+
 // ---- CRUD bodies (T7) ----
 // ownerId is NEVER accepted from the client — it is taken from the JWT. Post.copy
 // and Post.status are owned by copy-gen/the review gate, so neither is settable here.
@@ -72,6 +78,8 @@ export const createPostBody = z.object({
   assetType: assetType.optional(),
   language: z.string().max(40).nullish(),
   lengthSpec: z.string().max(40).nullish(),
+  angle: z.string().max(2000).nullish(),
+  brandVoice: z.string().max(2000).nullish(),
   driveFolderId: z.string().max(200).nullish(),
   heroFile: z.string().max(2000).nullish(), // 1 filename or CSV (carousel)
   platforms: z.array(socialPlatform).optional(),
@@ -85,6 +93,8 @@ export const updatePostBody = z
     assetType,
     language: z.string().max(40).nullish(),
     lengthSpec: z.string().max(40).nullish(),
+    angle: z.string().max(2000).nullish(),
+    brandVoice: z.string().max(2000).nullish(),
     driveFolderId: z.string().max(200).nullish(),
     heroFile: z.string().max(2000).nullish(),
     platforms: z.array(socialPlatform),
@@ -277,11 +287,14 @@ export type CopyBag = z.infer<typeof copyBag>;
 export const postDto = z.object({
   id: z.string().uuid(),
   campaignId: z.string().uuid(),
+  runId: z.string().uuid().nullable(),
   status: postStatus,
   assetType,
   copy: copyBag.nullable(),
   language: z.string().nullable(),
   lengthSpec: z.string().nullable(),
+  angle: z.string().nullable(),
+  brandVoice: z.string().nullable(),
   feedback: z.string().nullable(),
   driveFolderId: z.string().nullable(),
   heroFile: z.string().nullable(),
