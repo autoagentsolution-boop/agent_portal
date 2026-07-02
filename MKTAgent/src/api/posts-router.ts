@@ -16,6 +16,7 @@ import { publishPostStatus } from '../events/bus.ts';
 import { generateForPost, refineForPost } from '../copygen/service.ts';
 import { publishPostNow } from '../scheduler/tick.ts';
 import { getCampaign } from '../db/repos/campaign-repo.ts';
+import { cloneTemplateRun } from '../db/repos/workflow-run-repo.ts';
 import {
   listPosts,
   getPostWithCampaign,
@@ -47,14 +48,42 @@ postsRouter.get(
 // Create a brief. Campaign ownership is verified against the JWT FIRST (404 if the
 // campaign isn't the caller's) so ownerId is denormalized from a trusted source,
 // never the body. Always starts `brief`; copy-gen will generate + move to review.
+// Flow-as-template: when the campaign is attached to a flow, clone that template into a
+// fresh instance run and link it (post.runId) — the post is the executable unit. A
+// campaign with no flow keeps the legacy copy-gen path (no runId).
 postsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const body = parseOr422(res, createPostBody, req.body ?? {});
     if (!body) return;
-    if (!(await getCampaign(body.campaignId, req.userId!)))
-      return fail(res, 404, 'campaign_not_found');
-    const post = await createPostForOwner({ ...body, ownerId: req.userId! });
+    const campaign = await getCampaign(body.campaignId, req.userId!);
+    if (!campaign) return fail(res, 404, 'campaign_not_found');
+
+    let runId: string | null = null;
+    if (campaign.flowId) {
+      const instance = await cloneTemplateRun(campaign.flowId, req.userId!, {
+        product: campaign.product,
+        angle: campaign.angle,
+        brandVoice: campaign.brandVoice,
+        language: campaign.language,
+        productDetails: campaign.brandContext,
+        platforms: campaign.platforms,
+      });
+      // A missing/deleted template just means no runnable instance — the post still
+      // exists (legacy copy-gen path) rather than failing the create.
+      runId = instance?.id ?? null;
+    }
+
+    // Inherit the campaign's platforms/language when the brief omits them, so a post
+    // created under a FB+IG campaign starts with those targets pre-selected (the empty-
+    // checkboxes bug). An explicit body value still wins (manual per-post override).
+    const post = await createPostForOwner({
+      ...body,
+      platforms: body.platforms ?? campaign.platforms ?? undefined,
+      language: body.language ?? campaign.language ?? undefined,
+      ownerId: req.userId!,
+      runId,
+    });
     res.status(201);
     ok(res, toPostDto(post));
   }),

@@ -17,13 +17,18 @@ interface Props {
   nodes: Node[];
   // Per-platform publish links to render under the publisher node (run detail).
   publishUrls?: Record<string, string> | null;
+  // Selected publish targets — shown under the publisher node BEFORE publishing so the
+  // user sees where this will go (the "publisher hides chosen platforms" gap). Once
+  // published, publishUrls (with links) takes over.
+  platforms?: string[];
   // When set, nodes are clickable (run detail → open that node's artifact).
   onSelectNode?: (nodeId: string) => void;
   selectedNodeId?: string | null;
 }
 
-export function RunDagView({ nodes, publishUrls, onSelectNode, selectedNodeId }: Props) {
+export function RunDagView({ nodes, publishUrls, platforms, onSelectNode, selectedNodeId }: Props) {
   const platformRows = Object.entries(publishUrls ?? {});
+  const targetPlatforms = platforms ?? [];
   return (
     <ol className="dag-list">
       {nodes.map((n) => {
@@ -47,6 +52,11 @@ export function RunDagView({ nodes, publishUrls, onSelectNode, selectedNodeId }:
                   </li>
                 ))}
               </ul>
+            )}
+            {/* Before publish (no URLs yet): show the chosen target platforms so the plan
+                makes the publish destination explicit. */}
+            {n.agentId === 'publisher' && platformRows.length === 0 && targetPlatforms.length > 0 && (
+              <span className="dag-targets">→ {targetPlatforms.join(', ')}</span>
             )}
           </li>
         );

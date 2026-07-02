@@ -19,6 +19,7 @@ import {
   setRunStatus,
   setNodeStatus,
 } from '../../db/repos/workflow-run-repo.ts';
+import { getPostByRunId } from '../../db/repos/post-repo.ts';
 import { publishNodeStatus } from '../../events/bus.ts';
 import { logRun } from '../../db/client.ts';
 
@@ -68,6 +69,11 @@ export const runWorkflow = async (
     upstream[a.type] = a.data;
     if (a.type === 'content_concept') postId = (a.data as { postId?: string }).postId;
   }
+  // Flow-as-template: an instance run is created FOR a pre-existing Post (post.runId).
+  // Seed that postId so concept_writer fills the existing post (+ its campaign) rather
+  // than materializing a new campaign+post. Legacy runs have no attached post → falls
+  // back to concept_writer's create path. The artifact-derived postId (resume) wins.
+  if (!postId) postId = (await getPostByRunId(runId))?.id;
 
   await setRunStatus(runId, 'running');
 

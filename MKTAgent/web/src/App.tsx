@@ -112,6 +112,21 @@ export function App() {
     show(`Campaign “${product}” created`);
   };
 
+  // Item 2 (Option A) — the Master Agent created a campaign (+ optional post) under a saved
+  // flow from a chat message. Refresh campaigns/posts + saved runs (so the new campaign
+  // nests under its flow in the sidebar), then open its board (selecting the post if any).
+  const openCreatedCampaign = async (campaignId: string, postId?: string) => {
+    await Promise.all([
+      api.listCampaigns().then((r) => { if (r.ok) setCampaigns(r.data); }),
+      loadAllPosts(),
+      loadSavedRuns(),
+    ]);
+    setActiveCampaign(campaignId);
+    setSelectedPostId(postId ?? null);
+    setSelectedRunId(null);
+    setPage('flows');
+  };
+
   const deleteChat = async (event: MouseEvent<HTMLButtonElement>, chat: AgentChatSessionDto) => {
     event.stopPropagation();
     if (!confirm(`Delete “${chat.title}”?`)) return;
@@ -155,7 +170,12 @@ export function App() {
   // the product name keeps this a quick management action (full config is editable later).
   const createCampaignUnder = async (event: MouseEvent<HTMLButtonElement>, flowId: string | null) => {
     event.stopPropagation();
-    const product = prompt('New campaign — product or offer name:')?.trim();
+    return createCampaignForFlow(flowId);
+  };
+
+  // Same create, invoked without an event (blueprint CTA "New campaign from this flow").
+  const createCampaignForFlow = async (flowId: string | null) => {
+    const product = prompt('New campaign — strategy or offer name (e.g. "Product launch", "Competitor comparison"):')?.trim();
     if (!product) return;
     const r = await api.createCampaign({ product, ...(flowId ? { flowId } : {}) });
     if (!r.ok) { show(`Create failed: ${r.error.error}`, 'err'); return; }
@@ -298,6 +318,7 @@ export function App() {
               onSaved={() => { void loadSavedRuns(); }}
               onSetupCampaign={(runId) => { void loadSavedRuns().then(() => setupFirstCampaign(runId)); }}
               onOpenFlow={(runId) => { void loadSavedRuns().then(() => openSavedFlow(runId)); }}
+              onCampaignCreated={(campaignId, postId) => { void openCreatedCampaign(campaignId, postId); }}
             />
           </div>
         ) : page === 'connections' ? (
@@ -316,6 +337,7 @@ export function App() {
             onPostsChange={mergePosts}
             onNewFlow={openOrchestrate}
             onOpenConnections={() => { setSelectedRunId(null); setPage('connections'); }}
+            onCreateCampaign={(flowId) => void createCampaignForFlow(flowId)}
             flowLabel={activeCampaignCrumb.flow}
             campaignLabel={activeCampaignCrumb.campaign}
             notify={show}

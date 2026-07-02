@@ -60,6 +60,66 @@ export const deleteNodes = async (runId: string, ownerId: string): Promise<void>
   await prisma.workflowNodeRun.deleteMany({ where: { runId, ownerId } });
 };
 
+// Per-post overrides applied when cloning a template — the parent Campaign's strategy
+// (product/angle/voice/language/platforms) so a post inherits its campaign's intent
+// while reusing the flow's agent DAG. Only non-null fields override the template goal.
+export interface CloneGoalOverrides {
+  product?: string | null;
+  angle?: string | null;
+  brandVoice?: string | null;
+  language?: string | null;
+  productDetails?: string | null;
+  platforms?: string[];
+}
+
+// Merge campaign overrides onto the template's frozen goal snapshot. Keeps the template
+// goal shape intact (outputs/confidence/provider) and only overrides the strategy slots
+// + platforms the campaign supplies. A blank override never clobbers a real value.
+const mergeGoal = (templateGoal: unknown, o: CloneGoalOverrides): object => {
+  const base = (templateGoal ?? {}) as { slots?: Record<string, unknown>; platforms?: string[] };
+  const slots = { ...(base.slots ?? {}) };
+  const set = (k: string, v: string | null | undefined) => { if (v && v.trim()) slots[k] = v.trim(); };
+  set('product', o.product);
+  set('angle', o.angle);
+  set('brandVoice', o.brandVoice);
+  set('language', o.language);
+  set('productDetails', o.productDetails);
+  return {
+    ...base,
+    slots,
+    ...(o.platforms && o.platforms.length ? { platforms: o.platforms } : {}),
+  };
+};
+
+// Clone a Flow template into a fresh, executable instance run (one per Post). Copies
+// the template's frozen goal + DAG plan, applies per-post overrides (from the parent
+// Campaign's strategy), and creates the node set as pending. The instance is `planned`
+// so the Post can execute it independently — the template itself is never run. Returns
+// null if the template is missing / wrong tenant / not actually a template.
+export const cloneTemplateRun = async (
+  templateId: string,
+  ownerId: string,
+  overrides: CloneGoalOverrides = {},
+): Promise<WorkflowRun | null> => {
+  const template = await prisma.workflowRun.findFirst({ where: { id: templateId, ownerId, kind: 'template' } });
+  if (!template || !template.plan) return null;
+  const plan = template.plan as { nodes: Array<{ nodeId: string; agentId: string; dependsOn: string[] }> };
+  const instance = await prisma.workflowRun.create({
+    data: {
+      ownerId,
+      chatSessionId: template.chatSessionId,
+      goal: mergeGoal(template.goal, overrides) as Prisma.InputJsonValue,
+      plan: template.plan as Prisma.InputJsonValue,
+      status: 'planned',
+      kind: 'instance',
+      locked: false,
+      templateId: template.id,
+    },
+  });
+  await createNodes(instance.id, ownerId, plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
+  return instance;
+};
+
 // ── Tenant-facing reads (scoped) ─────────────────────────────────────────────
 export const getRunForOwner = (id: string, ownerId: string): Promise<WorkflowRun | null> =>
   prisma.workflowRun.findFirst({ where: { id, ownerId } });
@@ -98,11 +158,13 @@ export interface RunListItem {
   updatedAt: Date;
 }
 
-// Named ("saved") runs for the Saved Flows surface. Only rows the user explicitly
-// saved (name not null) — transient draft runs stay out of the list.
+// Flow templates for the Saved Flows sidebar. A saved+approved flow is a `template`
+// (immutable blueprint); instance runs (one per Post) are hidden here — they surface
+// under their Post. Legacy named runs are kind=instance and intentionally excluded so
+// the sidebar shows only reusable blueprints.
 export const listSavedRuns = async (ownerId: string, limit = 50): Promise<RunListItem[]> => {
   const rows = await prisma.workflowRun.findMany({
-    where: { ownerId, name: { not: null } },
+    where: { ownerId, kind: 'template', name: { not: null } },
     orderBy: { updatedAt: 'desc' },
     take: limit,
     select: { id: true, name: true, status: true, createdAt: true, updatedAt: true, _count: { select: { nodes: true } } },
@@ -110,12 +172,18 @@ export const listSavedRuns = async (ownerId: string, limit = 50): Promise<RunLis
   return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, nodeCount: r._count.nodes, createdAt: r.createdAt, updatedAt: r.updatedAt }));
 };
 
-// Name a planned run (Saved Flows). Guarded transition keeps it scoped + only names a
-// run that is still planned AND not yet named — /save is the FIRST-time save, so a
-// second call must no-op (renames go through renameRun/PATCH). Without the `name: null`
-// guard a re-save would re-stamp the name and re-post the P6 offer turn. Returns row/null.
+// Name a planned run AND freeze it into a Flow template (Saved Flows). Guarded
+// transition keeps it scoped + only names a run that is still planned AND not yet named
+// — /save is the FIRST-time save, so a second call must no-op (renames go through
+// renameRun/PATCH). Without the `name: null` guard a re-save would re-stamp the name and
+// re-post the P6 offer turn. Approving a flow makes it an immutable blueprint:
+// kind=template, status=template, locked — the master agent can no longer mutate it, and
+// it is never executed (each Post clones it into an instance run). Returns row/null.
 export const nameRun = async (id: string, ownerId: string, name: string): Promise<WorkflowRun | null> => {
-  const r = await prisma.workflowRun.updateMany({ where: { id, ownerId, status: 'planned', name: null }, data: { name } });
+  const r = await prisma.workflowRun.updateMany({
+    where: { id, ownerId, status: 'planned', name: null },
+    data: { name, kind: 'template', status: 'template', locked: true },
+  });
   return r.count === 1 ? prisma.workflowRun.findFirst({ where: { id, ownerId } }) : null;
 };
 

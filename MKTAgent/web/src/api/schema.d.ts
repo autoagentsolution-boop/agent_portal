@@ -2457,6 +2457,9 @@ export interface components {
             /** Format: uuid */
             id: string;
             status: string;
+            /** @enum {string} */
+            kind: "template" | "instance";
+            locked: boolean;
             name?: string | null;
             goal?: unknown;
             plan?: unknown;
@@ -2480,6 +2483,11 @@ export interface components {
                 reason: string;
                 capabilities: string[];
             }[];
+            campaignIntent?: boolean;
+            /** Format: uuid */
+            createdCampaignId?: string;
+            /** Format: uuid */
+            createdPostId?: string;
             nodes: {
                 nodeId: string;
                 agentId: string;

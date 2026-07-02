@@ -14,11 +14,17 @@ export interface RunDtoExtras {
   assistantMessage?: string;
   // Connection Resolver output — present when the run is gated as needs_connection.
   requiredActions?: RequiredActionDto[];
+  // True when a saved-flow chat message created a campaign under the flow (item 2).
+  campaignIntent?: boolean;
+  createdCampaignId?: string;
+  createdPostId?: string;
 }
 
 export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): WorkflowRunDto => ({
   id: run.id,
   status: run.status,
+  kind: run.kind === 'template' ? 'template' : 'instance',
+  locked: run.locked,
   name: run.name ?? null,
   goal: run.goal,
   plan: run.plan ?? null,
@@ -26,6 +32,9 @@ export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): Workflow
   ...(extras.questions ? { questions: extras.questions } : {}),
   ...(extras.assistantMessage ? { assistantMessage: extras.assistantMessage } : {}),
   ...(extras.requiredActions ? { requiredActions: extras.requiredActions } : {}),
+  ...(extras.campaignIntent ? { campaignIntent: extras.campaignIntent } : {}),
+  ...(extras.createdCampaignId ? { createdCampaignId: extras.createdCampaignId } : {}),
+  ...(extras.createdPostId ? { createdPostId: extras.createdPostId } : {}),
   nodes: run.nodes.map((n) => ({
     nodeId: n.nodeId,
     agentId: n.agentId,
@@ -59,6 +68,9 @@ const applyOutputFormat = (goal: GoalSpec, label: string): void => {
   goal.outputs.needsStrategy = fullCampaign;
   goal.outputs.needsInfographic = /infographic/.test(l) || fullCampaign;
   goal.outputs.needsVideo = /video/.test(l);
+  // Storyboard is independent + implied by video. Enable it for an explicit storyboard
+  // choice or any video (the planner also enforces video ⇒ storyboard as a backstop).
+  goal.outputs.needsStoryboard = /storyboard/.test(l) || goal.outputs.needsVideo;
   goal.outputs.needsPublishing = true;
 };
 

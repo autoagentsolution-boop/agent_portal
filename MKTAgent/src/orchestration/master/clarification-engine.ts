@@ -81,7 +81,8 @@ export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
   // No output requirement at all → the request is too vague to plan; offer the
   // brief's §4 output_format menu as a required multiple-choice.
   const anyOutput =
-    goal.outputs.needsTextPost || goal.outputs.needsInfographic || goal.outputs.needsVideo;
+    goal.outputs.needsTextPost || goal.outputs.needsInfographic ||
+    goal.outputs.needsStoryboard || goal.outputs.needsVideo;
   if (!anyOutput) {
     q.push({
       slot: 'output_format',

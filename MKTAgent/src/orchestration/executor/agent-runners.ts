@@ -8,7 +8,7 @@ import type { GoalSpec } from '../schemas/goal-spec.ts';
 import { campaignIdeas, strategyBrief, type ArtifactType } from '../schemas/artifact-schemas.ts';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
-import { createPost, getPostForOwner, approveReview, setPostHeroFile } from '../../db/repos/post-repo.ts';
+import { createPost, getPostForOwner, approveReview, setPostHeroFile, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
 import { generateForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
@@ -45,10 +45,51 @@ export interface RunnerOutput {
   postId?: string;
 }
 
+// concept_writer instance path (LIVE): the Post already exists (created before the run,
+// post.runId = this run) and its Campaign already carries the merged strategy. We only
+// run copy-gen on it + approve review→ready — we do NOT create a new campaign/post. This
+// is the flow-as-template path: one template → many posts, each its own instance run.
+const runConceptWriterForExistingPost = async (ctx: RunnerContext, postId: string): Promise<RunnerOutput> => {
+  const { ownerId, goal } = ctx;
+  const post = await getPostForOwner(postId, ownerId);
+  if (!post) throw new Error('concept_writer: attached post not found');
+
+  // Reset to `brief` so copy-gen runs whether this is the first execution (already brief)
+  // or a re-run of a post that reached review/ready/posted (would otherwise be refused as
+  // not_generatable). This is the "regenerate this step" semantics for the concept node.
+  if (post.status !== 'brief' && post.status !== 'rework') {
+    await setPostStatus(post.id, 'brief');
+  }
+
+  const result = await generateForPost(post.id, ownerId, ctx.geminiFn);
+  if (result.status !== 'review') {
+    throw new Error(`concept_writer: copy-gen did not reach review (${result.reason ?? result.error ?? result.status})`);
+  }
+  const row = await getPostForOwner(post.id, ownerId);
+  const copy = (row?.copy as { body: string; threads: string; x: string } | null) ?? null;
+  if (!copy) throw new Error('concept_writer: copy missing after review');
+
+  await approveReview(post.id, ownerId, new Date());
+
+  return {
+    type: 'content_concept',
+    postId: post.id,
+    data: {
+      mainAngle: goal.slots.angle ?? goal.slots.product ?? 'marketing concept',
+      keyMessage: copy.body.slice(0, 200),
+      copy,
+      postId: post.id,
+    },
+  };
+};
+
 // concept_writer (LIVE): create a real Campaign+Post from the goal, run copy-gen,
 // then auto-approve review→ready so the publisher node can claim it. The copy
 // review is represented by the Post's status lifecycle, not an executor halt.
+// When the run already has an attached post (flow-as-template instance), delegate to
+// the existing-post path instead of materializing a new campaign+post.
 const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  if (ctx.postId) return runConceptWriterForExistingPost(ctx, ctx.postId);
   const { ownerId, goal } = ctx;
   // brandContext = the real product knowledge → copy-gen's resolveCopyConfig reads it
   // ("facts you may use, do not invent beyond these") so copy is grounded, not generic.

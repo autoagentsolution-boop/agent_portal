@@ -22,6 +22,7 @@ interface Props {
   onPostsChange: (posts: PostDto[]) => void;
   onNewFlow: () => void;
   onOpenConnections: () => void;
+  onCreateCampaign: (flowId: string) => void;
   flowLabel?: string | null;
   campaignLabel?: string | null;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
@@ -38,6 +39,7 @@ export function ActiveFlowsPage(props: Props) {
           notify={props.notify}
           onStatusChange={props.onRefresh}
           onOpenConnections={props.onOpenConnections}
+          onCreateCampaign={props.onCreateCampaign}
         />
       </div>
     );

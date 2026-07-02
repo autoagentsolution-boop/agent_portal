@@ -234,6 +234,10 @@ export const artifactDto = z.object({
 export const workflowRunDto = z.object({
   id: z.string().uuid(),
   status: z.string(),
+  // Flow-as-template split: a saved flow is a `template` (immutable blueprint, read-only
+  // DAG, never executed); each Post clones it into an `instance` the user executes.
+  kind: z.enum(['template', 'instance']),
+  locked: z.boolean(),
   // User-given name once saved as a flow (Saved Flows); null while a draft run.
   name: z.string().nullable().optional(),
   goal: z.unknown(),
@@ -246,6 +250,12 @@ export const workflowRunDto = z.object({
   questions: z.array(clarificationQuestionDto).optional(),
   // Set when status==='needs_connection' — platforms to connect before /execute.
   requiredActions: z.array(requiredActionDto).optional(),
+  // Set when a follow-up on a SAVED flow asks to create a campaign (item 2): signals the
+  // panel that a campaign (+ optional post) was created under THIS flow — navigate to it
+  // instead of forking a new flow. The ids let the panel open the new campaign board.
+  campaignIntent: z.boolean().optional(),
+  createdCampaignId: z.string().uuid().optional(),
+  createdPostId: z.string().uuid().optional(),
   nodes: z.array(workflowNodeDto),
   artifacts: z.array(artifactDto),
   createdAt: z.string(),

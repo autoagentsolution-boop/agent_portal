@@ -87,6 +87,12 @@ export const getPostWithCampaign = (
 export const getPostForOwner = (id: string, ownerId: string): Promise<Post | null> =>
   prisma.post.findFirst({ where: { id, ownerId } });
 
+// The Post an instance run executes (post.runId = run.id). Flow-as-template: the post
+// is created BEFORE its run executes, so concept_writer fills THIS post rather than
+// creating a new campaign+post. Null when a run has no attached post (legacy path).
+export const getPostByRunId = (runId: string): Promise<Post | null> =>
+  prisma.post.findFirst({ where: { runId } });
+
 // Scoped fetch with campaign+owner for the manual copy-gen trigger (T8). Mirrors
 // findCopyGenDueWithCampaign's include but for ONE owner-scoped post. Null → 404.
 export const getPostForCopyGen = (
@@ -169,6 +175,9 @@ export interface CreatePostForOwnerArgs {
   heroFile?: string | null;
   platforms?: Post['platforms'];
   scheduledAt?: Date | null;
+  // The instance run this post executes (cloned from the campaign's flow template).
+  // Null for posts under a campaign that isn't attached to a flow (legacy copy-gen path).
+  runId?: string | null;
 }
 
 export const createPostForOwner = (args: CreatePostForOwnerArgs): Promise<Post> =>
@@ -186,6 +195,7 @@ export const createPostForOwner = (args: CreatePostForOwnerArgs): Promise<Post> 
       ...(args.heroFile !== undefined ? { heroFile: args.heroFile } : {}),
       ...(args.platforms ? { platforms: args.platforms } : {}),
       ...(args.scheduledAt !== undefined ? { scheduledAt: args.scheduledAt } : {}),
+      ...(args.runId ? { runId: args.runId } : {}),
     },
   });
 

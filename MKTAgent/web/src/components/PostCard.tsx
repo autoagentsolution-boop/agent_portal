@@ -91,7 +91,11 @@ export function PostCard({ post, demoMode, notify, onEdit, selected = false, onP
 
   const s = post.status;
   const stage = stageLine(post);
-  const canGenerate = s === 'brief' || s === 'rework';
+  // A flow-attached post (runId) generates copy via its Concept Writer DAG step (Execute),
+  // not the legacy copy-gen button — showing both is the "two engines" confusion. Legacy
+  // Generate stays only for run-less posts (manual, no flow).
+  const isFlowPost = Boolean(post.runId);
+  const canGenerate = (s === 'brief' || s === 'rework') && !isFlowPost;
   const canReview = s === 'review';
   const canPublish = s === 'ready';
   const canEdit = ['brief', 'review', 'rework', 'error'].includes(s);
@@ -187,9 +191,11 @@ export function PostCard({ post, demoMode, notify, onEdit, selected = false, onP
       {!rejecting && !scheduling && !refining && (
         <div className="btn-row" style={{ marginTop: 10 }}>
           <button className="btn" disabled={!canEdit || !!busy} onClick={() => onEdit(post)}>Edit brief</button>
-          <button className="btn" disabled={!canGenerate || !!busy} onClick={() => void run('Generate', () => api.generate(post.id))}>
-            {busy === 'Generate' ? '…' : 'Generate copy'}
-          </button>
+          {!isFlowPost && (
+            <button className="btn" disabled={!canGenerate || !!busy} onClick={() => void run('Generate', () => api.generate(post.id))}>
+              {busy === 'Generate' ? '…' : 'Generate copy'}
+            </button>
+          )}
           <button className="btn primary" disabled={!canReview || !!busy} onClick={() => setScheduling(true)}>Approve / schedule</button>
           <button className="btn" disabled={!canRefine || !!busy} onClick={() => setRefining(true)}>Refine</button>
           <button className="btn" disabled={!canReview || !!busy} onClick={() => setRejecting(true)}>Reject + rework</button>

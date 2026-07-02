@@ -21,6 +21,7 @@ export const mergeGoals = (prior: GoalSpec, delta: GoalSpec): GoalSpec => {
       needsResearch: prior.outputs.needsResearch || delta.outputs.needsResearch,
       needsTextPost: prior.outputs.needsTextPost || delta.outputs.needsTextPost,
       needsInfographic: prior.outputs.needsInfographic || delta.outputs.needsInfographic,
+      needsStoryboard: prior.outputs.needsStoryboard || delta.outputs.needsStoryboard,
       needsVideo: prior.outputs.needsVideo || delta.outputs.needsVideo,
       // Publishing is true by default; a refinement turn should never flip it off
       // (the user adding media still wants to publish). Keep prior unless prior was
@@ -59,7 +60,10 @@ export const applyRemovals = (goal: GoalSpec, removals: Removals): GoalSpec => {
   if (disable.has('strategy')) next.outputs.needsStrategy = false;
   if (disable.has('research')) next.outputs.needsResearch = false;
   if (disable.has('infographic')) next.outputs.needsInfographic = false;
+  // Video depends on storyboard: removing VIDEO keeps storyboard (still usable for a post),
+  // but removing STORYBOARD must also drop video (can't produce a video without one).
   if (disable.has('video')) next.outputs.needsVideo = false;
+  if (disable.has('storyboard')) { next.outputs.needsStoryboard = false; next.outputs.needsVideo = false; }
   if (disable.has('publishing')) next.outputs.needsPublishing = false;
 
   if (removals.dropPlatforms.length) {
@@ -71,7 +75,8 @@ export const applyRemovals = (goal: GoalSpec, removals: Removals): GoalSpec => {
   // post (the minimal marketing deliverable) so removal never yields a blank DAG.
   const anyOutput =
     next.outputs.needsIdeation || next.outputs.needsStrategy || next.outputs.needsResearch ||
-    next.outputs.needsTextPost || next.outputs.needsInfographic || next.outputs.needsVideo;
+    next.outputs.needsTextPost || next.outputs.needsInfographic || next.outputs.needsStoryboard ||
+    next.outputs.needsVideo;
   if (!anyOutput) next.outputs.needsTextPost = true;
 
   return next;

@@ -14,15 +14,35 @@ interface PlanProps {
   onSave: (name: string) => void;
 }
 
+// Selected publish targets, read off the goal so the plan card shows WHERE this will
+// publish (the "publisher hides the chosen platforms" gap). Empty → nothing rendered.
+const goalPlatforms = (run: WorkflowRunDto): string[] => {
+  const p = (run.goal as { platforms?: unknown } | null)?.platforms;
+  return Array.isArray(p) ? (p as string[]) : [];
+};
+
+const PLATFORM_LABEL: Record<string, string> = {
+  facebook: 'Facebook', instagram: 'Instagram', threads: 'Threads', linkedin: 'LinkedIn', x: 'X',
+};
+
 export function PlanCard({ run, busy, defaultName, onSave }: PlanProps) {
   const [name, setName] = useState('');
   // Already saved → show its name as a confirmation, not the form again.
   const savedName = run.name ?? null;
+  const platforms = goalPlatforms(run);
 
   return (
     <div className="dag-block run-card">
       <div className="eyebrow">Workflow plan · {run.nodes.length} step(s)</div>
-      <RunDagView nodes={run.nodes} />
+      {platforms.length > 0 && (
+        <div className="plan-platforms">
+          <span className="muted small">Publishes to:</span>
+          {platforms.map((p) => (
+            <span className="platform-chip" key={p}>{PLATFORM_LABEL[p] ?? p}</span>
+          ))}
+        </div>
+      )}
+      <RunDagView nodes={run.nodes} platforms={platforms} />
 
       {run.status === 'planned' && !savedName && (
         <div className="save-flow">

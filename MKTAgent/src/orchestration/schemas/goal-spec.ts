@@ -16,6 +16,10 @@ export const outputFlags = z.object({
   needsResearch: z.boolean().default(false),
   needsTextPost: z.boolean().default(true), // marketing posts almost always need copy
   needsInfographic: z.boolean().default(false),
+  // Storyboard is an INDEPENDENT deliverable: usable for a post on its own. Video DEPENDS
+  // ON it (video ⇒ storyboard, enforced in the planner), but not vice-versa — removing
+  // video keeps storyboard. Default false so a plain post goal stays minimal.
+  needsStoryboard: z.boolean().default(false),
   needsVideo: z.boolean().default(false),
   needsPublishing: z.boolean().default(true),
 });

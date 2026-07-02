@@ -37,7 +37,9 @@ import { getAgent } from '../orchestration/registry/agent-registry.ts';
 import { logger } from '../lib/logger.ts';
 import { mergeAnswers, toRunDto, type ClarifyQuestions } from './orchestration-mappers.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
-import { ensureChatSession, recordTurn, recordSaveOffer, summarizeAnswers } from './orchestration-chat.ts';
+import { ensureChatSession, recordTurn, recordSaveOffer, recordCampaignCreated, summarizeAnswers } from './orchestration-chat.ts';
+import { detectCampaignIntent } from '../orchestration/master/campaign-intent.ts';
+import { createCampaignFromFlow } from '../orchestration/master/campaign-from-flow.ts';
 import { resolveConnections } from '../connectors/runtime/connection-resolver.ts';
 import type { RequiredActionDto } from './schemas.ts';
 
@@ -86,7 +88,7 @@ const applyOutcomeToRun = async (
   return {};
 };
 
-interface RespondExtras { questions?: ClarifyQuestions; assistantMessage?: string; requiredActions?: RequiredActionDto[] }
+interface RespondExtras { questions?: ClarifyQuestions; assistantMessage?: string; requiredActions?: RequiredActionDto[]; campaignIntent?: boolean; createdCampaignId?: string; createdPostId?: string }
 const respondRun = async (res: Parameters<typeof ok>[0], id: string, ownerId: string, extras: RespondExtras = {}): Promise<void> => {
   const full = await getRunWithNodes(id, ownerId);
   if (!full) { fail(res as never, 404, 'run_not_found'); return; }
@@ -109,8 +111,43 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   // message as a follow-up — analyze it as a DELTA and merge onto the prior goal so
   // nothing already gathered (product/audience/platforms) is lost. Otherwise plan
   // from scratch.
+  // A frozen Flow template is never refined in place — a new message forks a fresh run
+  // so an approved blueprint can't be mutated by continued chat (kind guard is explicit
+  // even though status='template' already fails PRE_EXEC).
   const existing = body.chatSessionId ? await getLatestRunWithNodesForChat(sessionId, req.userId!) : null;
-  const refine = existing && PRE_EXEC.has(existing.status);
+
+  // Saved-flow reuse (item 2): once a flow is SAVED (kind=template), a follow-up asking
+  // to create a campaign/post must bind to THAT flow — NOT fork a new flow. Detect the
+  // intent and return the template run + a campaignIntent flag so the panel surfaces the
+  // setup-campaign action (which creates a campaign with flowId=template.id). Without this
+  // the message falls through to handle() and re-plans a brand-new flow (the fork bug).
+  if (existing && existing.kind === 'template') {
+    const templateGoal = goalSpec.parse(existing.goal);
+    const intent = detectCampaignIntent(body.message, templateGoal);
+    if (intent.isCreate) {
+      // Option A: ACTUALLY create the campaign (+ optional first post) bound to this flow,
+      // from the user's typed request — not just offer a button (which felt like a loop:
+      // the user gave names and got the offer again). The panel navigates to the new
+      // campaign board on createdCampaignId.
+      const { campaign, post } = await createCampaignFromFlow(
+        req.userId!, existing.id, templateGoal,
+        { campaignName: intent.campaignName, postTitle: intent.postTitle },
+      );
+      const assistantMessage = await recordCampaignCreated(
+        sessionId, body.message, existing.name, campaign.product, Boolean(post), templateGoal,
+      );
+      logger.info('wf_campaign_from_flow', { flowId: existing.id, campaignId: campaign.id, postId: post?.id ?? null });
+      res.status(201);
+      return respondRun(res, existing.id, req.userId!, {
+        assistantMessage,
+        campaignIntent: true,
+        createdCampaignId: campaign.id,
+        createdPostId: post?.id ?? undefined,
+      });
+    }
+  }
+
+  const refine = existing && existing.kind !== 'template' && PRE_EXEC.has(existing.status);
 
   const outcome = refine
     ? await masterAgent.refine(goalSpec.parse(existing!.goal), body.message)
@@ -203,6 +240,9 @@ const launchWorkflow = (
 orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
   const run = await getRunForOwner(req.params.id, req.userId!);
   if (!run) return fail(res, 404, 'run_not_found');
+  // A Flow template is an immutable blueprint — it is never executed directly. The user
+  // creates a Post (which clones the template into an instance run) and executes that.
+  if (run.kind === 'template') return fail(res, 409, 'template_not_executable', 'this flow is a template — create a post to run it');
   // Allow execute from planned, a re-run of a failed flow, OR a re-resolve after the
   // user connected a platform (needs_connection). Reject if already in flight.
   if (run.status === 'running' || run.status === 'needs_approval') return fail(res, 409, 'run_in_flight');

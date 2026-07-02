@@ -114,36 +114,52 @@ async function main(): Promise<void> {
     check('subtractive removed infographic node', !subtracted.body?.data?.nodes?.some((n: any) => n.agentId === 'infographic'), subtracted.body?.data?.nodes?.map((n: any) => n.agentId));
     check('subtractive kept product', Boolean((subtracted.body?.data?.goal as any)?.slots?.product), (subtracted.body?.data?.goal as any)?.slots?.product);
 
-    // SAVE as a named flow (chat "Approve"). Does NOT execute — stays planned.
+    // SAVE (chat "Approve") → freezes the run into a Flow TEMPLATE (kind=template,
+    // status=template, locked). Does NOT execute; the template is never run directly.
     const saveBad = await call('POST', `/orchestration/runs/${runId}/save`, tokenA, { name: '' });
     check('save empty name → 422', saveBad.status === 422, saveBad.status);
     const saved = await call('POST', `/orchestration/runs/${runId}/save`, tokenA, { name: 'Verify demo flow' });
-    check('save → 200 still planned', saved.status === 200 && saved.body?.data?.status === 'planned', { s: saved.status, st: saved.body?.data?.status });
+    check('save → 200 kind=template', saved.status === 200 && saved.body?.data?.kind === 'template', { s: saved.status, k: saved.body?.data?.kind });
+    check('save → status=template + locked', saved.body?.data?.status === 'template' && saved.body?.data?.locked === true, { st: saved.body?.data?.status, l: saved.body?.data?.locked });
     check('save sets name', saved.body?.data?.name === 'Verify demo flow', saved.body?.data?.name);
     check('save cross-tenant → 404', (await call('POST', `/orchestration/runs/${runId}/save`, tokenB, { name: 'x' })).status === 404);
 
-    // Saved Flows list (named only) — must include the run we just named.
+    // Saved Flows list (templates only) — must include the flow we just saved.
     const savedList = await call('GET', '/orchestration/runs/saved', tokenA);
     check('GET /runs/saved 200', savedList.status === 200, savedList.status);
-    check('saved list includes the named run with nodeCount', savedList.body?.data?.some((r: any) => r.id === runId && r.name === 'Verify demo flow' && r.nodeCount > 0), savedList.body?.data);
+    check('saved list includes the template with nodeCount', savedList.body?.data?.some((r: any) => r.id === runId && r.name === 'Verify demo flow' && r.nodeCount > 0), savedList.body?.data);
     check('saved list 401 no token', (await call('GET', '/orchestration/runs/saved')).status === 401);
 
+    // A template is a blueprint — executing it directly is refused (409). The user
+    // creates a Post (which clones the template into an instance) and runs THAT.
+    const execTemplate = await call('POST', `/orchestration/runs/${runId}/execute`, tokenA);
+    check('execute template → 409 template_not_executable', execTemplate.status === 409 && execTemplate.body?.error === 'template_not_executable', { s: execTemplate.status, e: execTemplate.body?.error });
+
+    // Create a campaign under the flow template, then a post → clones the template into
+    // an executable instance run (post.runId). The instance is what we exercise below.
+    const instCamp = await call('POST', '/campaigns', tokenA, { product: 'Instance product', flowId: runId, platforms: ['facebook'], language: 'en' });
+    check('campaign under template → 201', instCamp.status === 201, instCamp.status);
+    const instCampId = instCamp.body?.data?.id;
+    const instPost = await call('POST', '/posts', tokenA, { campaignId: instCampId });
+    check('post under flow campaign → 201 with runId (cloned instance)', instPost.status === 201 && typeof instPost.body?.data?.runId === 'string', { s: instPost.status, r: instPost.body?.data?.runId });
+    const instRunId = instPost.body?.data?.runId;
+    const instRun = await call('GET', `/orchestration/runs/${instRunId}`, tokenA);
+    check('instance run kind=instance, planned', instRun.body?.data?.kind === 'instance' && instRun.body?.data?.status === 'planned', { k: instRun.body?.data?.kind, st: instRun.body?.data?.status });
+
     // ---- CONNECTION GATE (§11): publisher needs facebook, tenant A has NO token ----
-    // The run is planned + targets facebook. /execute must STOP at the gate ($0 spent,
-    // no executor, no nodes run) and return needs_connection + a connect action — not
-    // run the DAG to a late publisher failure.
-    const gatedExec = await call('POST', `/orchestration/runs/${runId}/execute`, tokenA);
+    // The instance run is planned + targets facebook. /execute must STOP at the gate
+    // ($0 spent, no executor, no nodes run) and return needs_connection + a connect action.
+    const gatedExec = await call('POST', `/orchestration/runs/${instRunId}/execute`, tokenA);
     check('gate: execute → 200 needs_connection', gatedExec.status === 200 && gatedExec.body?.data?.status === 'needs_connection', { s: gatedExec.status, st: gatedExec.body?.data?.status });
     const reqActions = gatedExec.body?.data?.requiredActions ?? [];
     check('gate: requiredActions present', reqActions.length >= 1, reqActions);
     check('gate: action targets facebook (connect_platform)', reqActions.some((a: any) => a.platform === 'facebook' && a.type === 'connect_platform'), reqActions);
     check('gate: action carries connectUrl', reqActions.every((a: any) => typeof a.connectUrl === 'string' && a.connectUrl.includes('/connect/')), reqActions[0]);
-    // Secrecy: the gate response must not leak token metadata beyond the closed DTO
-    // shape (no token/refreshToken/expiresAt/status fields ride the connect action).
+    // Secrecy: the gate response must not leak token metadata beyond the closed DTO shape.
     const allowedKeys = ['type', 'platform', 'displayName', 'connectUrl', 'reason', 'capabilities'];
     check('gate: requiredActions expose no token/extra fields', reqActions.every((a: any) => Object.keys(a).every((k) => allowedKeys.includes(k))), reqActions[0]);
     // $0 proof: no node ran, no artifact produced while gated.
-    const gatedState = await call('GET', `/orchestration/runs/${runId}`, tokenA);
+    const gatedState = await call('GET', `/orchestration/runs/${instRunId}`, tokenA);
     check('gate: 0 artifacts produced (no spend)', (gatedState.body?.data?.artifacts?.length ?? 0) === 0, gatedState.body?.data?.artifacts?.length);
     check('gate: no node left running', !gatedState.body?.data?.nodes?.some((n: any) => n.status === 'running' || n.status === 'completed'), gatedState.body?.data?.nodes?.map((n: any) => n.status));
 
@@ -151,19 +167,19 @@ async function main(): Promise<void> {
     // resolves and the happy path proceeds. DRY: a fake token value, never posted live.
     await upsertToken({ ownerId: userA.id, platform: 'facebook', token: 'verify-fake-fb-token', status: 'active' });
 
-    // EXECUTE (async) → must return IMMEDIATELY as running (the stuck-Thinking fix).
+    // EXECUTE the instance (async) → must return IMMEDIATELY as running (stuck-Thinking fix).
     const t0 = Date.now();
-    const exec = await call('POST', `/orchestration/runs/${runId}/execute`, tokenA);
+    const exec = await call('POST', `/orchestration/runs/${instRunId}/execute`, tokenA);
     const execMs = Date.now() - t0;
     check('execute → 200 running', exec.status === 200 && exec.body?.data?.status === 'running', { s: exec.status, st: exec.body?.data?.status });
     check('execute returns FAST (<3s, not the 30-60s sync hang)', execMs < 3000, `${execMs}ms`);
     // Double-execute while in flight → 409 (no second detached executor).
-    check('execute while in flight → 409', (await call('POST', `/orchestration/runs/${runId}/execute`, tokenA)).status === 409);
+    check('execute while in flight → 409', (await call('POST', `/orchestration/runs/${instRunId}/execute`, tokenA)).status === 409);
 
     // Poll for the detached executor to reach the publisher gate (needs_approval).
     let gated: any = null;
     for (let i = 0; i < 40; i++) {
-      const r = await call('GET', `/orchestration/runs/${runId}`, tokenA);
+      const r = await call('GET', `/orchestration/runs/${instRunId}`, tokenA);
       if (r.body?.data?.status === 'needs_approval' || r.body?.data?.status === 'failed') { gated = r.body.data; break; }
       await new Promise((res) => setTimeout(res, 500));
     }
@@ -176,11 +192,11 @@ async function main(): Promise<void> {
     // publish path runs but the materialized Post has fake media → faithful error,
     // ZERO real social posts (the no-burst-posts rule). Guard on the gate being reached.
     if (pub?.nodeId) {
-      const resumed = await call('POST', `/orchestration/runs/${runId}/approve-node/${pub.nodeId}`, tokenA);
+      const resumed = await call('POST', `/orchestration/runs/${instRunId}/approve-node/${pub.nodeId}`, tokenA);
       check('approve-node → 200 running', resumed.status === 200, resumed.status);
       let done: any = null;
       for (let i = 0; i < 40; i++) {
-        const r = await call('GET', `/orchestration/runs/${runId}`, tokenA);
+        const r = await call('GET', `/orchestration/runs/${instRunId}`, tokenA);
         if (r.body?.data?.status === 'completed' || r.body?.data?.status === 'failed') { done = r.body.data; break; }
         await new Promise((res) => setTimeout(res, 500));
       }

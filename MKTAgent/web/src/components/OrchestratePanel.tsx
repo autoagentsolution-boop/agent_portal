@@ -29,6 +29,9 @@ interface Props {
   // Open flow = plain redirect to Active Flows. (Run a test post is handled in-panel.)
   onSetupCampaign: (runId: string) => void;
   onOpenFlow: (runId: string) => void;
+  // Item 2 (Option A): the backend created a campaign under the saved flow from a chat
+  // message — navigate to its board (optionally selecting the created post).
+  onCampaignCreated: (campaignId: string, postId?: string) => void;
 }
 
 interface Msg { role: 'user' | 'agent'; content: string }
@@ -39,7 +42,7 @@ const starters = [
   'Write a short LinkedIn post about our new feature',
 ];
 
-export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow }: Props) {
+export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated }: Props) {
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   const [run, setRun] = useState<WorkflowRunDto | null>(restore?.run ?? null);
   const [sessionId, setSessionId] = useState<string | null>(restore?.sessionId ?? null);
@@ -56,6 +59,9 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
     setRun(data);
     if (data.chatSessionId) { setSessionId(data.chatSessionId); onRunActivity(data.chatSessionId); }
     if (data.assistantMessage) push({ role: 'agent', content: data.assistantMessage });
+    // Item 2 (Option A): the backend created a campaign under the saved flow — show the
+    // confirmation bubble, then navigate to the new campaign board (with the post if any).
+    if (data.createdCampaignId) onCampaignCreated(data.createdCampaignId, data.createdPostId);
   };
 
   // Every message goes through createRun — the backend treats a follow-up on a
@@ -102,7 +108,9 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
   };
 
   const showPlan = run && run.nodes.length > 0;
-  // Offer appears once the flow is named (saved) and still holds a plan to act on.
+  // Offer appears once the flow is named (saved) and still holds a plan to act on. (A
+  // chat "create campaign" on a saved flow now creates it server-side and navigates away
+  // via onCampaignCreated — item 2 Option A — so it doesn't rely on this card.)
   const showOffer = Boolean(run?.name) && showPlan;
 
   return (

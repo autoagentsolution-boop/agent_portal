@@ -341,18 +341,32 @@ model WorkflowRun {
   goal          Json
   plan          Json?
   // planning | awaiting_clarification | planned | running | needs_approval |
-  // completed | failed | cancelled
+  // completed | failed | cancelled | template
   status        String   @default("planning")
+  // Flow-as-template split: a saved (approved) flow is a `template` — an immutable
+  // blueprint (goal + DAG, no artifacts) that is never executed. Each Post clones the
+  // template into an `instance` run it executes independently. Legacy rows default to
+  // `instance` so their existing behaviour (1 run = 1 post) is unchanged.
+  kind          String   @default("instance") // template | instance
+  // A template is frozen once approved: the master agent may not re-plan/mutate it.
+  locked        Boolean  @default(false)
+  // For an instance: the template it was cloned from (reuse/audit). SetNull if the
+  // template is deleted so instances/posts outlive their blueprint.
+  templateId    String?  @map("template_id") @db.Uuid
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   owner     User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  template  WorkflowRun?      @relation("RunTemplate", fields: [templateId], references: [id], onDelete: SetNull)
+  instances WorkflowRun[]     @relation("RunTemplate")
   nodes     WorkflowNodeRun[]
   artifacts Artifact[]
   campaigns Campaign[]
   posts     Post[]
 
   @@index([ownerId, status], name: "ix_wf_run_owner_status")
+  @@index([ownerId, kind], name: "ix_wf_run_owner_kind")
+  @@index([templateId], name: "ix_wf_run_template")
   @@map("wf_run")
 }
 

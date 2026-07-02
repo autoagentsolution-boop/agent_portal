@@ -6,6 +6,24 @@ aspiration.
 
 ## Now
 
+### Flow-as-Template · Post-as-Instance — ✅ DONE (2026-07-02, not committed)
+The 3-tier IA rework: **Flow = frozen blueprint** (the approved agent "team", read-only,
+never executed), **Campaign = strategy grouping**, **Post = execution instance** (clones
+the flow DAG, runs independently). Resolves the old 1-run:1-post coupling.
+- Data model: `WorkflowRun.kind` (template|instance) · `locked` · `templateId`
+  (migration `flow_template_instance`, additive — legacy rows = instance, behaviour intact).
+- Save (Approve) freezes a run → `kind=template, status=template, locked`; master-agent chat
+  can no longer mutate it (forks a fresh run). Executing a template → 409 `template_not_executable`.
+- Create a Post under a flow-attached campaign → `cloneTemplateRun` clones goal+DAG into a
+  new instance run, links `post.runId`. Campaign with no flow keeps the legacy copy-gen path.
+- `concept_writer` fills the pre-created Post on the instance path (no dup campaign/post);
+  legacy path (no attached post) still materializes as before. Re-run resets post→brief.
+- UI: Flow detail = blueprint (agent-team list + "New campaign from this flow"); Post
+  workflow view = playground (DAG open by default + Execute + approve gate + re-run node).
+- Verified: `verify-template-instance` (22 checks) + `verify-api` (updated to new model) +
+  executor/rerun-node/save-offer/rename-creds/persistence/master/connect-form all green;
+  container rebuilt; DRY throughout. **Token/cost dashboard deferred (Phase 6).**
+
 ### Flow ↔ Post convergence — ✅ DONE (2026-07-01, `b2415eb`)
 Post exposes its whole workflow DAG; Master Agent guides campaign/post setup.
 - P1 connect-via-form · P2 Post.runId + DAG-under-post · P3 preflight honors form creds ·
@@ -19,13 +37,21 @@ Connection-resolver $0 gate, credential vault, connector registry + runtime, aud
 
 ## Next (candidates — not yet scheduled)
 
+- **Token/cost dashboard (Phase 6 of the template work)** — Flow blueprint becomes a real
+  dashboard: aggregate token/$/errors across all instance runs (posts) sharing a
+  `templateId`. Needs `WorkflowNodeRun` cost columns + capturing Gemini `usageMetadata`
+  (currently discarded in `llm-json.ts` + copygen) and flat image cost at the executor's
+  node-completion chokepoint.
 - **Node wiring on the DAG** — per-node config/credential surfacing still deferred
   (flagged in flow-creation UX work).
 - **Publisher live path** — currently DRY for demo; live connect 500s when app-creds
   absent. Needs the OAuth app-cred provisioning story before real posts.
-- **Multi-post campaigns** — cardinality is 1 run : 1 post today; manual posts stay
-  run-less. Fan-out one run → many posts is out of scope until a driver appears.
 - **Scheduler / leads / copygen** polish from the original port backlog.
+
+## Resolved
+
+- ~~**Multi-post campaigns**~~ — done 2026-07-02: a flow template now fans out to many
+  posts, each its own instance run (Flow-as-Template above).
 
 ## Constraints & operating notes
 

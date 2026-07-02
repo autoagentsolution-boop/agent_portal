@@ -1213,6 +1213,16 @@
           "status": {
             "type": "string"
           },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "template",
+              "instance"
+            ]
+          },
+          "locked": {
+            "type": "boolean"
+          },
           "name": {
             "type": [
               "string",
@@ -1310,6 +1320,17 @@
               ]
             }
           },
+          "campaignIntent": {
+            "type": "boolean"
+          },
+          "createdCampaignId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdPostId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "nodes": {
             "type": "array",
             "items": {
@@ -1384,6 +1405,8 @@
         "required": [
           "id",
           "status",
+          "kind",
+          "locked",
           "nodes",
           "artifacts",
           "createdAt",

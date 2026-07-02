@@ -10,7 +10,7 @@ import { requirementSystemPrompt } from '../prompts/requirement-prompt.ts';
 
 // Optional removal delta the LLM may emit on a refinement turn (subtractive intent).
 const removalsSchema = z.object({
-  disableOutputs: z.array(z.enum(['ideation', 'strategy', 'research', 'infographic', 'video', 'publishing'])).default([]),
+  disableOutputs: z.array(z.enum(['ideation', 'strategy', 'research', 'infographic', 'storyboard', 'video', 'publishing'])).default([]),
   dropPlatforms: z.array(z.enum(['facebook', 'instagram', 'threads', 'linkedin', 'x'])).default([]),
 });
 

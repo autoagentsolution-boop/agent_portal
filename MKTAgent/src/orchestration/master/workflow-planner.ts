@@ -25,10 +25,10 @@ const selectAgents = (goal: GoalSpec): RunnableAgentId[] => {
   if (outputs.needsStrategy) ids.push('strategy');
   if (outputs.needsTextPost) ids.push('concept_writer');
   if (outputs.needsInfographic) ids.push('infographic');
-  if (outputs.needsVideo) {
-    ids.push('storyboard');
-    ids.push('video');
-  }
+  // Storyboard is independent; video DEPENDS ON storyboard. So plan storyboard whenever
+  // it's asked OR a video is (video implies storyboard), and video only when asked.
+  if (outputs.needsStoryboard || outputs.needsVideo) ids.push('storyboard');
+  if (outputs.needsVideo) ids.push('video');
   if (outputs.needsPublishing) ids.push('publisher');
   return ids;
 };

@@ -76,6 +76,43 @@ export const recordSaveOffer = async (
   return message;
 };
 
+// Record a campaign-CREATED turn on a SAVED flow (item 2, Option A). The user asked in
+// chat to create a campaign under the already-saved flow, and we DID (createCampaignFromFlow
+// ran). Persist their message + a localized confirmation naming what was created, so the
+// reply matches the action instead of re-offering (the loop the user hit). Language mirrors
+// the user's message. Deterministic + dependency-free (no LLM needed for a confirmation).
+const campaignCreatedText = (
+  language: string | null,
+  campaignProduct: string,
+  withPost: boolean,
+): string => {
+  const isVi = /^vi/i.test(language ?? '');
+  if (isVi) {
+    return withPost
+      ? `Đã tạo chiến dịch “${campaignProduct}” cùng bài đăng đầu tiên trong quy trình của bạn. Mình đã mở bảng chiến dịch — bấm Execute trên bài đăng để chạy các bước và duyệt trước khi đăng.`
+      : `Đã tạo chiến dịch “${campaignProduct}” trong quy trình của bạn. Mình đã mở bảng chiến dịch — thêm bài đăng đầu tiên để bắt đầu.`;
+  }
+  return withPost
+    ? `Created the campaign “${campaignProduct}” with its first post under your flow. I've opened the campaign board — click Execute on the post to run the steps and review before anything publishes.`
+    : `Created the campaign “${campaignProduct}” under your flow. I've opened the campaign board — add the first post to begin.`;
+};
+
+export const recordCampaignCreated = async (
+  sessionId: string,
+  userMessage: string,
+  _flowName: string | null,
+  campaignProduct: string,
+  withPost: boolean,
+  goal: GoalSpec,
+): Promise<string> => {
+  await prisma.agentChatMessage.create({ data: { sessionId, role: 'user', content: userMessage } });
+  const language = goal.slots.language ?? detectLanguage(userMessage);
+  const message = campaignCreatedText(language, campaignProduct, withPost);
+  await prisma.agentChatMessage.create({ data: { sessionId, role: 'agent', content: message } });
+  await prisma.agentChatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+  return message;
+};
+
 // Readable one-line summary of clarification answers → the user-side chat message
 // (the user "said" their answers). Slots map to labels the assistant restates.
 const SLOT_LABEL: Record<string, string> = {

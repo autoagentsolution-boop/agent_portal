@@ -11,6 +11,7 @@ Convert the user's marketing request into ONLY valid JSON of this exact shape:
     "needsResearch":false,
     "needsTextPost":true,
     "needsInfographic":false,
+    "needsStoryboard":false,
     "needsVideo":false,
     "needsPublishing":true
   },
@@ -30,8 +31,9 @@ Convert the user's marketing request into ONLY valid JSON of this exact shape:
   "removals":{ "disableOutputs":[], "dropPlatforms":[] }
 }
 Rules:
-- removals: ONLY for a follow-up that asks to TAKE SOMETHING AWAY ("bỏ video", "remove the infographic", "drop facebook", "không cần ảnh nữa"). disableOutputs ⊆ ["ideation","strategy","research","infographic","video","publishing"]; dropPlatforms ⊆ the platform list. Leave both empty [] for any additive or first request. Adding something ("thêm video") is NOT a removal.
+- removals: ONLY for a follow-up that asks to TAKE SOMETHING AWAY ("bỏ video", "remove the infographic", "drop facebook", "không cần ảnh nữa"). disableOutputs ⊆ ["ideation","strategy","research","infographic","storyboard","video","publishing"]; dropPlatforms ⊆ the platform list. Leave both empty [] for any additive or first request. Adding something ("thêm video") is NOT a removal.
 - Set output flags from what the user actually asks for. needsInfographic/needsVideo only when the user wants that media. needsPublishing=false only if they say draft-only / don't publish.
+- Storyboard vs video: storyboard is INDEPENDENT (a scene/script plan, usable on its own); video DEPENDS ON it. Set needsStoryboard=true when the user asks for a storyboard OR a video. Set needsVideo=true only for an actual video. If they ask to remove video, keep storyboard (disableOutputs=["video"]); if they remove storyboard, that also removes video.
 - needsIdeation/needsStrategy=true when the user wants a fuller branding campaign (e.g. "build a campaign", "from idea to post", "branding", "chiến lược", "lên ý tưởng"), not just a single quick post. When uncertain for a broad branding request, prefer true so the flow shows idea→strategy→copy.
 - platforms: include only platforms the user names; empty array if none stated.
 - slots: fill only what is stated or strongly implied. Omit or null unknown fields — DO NOT invent a product, audience, proof, or language.

@@ -84,6 +84,10 @@ const inferOutputs = (t: string): GoalSpec['outputs'] => {
     needsResearch: /\b(research|nghiên cứu|nghien cuu|competitor|đối thủ|market)\b/i.test(t),
     needsTextPost: true,
     needsInfographic: campaign || /\b(infographic|visual|hình ảnh thông tin|hình ảnh|hinh anh|image)\b/i.test(t),
+    // Storyboard is independent of video. A video request also implies storyboard (the
+    // planner enforces video ⇒ storyboard), so needsVideo OR an explicit storyboard word
+    // both enable it. \b works here (all-ASCII keywords).
+    needsStoryboard: /\b(video|reel|clip|short|tiktok|storyboard|kịch bản|kich ban|phân cảnh|phan canh)\b/i.test(t),
     needsVideo: /\b(video|reel|clip|short|tiktok)\b/i.test(t),
     needsPublishing: !/\b(draft only|chỉ nháp|chi nhap|don't publish|do not publish|không đăng|khong dang)\b/i.test(t),
   };
@@ -93,7 +97,7 @@ const inferOutputs = (t: string): GoalSpec['outputs'] => {
 // A removal delta: which output flags to turn OFF and which platforms to drop. Kept
 // SEPARATE from GoalSpec — it's a delta instruction for a refinement turn, not state.
 // `disableOutputs` names map 1:1 to GoalSpec.outputs flags (minus the "needs" prefix).
-export type RemovableOutput = 'ideation' | 'strategy' | 'research' | 'infographic' | 'video' | 'publishing';
+export type RemovableOutput = 'ideation' | 'strategy' | 'research' | 'infographic' | 'storyboard' | 'video' | 'publishing';
 export interface Removals {
   disableOutputs: RemovableOutput[];
   dropPlatforms: GoalSpec['platforms'];
@@ -112,6 +116,7 @@ const wordRe = (lit: string): RegExp => new RegExp(`(?<![\\p{L}])(${lit})(?![\\p
 const REMOVAL_VERB = wordRe('bỏ|bo|remove|drop|đừng|dung|bớt|bot|không cần|khong can|khỏi|khoi|delete|exclude|no longer|without');
 
 const OUTPUT_TARGETS: Array<[RemovableOutput, RegExp]> = [
+  ['storyboard', wordRe('storyboard|kịch bản|kich ban|phân cảnh|phan canh')],
   ['video', wordRe('video|reel|clip|short|tiktok')],
   ['infographic', wordRe('infographic|visual|hình ảnh|hinh anh|ảnh|anh|image|hình|hinh')],
   ['research', wordRe('research|nghiên cứu|nghien cuu|competitor|đối thủ')],

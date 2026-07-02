@@ -16,15 +16,29 @@ interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
   onStatusChange: () => void; // bump the saved-flows list when status changes
   onOpenConnections?: () => void;
+  onCreateCampaign?: (flowId: string) => void; // template blueprint → start a campaign
 }
 
 const STATUS_LABEL: Record<string, string> = {
   planned: 'Ready to run', running: 'Running…', needs_approval: 'Paused — approve to publish',
   completed: 'Completed', failed: 'Failed', awaiting_clarification: 'Needs detail',
-  needs_connection: 'Connect a platform to run',
+  needs_connection: 'Connect a platform to run', template: 'Approved blueprint',
 };
 
-export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnections }: Props) {
+// Short, human role for each agent so the blueprint reads as a "team" a non-tech user
+// (and a technical buyer) can grasp at a glance. Falls back to the humanized id.
+const AGENT_ROLE: Record<string, string> = {
+  ideation: 'Brainstorms campaign directions and picks the strongest angle',
+  strategy: 'Turns the idea into positioning, audience and content pillars',
+  content_search: 'Gathers research, references and proof points',
+  concept_writer: 'Writes the campaign angle and copy variants',
+  infographic: 'Generates the marketing image',
+  storyboard: 'Plans the video scenes and script',
+  video: 'Produces the video prompt',
+  publisher: 'Publishes to your connected platforms (approval required)',
+};
+
+export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnections, onCreateCampaign }: Props) {
   const [run, setRun] = useState<WorkflowRunDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -80,6 +94,62 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
 
   if (!run) return <div className="card compact"><p className="muted">Loading flow…</p></div>;
 
+  // Template = an approved, frozen blueprint: the agent "team" the user chose, read-only.
+  // It is never executed here — the user creates a campaign, then posts under it clone
+  // this blueprint and run independently. No execute button, no gate, no artifacts.
+  if (run.kind === 'template') {
+    return (
+      <div className="card compact saved-flow-detail">
+        <div className="spread">
+          <div>
+            <div className="eyebrow">Flow blueprint</div>
+            {renaming ? (
+              <div className="flow-rename">
+                <input
+                  aria-label="Flow name"
+                  autoFocus
+                  value={nameDraft}
+                  disabled={busy}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void commitRename(); if (e.key === 'Escape') setRenaming(false); }}
+                />
+                <button className="btn primary" disabled={busy} onClick={() => void commitRename()}>{busy ? 'Saving…' : 'Save'}</button>
+                <button className="btn" disabled={busy} onClick={() => setRenaming(false)}>Cancel</button>
+              </div>
+            ) : (
+              <h3 className="flow-title">
+                {run.name ?? 'Untitled flow'}
+                <button className="icon-btn rename-btn" aria-label="Rename flow" title="Rename flow" onClick={() => { setNameDraft(run.name ?? ''); setRenaming(true); }}>✎</button>
+              </h3>
+            )}
+            <span className="flow-status st-template">Approved blueprint · {run.nodes.length} agents</span>
+          </div>
+          {onCreateCampaign && (
+            <button className="btn primary" onClick={() => onCreateCampaign(run.id)}>➕ New campaign from this flow</button>
+          )}
+        </div>
+
+        <p className="muted small">
+          This is the agent team you approved — reused across campaigns. It doesn't run on its own:
+          create a campaign, then each post under it runs this flow and you can review every step.
+        </p>
+
+        <ol className="blueprint-team">
+          {run.nodes.map((n, i) => (
+            <li className="blueprint-agent" key={n.nodeId}>
+              <span className="blueprint-index">{i + 1}</span>
+              <div>
+                <strong>{n.agentId.replace(/_/g, ' ')}</strong>
+                <p className="muted small">{AGENT_ROLE[n.agentId] ?? 'Agent step'}</p>
+                {n.dependsOn.length > 0 && <span className="dag-dep">after {n.dependsOn.join(', ')}</span>}
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+    );
+  }
+
   const gateNode = run.nodes.find((n) => n.status === 'awaiting_approval');
   const publishArtifact = run.artifacts.find((a) => a.type === 'publish_result');
   const publishUrls = (publishArtifact?.data as { postUrls?: Record<string, string> | null } | undefined)?.postUrls ?? null;
@@ -129,7 +199,7 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
       </div>
 
       <p className="muted small">Click a step to view its output. Publishing pauses for your approval (safe / dry-run by default).</p>
-      <RunDagView nodes={run.nodes} publishUrls={publishUrls} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} />
+      <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} />
 
       {run.status === 'needs_connection' && requiredActions.length > 0 && (
         <ConnectionRequired actions={requiredActions} busy={busy} onContinue={() => void execute()} />
