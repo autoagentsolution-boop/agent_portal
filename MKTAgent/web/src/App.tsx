@@ -32,6 +32,13 @@ export function App() {
   const [chatSessions, setChatSessions] = useState<AgentChatSessionDto[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [orchestrateRestore, setOrchestrateRestore] = useState<OrchestrateRestore | null>(null);
+  // Sidebar "+" on a campaign requests the SAME create-post modal the board shows (Manual |
+  // Master Agent), rather than silently creating an empty brief — unifies the two entry
+  // points. Set the target campaign, navigate to its board, and let PostBoard auto-open the
+  // modal on mount; PostBoard clears this via onCreateConsumed so it won't reopen later.
+  const [pendingCreateCampaign, setPendingCreateCampaign] = useState<string | null>(null);
+  // Stable so PostBoard's auto-create effect (deps include it) doesn't re-fire each render.
+  const clearPendingCreate = useCallback(() => setPendingCreateCampaign(null), []);
   const bump = () => setRefreshKey((k) => k + 1);
 
   const loadChats = async () => {
@@ -184,15 +191,24 @@ export function App() {
     show(`Campaign “${product}” created`);
   };
 
-  // Create an empty post/brief under a campaign (sidebar +). Opens it in the board.
-  const createPostUnder = async (event: MouseEvent<HTMLButtonElement>, campaignId: string) => {
+  // Add a post under a campaign (sidebar +). Same UX as the board's "+ New full brief":
+  // open the campaign board and request the create-mode modal (Manual | Master Agent).
+  const createPostUnder = (event: MouseEvent<HTMLButtonElement>, campaignId: string) => {
     event.stopPropagation();
-    const r = await api.createPost({ campaignId });
-    if (!r.ok) { show(`Create failed: ${r.error.error}`, 'err'); return; }
-    setFlowPosts((prev) => [r.data, ...prev]);
-    setActiveCampaign(campaignId); setSelectedPostId(r.data.id); setSelectedRunId(null); setPage('flows');
+    setActiveCampaign(campaignId); setSelectedPostId(null); setSelectedRunId(null); setPage('flows');
+    setPendingCreateCampaign(campaignId);
+  };
+
+  // Delete a post/brief from the sidebar (level-4 ×). Refuses while publishing (backend 409).
+  const deletePostRow = async (event: MouseEvent<HTMLButtonElement>, post: PostDto) => {
+    event.stopPropagation();
+    if (!confirm('Delete this post? This removes its brief and outputs.')) return;
+    const r = await api.deletePost(post.id);
+    if (!r.ok) { show(r.error.error === 'post_in_flight' ? 'Post is publishing — cannot delete' : `Delete failed: ${r.error.error}`, 'err'); return; }
+    setFlowPosts((prev) => prev.filter((p) => p.id !== post.id));
+    if (selectedPostId === post.id) setSelectedPostId(null);
     bump();
-    show('Post created');
+    show('Post deleted');
   };
 
   useEffect(() => {
@@ -248,7 +264,10 @@ export function App() {
           <button className="tree-row-delete" aria-label={`Delete campaign ${campaign.product}`} onClick={(e) => void deleteCampaignRow(e, campaign)}>×</button>
         </div>
         {campaignPosts.slice(0, 8).map((post, index) => (
-          <button className={`tree-row level-4 ${selectedPostId === post.id ? 'active' : ''}`} key={post.id} onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(post.id); setSelectedRunId(null); setPage('flows'); }}>{postTitle(post, index)}</button>
+          <div className={`tree-row-wrap level-4 ${selectedPostId === post.id ? 'active' : ''}`} key={post.id}>
+            <button className="tree-row-main" onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(post.id); setSelectedRunId(null); setPage('flows'); }}>{postTitle(post, index)}</button>
+            <button className="tree-row-delete" aria-label="Delete post" onClick={(e) => void deletePostRow(e, post)}>×</button>
+          </div>
         ))}
       </div>
     );
@@ -335,6 +354,8 @@ export function App() {
             onDemoModeChange={setDemoMode}
             onRefresh={() => { bump(); void loadSavedRuns(); }}
             onPostsChange={mergePosts}
+            autoCreateForCampaign={pendingCreateCampaign}
+            onCreateConsumed={clearPendingCreate}
             onNewFlow={openOrchestrate}
             onOpenConnections={() => { setSelectedRunId(null); setPage('connections'); }}
             onCreateCampaign={(flowId) => void createCampaignForFlow(flowId)}

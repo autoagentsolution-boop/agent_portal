@@ -20,6 +20,8 @@ interface Props {
   onDemoModeChange: (mode: DemoMode) => void;
   onRefresh: () => void;
   onPostsChange: (posts: PostDto[]) => void;
+  autoCreateForCampaign: string | null;
+  onCreateConsumed: () => void;
   onNewFlow: () => void;
   onOpenConnections: () => void;
   onCreateCampaign: (flowId: string) => void;
@@ -75,6 +77,8 @@ export function ActiveFlowsPage(props: Props) {
             selectedPostId={props.selectedPostId}
             visiblePostId={props.selectedPostId}
             onPostsChange={props.onPostsChange}
+            autoCreate={props.autoCreateForCampaign === props.activeCampaign}
+            onCreateConsumed={props.onCreateConsumed}
           />
         </section>
       </div>

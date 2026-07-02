@@ -100,6 +100,46 @@ export function ConnectionsPanel({ notify }: Props) {
           ))}
         </div>
       )}
+
+      <StorageSection />
     </section>
+  );
+}
+
+// Storage as a first-class Connection (item 4 — shell only). Generated media is written to
+// local disk and served at /media/images, so local storage is "active" with no setup.
+// Google Drive is surfaced as a coming-soon target (no OAuth this round). This card touches
+// NO backend and is NOT a SocialPlatform — it never enters the publish/connection resolver.
+function StorageSection() {
+  return (
+    <>
+      <div className="orchestrate-head" style={{ marginTop: 22 }}>
+        <h2>Storage</h2>
+        <p className="muted small">Where generated media (images, video) is saved. Used by the agent when it produces assets.</p>
+      </div>
+      <div className="connections-grid">
+        <div className="connection-card st-connected">
+          <div className="connection-head">
+            <span className="connection-name">Local storage</span>
+            <span className="connection-state st-connected"><span className="connection-dot">●</span> Active</span>
+          </div>
+          <div className="chip-row">
+            <span className="cap-chip">images</span>
+            <span className="cap-chip">video</span>
+          </div>
+          <p className="muted small" style={{ margin: '4px 0 0' }}>Media is saved to this workspace and served at <code>/media</code>. No setup required.</p>
+        </div>
+        <div className="connection-card st-not_connected">
+          <div className="connection-head">
+            <span className="connection-name">Google Drive</span>
+            <span className="connection-state st-not_connected"><span className="connection-dot">○</span> Coming soon</span>
+          </div>
+          <div className="chip-row"><span className="cap-chip">folders</span></div>
+          <div className="conn-actions">
+            <button className="btn primary small" disabled title="Google Drive storage is coming soon">Connect Google Drive</button>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

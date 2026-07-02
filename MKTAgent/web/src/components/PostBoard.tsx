@@ -14,9 +14,12 @@ interface Props {
   selectedPostId?: string | null;
   visiblePostId?: string | null;
   onPostsChange?: (posts: PostDto[]) => void;
+  // Sidebar "+" requested the create-post modal for this campaign — open it on mount.
+  autoCreate?: boolean;
+  onCreateConsumed?: () => void;
 }
 
-export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visiblePostId, onPostsChange }: Props) {
+export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visiblePostId, onPostsChange, autoCreate, onCreateConsumed }: Props) {
   const [posts, setPosts] = useState<PostDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -41,6 +44,12 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
   }, [campaignId, notify, setVisiblePosts]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Honor a sidebar-requested create: open the modal once, then tell App to clear the flag
+  // so it doesn't reopen on later renders.
+  useEffect(() => {
+    if (autoCreate && campaignId) { setPicking(true); setEditing(null); onCreateConsumed?.(); }
+  }, [autoCreate, campaignId, onCreateConsumed]);
 
   useEffect(() => {
     if (!selectedPostId) return;
