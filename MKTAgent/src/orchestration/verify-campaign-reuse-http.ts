@@ -101,6 +101,25 @@ async function main(): Promise<void> {
     });
     check('control: new-flow request forks a run', newFlow.body?.data?.id !== draft.id, newFlow.body?.data?.id);
 
+    // Refine-in-place regression (was broken by the getLatestRunWithNodesForChat kind
+    // filter): a DRAFT run (kind='instance' default, templateId=null) must be found so a
+    // follow-up REFINES it (same run id, platforms preserved) rather than re-planning fresh
+    // and re-asking everything. New chat so the template above doesn't interfere.
+    const chat2 = await call('POST', '/orchestration/runs', token, {
+      message: 'Marketing our AI automation product on facebook, instagram, threads, linkedin and x for businesses',
+    });
+    const draft2Id = chat2.body?.data?.id;
+    const chat2Session = chat2.body?.data?.chatSessionId;
+    const platforms1 = chat2.body?.data?.goal?.platforms ?? [];
+    const refine = await call('POST', '/orchestration/runs', token, {
+      chatSessionId: chat2Session,
+      message: 'also add an infographic and a storyboard to showcase the workflow',
+    });
+    check('refine stays on the SAME draft run (no re-plan)', refine.body?.data?.id === draft2Id, { got: refine.body?.data?.id, expected: draft2Id });
+    const platforms2 = refine.body?.data?.goal?.platforms ?? [];
+    check('refine PRESERVES platforms (no context loss)', platforms2.length === platforms1.length && platforms1.length >= 5, { before: platforms1, after: platforms2 });
+    check('refine did NOT re-ask required questions', !(refine.body?.data?.questions ?? []).some((q: any) => q.required), refine.body?.data?.questions);
+
     console.log(failures === 0 ? '\nPASS — saved-flow reuse (no fork) green' : `\nFAIL — ${failures} check(s)`);
   } finally {
     await prisma.post.deleteMany({ where: { ownerId: user.id } });
