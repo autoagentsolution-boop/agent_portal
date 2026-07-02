@@ -286,10 +286,12 @@ a { color: var(--accent); }
 
 /* Deletable tree row: main label + a + (create) and × (delete) that reveal on hover. */
 .tree-row-wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; border-radius: 7px; }
+.tree-row-wrap.level-4 { grid-template-columns: minmax(0, 1fr) auto; }
 .tree-row-wrap:hover, .tree-row-wrap.active { background: var(--panel2); }
 .tree-row-main { border: 0; background: transparent; color: var(--muted); text-align: left; border-radius: 7px; padding: 5px 8px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-row-wrap.level-2 .tree-row-main { padding-left: 18px; }
 .tree-row-wrap.level-3 .tree-row-main { padding-left: 30px; }
+.tree-row-wrap.level-4 .tree-row-main { padding-left: 42px; color: var(--muted); font-size: 12px; }
 .tree-row-wrap.active .tree-row-main, .tree-row-main:hover { color: var(--text); }
 .tree-row-add, .tree-row-delete { width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 15px; line-height: 1; opacity: 0; cursor: pointer; }
 .tree-row-wrap:hover .tree-row-add, .tree-row-wrap:hover .tree-row-delete, .tree-row-add:focus-visible, .tree-row-delete:focus-visible { opacity: 1; }
@@ -550,3 +552,14 @@ a { color: var(--accent); }
 .flow-cost-metric { display: flex; flex-direction: column; gap: 2px; }
 .flow-cost-value { font-size: 18px; font-weight: 600; color: var(--text); }
 .flow-cost-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* ---- Agent create-post clarify view (item 3) ---- */
+.clarify-q { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+.clarify-q > label { font-size: 13px; color: var(--text); }
+.clarify-q > label .req { color: var(--red); }
+.clarify-q input {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px; font: inherit; font-size: 13px;
+}
+.check-pill.on { border-color: var(--accent); background: rgba(79,140,255,0.14); color: var(--accent); }
+.check-pill { cursor: pointer; }

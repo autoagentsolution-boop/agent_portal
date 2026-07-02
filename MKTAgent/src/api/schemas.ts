@@ -93,6 +93,9 @@ export type CreatePostBody = z.infer<typeof createPostBody>;
 export const createPostFromAgentBody = z.object({
   campaignId: z.string().uuid(),
   message: z.string().trim().min(3).max(4000),
+  // Follow-up answers to the clarify questions (slot → value). Present on the SECOND call
+  // after the modal collected the missing brief fields. Absent → first (gating) call.
+  answers: z.record(z.string(), z.union([z.string(), z.array(z.string())])).optional(),
 });
 export type CreatePostFromAgentBody = z.infer<typeof createPostFromAgentBody>;
 
@@ -348,6 +351,16 @@ export type PostDto = z.infer<typeof postDto>;
 // Detail view = post + embedded campaign (saves the UI a second round-trip).
 export const postDetailDto = postDto.extend({ campaign: campaignDto });
 export type PostDetailDto = z.infer<typeof postDetailDto>;
+
+// Agent-authored create response: EITHER clarify questions (needs more info before
+// creating) OR the created post (+ the fields the agent filled). Defined after postDto so
+// there's no forward-reference at module init.
+export const postFromAgentDto = z.object({
+  questions: z.array(clarificationQuestionDto).optional(),
+  post: postDto.optional(),
+  filled: z.array(z.string()).optional(),
+});
+export type PostFromAgentDto = z.infer<typeof postFromAgentDto>;
 
 // Lead read DTO (T6) — what GET /leads returns; rawPayload/ownerId never exposed.
 export const leadDto = z.object({

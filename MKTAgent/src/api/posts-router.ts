@@ -20,7 +20,7 @@ import { publishPostNow } from '../scheduler/tick.ts';
 import { getCampaign } from '../db/repos/campaign-repo.ts';
 import { cloneTemplateRun } from '../db/repos/workflow-run-repo.ts';
 import { requirementAnalyzer } from '../orchestration/master/requirement-analyzer.ts';
-import { goalToBrief } from '../orchestration/master/goal-to-brief.ts';
+import { goalToBrief, evaluateBriefClarification } from '../orchestration/master/goal-to-brief.ts';
 import {
   listPosts,
   getPostWithCampaign,
@@ -120,10 +120,22 @@ postsRouter.post(
     if (!campaign) return fail(res, 404, 'campaign_not_found');
 
     const goal = await requirementAnalyzer.analyze(body.message);
-    const { brief, filled } = goalToBrief(goal);
+
+    // First call (no answers): gate on missing high-impact brief fields. If the agent
+    // can't fill them from the message AND the campaign doesn't supply them, ASK — return
+    // questions instead of creating a generic post. The modal collects answers and re-posts.
+    if (!body.answers) {
+      const questions = evaluateBriefClarification(goal, campaign);
+      if (questions.length > 0 && questions.some((q) => q.required)) {
+        res.status(200);
+        return ok(res, { questions });
+      }
+    }
+
+    const { brief, filled } = goalToBrief(goal, body.answers ?? {});
     const post = await buildPostUnderCampaign(campaign, brief, req.userId!);
     res.status(201);
-    ok(res, { ...toPostDto(post), filled });
+    ok(res, { post: toPostDto(post), filled });
   }),
 );
 

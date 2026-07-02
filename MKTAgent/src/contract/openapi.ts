@@ -31,6 +31,8 @@ import {
   createCampaignBody,
   updateCampaignBody,
   createPostBody,
+  createPostFromAgentBody,
+  postFromAgentDto,
   updatePostBody,
   createRunBody,
   clarifyRunBody,
@@ -83,6 +85,8 @@ registry.register('RefinePostBody', refinePostBody);
 const CreateCampaignBody = registry.register('CreateCampaignBody', createCampaignBody);
 const UpdateCampaignBody = registry.register('UpdateCampaignBody', updateCampaignBody);
 const CreatePostBody = registry.register('CreatePostBody', createPostBody);
+const CreatePostFromAgentBody = registry.register('CreatePostFromAgentBody', createPostFromAgentBody);
+const PostFromAgentDto = registry.register('PostFromAgentDto', postFromAgentDto);
 const UpdatePostBody = registry.register('UpdatePostBody', updatePostBody);
 registry.register('LeadSource', leadSource);
 const LeadDto = registry.register('LeadDto', leadDto);
@@ -162,6 +166,22 @@ registry.registerPath({
     200: { description: 'Post detail', content: json(dataEnvelope(PostDetailDto)) },
     401: errorResponse('Unauthorized'),
     404: errorResponse('Not found / cross-tenant'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/posts/from-agent',
+  tags: ['posts'],
+  summary: 'Agent-authored create: extract the brief from a description; may clarify first',
+  security: userAuth,
+  request: { body: { content: { 'application/json': { schema: CreatePostFromAgentBody } } } },
+  responses: {
+    200: { description: 'Clarify questions (agent needs more info before creating)', content: json(dataEnvelope(PostFromAgentDto)) },
+    201: { description: 'Post created (brief) with the fields the agent filled', content: json(dataEnvelope(PostFromAgentDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Campaign not found / cross-tenant'),
+    422: errorResponse('Invalid body'),
   },
 });
 

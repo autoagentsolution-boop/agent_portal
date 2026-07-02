@@ -123,9 +123,11 @@ export const api = {
   getPost: (id: string) => request<PostDetailDto>(`/posts/${id}`),
   createPost: (body: Dto['CreatePostBody']) => request<PostDto>('/posts', { method: 'POST', body }),
   // Agent-authored create (item 3): the Master Agent extracts the brief from a free-text
-  // description so the user never hand-fills the form. `filled` names the captured fields.
-  createPostFromAgent: (campaignId: string, message: string) =>
-    request<PostDto & { filled: string[] }>('/posts/from-agent', { method: 'POST', body: { campaignId, message } }),
+  // description so the user never hand-fills the form. First call may return `questions`
+  // (the agent needs more info); passing `answers` on the second call creates the post
+  // (`post` + `filled` — the fields it captured).
+  createPostFromAgent: (campaignId: string, message: string, answers?: Record<string, string | string[]>) =>
+    request<Dto['PostFromAgentDto']>('/posts/from-agent', { method: 'POST', body: { campaignId, message, ...(answers ? { answers } : {}) } }),
   updatePost: (id: string, body: Dto['UpdatePostBody']) =>
     request<PostDto>(`/posts/${id}`, { method: 'PATCH', body }),
   deletePost: (id: string) => request<void>(`/posts/${id}`, { method: 'DELETE' }),

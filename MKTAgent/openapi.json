@@ -941,6 +941,255 @@
           "campaignId"
         ]
       },
+      "CreatePostFromAgentBody": {
+        "type": "object",
+        "properties": {
+          "campaignId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 4000
+          },
+          "answers": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "campaignId",
+          "message"
+        ]
+      },
+      "PostFromAgentDto": {
+        "type": "object",
+        "properties": {
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "slot": {
+                  "type": "string"
+                },
+                "question": {
+                  "type": "string"
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "choices": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "multiSelect": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "slot",
+                "question",
+                "required"
+              ]
+            }
+          },
+          "post": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "campaignId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "runId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "brief",
+                  "review",
+                  "rework",
+                  "ready",
+                  "posting",
+                  "posted",
+                  "partial",
+                  "error"
+                ]
+              },
+              "assetType": {
+                "type": "string",
+                "enum": [
+                  "image",
+                  "carousel",
+                  "video"
+                ]
+              },
+              "copy": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "threads": {
+                    "type": "string"
+                  },
+                  "x": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "body",
+                  "threads",
+                  "x"
+                ]
+              },
+              "language": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "lengthSpec": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "angle": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "brandVoice": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "feedback": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "driveFolderId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "heroFile": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "platforms": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "facebook",
+                    "instagram",
+                    "threads",
+                    "linkedin",
+                    "x"
+                  ]
+                }
+              },
+              "scheduledAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "postUrls": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "postedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "campaignId",
+              "runId",
+              "status",
+              "assetType",
+              "copy",
+              "language",
+              "lengthSpec",
+              "angle",
+              "brandVoice",
+              "feedback",
+              "driveFolderId",
+              "heroFile",
+              "platforms",
+              "scheduledAt",
+              "postUrls",
+              "error",
+              "postedAt",
+              "createdAt",
+              "updatedAt"
+            ]
+          },
+          "filled": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "UpdatePostBody": {
         "type": "object",
         "properties": {
@@ -2036,6 +2285,99 @@
           },
           "409": {
             "description": "Post is being published; cannot delete",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts/from-agent": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Agent-authored create: extract the brief from a description; may clarify first",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePostFromAgentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clarify questions (agent needs more info before creating)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PostFromAgentDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Post created (brief) with the fields the agent filled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PostFromAgentDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Campaign not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid body",
             "content": {
               "application/json": {
                 "schema": {

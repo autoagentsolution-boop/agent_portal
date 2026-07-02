@@ -359,6 +359,86 @@ export interface paths {
         };
         trace?: never;
     };
+    "/posts/from-agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Agent-authored create: extract the brief from a description; may clarify first */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreatePostFromAgentBody"];
+                };
+            };
+            responses: {
+                /** @description Clarify questions (agent needs more info before creating) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["PostFromAgentDto"];
+                        };
+                    };
+                };
+                /** @description Post created (brief) with the fields the agent filled */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["PostFromAgentDto"];
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Campaign not found / cross-tenant */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Invalid body */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/posts/{id}/approve": {
         parameters: {
             query?: never;
@@ -2396,6 +2476,57 @@ export interface components {
             heroFile?: string | null;
             platforms?: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];
             scheduledAt?: string | null;
+        };
+        CreatePostFromAgentBody: {
+            /** Format: uuid */
+            campaignId: string;
+            message: string;
+            answers?: {
+                [key: string]: string | string[];
+            };
+        };
+        PostFromAgentDto: {
+            questions?: {
+                slot: string;
+                question: string;
+                required: boolean;
+                choices?: string[];
+                multiSelect?: boolean;
+            }[];
+            post?: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                campaignId: string;
+                /** Format: uuid */
+                runId: string | null;
+                /** @enum {string} */
+                status: "brief" | "review" | "rework" | "ready" | "posting" | "posted" | "partial" | "error";
+                /** @enum {string} */
+                assetType: "image" | "carousel" | "video";
+                copy: {
+                    body: string;
+                    threads: string;
+                    x: string;
+                } | null;
+                language: string | null;
+                lengthSpec: string | null;
+                angle: string | null;
+                brandVoice: string | null;
+                feedback: string | null;
+                driveFolderId: string | null;
+                heroFile: string | null;
+                platforms: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];
+                scheduledAt: string | null;
+                postUrls: {
+                    [key: string]: string;
+                } | null;
+                error: string | null;
+                postedAt: string | null;
+                createdAt: string;
+                updatedAt: string;
+            };
+            filled?: string[];
         };
         UpdatePostBody: {
             /** @enum {string} */
