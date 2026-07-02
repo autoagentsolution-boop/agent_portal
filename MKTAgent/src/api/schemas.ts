@@ -87,6 +87,15 @@ export const createPostBody = z.object({
 });
 export type CreatePostBody = z.infer<typeof createPostBody>;
 
+// Agent-authored brief (item 3): the user describes the post in free text and the
+// Master Agent extracts the brief fields (language/length/angle/voice/platforms/asset)
+// so they never hand-fill the form. Only the campaign + message are supplied.
+export const createPostFromAgentBody = z.object({
+  campaignId: z.string().uuid(),
+  message: z.string().trim().min(3).max(4000),
+});
+export type CreatePostFromAgentBody = z.infer<typeof createPostFromAgentBody>;
+
 // Editable post fields (campaignId is immutable — a re-home would desync ownerId).
 export const updatePostBody = z
   .object({

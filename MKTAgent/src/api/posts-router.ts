@@ -9,7 +9,9 @@ import {
   rejectPostBody,
   refinePostBody,
   createPostBody,
+  createPostFromAgentBody,
   updatePostBody,
+  type CreatePostBody,
 } from './schemas.ts';
 import { toPostDto, toPostDetailDto } from './mappers.ts';
 import { publishPostStatus } from '../events/bus.ts';
@@ -17,6 +19,8 @@ import { generateForPost, refineForPost } from '../copygen/service.ts';
 import { publishPostNow } from '../scheduler/tick.ts';
 import { getCampaign } from '../db/repos/campaign-repo.ts';
 import { cloneTemplateRun } from '../db/repos/workflow-run-repo.ts';
+import { requirementAnalyzer } from '../orchestration/master/requirement-analyzer.ts';
+import { goalToBrief } from '../orchestration/master/goal-to-brief.ts';
 import {
   listPosts,
   getPostWithCampaign,
@@ -27,8 +31,43 @@ import {
   updatePostFields,
   deletePost,
 } from '../db/repos/post-repo.ts';
+import type { Campaign, Post } from '../../prisma/generated/prisma/client.ts';
 
 export const postsRouter: Router = Router();
+
+// Create a Post under a campaign, cloning the campaign's flow template into an executable
+// instance run when one is attached (flow-as-template), and inheriting the campaign's
+// platforms/language when the brief omits them. Shared by the manual create (POST /) and
+// the agent-authored create (POST /from-agent) so both stay in lock-step. An explicit body
+// value always wins over the inherited campaign default (per-post override).
+const buildPostUnderCampaign = async (
+  campaign: Campaign,
+  body: Omit<CreatePostBody, 'campaignId'>,
+  ownerId: string,
+): Promise<Post> => {
+  let runId: string | null = null;
+  if (campaign.flowId) {
+    const instance = await cloneTemplateRun(campaign.flowId, ownerId, {
+      product: campaign.product,
+      angle: campaign.angle,
+      brandVoice: campaign.brandVoice,
+      language: campaign.language,
+      productDetails: campaign.brandContext,
+      platforms: campaign.platforms,
+    });
+    // A missing/deleted template just means no runnable instance — the post still exists
+    // (legacy copy-gen path) rather than failing the create.
+    runId = instance?.id ?? null;
+  }
+  return createPostForOwner({
+    ...body,
+    campaignId: campaign.id,
+    platforms: body.platforms ?? campaign.platforms ?? undefined,
+    language: body.language ?? campaign.language ?? undefined,
+    ownerId,
+    runId,
+  });
+};
 
 postsRouter.get(
   '/',
@@ -56,36 +95,35 @@ postsRouter.post(
   asyncHandler(async (req, res) => {
     const body = parseOr422(res, createPostBody, req.body ?? {});
     if (!body) return;
+    const { campaignId, ...brief } = body;
+    const campaign = await getCampaign(campaignId, req.userId!);
+    if (!campaign) return fail(res, 404, 'campaign_not_found');
+
+    const post = await buildPostUnderCampaign(campaign, brief, req.userId!);
+    res.status(201);
+    ok(res, toPostDto(post));
+  }),
+);
+
+// Agent-authored create (item 3): the user describes the post in free text; the Master
+// Agent's requirement analyzer extracts the brief fields so the user never hand-fills the
+// form. The post lands under THIS campaign (no fork) in `brief` status — the board form is
+// still available to tweak anything the agent left thin. `filled` names the fields the
+// agent populated so the UI can confirm what it captured. Analysis never blocks the create:
+// a thin extraction still yields a brief the user completes on the board.
+postsRouter.post(
+  '/from-agent',
+  asyncHandler(async (req, res) => {
+    const body = parseOr422(res, createPostFromAgentBody, req.body ?? {});
+    if (!body) return;
     const campaign = await getCampaign(body.campaignId, req.userId!);
     if (!campaign) return fail(res, 404, 'campaign_not_found');
 
-    let runId: string | null = null;
-    if (campaign.flowId) {
-      const instance = await cloneTemplateRun(campaign.flowId, req.userId!, {
-        product: campaign.product,
-        angle: campaign.angle,
-        brandVoice: campaign.brandVoice,
-        language: campaign.language,
-        productDetails: campaign.brandContext,
-        platforms: campaign.platforms,
-      });
-      // A missing/deleted template just means no runnable instance — the post still
-      // exists (legacy copy-gen path) rather than failing the create.
-      runId = instance?.id ?? null;
-    }
-
-    // Inherit the campaign's platforms/language when the brief omits them, so a post
-    // created under a FB+IG campaign starts with those targets pre-selected (the empty-
-    // checkboxes bug). An explicit body value still wins (manual per-post override).
-    const post = await createPostForOwner({
-      ...body,
-      platforms: body.platforms ?? campaign.platforms ?? undefined,
-      language: body.language ?? campaign.language ?? undefined,
-      ownerId: req.userId!,
-      runId,
-    });
+    const goal = await requirementAnalyzer.analyze(body.message);
+    const { brief, filled } = goalToBrief(goal);
+    const post = await buildPostUnderCampaign(campaign, brief, req.userId!);
     res.status(201);
-    ok(res, toPostDto(post));
+    ok(res, { ...toPostDto(post), filled });
   }),
 );
 

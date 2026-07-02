@@ -3,6 +3,7 @@ import { api, type PostDto } from '../api/client';
 import { usePostEvents } from '../hooks/use-post-events';
 import { PostBriefForm } from './PostBriefForm';
 import { PostCard } from './PostCard';
+import { CreatePostModal } from './create-post-modal';
 
 import type { DemoMode } from '../flow/demo-flow';
 
@@ -20,6 +21,8 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<PostDto | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [localSelectedId, setLocalSelectedId] = useState<string | null>(null);
 
   const setVisiblePosts = useCallback((next: PostDto[] | ((prev: PostDto[]) => PostDto[])) => {
     setPosts((prev) => {
@@ -44,6 +47,12 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
     document.getElementById(`post-${selectedPostId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [selectedPostId, posts.length]);
 
+  // Scroll to a post created in-board (agent-authored) once it's rendered after reload.
+  useEffect(() => {
+    if (!localSelectedId) return;
+    document.getElementById(`post-${localSelectedId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [localSelectedId, posts.length]);
+
   const live = usePostEvents((e) => {
     setVisiblePosts((prev) =>
       prev.map((p) =>
@@ -57,6 +66,14 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
   const saved = async () => {
     setCreating(false);
     setEditing(null);
+    await load();
+  };
+
+  // Master-Agent path created a post under this campaign — close the picker, reload the
+  // board, and mark it selected so the effect scrolls it into view.
+  const agentCreated = async (post: PostDto) => {
+    setPicking(false);
+    setLocalSelectedId(post.id);
     await load();
   };
 
@@ -77,11 +94,21 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
         <button
           className="btn primary"
           disabled={!campaignId}
-          onClick={() => { setCreating((v) => !v); setEditing(null); }}
+          onClick={() => { if (creating) { setCreating(false); } else { setPicking(true); setEditing(null); } }}
         >
           {creating ? '×' : '+ New full brief'}
         </button>
       </div>
+
+      {campaignId && picking && (
+        <CreatePostModal
+          campaignId={campaignId}
+          notify={notify}
+          onManual={() => { setPicking(false); setEditing(null); setCreating(true); }}
+          onCreated={(post) => void agentCreated(post)}
+          onClose={() => setPicking(false)}
+        />
+      )}
 
       {!campaignId && <p className="muted">Showing all posts. Select a campaign to create a full brief.</p>}
 
@@ -115,7 +142,7 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
             post={p}
             demoMode={demoMode}
             notify={notify}
-            selected={selectedPostId === p.id}
+            selected={selectedPostId === p.id || localSelectedId === p.id}
             onEdit={(post) => { setCreating(false); setEditing(post); }}
             onPatched={onPatched}
           />
