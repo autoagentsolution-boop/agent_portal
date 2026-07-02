@@ -102,6 +102,15 @@ async function main(): Promise<void> {
     check('Post materialized + posted (dry)', post?.status === 'posted', post?.status);
     check('Post.runId links back to the flow (DAG under post)', post?.runId === run.id, { runId: post?.runId, run: run.id });
 
+    // Phase 6 — token/cost accounting recorded on completed nodes.
+    const nodeCost = (agentId: string) => full?.nodes.find((n) => n.agentId === agentId);
+    check('ideation recorded tokens', (nodeCost('ideation')?.totalTokens ?? 0) > 0, nodeCost('ideation')?.totalTokens);
+    check('concept_writer recorded cost>0', (nodeCost('concept_writer')?.costUsd ?? 0) > 0, nodeCost('concept_writer')?.costUsd);
+    check('infographic recorded flat image cost', Math.abs((nodeCost('infographic')?.costUsd ?? 0) - 0.04) < 1e-9, nodeCost('infographic')?.costUsd);
+    check('publisher cost is 0 (no spend)', (nodeCost('publisher')?.costUsd ?? -1) === 0, nodeCost('publisher')?.costUsd);
+    const runTotal = (full?.nodes ?? []).reduce((s, n) => s + (n.costUsd ?? 0), 0);
+    check('run total cost > 0', runTotal > 0, runTotal);
+
     // Faithfulness: a goal WITHOUT media must fail-loud at the live publish path
     // (the executor does not bypass resolvePublishInput validation).
     const goal2 = analyzeDeterministic('Post about our AI automation product on facebook');

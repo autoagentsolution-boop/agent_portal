@@ -15,6 +15,7 @@ import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
 import { ideationSystemPrompt, strategySystemPrompt } from '../prompts/agent-prompts.ts';
 import { generate as generateImage, type ImageResult } from '../../imagegen/nano-banana.ts';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
+import { estimateLlmCost, imageCost, type NodeCost } from './node-cost.ts';
 
 // Per-run mutable context threaded through node executions. Artifacts already
 // produced upstream are addressable by type (the executor passes them in).
@@ -43,6 +44,8 @@ export interface RunnerOutput {
   data: unknown;
   // concept_writer sets this so the executor stores it on ctx for publisher.
   postId?: string;
+  // Token/cost for this node (Phase 6). Omitted → treated as $0 (stubs, publisher).
+  cost?: NodeCost;
 }
 
 // concept_writer instance path (LIVE): the Post already exists (created before the run,
@@ -80,6 +83,7 @@ const runConceptWriterForExistingPost = async (ctx: RunnerContext, postId: strin
       copy,
       postId: post.id,
     },
+    cost: estimateLlmCost(goalContext(ctx), `${copy.body}\n${copy.threads}\n${copy.x}`),
   };
 };
 
@@ -141,6 +145,7 @@ const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
       copy,
       postId: post.id,
     },
+    cost: estimateLlmCost(goalContext(ctx), `${copy.body}\n${copy.threads}\n${copy.x}`),
   };
 };
 
@@ -191,19 +196,21 @@ const goalContext = (ctx: RunnerContext): string => {
 // output against the artifact schema here so a bad response fails the node loudly.
 const runIdeation = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
-  const raw = await call(ideationSystemPrompt, goalContext(ctx));
+  const prompt = goalContext(ctx);
+  const raw = await call(ideationSystemPrompt, prompt);
   const parsed = campaignIdeas.safeParse(raw);
   if (!parsed.success) throw new Error(`ideation: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
-  return { type: 'campaign_ideas', data: parsed.data };
+  return { type: 'campaign_ideas', data: parsed.data, cost: estimateLlmCost(ideationSystemPrompt + prompt, JSON.stringify(parsed.data)) };
 };
 
 // strategy (LIVE): turn the chosen idea into a positioning/audience/pillars brief.
 const runStrategy = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
-  const raw = await call(strategySystemPrompt, goalContext(ctx));
+  const prompt = goalContext(ctx);
+  const raw = await call(strategySystemPrompt, prompt);
   const parsed = strategyBrief.safeParse(raw);
   if (!parsed.success) throw new Error(`strategy: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
-  return { type: 'strategy_brief', data: parsed.data };
+  return { type: 'strategy_brief', data: parsed.data, cost: estimateLlmCost(strategySystemPrompt + prompt, JSON.stringify(parsed.data)) };
 };
 
 // Build an image prompt from the concept/strategy upstream. Two deliberately distinct
@@ -270,7 +277,8 @@ const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     const updated = await setPostHeroFile(ctx.postId, ctx.ownerId, ref);
     if (!updated) throw new Error('infographic: could not attach image to post (locked or not found)');
   }
-  return { type: 'infographic_brief', data: { visualBrief, imagePrompt, imageRef: ref } };
+  // A cached image cost nothing to regenerate; a fresh one is the flat per-image price.
+  return { type: 'infographic_brief', data: { visualBrief, imagePrompt, imageRef: ref }, cost: image.cached ? undefined : imageCost() };
 };
 
 // Stubs — schema-valid placeholders so the DAG completes end-to-end in M1.

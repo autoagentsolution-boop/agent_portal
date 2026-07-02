@@ -386,6 +386,13 @@ model WorkflowNodeRun {
   error      String?
   startedAt  DateTime? @map("started_at") @db.Timestamptz(6)
   finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+  // Token/cost accounting (Phase 6). Recorded when a node completes. Estimated from
+  // actual I/O for LLM nodes and a flat per-image cost for image gen; 0 for stubs. The
+  // flow-template dashboard sums these across all instance runs of the template.
+  promptTokens Int   @default(0) @map("prompt_tokens")
+  outputTokens Int   @default(0) @map("output_tokens")
+  totalTokens  Int   @default(0) @map("total_tokens")
+  costUsd      Float @default(0) @map("cost_usd")
 
   run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 

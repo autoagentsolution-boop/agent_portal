@@ -1356,6 +1356,12 @@
                     "string",
                     "null"
                   ]
+                },
+                "totalTokens": {
+                  "type": "number"
+                },
+                "costUsd": {
+                  "type": "number"
                 }
               },
               "required": [
@@ -1394,6 +1400,58 @@
                 "createdAt"
               ]
             }
+          },
+          "cost": {
+            "type": "object",
+            "properties": {
+              "promptTokens": {
+                "type": "number"
+              },
+              "outputTokens": {
+                "type": "number"
+              },
+              "totalTokens": {
+                "type": "number"
+              },
+              "costUsd": {
+                "type": "number"
+              },
+              "runs": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "promptTokens",
+              "outputTokens",
+              "totalTokens",
+              "costUsd"
+            ]
+          },
+          "flowCost": {
+            "type": "object",
+            "properties": {
+              "promptTokens": {
+                "type": "number"
+              },
+              "outputTokens": {
+                "type": "number"
+              },
+              "totalTokens": {
+                "type": "number"
+              },
+              "costUsd": {
+                "type": "number"
+              },
+              "runs": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "promptTokens",
+              "outputTokens",
+              "totalTokens",
+              "costUsd"
+            ]
           },
           "createdAt": {
             "type": "string"

@@ -217,7 +217,21 @@ export const workflowNodeDto = z.object({
   status: z.string(),
   dependsOn: z.array(z.string()),
   error: z.string().nullable(),
+  // Token/cost recorded when the node completed (Phase 6). 0 for stubs/publisher/pending.
+  totalTokens: z.number().optional(),
+  costUsd: z.number().optional(),
 });
+
+// Token/cost totals. Per-run (this run's nodes) and, for a flow template, a rollup across
+// every instance run spawned from it — what makes a Flow detail a real spend dashboard.
+export const costSummaryDto = z.object({
+  promptTokens: z.number(),
+  outputTokens: z.number(),
+  totalTokens: z.number(),
+  costUsd: z.number(),
+  runs: z.number().optional(),
+});
+export type CostSummaryDto = z.infer<typeof costSummaryDto>;
 
 // Connection Resolver output (§11.11 requires_user_action). Present when a run is
 // `needs_connection`: one entry per platform the user must connect/reconnect before
@@ -267,6 +281,10 @@ export const workflowRunDto = z.object({
   createdPostId: z.string().uuid().optional(),
   nodes: z.array(workflowNodeDto),
   artifacts: z.array(artifactDto),
+  // This run's own token/cost total (sum of its nodes). Always present.
+  cost: costSummaryDto.optional(),
+  // Flow-template only: spend rolled up across all instance runs (posts) of this flow.
+  flowCost: costSummaryDto.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

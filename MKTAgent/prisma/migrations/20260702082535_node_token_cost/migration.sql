@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "wf_node_run" ADD COLUMN     "cost_usd" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN     "output_tokens" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "prompt_tokens" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "total_tokens" INTEGER NOT NULL DEFAULT 0;

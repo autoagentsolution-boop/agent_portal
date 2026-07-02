@@ -2494,6 +2494,8 @@ export interface components {
                 status: string;
                 dependsOn: string[];
                 error: string | null;
+                totalTokens?: number;
+                costUsd?: number;
             }[];
             artifacts: {
                 /** Format: uuid */
@@ -2503,6 +2505,20 @@ export interface components {
                 data?: unknown;
                 createdAt: string;
             }[];
+            cost?: {
+                promptTokens: number;
+                outputTokens: number;
+                totalTokens: number;
+                costUsd: number;
+                runs?: number;
+            };
+            flowCost?: {
+                promptTokens: number;
+                outputTokens: number;
+                totalTokens: number;
+                costUsd: number;
+                runs?: number;
+            };
             createdAt: string;
             updatedAt: string;
         };

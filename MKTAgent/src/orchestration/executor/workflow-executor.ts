@@ -22,6 +22,16 @@ import {
 import { getPostByRunId } from '../../db/repos/post-repo.ts';
 import { publishNodeStatus } from '../../events/bus.ts';
 import { logRun } from '../../db/client.ts';
+import type { NodeExecResult } from './agent-executor.ts';
+
+// Cost columns for a completed node. Best-effort: a node with no cost (stub/publisher)
+// records $0. Never throws — cost accounting must not break a run.
+const costFields = (result: NodeExecResult) => ({
+  promptTokens: result.cost?.promptTokens ?? 0,
+  outputTokens: result.cost?.outputTokens ?? 0,
+  totalTokens: result.cost?.totalTokens ?? 0,
+  costUsd: result.cost?.costUsd ?? 0,
+});
 
 export interface ExecuteOptions {
   geminiFn?: RunnerContext['geminiFn'];
@@ -93,7 +103,7 @@ export const runWorkflow = async (
     publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'running' });
     try {
       const result = await executeNode(planNode, ctx);
-      await setNodeStatus(nodeRow.id, 'completed', { finishedAt: new Date(), outputRefs: [result.artifactId] });
+      await setNodeStatus(nodeRow.id, 'completed', { finishedAt: new Date(), outputRefs: [result.artifactId], ...costFields(result) });
       publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'completed' });
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e).slice(0, 500);
@@ -135,6 +145,7 @@ export const runWorkflow = async (
       await setNodeStatus(nodeRow.id, 'completed', {
         finishedAt: new Date(),
         outputRefs: [result.artifactId],
+        ...costFields(result),
       });
       publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed' });
       void def;

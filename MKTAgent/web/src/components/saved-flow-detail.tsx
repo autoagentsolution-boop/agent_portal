@@ -134,6 +134,23 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
           create a campaign, then each post under it runs this flow and you can review every step.
         </p>
 
+        {run.flowCost && (
+          <div className="flow-cost-strip">
+            <div className="flow-cost-metric">
+              <span className="flow-cost-value">${run.flowCost.costUsd.toFixed(3)}</span>
+              <span className="flow-cost-label">total spend</span>
+            </div>
+            <div className="flow-cost-metric">
+              <span className="flow-cost-value">{run.flowCost.totalTokens.toLocaleString()}</span>
+              <span className="flow-cost-label">tokens</span>
+            </div>
+            <div className="flow-cost-metric">
+              <span className="flow-cost-value">{run.flowCost.runs ?? 0}</span>
+              <span className="flow-cost-label">{(run.flowCost.runs ?? 0) === 1 ? 'post run' : 'post runs'}</span>
+            </div>
+          </div>
+        )}
+
         <ol className="blueprint-team">
           {run.nodes.map((n, i) => (
             <li className="blueprint-agent" key={n.nodeId}>

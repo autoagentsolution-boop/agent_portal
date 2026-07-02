@@ -31,6 +31,7 @@ import {
   setRunStatus,
   resetNodes,
   collectDownstream,
+  getFlowCostRollup,
 } from '../db/repos/workflow-run-repo.ts';
 import { deleteArtifactsByNodes } from '../orchestration/executor/artifact-store.ts';
 import { getAgent } from '../orchestration/registry/agent-registry.ts';
@@ -345,7 +346,12 @@ orchestrationRouter.get('/runs/by-chat/:chatSessionId', asyncHandler(async (req,
 orchestrationRouter.get('/runs/:id', asyncHandler(async (req, res) => {
   const full = await getRunWithNodes(req.params.id, req.userId!);
   if (!full) return fail(res, 404, 'run_not_found');
-  ok(res, toRunDto(full));
+  // Flow template → include the spend rolled up across all its instance runs (posts), so
+  // the Flow detail renders as a real dashboard. Instance/draft runs just carry own cost.
+  const flowCost = full.kind === 'template'
+    ? await getFlowCostRollup(full.id, req.userId!)
+    : undefined;
+  ok(res, toRunDto(full, flowCost ? { flowCost } : {}));
 }));
 
 // Delete a run (Saved Flow). Cascades to its nodes + artifacts. A run mid-execution

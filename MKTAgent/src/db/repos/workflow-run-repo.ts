@@ -144,6 +144,38 @@ export const getRunWithNodes = (id: string, ownerId: string): Promise<RunWithNod
     include: { nodes: { orderBy: { nodeId: 'asc' } }, artifacts: { orderBy: { createdAt: 'asc' } } },
   });
 
+// Token/cost rollup for a flow TEMPLATE: sum every node of every instance run spawned
+// from it (templateId=flow.id) + the template's own nodes (0 — templates never execute).
+// This is what turns a Flow detail into a real dashboard: total spend across all its
+// posts. Scoped by owner. `runs` = how many instance runs contributed (posts executed).
+export interface FlowCostRollup {
+  promptTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  runs: number;
+}
+
+export const getFlowCostRollup = async (templateId: string, ownerId: string): Promise<FlowCostRollup> => {
+  const instances = await prisma.workflowRun.findMany({
+    where: { ownerId, templateId },
+    select: { id: true },
+  });
+  const runIds = instances.map((r) => r.id);
+  if (runIds.length === 0) return { promptTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0, runs: 0 };
+  const agg = await prisma.workflowNodeRun.aggregate({
+    where: { ownerId, runId: { in: runIds } },
+    _sum: { promptTokens: true, outputTokens: true, totalTokens: true, costUsd: true },
+  });
+  return {
+    promptTokens: agg._sum.promptTokens ?? 0,
+    outputTokens: agg._sum.outputTokens ?? 0,
+    totalTokens: agg._sum.totalTokens ?? 0,
+    costUsd: agg._sum.costUsd ?? 0,
+    runs: runIds.length,
+  };
+};
+
 export const listRuns = (ownerId: string, limit = 50): Promise<WorkflowRun[]> =>
   prisma.workflowRun.findMany({ where: { ownerId }, orderBy: { updatedAt: 'desc' }, take: limit });
 

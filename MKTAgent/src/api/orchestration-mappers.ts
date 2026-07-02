@@ -5,7 +5,7 @@ import type { RunWithNodes } from '../db/repos/workflow-run-repo.ts';
 import { goalSpec, type GoalSpec } from '../orchestration/schemas/goal-spec.ts';
 import type { ClarificationQuestion } from '../orchestration/master/clarification-engine.ts';
 import { parseAccountType } from '../orchestration/master/deterministic-analyzer.ts';
-import type { WorkflowRunDto, RequiredActionDto } from './schemas.ts';
+import type { WorkflowRunDto, RequiredActionDto, CostSummaryDto } from './schemas.ts';
 
 export type ClarifyQuestions = ClarificationQuestion[];
 
@@ -18,7 +18,21 @@ export interface RunDtoExtras {
   campaignIntent?: boolean;
   createdCampaignId?: string;
   createdPostId?: string;
+  // Flow-template spend rolled up across its instance runs (Phase 6 dashboard).
+  flowCost?: CostSummaryDto;
 }
+
+// Sum a run's node token/cost into its own total (Phase 6).
+const runCost = (run: RunWithNodes): CostSummaryDto =>
+  run.nodes.reduce(
+    (acc, n) => ({
+      promptTokens: acc.promptTokens + (n.promptTokens ?? 0),
+      outputTokens: acc.outputTokens + (n.outputTokens ?? 0),
+      totalTokens: acc.totalTokens + (n.totalTokens ?? 0),
+      costUsd: acc.costUsd + (n.costUsd ?? 0),
+    }),
+    { promptTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 },
+  );
 
 export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): WorkflowRunDto => ({
   id: run.id,
@@ -41,6 +55,8 @@ export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): Workflow
     status: n.status,
     dependsOn: n.dependsOn,
     error: n.error,
+    totalTokens: n.totalTokens ?? 0,
+    costUsd: n.costUsd ?? 0,
   })),
   artifacts: run.artifacts.map((a) => ({
     id: a.id,
@@ -49,6 +65,8 @@ export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): Workflow
     data: a.data,
     createdAt: a.createdAt.toISOString(),
   })),
+  cost: runCost(run),
+  ...(extras.flowCost ? { flowCost: extras.flowCost } : {}),
   createdAt: run.createdAt.toISOString(),
   updatedAt: run.updatedAt.toISOString(),
 });
