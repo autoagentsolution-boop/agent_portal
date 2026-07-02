@@ -44,6 +44,16 @@ export type RejectPostBody = z.infer<typeof rejectPostBody>;
 export const refinePostBody = z.object({
   instruction: z.string().min(1).max(2000),
 });
+
+// Manual copy edit — the user hand-edits the generated copy (no LLM, no token spend).
+// All three lenses supplied together (the editor shows them together). Lands the post
+// back at `review` so it is re-approved before publishing.
+export const editCopyBody = z.object({
+  body: z.string().max(8000),
+  threads: z.string().max(8000),
+  x: z.string().max(8000),
+});
+export type EditCopyBody = z.infer<typeof editCopyBody>;
 export type RefinePostBody = z.infer<typeof refinePostBody>;
 
 // ---- CRUD bodies (T7) ----

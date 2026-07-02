@@ -214,6 +214,21 @@ export const updatePostFields = async (
   return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
 };
 
+// Manual copy edit: overwrite the copy bag and land the post back at `review` so it is
+// re-approved before publishing. Guarded to review|ready (a post with generated copy the
+// user is editing); returns null on state miss (route maps to 409). Owner-scoped.
+export const editPostCopy = async (
+  id: string,
+  ownerId: string,
+  copy: { body: string; threads: string; x: string },
+): Promise<Post | null> => {
+  const r = await prisma.post.updateMany({
+    where: { id, ownerId, status: { in: ['review', 'ready'] } },
+    data: { copy: copy as unknown as Prisma.InputJsonValue, status: 'review' },
+  });
+  return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
+};
+
 // Orchestration-internal: attach generated media to a post the executor owns.
 // Unlike updatePostFields this is NOT user-edit-gated (the post is already `ready`
 // after concept_writer's auto-approve), but it still refuses a row the scheduler is

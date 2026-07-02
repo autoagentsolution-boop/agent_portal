@@ -676,6 +676,28 @@
           "instruction"
         ]
       },
+      "EditCopyBody": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 8000
+          },
+          "threads": {
+            "type": "string",
+            "maxLength": 8000
+          },
+          "x": {
+            "type": "string",
+            "maxLength": 8000
+          }
+        },
+        "required": [
+          "body",
+          "threads",
+          "x"
+        ]
+      },
       "CreateCampaignBody": {
         "type": "object",
         "properties": {
@@ -2679,6 +2701,122 @@
           },
           "409": {
             "description": "Copy-gen busy, post not in review/ready, or no copy yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts/{id}/edit-copy": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Manually edit a post's copy (no LLM), landing it back at review",
+        "description": "Overwrites the copy bag with hand-edited body/threads/x — no token spend. The post returns to review for re-approval. Guarded to review|ready.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "maxLength": 8000
+                  },
+                  "threads": {
+                    "type": "string",
+                    "maxLength": 8000
+                  },
+                  "x": {
+                    "type": "string",
+                    "maxLength": 8000
+                  }
+                },
+                "required": [
+                  "body",
+                  "threads",
+                  "x"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Post with edited copy (status=review)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PostDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Post not in review/ready state",
             "content": {
               "application/json": {
                 "schema": {

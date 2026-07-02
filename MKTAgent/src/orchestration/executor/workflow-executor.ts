@@ -113,10 +113,14 @@ export const runWorkflow = async (
       await logRun('error', 'wf_node_rerun', { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, error: msg }, ownerId);
       return { status: 'failed', nodeId: planNode.nodeId, error: msg };
     }
-    // A re-run leaves the run before publishing again — the downstream (incl. publisher)
-    // is stale/pending, so park the run at needs_approval for the user to review + resume.
-    await setRunStatus(runId, 'needs_approval');
-    return { status: 'needs_approval', nodeId: opts.rerunOnly };
+    // A re-run regenerates one step; its downstream was reset to pending (stale) by the
+    // caller. Park the run at `planned` — NOT needs_approval — so it is RESUMABLE: the
+    // Execute button reappears (as "Continue"), and running it resumes the main loop
+    // (skips completed nodes, runs the stale downstream, halts at the publisher gate).
+    // Parking at needs_approval was the dead-end bug: no awaiting_approval node existed,
+    // so there was neither an approve button nor an execute button — the run got stuck.
+    await setRunStatus(runId, 'planned');
+    return { status: 'completed' };
   }
 
   for (const planNodeId of validated.order) {

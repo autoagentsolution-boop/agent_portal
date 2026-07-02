@@ -5,6 +5,42 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-02
 
+### Post-execution playground UX (4 fixes — NOT committed yet)
+Four issues from the post-execution real test.
+
+- **Rerun no longer dead-ends** — re-running a step (e.g. concept_writer) now parks the run at
+  `planned` (resumable) instead of `needs_approval`; the Execute button reappears as
+  **"Continue"** and resumes from the stale downstream, halting at the publisher gate. Previously
+  the run stuck with neither an approve nor an execute button.
+- **Inline copy edit + Refine** — `POST /posts/:id/edit-copy` hand-edits the generated copy with
+  no LLM/token spend (review|ready → review); the concept artifact gets **Edit copy** and
+  **Refine with AI** buttons.
+- **Connection redirect** — the connect gate now links to the full Connections page
+  (`onOpenConnections` threaded App → PostWorkflowView; "Manage / Go to Connections" buttons).
+- **Storage is a Connection** — removed the "Drive folder ID" / "Hero file ID" inputs from the
+  brief form (driveFolderId inert; heroFile written by the media agents as `local:<path>`);
+  replaced with a disabled Media-storage picker (Local active | Google Drive coming-soon). DB
+  columns kept.
+
+### Token/cost dashboard — Phase 6 (`0e75e91`)
+Per-node token/cost recorded on completion (LLM estimated from I/O, image flat per-image, stubs
+$0); `getFlowCostRollup` sums across all instance runs of a flow template; the Flow blueprint
+renders a spend strip (total $, tokens, post runs). Migration `node_token_cost`.
+
+### Master-Agent create-post clarify + refine fix
+- **Agent create-post clarify** (`5aeadc6`) — `POST /posts/from-agent` gates on missing
+  high-impact brief fields (angle/platforms/format) and returns clarify questions before creating
+  a generic post; the modal collects answers, which override the extracted values.
+- **Conversational refine restored** (`89dc994`) — the chat-run lookup filtered on `kind`, which
+  wrongly excluded a fresh draft (defaults to kind=instance) so every follow-up re-planned and
+  re-asked. Fixed to filter on `templateId=null`.
+- **Platform override** (`0dd2afe`) — a per-message "only facebook" now wins over the flow
+  template's platforms in the campaign-from-flow path.
+
+### Add-post modal + storage shell (`a7c9700`, `e20250c`)
+Two-choice create modal (Manual | Master Agent field-filler); unified the sidebar `+`; sidebar
+post delete; Connections page Storage section (shell).
+
 ### Post-board & Master-Agent feedback batch (items 1,2,5,6,7)
 Seven user-reported issues from the buyer-demo dry run; items 1/2/5/6/7 shipped (3/4 pending).
 

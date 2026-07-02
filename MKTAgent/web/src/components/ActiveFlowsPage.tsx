@@ -79,6 +79,7 @@ export function ActiveFlowsPage(props: Props) {
             onPostsChange={props.onPostsChange}
             autoCreate={props.autoCreateForCampaign === props.activeCampaign}
             onCreateConsumed={props.onCreateConsumed}
+            onOpenConnections={props.onOpenConnections}
           />
         </section>
       </div>

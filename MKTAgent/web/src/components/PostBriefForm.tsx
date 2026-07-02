@@ -28,6 +28,9 @@ const initialState = (post?: PostDto | null): PostBody => ({
   lengthSpec: post?.lengthSpec ?? '',
   angle: post?.angle ?? '',
   brandVoice: post?.brandVoice ?? '',
+  // driveFolderId / heroFile are no longer user-entered — storage is a Connection now, and
+  // the media agents write heroFile themselves (local:<path>). Preserve any existing value
+  // on an edit (so a manual re-save doesn't wipe generated media) but never expose an input.
   driveFolderId: post?.driveFolderId ?? '',
   heroFile: post?.heroFile ?? '',
   platforms: post?.platforms ?? ['facebook'],
@@ -100,14 +103,15 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
         </div>
       </div>
 
-      <div className="form-grid two">
-        <div className="field">
-          <label>Drive folder ID</label>
-          <input value={form.driveFolderId ?? ''} onChange={(e) => setField('driveFolderId', e.target.value)} placeholder="Folder containing approved media" />
-        </div>
-        <div className="field">
-          <label>Hero file ID(s)</label>
-          <input value={form.heroFile ?? ''} onChange={(e) => setField('heroFile', e.target.value)} placeholder={currentAsset?.hint ?? 'Drive file ID'} />
+      <div className="field">
+        <label>Media storage</label>
+        <select value="local" disabled onChange={() => { /* only local for now */ }}>
+          <option value="local">Local storage (active)</option>
+          <option value="drive" disabled>Google Drive (coming soon)</option>
+        </select>
+        <div className="help-text">
+          {currentAsset?.value === 'video' ? 'The video' : 'The image'} this flow generates is saved here automatically — no file IDs to enter.{' '}
+          Manage storage in <strong>Connections</strong>.
         </div>
       </div>
 

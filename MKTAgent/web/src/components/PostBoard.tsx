@@ -17,9 +17,10 @@ interface Props {
   // Sidebar "+" requested the create-post modal for this campaign — open it on mount.
   autoCreate?: boolean;
   onCreateConsumed?: () => void;
+  onOpenConnections?: () => void;
 }
 
-export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visiblePostId, onPostsChange, autoCreate, onCreateConsumed }: Props) {
+export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visiblePostId, onPostsChange, autoCreate, onCreateConsumed, onOpenConnections }: Props) {
   const [posts, setPosts] = useState<PostDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -154,6 +155,7 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
             selected={selectedPostId === p.id || localSelectedId === p.id}
             onEdit={(post) => { setCreating(false); setEditing(post); }}
             onPatched={onPatched}
+            onOpenConnections={onOpenConnections}
           />
         ))
       )}

@@ -8,6 +8,7 @@ import {
   approvePostBody,
   rejectPostBody,
   refinePostBody,
+  editCopyBody,
   createPostBody,
   createPostFromAgentBody,
   updatePostBody,
@@ -29,6 +30,7 @@ import {
   rejectReview,
   createPostForOwner,
   updatePostFields,
+  editPostCopy,
   deletePost,
 } from '../db/repos/post-repo.ts';
 import type { Campaign, Post } from '../../prisma/generated/prisma/client.ts';
@@ -219,6 +221,22 @@ postsRouter.post(
     if (r.status !== 'review') return fail(res, 500, 'copygen_error');
     const post = await getPostForOwner(req.params.id, req.userId!);
     ok(res, post ? toPostDto(post) : { id: req.params.id, status: 'review' });
+  }),
+);
+
+// Manual copy edit — the user hand-edits the generated copy directly (no LLM). Lands the
+// post back at `review` for re-approval. Distinct from /refine (LLM instruction); this is
+// a plain overwrite so a typo fix costs no tokens. Guarded to review|ready.
+postsRouter.post(
+  '/:id/edit-copy',
+  asyncHandler(async (req, res) => {
+    const body = parseOr422(res, editCopyBody, req.body ?? {});
+    if (!body) return;
+    if (!(await getPostForOwner(req.params.id, req.userId!))) return fail(res, 404, 'post_not_found');
+    const post = await editPostCopy(req.params.id, req.userId!, body);
+    if (!post) return fail(res, 409, 'not_editable', 'post copy can only be edited in review or ready state');
+    publishPostStatus(req.userId!, { postId: post.id, status: 'review', campaignId: post.campaignId });
+    ok(res, toPostDto(post));
   }),
 );
 

@@ -135,6 +135,9 @@ export const api = {
   generate: (id: string) => request<PostDto>(`/posts/${id}/generate`, { method: 'POST' }),
   refine: (id: string, instruction: string) =>
     request<PostDto>(`/posts/${id}/refine`, { method: 'POST', body: { instruction } }),
+  // Manual hand-edit of the copy (no LLM). Lands the post back at review.
+  editCopy: (id: string, copy: { body: string; threads: string; x: string }) =>
+    request<PostDto>(`/posts/${id}/edit-copy`, { method: 'POST', body: copy }),
   approve: (id: string, scheduledAt?: string) =>
     request<PostDto>(`/posts/${id}/approve`, { method: 'POST', body: scheduledAt ? { scheduledAt } : {} }),
   reject: (id: string, feedback: string) =>

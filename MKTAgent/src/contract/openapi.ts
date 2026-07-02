@@ -21,6 +21,7 @@ import {
   approvePostBody,
   rejectPostBody,
   refinePostBody,
+  editCopyBody,
   campaignDto,
   postDto,
   postDetailDto,
@@ -82,6 +83,7 @@ const PostDetailDto = registry.register('PostDetailDto', postDetailDto);
 registry.register('ApprovePostBody', approvePostBody);
 registry.register('RejectPostBody', rejectPostBody);
 registry.register('RefinePostBody', refinePostBody);
+registry.register('EditCopyBody', editCopyBody);
 const CreateCampaignBody = registry.register('CreateCampaignBody', createCampaignBody);
 const UpdateCampaignBody = registry.register('UpdateCampaignBody', updateCampaignBody);
 const CreatePostBody = registry.register('CreatePostBody', createPostBody);
@@ -239,6 +241,26 @@ registry.registerPath({
     401: errorResponse('Unauthorized'),
     404: errorResponse('Not found / cross-tenant'),
     409: errorResponse('Copy-gen busy, post not in review/ready, or no copy yet'),
+    422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/posts/{id}/edit-copy',
+  tags: ['posts'],
+  summary: 'Manually edit a post\'s copy (no LLM), landing it back at review',
+  description: 'Overwrites the copy bag with hand-edited body/threads/x — no token spend. The post returns to review for re-approval. Guarded to review|ready.',
+  security: userAuth,
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { content: json(editCopyBody) },
+  },
+  responses: {
+    200: { description: 'Post with edited copy (status=review)', content: json(dataEnvelope(PostDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Post not in review/ready state'),
     422: errorResponse('Invalid body'),
   },
 });

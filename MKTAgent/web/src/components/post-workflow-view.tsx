@@ -13,6 +13,7 @@ import { formatArtifact } from '../flow/artifact-format';
 interface Props {
   runId: string;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
+  onOpenConnections?: () => void;
 }
 
 const STATUS_HINT: Record<string, string> = {
@@ -24,10 +25,16 @@ const STATUS_HINT: Record<string, string> = {
   failed: 'A step failed — fix and re-run, or re-run the flow.',
 };
 
-export function PostWorkflowView({ runId, notify }: Props) {
+interface Copy { body: string; threads: string; x: string }
+
+export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   const [run, setRun] = useState<WorkflowRunDto | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Concept-copy editors (inline manual edit + LLM refine on the concept_writer artifact).
+  const [editCopy, setEditCopy] = useState<Copy | null>(null);
+  const [refineOpen, setRefineOpen] = useState(false);
+  const [refineText, setRefineText] = useState('');
 
   const load = async () => {
     const r = await api.getRun(runId);
@@ -75,6 +82,29 @@ export function PostWorkflowView({ runId, notify }: Props) {
     } finally { setBusy(false); }
   };
 
+  // Save a hand-edited copy (no LLM). Reloads the run so the concept artifact re-renders.
+  const saveCopy = async (postId: string) => {
+    if (!editCopy) return;
+    setBusy(true);
+    try {
+      const r = await api.editCopy(postId, editCopy);
+      if (!r.ok) { notify(`Save copy: ${r.error.error}`, 'err'); return; }
+      setEditCopy(null); notify('Copy updated'); await load();
+    } finally { setBusy(false); }
+  };
+
+  // Refine copy via LLM instruction (targeted edit, keeps audit trail).
+  const refineCopy = async (postId: string) => {
+    const text = refineText.trim();
+    if (!text) return;
+    setBusy(true);
+    try {
+      const r = await api.refine(postId, text);
+      if (!r.ok) { notify(`Refine: ${r.error.error}`, 'err'); return; }
+      setRefineOpen(false); setRefineText(''); notify('Copy refined'); await load();
+    } finally { setBusy(false); }
+  };
+
   if (!run) return <div className="post-workflow"><p className="muted small">Loading workflow…</p></div>;
 
   const gateNode = run.nodes.find((n) => n.status === 'awaiting_approval');
@@ -87,10 +117,19 @@ export function PostWorkflowView({ runId, notify }: Props) {
   const canExecute =
     run.status === 'planned' || run.status === 'failed' ||
     (run.status === 'needs_connection' && requiredActions.length === 0);
+  // A `planned` run with some steps already completed is a RESUMED run (after a single-step
+  // re-run): the button continues from the stale downstream rather than starting fresh.
+  const isResume = run.status === 'planned' && run.nodes.some((n) => n.status === 'completed') && run.nodes.some((n) => n.status === 'pending');
 
   const selectedNodeRun = selectedNode ? run.nodes.find((n) => n.nodeId === selectedNode) : null;
   const selectedArtifact = selectedNode ? run.artifacts.find((a) => a.nodeId === selectedNode) : null;
   const selectedView = selectedArtifact ? formatArtifact(selectedArtifact.type, selectedArtifact.data) : null;
+  // The concept_writer artifact carries the editable copy + its postId (edit/refine target).
+  const conceptData = selectedArtifact?.type === 'content_concept'
+    ? (selectedArtifact.data as { copy?: Copy; postId?: string } | undefined)
+    : undefined;
+  const conceptPostId = conceptData?.postId ?? null;
+  const conceptCopy = conceptData?.copy ?? null;
   // The publisher runs via the approval gate, not re-run; only finished steps re-run.
   const canRerun = Boolean(
     selectedNodeRun &&
@@ -105,17 +144,26 @@ export function PostWorkflowView({ runId, notify }: Props) {
         <span className="post-workflow-title">Workflow · {run.nodes.length} steps</span>
         {canExecute && (
           <button className="btn small primary" disabled={busy} onClick={() => void execute()}>
-            {busy ? 'Starting…' : run.status === 'failed' ? '↻ Re-run flow' : run.status === 'needs_connection' ? 'Check connection & run' : '▶ Execute'}
+            {busy ? 'Starting…' : isResume ? '▶ Continue (run stale steps)' : run.status === 'failed' ? '↻ Re-run flow' : run.status === 'needs_connection' ? 'Check connection & run' : '▶ Execute'}
           </button>
         )}
       </div>
-      <p className="muted small">{STATUS_HINT[run.status] ?? run.status}</p>
+      <p className="muted small">{isResume ? 'A step was re-run — later steps are stale. Click Continue to regenerate them, then approve to publish.' : STATUS_HINT[run.status] ?? run.status}</p>
 
       <div className="post-workflow-body">
         <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} />
 
         {run.status === 'needs_connection' && requiredActions.length > 0 && (
-          <ConnectionRequired actions={requiredActions} busy={busy} onContinue={() => void execute()} />
+          <ConnectionRequired actions={requiredActions} busy={busy} onContinue={() => void execute()} onOpenConnections={onOpenConnections} />
+        )}
+
+        {/* Reloaded gated run (GET carries no requiredActions): still surface a route to
+            the Connections page so the user isn't stranded with just "Check connection". */}
+        {run.status === 'needs_connection' && requiredActions.length === 0 && onOpenConnections && (
+          <div className="gate-block">
+            <p className="muted small">A platform needs connecting before this can publish.</p>
+            <button className="btn primary small" onClick={onOpenConnections}>🔌 Go to Connections</button>
+          </div>
         )}
 
         {run.status === 'needs_approval' && gateNode && (
@@ -149,6 +197,42 @@ export function PostWorkflowView({ runId, notify }: Props) {
                   {busy ? 'Re-running…' : '↻ Re-run this step'}
                 </button>
                 <span className="muted small">Regenerates this step. Later steps are marked stale — re-run them too before publishing.</span>
+              </div>
+            )}
+
+            {/* Concept copy: edit by hand (no LLM) OR refine via instruction (LLM). */}
+            {conceptCopy && conceptPostId && run.status !== 'running' && (
+              <div className="copy-edit-row">
+                {!editCopy && !refineOpen && (
+                  <div className="btn-row">
+                    <button className="btn small" disabled={busy} onClick={() => setEditCopy({ ...conceptCopy })}>✎ Edit copy</button>
+                    <button className="btn small" disabled={busy} onClick={() => setRefineOpen(true)}>✨ Refine with AI</button>
+                  </div>
+                )}
+                {editCopy && (
+                  <div className="copy-editor">
+                    <label>Body</label>
+                    <textarea rows={4} value={editCopy.body} onChange={(e) => setEditCopy({ ...editCopy, body: e.target.value })} />
+                    <label>Threads</label>
+                    <textarea rows={2} value={editCopy.threads} onChange={(e) => setEditCopy({ ...editCopy, threads: e.target.value })} />
+                    <label>X</label>
+                    <textarea rows={2} value={editCopy.x} onChange={(e) => setEditCopy({ ...editCopy, x: e.target.value })} />
+                    <div className="btn-row">
+                      <button className="btn small primary" disabled={busy} onClick={() => void saveCopy(conceptPostId)}>{busy ? 'Saving…' : 'Save copy'}</button>
+                      <button className="btn small" disabled={busy} onClick={() => setEditCopy(null)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+                {refineOpen && (
+                  <div className="copy-editor">
+                    <label>Refine instruction</label>
+                    <textarea rows={3} autoFocus value={refineText} onChange={(e) => setRefineText(e.target.value)} placeholder="e.g. shorten the hook, add a discount mention, make the tone warmer…" />
+                    <div className="btn-row">
+                      <button className="btn small primary" disabled={busy || !refineText.trim()} onClick={() => void refineCopy(conceptPostId)}>{busy ? 'Refining…' : 'Refine'}</button>
+                      <button className="btn small" disabled={busy} onClick={() => { setRefineOpen(false); setRefineText(''); }}>Cancel</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -10,9 +10,11 @@ interface Props {
   actions: RequiredActionDto[];
   busy: boolean;
   onContinue: () => void;
+  // Optional: open the full Connections page (a richer place to connect/manage tokens).
+  onOpenConnections?: () => void;
 }
 
-export function ConnectionRequired({ actions, busy, onContinue }: Props) {
+export function ConnectionRequired({ actions, busy, onContinue, onOpenConnections }: Props) {
   return (
     <div className="gate-block connection-required">
       <p className="muted small">
@@ -37,9 +39,14 @@ export function ConnectionRequired({ actions, busy, onContinue }: Props) {
           </div>
         ))}
       </div>
-      <button className="btn primary" disabled={busy} onClick={onContinue}>
-        {busy ? 'Checking…' : "I've connected — continue"}
-      </button>
+      <div className="btn-row">
+        <button className="btn primary" disabled={busy} onClick={onContinue}>
+          {busy ? 'Checking…' : "I've connected — continue"}
+        </button>
+        {onOpenConnections && (
+          <button className="btn" disabled={busy} onClick={onOpenConnections}>🔌 Manage Connections</button>
+        )}
+      </div>
     </div>
   );
 }

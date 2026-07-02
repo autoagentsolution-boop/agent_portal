@@ -11,6 +11,7 @@ interface Props {
   onEdit: (post: PostDto) => void;
   selected?: boolean;
   onPatched: (p: PostDto | null, id: string) => void;
+  onOpenConnections?: () => void;
 }
 
 const formatDate = (iso: string | null): string => iso ? new Date(iso).toLocaleString() : 'not scheduled';
@@ -33,7 +34,7 @@ const stageLine = (post: PostDto): { icon: string; text: string } => {
   }
 };
 
-export function PostCard({ post, demoMode, notify, onEdit, selected = false, onPatched }: Props) {
+export function PostCard({ post, demoMode, notify, onEdit, selected = false, onPatched, onOpenConnections }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [scheduling, setScheduling] = useState(false);
@@ -134,7 +135,7 @@ export function PostCard({ post, demoMode, notify, onEdit, selected = false, onP
 
       {post.error && <div className="copy-box" style={{ borderColor: 'var(--red)' }}><div className="label">Error</div><div className="text">{post.error}</div></div>}
 
-      {post.runId && <PostWorkflowView runId={post.runId} notify={notify} />}
+      {post.runId && <PostWorkflowView runId={post.runId} notify={notify} onOpenConnections={onOpenConnections} />}
 
       {post.postUrls && Object.keys(post.postUrls).length > 0 && (
         <div className="copy-box">
