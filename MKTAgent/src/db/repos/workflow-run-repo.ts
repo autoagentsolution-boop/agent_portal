@@ -198,12 +198,18 @@ export const renameRun = async (id: string, ownerId: string, name: string): Prom
 // Restore the run behind a chat session (conversational unify): a chat may spawn
 // many runs over its life; the latest is the live one the panel re-opens. Scoped by
 // ownerId (tenant isolation) and returns null when the chat has no run yet.
+// The chat's CONVERSATIONAL run — the draft/template the conversation is about. Instance
+// runs are excluded: cloneTemplateRun copies the template's chatSessionId onto each post's
+// instance, so without this filter a newer instance would shadow the template and break
+// (a) the saved-flow reuse guard (2nd campaign-create forks instead of binding) and
+// (b) chat restore (would show a post's instance, not the saved flow). Restore + reuse
+// both want the draft→template that predates any instance.
 export const getLatestRunWithNodesForChat = (
   chatSessionId: string,
   ownerId: string,
 ): Promise<RunWithNodes | null> =>
   prisma.workflowRun.findFirst({
-    where: { chatSessionId, ownerId },
+    where: { chatSessionId, ownerId, kind: { not: 'instance' } },
     orderBy: { updatedAt: 'desc' },
     include: { nodes: { orderBy: { nodeId: 'asc' } }, artifacts: { orderBy: { createdAt: 'asc' } } },
   });

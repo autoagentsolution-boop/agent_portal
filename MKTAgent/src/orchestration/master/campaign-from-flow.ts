@@ -24,8 +24,13 @@ export const createCampaignFromFlow = async (
   templateId: string,
   goal: GoalSpec,
   names: { campaignName: string | null; postTitle: string | null },
+  // Per-message platform override ("chỉ facebook") — when the create message names
+  // specific platforms, they win over the template goal's platforms. Empty → inherit.
+  platformOverride: SocialPlatform[] = [],
 ): Promise<CampaignFromFlowResult> => {
-  const platforms = (goal.platforms.length ? goal.platforms : ['facebook']) as SocialPlatform[];
+  const platforms = (platformOverride.length
+    ? platformOverride
+    : goal.platforms.length ? goal.platforms : ['facebook']) as SocialPlatform[];
   const product = clean(names.campaignName) ?? clean(goal.slots.product) ?? 'New campaign';
 
   const campaign = await createCampaign({

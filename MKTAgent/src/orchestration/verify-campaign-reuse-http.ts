@@ -80,6 +80,20 @@ async function main(): Promise<void> {
     const templateCount = await prisma.workflowRun.count({ where: { ownerId: user.id, kind: 'template' } });
     check('still exactly 1 template (no fork)', templateCount === 1, templateCount);
 
+    // Platform override: a create message naming ONE platform must win over the FB+IG
+    // template (bug: post came out FB+IG despite "chỉ facebook"). Uses the same saved flow.
+    const fbOnly = await call('POST', '/orchestration/runs', token, {
+      chatSessionId: session.id,
+      message: 'tạo campaign "FB Only", post "Học AI ngay" chỉ đẩy lên facebook thôi',
+    });
+    const fbCampaignId = fbOnly.body?.data?.createdCampaignId;
+    const fbCampaign = fbCampaignId ? await prisma.campaign.findFirst({ where: { id: fbCampaignId } }) : null;
+    const fbPosts = fbCampaignId ? await prisma.post.findMany({ where: { campaignId: fbCampaignId } }) : [];
+    check('override: campaign platforms = FB only',
+      Array.isArray(fbCampaign?.platforms) && fbCampaign!.platforms.length === 1 && fbCampaign!.platforms[0] === 'facebook', fbCampaign?.platforms);
+    check('override: post platforms = FB only',
+      fbPosts.length === 1 && Array.isArray(fbPosts[0]?.platforms) && fbPosts[0]!.platforms.length === 1 && fbPosts[0]!.platforms[0] === 'facebook', fbPosts[0]?.platforms);
+
     // Control: a "plan a different flow" message on the same saved chat SHOULD fork a new run.
     const newFlow = await call('POST', '/orchestration/runs', token, {
       chatSessionId: session.id,

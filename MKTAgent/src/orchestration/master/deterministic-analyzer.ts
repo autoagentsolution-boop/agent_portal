@@ -12,7 +12,10 @@ const PLATFORMS: Array<[GoalSpec['platforms'][number], RegExp]> = [
   ['x', /\b(x|twitter)\b/i],
 ];
 
-const parsePlatforms = (t: string): GoalSpec['platforms'] =>
+// Exported: the campaign-from-flow path reuses this to honor a per-message platform
+// override ("chỉ facebook") when creating a campaign under a flow whose template targets
+// more platforms. Returns only the platforms explicitly named ([] if none).
+export const parsePlatforms = (t: string): GoalSpec['platforms'] =>
   PLATFORMS.filter(([, re]) => re.test(t)).map(([p]) => p);
 
 const sentenceAfter = (text: string, keys: string[]): string | null => {

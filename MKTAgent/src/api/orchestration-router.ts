@@ -40,6 +40,7 @@ import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts
 import { ensureChatSession, recordTurn, recordSaveOffer, recordCampaignCreated, summarizeAnswers } from './orchestration-chat.ts';
 import { detectCampaignIntent } from '../orchestration/master/campaign-intent.ts';
 import { createCampaignFromFlow } from '../orchestration/master/campaign-from-flow.ts';
+import { parsePlatforms } from '../orchestration/master/deterministic-analyzer.ts';
 import { resolveConnections } from '../connectors/runtime/connection-resolver.ts';
 import type { RequiredActionDto } from './schemas.ts';
 
@@ -129,9 +130,13 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
       // from the user's typed request — not just offer a button (which felt like a loop:
       // the user gave names and got the offer again). The panel navigates to the new
       // campaign board on createdCampaignId.
+      // Honor an explicit platform override in the create message ("chỉ facebook") so a
+      // campaign/post created under a FB+IG flow can still target just one platform.
+      const platformOverride = parsePlatforms(body.message);
       const { campaign, post } = await createCampaignFromFlow(
         req.userId!, existing.id, templateGoal,
         { campaignName: intent.campaignName, postTitle: intent.postTitle },
+        platformOverride,
       );
       const assistantMessage = await recordCampaignCreated(
         sessionId, body.message, existing.name, campaign.product, Boolean(post), templateGoal,
