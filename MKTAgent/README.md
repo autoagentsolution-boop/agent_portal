@@ -2,11 +2,12 @@
 
 Marketing automation backend — social posting (FB/IG/Threads/LinkedIn/X), AI copy
 generation, multi-channel lead capture, and self-managed OAuth token refresh.
-Code-thuần TypeScript port of the proven n8n marketing pipeline, built to scale and
-to serve as the backend for a future web/mobile app.
+Pure-TypeScript service that drives the portal's agent orchestration; the backend
+for the AgentPortal web/mobile app.
 
-> The n8n workflows in `../n8n-workflows/` remain the reference + fallback and are
-> **not modified**. MKTAgent runs in parallel and replaces them after parity is verified.
+> **n8n is retired.** This project started as an n8n pipeline and has been fully
+> rewritten around in-app agent orchestration. The `../n8n-workflows/` folder is
+> kept only as a historical reference and is **not part of the running system**.
 
 ## Stack
 
@@ -14,7 +15,7 @@ to serve as the backend for a future web/mobile app.
 - **Prisma** + **Postgres** (own DB, port 5433) — source of truth (replaces Google Sheets)
 - **Zod** env + payload validation
 - **node-cron** scheduler + Postgres advisory lock (single-runner idempotency)
-- **AES-256-GCM** token encryption at rest (replaces the n8n credential vault)
+- **AES-256-GCM** token encryption at rest (in-app credential vault)
 
 ## Quick start
 
