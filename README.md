@@ -46,7 +46,9 @@ Backend (Express + TypeScript, :7100)  ──►  Postgres (:5433)
 
 The portal boots and is fully explorable with **no third-party API keys** — only
 two locally generated secrets. Keys (Gemini, social tokens) are optional and only
-needed for real AI output / live publishing. See [`SETUP.md` §6](SETUP.md).
+needed for real AI output / live publishing. For the (free) Gemini key that powers
+real AI copy, see [`SETUP.md` §6](SETUP.md) — grab it from Google AI Studio and
+drop it in `MKTAgent/.env`.
 
 ## Repo layout
 

@@ -123,14 +123,49 @@ a flow.
 3. The agent asks a couple of clarifying questions, then proposes a plan/flow.
 4. Approve it and watch the agent nodes run live (status animates over SSE).
 
-> To get **AI copy + images** in that run, add a `GEMINI_API_KEY` to
-> `MKTAgent/.env` and restart the backend (`docker compose up -d`). Without it,
-> the app still runs and the UI is fully navigable — the AI steps just won't
-> produce real content.
+> The UI works fully without any API key, but the agent won't produce **real AI
+> copy** until you add a free Gemini key — see the next section.
 
 ---
 
-## 6. What needs keys vs. what doesn't
+## 6. Set up your Gemini API key (recommended)
+
+The Orchestrate agent uses **Google Gemini** to write real marketing copy. It's
+**optional** — the app boots and is fully navigable without it — but with no key
+the AI steps fall back to placeholder output. Google offers a **free tier**, so
+this takes ~2 minutes and $0.
+
+**a. Get the key** (do this first — it's not in the repo and can't be):
+
+1. Go to **Google AI Studio → API keys**: <https://aistudio.google.com/apikey>
+2. Sign in with any Google account.
+3. Click **Create API key** (choose "Create in new project" if asked).
+4. Copy the key — it looks like `AIza...`.
+
+**b. Put it in your env file** (the `.env` you created in §3 — this file stays on
+your machine and is never committed to git):
+
+Open `MKTAgent/.env` and fill in the line:
+
+```dotenv
+GEMINI_API_KEY=AIza...your-key-here...
+```
+
+**c. Restart the backend so it picks up the key:**
+
+```bash
+cd MKTAgent
+docker compose up -d      # recreates the app container with the new env
+```
+
+Now re-run an Orchestrate flow (§5) — the copywriter agent produces real text.
+
+> **Never commit your key.** `MKTAgent/.env` is already git-ignored; keep it that
+> way. If a key ever leaks, revoke it in AI Studio and create a new one.
+
+---
+
+## 7. What needs keys vs. what doesn't
 
 | You want to… | Requires |
 |--------------|----------|
@@ -145,7 +180,7 @@ a flow.
 
 ---
 
-## 7. Ports
+## 8. Ports
 
 | Service | URL / Port |
 |---------|-----------|
@@ -158,7 +193,7 @@ Conflicts? Stop whatever owns the port, or change the mapping in
 
 ---
 
-## 8. Everyday commands
+## 9. Everyday commands
 
 ```bash
 # from MKTAgent/
@@ -170,7 +205,7 @@ docker compose down -v         # stop AND wipe the database
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | Likely cause / fix |
 |---------|--------------------|
