@@ -3,7 +3,48 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-03
+
+### Publish-enablement plan: Drive media + X self-serve + auto-refresh (PLANNED, not built)
+Planned the work to make IG/Threads/X/LinkedIn publishing work end-to-end and give a
+setup-once auto-refresh guarantee. Plan at `plans/260703-1048-publish-drive-x-refresh/plan.md`.
+Codebase survey found most of the plumbing already exists — the plan is mostly wiring + enabling,
+not new subsystems:
+
+- **Auto-refresh (Piece 1)** — `runTokenMaintenance()` (refresh-ahead + liveness per tenant) and
+  the token cron are already built and wired at `server.ts:109`, but dormant: `ENABLE_TOKEN_CRON`
+  defaults false and is unset. Plan: enable the flag, add lazy on-access refresh in
+  `getActiveToken` (shared `refreshIfDue()` helper), implement LinkedIn refresh.
+- **X self-serve (Piece 2)** — the OAuth2 PKCE connect flow is fully built and stores the
+  refresh_token; the only blocker is `X_CLIENT_ID/SECRET` being env-only (and empty). Plan: store
+  `x_client_id`/`x_client_secret` in the `AgentCredential` vault, read vault-first→env-fallback,
+  thread `ownerId` through the connect + refresh providers. UI gains Client ID/Secret fields.
+- **Google Drive (Piece 3, largest)** — per-user Drive connect (`/connect/drive`, non-sensitive
+  `drive.file` scope → no app review), new `drive-client.ts` (`google.auth.OAuth2` self-refreshes
+  like `leads/notify.ts` → no token-cron entry) uploads gen'd images and sets `anyone:reader`; the
+  `publishTo()` seam materializes `local:`→Drive fileId for IG/Threads only (FB/LI/X keep binary
+  upload off disk). The public lh3 CDN URL is reachable by Meta regardless of our host — the Drive
+  path frees IG/Threads from the `PUBLIC_BASE_URL`/public-host requirement entirely.
+
+Reuses the encrypted `AgentCredential` vault (no migration) and `googleapis` (already a dep;
+`GOOGLE_CLIENT_ID/SECRET` already set for Gmail). Locked decisions: per-user Drive · X via vault ·
+full auto-refresh. No implementation this session — planning + context capture only.
+
 ## 2026-07-02
+
+### Publishing media constraints documented (no code change)
+Real post test surfaced two independent publish failures, both recorded in
+`docs/publishing-media-constraints.md`:
+- **IG + Threads** (`local asset has no public URL`) — these platforms fetch the image
+  server-side from a public `image_url`; orchestration images live on disk as `local:<path>`
+  and `PUBLIC_BASE_URL` defaults to localhost, so Meta can't reach them. No gen-image →
+  upload-to-user-Drive step exists yet, so there's also no Drive fileId to hand them. **Blocked
+  in local-only setup** — needs a public host or a Drive-upload step (both deferred).
+- **X** (`403 Unsupported Authentication / OAuth 2.0 Application-Only is forbidden`) — the stored
+  `x` token is app-only; `/2/media/upload` requires a user-context token. Reconnect via the
+  PKCE flow (`/connect/x/start`); scopes already include `media.write`.
+- **Demo-safe:** FB is the only fully-safe live publish for local images (binary upload, no
+  public URL, no per-post charge). IG/Threads/X stay DRY-RUN until infra lands.
 
 ### Post-execution playground UX (4 fixes — NOT committed yet)
 Four issues from the post-execution real test.
