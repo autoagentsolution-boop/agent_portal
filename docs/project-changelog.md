@@ -5,6 +5,15 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-05
 
+### Storyboard + Video agents live (no more stubs)
+The `storyboard` and `video` orchestration agents now produce real output instead of
+placeholders. `runStoryboard` turns the content concept into an ordered scene list + voiceover
+script (in the campaign language); `runVideo` synthesizes the storyboard into a single Veo-style
+generation prompt (English) with `durationSec` snapped to the model's allowed {4,6,8}. Both are
+LLM text→JSON (~$0.0006/call). Actual mp4 rendering is still out of scope — that infra lives in the
+separate video-farm scripts. The DRY-RUN `stubLlmJson` in the 4 verify scripts learned the new
+shapes so the DAG runs end-to-end with no spend. (Only `content_search` remains a stub — optional.)
+
 ### Drive uploads organized by campaign folder + ordered filenames
 Generated images now upload into `MKTAgent/<campaign>/` (find-or-create folder, cached) instead
 of the Drive root, with filenames stamped `NN-<campaign-slug>-<hash>.png`. Publish/upload order is
