@@ -23,6 +23,7 @@ import {
   refinePostBody,
   editCopyBody,
   selectVariantBody,
+  referenceImageBody,
   campaignDto,
   postDto,
   postDetailDto,
@@ -263,6 +264,42 @@ registry.registerPath({
     404: errorResponse('Not found / cross-tenant'),
     409: errorResponse('No versions / not editable'),
     422: errorResponse('Invalid version index'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/posts/{id}/reference-image',
+  tags: ['posts'],
+  summary: 'Upload a reference image for a post (concept gate, optional)',
+  description: 'Default: stores the image as the post\'s referenceImage so infographic/storyboard generate FROM it (Gemini edit mode). asHero=true (a post with no media step) → the uploaded image becomes the post media directly. Non-blocking. Body carries base64 (≤8MB); this route is mounted with a larger parser.',
+  security: userAuth,
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { content: json(referenceImageBody) },
+  },
+  responses: {
+    200: { description: 'Post updated (referenceImage or hero set)', content: json(dataEnvelope(PostDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Not editable (scheduler-owned)'),
+    415: errorResponse('Unsupported image type'),
+    422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
+  method: 'delete',
+  path: '/posts/{id}/reference-image',
+  tags: ['posts'],
+  summary: 'Remove a post\'s reference image (revert to text-to-image)',
+  security: userAuth,
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    200: { description: 'Post with reference image cleared', content: json(dataEnvelope(PostDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('Not editable (scheduler-owned)'),
   },
 });
 

@@ -225,6 +225,11 @@ model Post {
   // Optional per-post override of the Product Knowledge library entry (item 6). Null →
   // inherit the campaign's link → brandContext → goal slot. SetNull on entry delete.
   productKnowledgeId String?  @map("product_knowledge_id") @db.Uuid
+  // Optional user-uploaded reference image (local:<path>) captured at the concept selection
+  // gate. When set, infographic/storyboard generate FROM it (Gemini edit mode) instead of
+  // pure text-to-image. (For a post with no media step the upload is written straight to
+  // heroFile instead — see the reference-image route's asHero path.) Non-blocking.
+  referenceImage String?     @map("reference_image")
   // Targeting + scheduling.
   platforms   SocialPlatform[]
   scheduledAt DateTime?        @map("scheduled_at") @db.Timestamptz(6)

@@ -12,6 +12,7 @@ import { startCopyGenCron } from './copygen/cron.ts';
 import { startTokenCron } from './tokens/cron.ts';
 import { requireAuth } from './api/middleware-auth.ts';
 import { postsRouter } from './api/posts-router.ts';
+import { postMediaRouter } from './api/post-media-router.ts';
 import { campaignsRouter } from './api/campaigns-router.ts';
 import { authRouter } from './api/auth-router.ts';
 import { connectRouter } from './api/connect-router.ts';
@@ -40,6 +41,10 @@ app.use(cookieParser());
 // global 1mb. Mount it (with its own parser + auth) BEFORE the global limit so a big upload
 // isn't rejected by the 1mb parser first; other routes still get the tight 1mb cap.
 app.use('/product-knowledge', requireAuth, express.json({ limit: '20mb' }), productKnowledgeRouter);
+// Post reference-image upload (concept gate) also carries a base64 image → same larger-parser
+// treatment, mounted at /posts BEFORE the global limit. It only claims /:id/reference-image;
+// every other /posts route falls through to the normal 1mb-parsed postsRouter below.
+app.use('/posts', requireAuth, express.json({ limit: '20mb' }), postMediaRouter);
 
 app.use(express.json({ limit: '1mb' }));
 

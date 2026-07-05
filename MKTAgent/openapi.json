@@ -357,6 +357,12 @@
             ],
             "format": "uuid"
           },
+          "referenceImage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "scheduledAt": {
             "type": [
               "string",
@@ -408,6 +414,7 @@
           "platforms",
           "platformAssets",
           "productKnowledgeId",
+          "referenceImage",
           "scheduledAt",
           "postUrls",
           "error",
@@ -587,6 +594,12 @@
             ],
             "format": "uuid"
           },
+          "referenceImage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "scheduledAt": {
             "type": [
               "string",
@@ -744,6 +757,7 @@
           "platforms",
           "platformAssets",
           "productKnowledgeId",
+          "referenceImage",
           "scheduledAt",
           "postUrls",
           "error",
@@ -1316,6 +1330,12 @@
                 ],
                 "format": "uuid"
               },
+              "referenceImage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "scheduledAt": {
                 "type": [
                   "string",
@@ -1367,6 +1387,7 @@
               "platforms",
               "platformAssets",
               "productKnowledgeId",
+              "referenceImage",
               "scheduledAt",
               "postUrls",
               "error",
@@ -3048,6 +3069,206 @@
           },
           "422": {
             "description": "Invalid version index",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts/{id}/reference-image": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Upload a reference image for a post (concept gate, optional)",
+        "description": "Default: stores the image as the post's referenceImage so infographic/storyboard generate FROM it (Gemini edit mode). asHero=true (a post with no media step) → the uploaded image becomes the post media directly. Non-blocking. Body carries base64 (≤8MB); this route is mounted with a larger parser.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dataB64": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8388608
+                  },
+                  "mimeType": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "asHero": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dataB64",
+                  "mimeType"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Post updated (referenceImage or hero set)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PostDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not editable (scheduler-owned)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported image type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Remove a post's reference image (revert to text-to-image)",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Post with reference image cleared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PostDto"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found / cross-tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not editable (scheduler-owned)",
             "content": {
               "application/json": {
                 "schema": {

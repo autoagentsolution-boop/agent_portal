@@ -8,7 +8,7 @@ import { planWorkflow } from './master/workflow-planner.ts';
 import { createRun, createNodes, getRunWithNodes } from '../db/repos/workflow-run-repo.ts';
 import { runWorkflow } from './executor/workflow-executor.ts';
 import { listArtifacts, updateArtifactData } from './executor/artifact-store.ts';
-import { editPostCopy } from '../db/repos/post-repo.ts';
+import { editPostCopy, setPostReferenceImage } from '../db/repos/post-repo.ts';
 import type { GeminiFn } from '../copygen/service.ts';
 import type { PublishFn } from '../scheduler/tick.ts';
 import type { LlmJsonFn } from './master/llm-json.ts';
@@ -32,7 +32,13 @@ const stubLlmJson: LlmJsonFn = async (sys) => {
   if (/storyboard/i.test(sys)) return { frames: [{ index: 0, imagePrompt: 'p', caption: 'c' }] };
   return { positioning: 'P', audience: 'Aud', pillars: ['p1'], funnelStage: 'awareness' };
 };
-const stubImage = async () => ({ imagePath: '/tmp/i.png', outputFile: '/tmp/i.png', cached: false, durationMs: 1 });
+// Recording image stub: captures the last request so we can assert the reference image drives
+// edit-mode conditioning (slice 2).
+let lastImageReq: { mode?: string; referenceImagePath?: string } | null = null;
+const stubImage = async (req: { mode?: string; referenceImagePath?: string }) => {
+  lastImageReq = req;
+  return { imagePath: '/tmp/i.png', outputFile: '/tmp/i.png', cached: false, durationMs: 1 };
+};
 
 async function main(): Promise<void> {
   const user = await prisma.user.create({ data: { email: `cg-${Date.now()}@test.local`, defaultLanguage: 'en' } });
@@ -71,12 +77,16 @@ async function main(): Promise<void> {
     const afterSelect = await prisma.post.findFirst({ where: { id: postId, ownerId: user.id } });
     check('select-variant switched post.copy to v2', (afterSelect?.copy as { body?: string })?.body === 'Version TWO body.', afterSelect?.copy);
 
+    // 2b) Upload a reference image at the gate → infographic must generate FROM it (edit mode).
+    await setPostReferenceImage(postId, user.id, 'local:/tmp/my-reference.png');
+
     // 3) Resume via approve-node(concept) → post approved, downstream runs.
     const r2 = await runWorkflow(run.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, approveNodeId: conceptNode.nodeId });
     check('resume completes (auto-publish after selection)', r2.status === 'completed', r2);
     full = await getRunWithNodes(run.id, user.id);
     check('concept completed after confirm', full?.nodes.find((n) => n.agentId === 'concept_writer')?.status === 'completed');
     check('infographic ran after selection', full?.nodes.find((n) => n.agentId === 'infographic')?.status === 'completed');
+    check('infographic generated FROM the reference image (edit mode)', lastImageReq?.mode === 'edit' && lastImageReq?.referenceImagePath === '/tmp/my-reference.png', lastImageReq);
     check('publisher completed', full?.nodes.find((n) => n.agentId === 'publisher')?.status === 'completed');
     const finalPost = await prisma.post.findFirst({ where: { id: postId, ownerId: user.id } });
     check('post reached posted (dry)', finalPost?.status === 'posted', finalPost?.status);

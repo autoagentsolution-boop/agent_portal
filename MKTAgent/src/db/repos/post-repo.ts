@@ -229,6 +229,20 @@ export const editPostCopy = async (
   return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
 };
 
+// Set (or clear, ref=null) the post's user-uploaded reference image (concept gate). Refused
+// while the scheduler holds the row (status=posting). Owner-scoped.
+export const setPostReferenceImage = async (
+  id: string,
+  ownerId: string,
+  ref: string | null,
+): Promise<Post | null> => {
+  const r = await prisma.post.updateMany({
+    where: { id, ownerId, status: { not: 'posting' } },
+    data: { referenceImage: ref },
+  });
+  return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
+};
+
 // Orchestration-internal: attach generated media to a post the executor owns.
 // Unlike updatePostFields this is NOT user-edit-gated (the post is already `ready`
 // after concept_writer's auto-approve), but it still refuses a row the scheduler is

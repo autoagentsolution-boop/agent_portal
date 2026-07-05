@@ -323,10 +323,18 @@ const buildImagePrompt = (ctx: RunnerContext, resolvedLang: string, knowledge?: 
 // infographic (LIVE): generate a real image from the concept/strategy and attach it
 // to the Post the publisher will post (heroFile = `local:<path>`). The Post is the
 // single source of truth for media; the artifact just references it.
+// Strip a `local:` AssetStore ref to a bare filesystem path (for edit-mode conditioning).
+const localFilePath = (ref?: string | null): string | null =>
+  ref ? (ref.startsWith('local:') ? ref.slice('local:'.length) : ref) : null;
+
 const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const { visualBrief, imagePrompt } = buildImagePrompt(ctx, await resolveRunLanguage(ctx), await resolveProductKnowledge(ctx));
   const gen = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
-  const image = await gen({ prompt: imagePrompt, mode: 'text-to-image' });
+  // Reference image (concept gate): if the user uploaded one, generate FROM it (edit mode) so
+  // the infographic follows their reference; otherwise pure text-to-image (default).
+  const post = ctx.postId ? await getPostForOwner(ctx.postId, ctx.ownerId) : null;
+  const refPath = localFilePath(post?.referenceImage);
+  const image = await gen(refPath ? { prompt: imagePrompt, mode: 'edit', referenceImagePath: refPath } : { prompt: imagePrompt, mode: 'text-to-image' });
   const ref = `local:${image.outputFile}`;
   if (ctx.postId) {
     // A single infographic image → assetType 'image' (exactly-1-asset publish validation).
@@ -378,8 +386,9 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const frames: Array<{ index: number; imageRef: string; caption: string; imagePrompt: string }> = [];
   // Visual consistency: the FIRST successful frame becomes a style/product anchor; every later
   // frame is generated in 'edit' mode conditioned on it, so the product + look stay coherent
-  // across the storyboard instead of drifting per independent gen.
-  let anchor: string | null = null;
+  // across the storyboard instead of drifting per independent gen. A user-uploaded reference
+  // image (concept gate) seeds the anchor so EVERY frame — including the first — follows it.
+  let anchor: string | null = localFilePath(post?.referenceImage);
   for (const [i, f] of plan.entries()) {
     const imagePrompt = (f.imagePrompt ?? '').trim() || `Product image, frame ${i + 1}`;
     try {

@@ -773,6 +773,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/posts/{id}/reference-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a reference image for a post (concept gate, optional)
+         * @description Default: stores the image as the post's referenceImage so infographic/storyboard generate FROM it (Gemini edit mode). asHero=true (a post with no media step) → the uploaded image becomes the post media directly. Non-blocking. Body carries base64 (≤8MB); this route is mounted with a larger parser.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        dataB64: string;
+                        mimeType: string;
+                        asHero?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Post updated (referenceImage or hero set) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["PostDto"];
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found / cross-tenant */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not editable (scheduler-owned) */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Unsupported image type */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Invalid body */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        /** Remove a post's reference image (revert to text-to-image) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Post with reference image cleared */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["PostDto"];
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found / cross-tenant */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not editable (scheduler-owned) */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/posts/{id}/edit-copy": {
         parameters: {
             query?: never;
@@ -2556,6 +2703,7 @@ export interface components {
             } | null;
             /** Format: uuid */
             productKnowledgeId: string | null;
+            referenceImage: string | null;
             scheduledAt: string | null;
             postUrls: {
                 [key: string]: string;
@@ -2603,6 +2751,7 @@ export interface components {
             } | null;
             /** Format: uuid */
             productKnowledgeId: string | null;
+            referenceImage: string | null;
             scheduledAt: string | null;
             postUrls: {
                 [key: string]: string;
@@ -2745,6 +2894,7 @@ export interface components {
                 } | null;
                 /** Format: uuid */
                 productKnowledgeId: string | null;
+                referenceImage: string | null;
                 scheduledAt: string | null;
                 postUrls: {
                     [key: string]: string;

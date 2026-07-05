@@ -60,6 +60,16 @@ export type RefinePostBody = z.infer<typeof refinePostBody>;
 export const selectVariantBody = z.object({ index: z.number().int().min(0).max(9) });
 export type SelectVariantBody = z.infer<typeof selectVariantBody>;
 
+// Reference image upload (concept gate). ~8MB base64 cap keeps it within the route body limit.
+// asHero=true → the uploaded image becomes the post media directly (no gen step); default
+// (false) → it conditions the infographic/storyboard generation (Gemini edit mode).
+export const referenceImageBody = z.object({
+  dataB64: z.string().min(1).max(8 * 1024 * 1024),
+  mimeType: z.string().max(120),
+  asHero: z.boolean().optional(),
+});
+export type ReferenceImageBody = z.infer<typeof referenceImageBody>;
+
 // ---- CRUD bodies (T7) ----
 // ownerId is NEVER accepted from the client — it is taken from the JWT. Post.copy
 // and Post.status are owned by copy-gen/the review gate, so neither is settable here.
@@ -362,6 +372,8 @@ export const postDto = z.object({
   platformAssets: z.record(socialPlatform, assetType).nullable(),
   // Linked Product Knowledge library entry (item 6); null → inherit campaign/brandContext.
   productKnowledgeId: z.string().uuid().nullable(),
+  // User-uploaded reference image (local:<path>) captured at the concept gate; null → none.
+  referenceImage: z.string().nullable(),
   scheduledAt: z.string().nullable(),
   postUrls: z.record(z.string()).nullable(),
   error: z.string().nullable(),
