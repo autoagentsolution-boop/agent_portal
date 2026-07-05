@@ -25,10 +25,12 @@ const stubGemini: GeminiFn = async () => {
   return { candidates: [{ content: { parts: [{ text: JSON.stringify({ body: `Body v${conceptRuns}`, threads: 'T', x: 'X' }) }] } }] };
 };
 const stubPublish: PublishFn = async (platform) => ({ platform, ok: true, url: `https://dry-run/${platform}`, error: null });
-const stubLlmJson: LlmJsonFn = async (sys) =>
-  /ideation/i.test(sys)
-    ? { ideas: ['A', 'B'], chosen: 'A' }
-    : { positioning: 'P', audience: 'Aud', pillars: ['p1'], funnelStage: 'awareness' };
+const stubLlmJson: LlmJsonFn = async (sys) => {
+  if (/ideation/i.test(sys)) return { ideas: ['A', 'B'], chosen: 'A' };
+  if (/storyboard/i.test(sys)) return { scenes: [{ index: 0, instruction: 'Stub scene' }], videoScript: 'Stub script' };
+  if (/video/i.test(sys)) return { prompt: 'Stub video prompt', durationSec: 8 };
+  return { positioning: 'P', audience: 'Aud', pillars: ['p1'], funnelStage: 'awareness' };
+};
 let imageRuns = 0;
 const stubImage = async () => { imageRuns++; return { imagePath: `/tmp/img${imageRuns}.png`, outputFile: `/tmp/img${imageRuns}.png`, cached: false, durationMs: 1 }; };
 

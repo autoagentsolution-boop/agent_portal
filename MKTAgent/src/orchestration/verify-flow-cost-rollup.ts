@@ -23,10 +23,12 @@ const stubGemini: GeminiFn = async () => ({
   candidates: [{ content: { parts: [{ text: JSON.stringify({ body: 'Stub body copy for the post about the product.', threads: 'Stub threads copy.', x: 'Stub x copy.' }) }] } }],
 });
 const stubPublish: PublishFn = async (platform) => ({ platform, ok: true, url: `https://dry-run/${platform}`, error: null });
-const stubLlmJson: LlmJsonFn = async (systemPrompt) =>
-  /ideation/i.test(systemPrompt)
-    ? { ideas: ['Stub idea A', 'Stub idea B'], chosen: 'Stub idea A' }
-    : { positioning: 'Stub positioning', audience: 'Stub audience', pillars: ['p1', 'p2'], funnelStage: 'awareness' };
+const stubLlmJson: LlmJsonFn = async (systemPrompt) => {
+  if (/ideation/i.test(systemPrompt)) return { ideas: ['Stub idea A', 'Stub idea B'], chosen: 'Stub idea A' };
+  if (/storyboard/i.test(systemPrompt)) return { scenes: [{ index: 0, instruction: 'Stub scene' }], videoScript: 'Stub script' };
+  if (/video/i.test(systemPrompt)) return { prompt: 'Stub video prompt', durationSec: 8 };
+  return { positioning: 'Stub positioning', audience: 'Stub audience', pillars: ['p1', 'p2'], funnelStage: 'awareness' };
+};
 const stubImage = async () => ({ imagePath: '/files/images/stub.png', outputFile: '/tmp/stub-image.png', cached: false, durationMs: 0 });
 
 const call = async (method: string, path: string, token: string): Promise<{ status: number; body: any }> => {

@@ -5,14 +5,14 @@
 //   others         → schema-valid STUB artifacts so the DAG runs end-to-end now
 // No copy-gen/scheduler logic is reimplemented — only their exported cores are used.
 import type { GoalSpec } from '../schemas/goal-spec.ts';
-import { campaignIdeas, strategyBrief, type ArtifactType } from '../schemas/artifact-schemas.ts';
+import { campaignIdeas, strategyBrief, storyboard, videoPrompt, type ArtifactType } from '../schemas/artifact-schemas.ts';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
 import { createPost, getPostForOwner, approveReview, setPostHeroFile, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
 import { generateForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
-import { ideationSystemPrompt, strategySystemPrompt } from '../prompts/agent-prompts.ts';
+import { ideationSystemPrompt, strategySystemPrompt, storyboardSystemPrompt, videoSystemPrompt } from '../prompts/agent-prompts.ts';
 import { generate as generateImage, type ImageResult } from '../../imagegen/nano-banana.ts';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
 import { estimateLlmCost, imageCost, type NodeCost } from './node-cost.ts';
@@ -281,6 +281,51 @@ const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   return { type: 'infographic_brief', data: { visualBrief, imagePrompt, imageRef: ref }, cost: image.cached ? undefined : imageCost() };
 };
 
+// storyboard (LIVE): turn the content concept into an ordered shot list + voiceover script.
+// Reads content_concept upstream (falls back to goal context if the concept node was skipped).
+const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const call = ctx.llmJsonFn ?? callGeminiJson;
+  const concept = ctx.upstream.content_concept as
+    | { mainAngle?: string; keyMessage?: string; copy?: { body?: string } }
+    | undefined;
+  const parts = [goalContext(ctx)];
+  if (concept?.keyMessage) parts.push(`Key message: ${concept.keyMessage}`);
+  if (concept?.mainAngle) parts.push(`Main angle: ${concept.mainAngle}`);
+  if (concept?.copy?.body) parts.push(`Post copy: ${concept.copy.body}`);
+  const prompt = parts.join('\n');
+  const raw = await call(storyboardSystemPrompt, prompt);
+  const parsed = storyboard.safeParse(raw);
+  if (!parsed.success) throw new Error(`storyboard: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+  return { type: 'storyboard', data: parsed.data, cost: estimateLlmCost(storyboardSystemPrompt + prompt, JSON.stringify(parsed.data)) };
+};
+
+// video (LIVE): synthesize the storyboard into a single Veo-style generation prompt. Produces
+// the video_prompt artifact (a prompt, not a rendered mp4 — real render is a separate concern).
+const VEO_DURATIONS = [4, 6, 8] as const;
+const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const call = ctx.llmJsonFn ?? callGeminiJson;
+  const sb = ctx.upstream.storyboard as
+    | { scenes?: Array<{ index: number; instruction: string }>; videoScript?: string }
+    | undefined;
+  const parts = [goalContext(ctx)];
+  if (sb?.videoScript) parts.push(`Video script: ${sb.videoScript}`);
+  if (sb?.scenes?.length) parts.push('Scenes:\n' + sb.scenes.map((s) => `${s.index}. ${s.instruction}`).join('\n'));
+  const prompt = parts.join('\n');
+  const raw = await call(videoSystemPrompt, prompt);
+  const parsed = videoPrompt.safeParse(raw);
+  if (!parsed.success) throw new Error(`video: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+  // The video model accepts only {4,6,8}s — snap the model's choice to the nearest allowed.
+  const d = parsed.data.durationSec;
+  const durationSec = VEO_DURATIONS.includes(d as (typeof VEO_DURATIONS)[number])
+    ? d
+    : VEO_DURATIONS.reduce((a, b) => (Math.abs(b - d) < Math.abs(a - d) ? b : a), 8);
+  return {
+    type: 'video_prompt',
+    data: { ...parsed.data, durationSec },
+    cost: estimateLlmCost(videoSystemPrompt + prompt, JSON.stringify(parsed.data)),
+  };
+};
+
 // Stubs — schema-valid placeholders so the DAG completes end-to-end in M1.
 const stub = (type: ArtifactType, data: unknown) => async (): Promise<RunnerOutput> => ({ type, data });
 
@@ -290,8 +335,8 @@ const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOut
   content_search: stub('research_summary', { summary: 'Placeholder research summary (stub agent).', sourceNotes: [] }),
   concept_writer: runConceptWriter,
   infographic: runInfographic,
-  storyboard: stub('storyboard', { scenes: [{ index: 0, instruction: 'Placeholder scene (stub agent).' }], videoScript: 'placeholder script' }),
-  video: stub('video_prompt', { prompt: 'Placeholder video prompt (stub agent).', durationSec: 8 }),
+  storyboard: runStoryboard,
+  video: runVideo,
   publisher: runPublisher,
 };
 
