@@ -5,6 +5,17 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-05
 
+### Connection status honesty + Drive redirect fix
+- **Status was lying:** a pasted access token showed "connected" with **zero verification** (any
+  saved vault key → connected). Now a save runs a real **liveness check** (`verifyAndRecordFormToken`)
+  and records the true status as a token row; a legacy vault token with no status row → **needs
+  attention**, not a false "connected". The form surfaces the result ("connected" vs "saved, but the
+  token could not be verified: …"). Confirmed: a garbage X token → `alive:false, users/me 403`.
+- **Drive `redirect_uri_mismatch` fixed** by **reusing the already-registered login redirect**
+  (`GOOGLE_OAUTH_REDIRECT_URI`). The Drive consent uses the same callback; `/auth/google/callback`
+  detects a drive-scoped state and stores the refresh token. **No new redirect URI to register** —
+  owner only enables the Drive API + adds `drive.file` scope. UI hint + owner doc updated.
+
 ### Connections simplified — OAuth-first, non-tech friendly
 Reworked the Connections screen for non-technical multi-tenant users: lead with one-click
 **Connect**, hide field bloat, and make the paste-token fallback actually publish.

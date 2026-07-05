@@ -1,14 +1,14 @@
 // Drive connect router (Piece 3). Per-user Google Drive OAuth so generated post images
 // get a public lh3 URL that IG/Threads can fetch. Drive is NOT a SocialPlatform, so it
-// has its own route family instead of being forced into the social connect enum.
+// has its own /start; it does NOT need its own callback redirect.
 //
-//   GET /connect/drive/start    → requireAuth → 302 to Google consent (drive.file, offline)
-//   GET /connect/drive/callback → exchange code → store refresh_token in the vault
+// REDIRECT REUSE: to avoid making the owner register a second redirect URI in the Google
+// console (the cause of `redirect_uri_mismatch`), the Drive flow reuses the ALREADY-registered
+// login redirect (`GOOGLE_OAUTH_REDIRECT_URI` → /auth/google/callback). The auth callback
+// detects a drive-scoped state and delegates to `completeDriveConnect` here. A local
+// /connect/drive/callback is kept only as a fallback for anyone who did register it.
 //
-// The callback arrives with NO auth header (Google redirects the browser), so ownerId
-// round-trips inside a signed, short-lived state JWT issued at /start — same pattern as
-// the social connect-router. Self-contained state (drive-scoped) keeps the working social
-// flow untouched.
+//   GET /connect/drive/start → requireAuth → 302 to Google consent (drive.file, offline)
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { randomBytes } from 'node:crypto';
@@ -28,7 +28,8 @@ const stateSecret = (): string => {
   return env.JWT_SECRET;
 };
 
-const redirectUri = (): string => `${env.PUBLIC_BASE_URL}/connect/drive/callback`;
+// Reuse the login redirect (already registered) — see file header.
+export const driveRedirectUri = (): string => env.GOOGLE_OAUTH_REDIRECT_URI;
 
 const issueState = (ownerId: string): string =>
   jwt.sign({ ownerId, kind: 'drive', n: randomBytes(8).toString('hex') }, stateSecret(), {
@@ -36,7 +37,9 @@ const issueState = (ownerId: string): string =>
     expiresIn: STATE_TTL,
   });
 
-const readOwner = (state: string | undefined): string | null => {
+// Returns the ownerId if `state` is a valid drive-connect state, else null. Used by the
+// shared Google callback to tell a Drive consent apart from an app-login consent.
+export const readDriveState = (state: string | undefined): string | null => {
   if (!state) return null;
   try {
     const d = jwt.verify(state, stateSecret(), { algorithms: ['HS256'] }) as { ownerId?: string; kind?: string };
@@ -47,6 +50,14 @@ const readOwner = (state: string | undefined): string | null => {
   }
 };
 
+// Exchange the code for a refresh token and store it in the vault. Shared by the login
+// callback (reused redirect) and the fallback /connect/drive/callback.
+export const completeDriveConnect = async (ownerId: string, code: string): Promise<void> => {
+  const { refreshToken } = await exchangeDriveCode(code, driveRedirectUri());
+  await savePublisherCredential(ownerId, DRIVE_REFRESH_KEY, refreshToken);
+  logger.info('drive_connected', { ownerId });
+};
+
 driveConnectRouter.get(
   '/start',
   requireAuth,
@@ -55,22 +66,22 @@ driveConnectRouter.get(
       logger.warn('drive_connect_not_configured', {});
       return fail(res, 500, 'drive_not_configured', 'GOOGLE_CLIENT_ID/SECRET not set');
     }
-    const url = driveAuthUrl(redirectUri(), issueState(req.userId!));
+    const url = driveAuthUrl(driveRedirectUri(), issueState(req.userId!));
     res.redirect(url);
   }),
 );
 
+// Fallback callback — only reached if the owner registered /connect/drive/callback directly.
+// The primary path is the shared /auth/google/callback (no extra redirect to register).
 driveConnectRouter.get(
   '/callback',
   asyncHandler(async (req, res) => {
     const code = typeof req.query.code === 'string' ? req.query.code : '';
-    const ownerId = readOwner(typeof req.query.state === 'string' ? req.query.state : undefined);
+    const ownerId = readDriveState(typeof req.query.state === 'string' ? req.query.state : undefined);
     if (!code) return fail(res, 400, 'missing_code');
     if (!ownerId) return fail(res, 400, 'invalid_state');
     try {
-      const { refreshToken } = await exchangeDriveCode(code, redirectUri());
-      await savePublisherCredential(ownerId, DRIVE_REFRESH_KEY, refreshToken);
-      logger.info('drive_connected', { ownerId });
+      await completeDriveConnect(ownerId, code);
       res.redirect(`${env.UI_BASE_URL || ''}/?drive=connected`);
     } catch (e) {
       logger.warn('drive_connect_failed', { ownerId, error: String(e).slice(0, 200) });

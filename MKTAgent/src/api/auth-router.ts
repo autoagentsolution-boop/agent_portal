@@ -19,6 +19,7 @@ import { buildConsentUrl, exchangeCodeForIdentity } from '../lib/google-oauth.ts
 import { signSession } from '../lib/auth-jwt.ts';
 import { createSession, revokeSession, sessionTtlMs, SESSION_COOKIE } from '../lib/session.ts';
 import { upsertGoogleUser, getUserById } from '../db/repos/user-repo.ts';
+import { readDriveState, completeDriveConnect } from './drive-connect-router.ts';
 import { env } from '../config/env.ts';
 import { logger } from '../lib/logger.ts';
 
@@ -70,6 +71,21 @@ authRouter.get(
     const code = typeof req.query.code === 'string' ? req.query.code : '';
     const state = typeof req.query.state === 'string' ? req.query.state : undefined;
     if (!code) return fail(res, 400, 'missing_code');
+
+    // This redirect is shared with the Drive connect flow (reuses the registered login
+    // redirect to avoid a second console registration). A drive-scoped state → store the
+    // Drive refresh token for that owner and bounce back to the UI; never a login.
+    const driveOwner = readDriveState(state);
+    if (driveOwner) {
+      try {
+        await completeDriveConnect(driveOwner, code);
+        return res.redirect(`${env.UI_BASE_URL || ''}/?drive=connected`);
+      } catch (e) {
+        logger.warn('drive_connect_failed', { ownerId: driveOwner, error: String(e).slice(0, 200) });
+        return fail(res, 502, 'drive_connect_failed', String(e instanceof Error ? e.message : e).slice(0, 200));
+      }
+    }
+
     if (!stateValid(state)) return fail(res, 400, 'invalid_state');
 
     try {

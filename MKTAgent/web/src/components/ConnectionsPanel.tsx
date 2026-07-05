@@ -172,11 +172,10 @@ function StorageSection() {
           {!driveConnected && (
             <details className="conn-owner-setup">
               <summary>One-time owner setup</summary>
-              <p className="muted small">Users just click Connect &amp; authorize — no console needed. One-time, the workspace owner registers our app in Google Cloud:</p>
+              <p className="muted small">Users just click Connect &amp; authorize — no console needed. Reuses the app's existing Google login redirect, so no new redirect URI to register. One-time, the owner:</p>
               <ol className="muted small">
-                <li>Enable the <strong>Google Drive API</strong>.</li>
-                <li>Add redirect URI: <code>http://localhost:7100/connect/drive/callback</code></li>
-                <li>Add scope <code>drive.file</code> (non-sensitive — no review) &amp; publish the consent screen.</li>
+                <li>Enable the <strong>Google Drive API</strong> in the project.</li>
+                <li>Add scope <code>drive.file</code> (non-sensitive — no review) &amp; publish the consent screen (or add yourself as a test user).</li>
               </ol>
             </details>
           )}

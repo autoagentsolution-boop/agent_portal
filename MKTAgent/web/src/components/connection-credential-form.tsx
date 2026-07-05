@@ -31,12 +31,23 @@ export function ConnectionCredentialForm({ platformKey, displayName, notify, onS
 
     setSaving(true);
     try {
-      for (const e of entries) {
+      // Save the identity/app fields first, then the access token last so its liveness
+      // verify (server-side) sees the ids already stored.
+      const ordered = [...entries].sort((a) => (a.key.endsWith('_access_token') ? 1 : -1));
+      let verify: { alive: boolean; reason?: string } | undefined;
+      for (const e of ordered) {
         const r = await api.savePublisherCredential(e.key, e.value);
         if (!r.ok) { notify(`Save ${e.key}: ${r.error.error}`, 'err'); return; }
+        if (e.key.endsWith('_access_token')) verify = r.data.verify;
       }
       setValues({});
-      notify(`${displayName} credentials saved`);
+      if (verify && !verify.alive) {
+        notify(`${displayName} saved, but the token could not be verified: ${verify.reason ?? 'liveness check failed'}`, 'err');
+      } else if (verify?.alive) {
+        notify(`${displayName} connected`);
+      } else {
+        notify(`${displayName} credentials saved`);
+      }
       onSaved();
     } finally { setSaving(false); }
   };

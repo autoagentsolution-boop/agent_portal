@@ -2,7 +2,7 @@
 // Adapters call getActiveToken(ownerId, platform); the refresh cron calls
 // runTokenMaintenance() (walks every tenant's tokens).
 import { getToken, upsertToken, markTokenStatus, listAllTokenKeys } from '../db/repos/token-repo.ts';
-import { getPublisherPlatformToken } from '../db/repos/agent-credential-repo.ts';
+import { getPublisherPlatformToken, getPublisherAppCred } from '../db/repos/agent-credential-repo.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
 import { env } from '../config/env.ts';
@@ -116,6 +116,47 @@ export const seedTokensFromEnv = async (
   }
   await logRun('info', 'token_seed', { ownerId, seeded }, ownerId);
   return seeded;
+};
+
+// Verify a PASTE-ENTERED token (Connections form) with a real liveness call, then record
+// the result as an OAuthToken row so the Connections view shows the TRUE status instead of
+// assuming a saved token is live. Without this a garbage/expired pasted token still showed
+// "connected". Identity ids the check needs (IG account id, FB page id) come from the vault
+// fields the user pasted alongside the token. Never throws — a check error → needs_attention.
+export const verifyAndRecordFormToken = async (
+  ownerId: string,
+  platform: SocialPlatform,
+): Promise<{ alive: boolean; reason?: string; identity?: string }> => {
+  const token = await getPublisherPlatformToken(ownerId, platform);
+  if (!token) return { alive: false, reason: 'no token stored' };
+  const provider = providers[platform];
+  if (!provider) return { alive: false, reason: `no provider for ${platform}` };
+
+  // Synthesize the meta the liveness check needs from the paste-token identity fields.
+  const meta: Record<string, unknown> = {};
+  if (platform === 'instagram') {
+    const id = await getPublisherAppCred(ownerId, 'instagram_business_account_id');
+    if (id) meta.userId = id;
+  } else if (platform === 'facebook') {
+    const id = await getPublisherAppCred(ownerId, 'facebook_page_id');
+    if (id) meta.pageId = id;
+  }
+
+  let result: { alive: boolean; reason?: string; identity?: string };
+  try {
+    result = await provider.check(token, meta);
+  } catch (e) {
+    result = { alive: false, reason: String(e).slice(0, 120) };
+  }
+  await upsertToken({
+    ownerId,
+    platform,
+    token,
+    refreshToken: null,
+    meta,
+    status: result.alive ? 'active' : 'needs_attention',
+  });
+  return result;
 };
 
 // Refresh-ahead-of-expiry + liveness for EVERY stored token across all tenants.

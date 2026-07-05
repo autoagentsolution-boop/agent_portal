@@ -49,7 +49,10 @@ connectionsRouter.get(
       CONNECTORS.map(async (p) => {
         const row = byPlatform.get(p.platformKey);
         const hasFormToken = formKeys.has(platformTokenKey(p.platformKey));
-        const state = row?.status ? toState(row.status) : hasFormToken ? 'connected' : 'not_connected';
+        // A verified token (OAuth or a liveness-checked paste) has a token-status row → its
+        // real status wins. A bare vault token with NO status row = pasted but never verified
+        // (legacy) → needs_attention, NOT a false "connected". Nothing at all → not_connected.
+        const state = row?.status ? toState(row.status) : hasFormToken ? 'needs_attention' : 'not_connected';
         return {
           platformKey: p.platformKey,
           displayName: p.displayName,

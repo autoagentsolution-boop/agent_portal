@@ -29,15 +29,18 @@ IG and Threads fetch a **public image URL** server-side, so generated images mus
 public. Drive gives each user a public `lh3` URL for images they upload. Reuses the **same Google
 OAuth client** as app login (`GOOGLE_CLIENT_ID`/`SECRET`).
 
+Drive **reuses the app's existing Google login redirect** (`GOOGLE_OAUTH_REDIRECT_URI` →
+`/auth/google/callback`), so there is **no new redirect URI to register** — the auth callback
+detects a Drive consent and stores the token. This removes the `redirect_uri_mismatch` error.
+
 One-time owner steps in Google Cloud console:
 
 1. **Enable the Google Drive API** for the project.
-2. Credentials → the OAuth 2.0 Client → **Authorized redirect URIs** → add
-   `http://localhost:7100/connect/drive/callback` (+ the prod URL).
-3. OAuth consent screen → **Scopes** → add `.../auth/drive.file`. This scope is **non-sensitive**
+2. OAuth consent screen → **Scopes** → add `.../auth/drive.file`. This scope is **non-sensitive**
    → **no Google verification/review** required.
-4. Set the consent screen to **In production** so external customers (not just test users) can
-   authorize. Still no review for non-sensitive scopes.
+3. Set the consent screen to **In production** so external customers (not just test users) can
+   authorize (or add each tester under **Test users** while in Testing mode). Still no review for
+   non-sensitive scopes.
 
 After that, any customer clicks **Connect Google Drive** → authorizes with their Google account →
 their generated images publish to IG/Threads. No console for them.

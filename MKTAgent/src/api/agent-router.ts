@@ -13,6 +13,12 @@ import {
 import { GeminiAgentIntakeProvider } from '../agent/gemini-intake-provider.ts';
 import { prisma } from '../db/client.ts';
 import { encryptToken } from '../lib/crypto.ts';
+import { verifyAndRecordFormToken } from '../tokens/service.ts';
+import type { SocialPlatform } from '../../prisma/generated/prisma/client.ts';
+
+// Which publisher access-token keys should trigger a liveness verification on save, so the
+// Connections view reflects the TRUE status (not "connected" for an untested paste).
+const ACCESS_TOKEN_KEY = /^(facebook|instagram|threads|linkedin|x)_access_token$/;
 
 export const agentRouter: Router = Router();
 const agentIntakeProvider = new GeminiAgentIntakeProvider();
@@ -154,7 +160,16 @@ agentRouter.put('/credentials/:agentId/:key', asyncHandler(async (req, res) => {
     update: { value: encryptToken(body.value), status: 'active' },
     create: { ownerId: req.userId!, agentId, key, value: encryptToken(body.value), status: 'active' },
   });
-  ok(res, { agentId, key, status: credential.status, updatedAt: credential.updatedAt.toISOString() });
+
+  // A pasted platform access token: verify liveness NOW and record the real connection
+  // status so the Connections card doesn't claim "connected" for an untested/expired token.
+  let verify: { alive: boolean; reason?: string; identity?: string } | undefined;
+  if (agentId === 'publisher' && ACCESS_TOKEN_KEY.test(key)) {
+    const platform = key.replace('_access_token', '') as SocialPlatform;
+    verify = await verifyAndRecordFormToken(req.userId!, platform);
+  }
+
+  ok(res, { agentId, key, status: credential.status, updatedAt: credential.updatedAt.toISOString(), verify });
 }));
 
 agentRouter.delete('/credentials/:agentId/:key', asyncHandler(async (req, res) => {

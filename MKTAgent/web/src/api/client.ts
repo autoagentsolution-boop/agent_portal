@@ -181,7 +181,10 @@ export const api = {
   // Store a platform credential (OAuth-less form path) encrypted in the vault under
   // the publisher agent. Value is write-only — never read back.
   savePublisherCredential: (key: string, value: string) =>
-    request<{ key: string; status: string }>(`/agent/credentials/publisher/${key}`, { method: 'PUT', body: { value } }),
+    request<{ key: string; status: string; verify?: { alive: boolean; reason?: string; identity?: string } }>(
+      `/agent/credentials/publisher/${key}`,
+      { method: 'PUT', body: { value } },
+    ),
   listPublisherCredentialKeys: () =>
     request<Array<{ agentId: string; key: string; status: string }>>('/agent/credentials/status'),
 };
