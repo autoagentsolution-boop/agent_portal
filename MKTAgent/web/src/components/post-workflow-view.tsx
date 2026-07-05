@@ -9,6 +9,7 @@ import { useRunEvents } from '../hooks/use-run-events';
 import { RunDagView } from './run-dag-view';
 import { ConnectionRequired } from './connection-required';
 import { PublishReview } from './publish-review';
+import { ConceptSelectionGate } from './concept-selection-gate';
 import { formatArtifact } from '../flow/artifact-format';
 
 interface Props {
@@ -131,7 +132,9 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   // differently from the publisher external-write gate.
   const statusHint = run.status === 'needs_approval' && gateNode?.agentId === 'video'
     ? 'Paused before video generation (the costly step) — review the storyboard, then approve.'
-    : STATUS_HINT[run.status] ?? run.status;
+    : run.status === 'needs_approval' && gateNode?.agentId === 'concept_writer'
+      ? 'Concept ready — pick the version you like (and optionally add a reference image), then Continue.'
+      : STATUS_HINT[run.status] ?? run.status;
   // The post backing this run (post.runId = run.id). Prefer the run's createdPostId; fall
   // back to any artifact that carries a postId (concept_writer stamps it). Drives the
   // publish review at the approval gate.
@@ -141,6 +144,16 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
       | { postId?: string }
       | undefined)?.postId ??
     null;
+  // Concept selection gate data: the 3-5 versions + current pick, and whether a media step runs
+  // downstream (decides if an uploaded image conditions generation vs becomes the media itself).
+  const conceptGateData = run.artifacts.find((a) => a.type === 'content_concept')?.data as
+    | { variants?: Array<{ body: string; threads: string; x: string }>; chosen?: number }
+    | undefined;
+  const conceptVariants = conceptGateData?.variants ?? [];
+  const conceptChosen = conceptGateData?.chosen ?? 0;
+  const hasMediaStep = run.nodes.some(
+    (n) => (n.agentId === 'infographic' || n.agentId === 'storyboard') && n.status !== 'skipped',
+  );
   const publishArtifact = run.artifacts.find((a) => a.type === 'publish_result');
   const publishUrls = (publishArtifact?.data as { postUrls?: Record<string, string> | null } | undefined)?.postUrls ?? null;
   const requiredActions = run.requiredActions ?? [];
@@ -199,7 +212,20 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
           </div>
         )}
 
-        {run.status === 'needs_approval' && gateNode && (
+        {/* Concept selection gate: pick a version + optional reference image, then Continue. */}
+        {run.status === 'needs_approval' && gateNode?.agentId === 'concept_writer' && runPostId && conceptVariants.length > 0 && (
+          <ConceptSelectionGate
+            postId={runPostId}
+            variants={conceptVariants}
+            chosen={conceptChosen}
+            hasMediaStep={hasMediaStep}
+            busy={busy}
+            onContinue={() => void approveNode(gateNode.nodeId)}
+            notify={notify}
+          />
+        )}
+
+        {run.status === 'needs_approval' && gateNode && gateNode.agentId !== 'concept_writer' && (
           <div className="gate-block">
             {gateNode.agentId === 'video' ? (
               <>

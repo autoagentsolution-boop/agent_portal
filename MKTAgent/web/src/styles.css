@@ -532,6 +532,18 @@ a { color: var(--accent); }
 .platform-asset-row { display: flex; align-items: center; gap: 10px; }
 .platform-asset-name { min-width: 90px; font-size: 13px; }
 .platform-asset-row select { flex: 1; max-width: 220px; }
+.concept-gate { border-color: var(--accent); background: rgba(16,163,127,0.06); }
+.variant-list { display: flex; flex-direction: column; gap: 8px; }
+.variant-card { text-align: left; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--panel2); color: var(--text); cursor: pointer; }
+.variant-card:hover:not(:disabled) { border-color: var(--accent); }
+.variant-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.variant-card:disabled { opacity: 0.7; cursor: default; }
+.variant-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.variant-radio { color: var(--accent); font-size: 12px; }
+.variant-title { font-weight: 600; font-size: 13px; }
+.variant-body { font-size: 13px; color: var(--muted); white-space: pre-wrap; max-height: 5.4em; overflow: hidden; line-height: 1.35; }
+.variant-card.selected .variant-body { color: var(--text); }
+.concept-ref { display: flex; flex-direction: column; gap: 4px; }
 .artifacts-block { font-size: 13px; }
 .artifacts-block summary { cursor: pointer; color: var(--muted); }
 .artifact-row { margin-top: 8px; }

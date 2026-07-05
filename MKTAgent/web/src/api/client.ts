@@ -188,6 +188,12 @@ export const api = {
   // Manual hand-edit of the copy (no LLM). Lands the post back at review.
   editCopy: (id: string, copy: { body: string; threads: string; x: string }) =>
     request<PostDto>(`/posts/${id}/edit-copy`, { method: 'POST', body: copy }),
+  selectVariant: (id: string, index: number) =>
+    request<PostDto>(`/posts/${id}/select-variant`, { method: 'POST', body: { index } }),
+  uploadReferenceImage: (id: string, dataB64: string, mimeType: string, asHero?: boolean) =>
+    request<PostDto>(`/posts/${id}/reference-image`, { method: 'POST', body: { dataB64, mimeType, ...(asHero ? { asHero: true } : {}) } }),
+  deleteReferenceImage: (id: string) =>
+    request<PostDto>(`/posts/${id}/reference-image`, { method: 'DELETE' }),
   approve: (id: string, scheduledAt?: string) =>
     request<PostDto>(`/posts/${id}/approve`, { method: 'POST', body: scheduledAt ? { scheduledAt } : {} }),
   reject: (id: string, feedback: string) =>
