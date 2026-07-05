@@ -38,8 +38,10 @@ export const evaluateBriefClarification = (goal: GoalSpec, campaign: Campaign): 
     });
   }
 
-  const hasPlatforms = goal.platforms.length > 0 || (campaign.platforms?.length ?? 0) > 0;
-  if (!hasPlatforms) {
+  // Ask platforms whenever the MESSAGE itself didn't name them — do NOT silently inherit the
+  // campaign's targets (the "it just used the campaign platforms without asking" surprise).
+  // Same mandatory-platform rule as the Orchestrate flow so both Master-Agent surfaces match.
+  if (goal.platforms.length === 0) {
     qs.push({
       slot: 'platforms',
       question: 'Which platforms should this post go to?',
@@ -49,14 +51,15 @@ export const evaluateBriefClarification = (goal: GoalSpec, campaign: Campaign): 
     });
   }
 
-  // Format is optional — offered so the user can choose video without re-typing, but a
-  // missing answer defaults to image. Only ask when the message didn't already imply video.
-  if (!goal.outputs.needsVideo) {
+  // Asset type is the deliverable — make it explicit (image | carousel | video) when the
+  // message didn't clearly imply one (a bare request defaults to 'image' via the shared rule).
+  // A clear "video"/"carousel"/"multiple images" request already resolved, so we don't re-ask.
+  if (assetTypeFromOutputs(goal.outputs) === 'image') {
     qs.push({
       slot: 'assetType',
-      question: 'What format? (defaults to a single image)',
-      required: false,
-      choices: ['image', 'video'],
+      question: 'What format for this post?',
+      required: true,
+      choices: ['image', 'carousel', 'video'],
     });
   }
 
@@ -86,6 +89,7 @@ export const goalToBrief = (goal: GoalSpec, answers: BriefAnswers = {}): GoalToB
   const answeredFormat = typeof answers.assetType === 'string' ? answers.assetType.trim().toLowerCase() : '';
   const assetType: CreatePostBody['assetType'] =
     answeredFormat === 'video' ? 'video'
+    : answeredFormat === 'carousel' ? 'carousel'
     : answeredFormat === 'image' ? 'image'
     : assetTypeFromOutputs(goal.outputs);
   // Answered platforms win; else the analyzer's; else undefined so buildPostUnderCampaign
