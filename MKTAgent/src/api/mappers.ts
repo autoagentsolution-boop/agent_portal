@@ -41,6 +41,7 @@ export const toPostDto = (p: Post): PostDto => ({
   heroFile: p.heroFile,
   platforms: p.platforms,
   platformAssets: (p.platformAssets as PostDto['platformAssets']) ?? null,
+  productKnowledgeId: p.productKnowledgeId,
   scheduledAt: iso(p.scheduledAt),
   postUrls: (p.postUrls as Record<string, string> | null) ?? null,
   error: p.error,

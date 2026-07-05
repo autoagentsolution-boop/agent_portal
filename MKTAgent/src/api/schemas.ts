@@ -123,6 +123,8 @@ export const updatePostBody = z
     // Per-platform asset type (item 5): { facebook: 'carousel', instagram: 'image' }. A
     // platform absent from the map uses the default `assetType`. null clears the override.
     platformAssets: z.record(socialPlatform, assetType).nullish(),
+    // Link/unlink a Product Knowledge library entry (item 6). null unlinks (→ inherit campaign).
+    productKnowledgeId: z.string().uuid().nullish(),
     scheduledAt: z.coerce.date().nullish(),
   })
   .partial()
@@ -354,6 +356,8 @@ export const postDto = z.object({
   platforms: z.array(socialPlatform),
   // Per-platform asset type override (item 5); null → all platforms use `assetType`.
   platformAssets: z.record(socialPlatform, assetType).nullable(),
+  // Linked Product Knowledge library entry (item 6); null → inherit campaign/brandContext.
+  productKnowledgeId: z.string().uuid().nullable(),
   scheduledAt: z.string().nullable(),
   postUrls: z.record(z.string()).nullable(),
   error: z.string().nullable(),

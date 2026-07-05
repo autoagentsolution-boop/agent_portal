@@ -350,6 +350,13 @@
               }
             }
           },
+          "productKnowledgeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "scheduledAt": {
             "type": [
               "string",
@@ -400,6 +407,7 @@
           "heroFile",
           "platforms",
           "platformAssets",
+          "productKnowledgeId",
           "scheduledAt",
           "postUrls",
           "error",
@@ -572,6 +580,13 @@
               }
             }
           },
+          "productKnowledgeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "scheduledAt": {
             "type": [
               "string",
@@ -728,6 +743,7 @@
           "heroFile",
           "platforms",
           "platformAssets",
+          "productKnowledgeId",
           "scheduledAt",
           "postUrls",
           "error",
@@ -1293,6 +1309,13 @@
                   }
                 }
               },
+              "productKnowledgeId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
               "scheduledAt": {
                 "type": [
                   "string",
@@ -1343,6 +1366,7 @@
               "heroFile",
               "platforms",
               "platformAssets",
+              "productKnowledgeId",
               "scheduledAt",
               "postUrls",
               "error",
@@ -1472,6 +1496,13 @@
                 ]
               }
             }
+          },
+          "productKnowledgeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "scheduledAt": {
             "type": [

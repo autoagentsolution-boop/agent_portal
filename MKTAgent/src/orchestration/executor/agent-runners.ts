@@ -6,6 +6,7 @@
 // No copy-gen/scheduler logic is reimplemented — only their exported cores are used.
 import { assetTypeFromOutputs, type GoalSpec } from '../schemas/goal-spec.ts';
 import { distinctAssetTypes } from '../../scheduler/resolve-input.ts';
+import { resolveLinkedKnowledge } from '../../db/repos/product-knowledge-repo.ts';
 import { campaignIdeas, strategyBrief, storyboard, videoPrompt, type ArtifactType } from '../schemas/artifact-schemas.ts';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
@@ -204,10 +205,17 @@ const resolveRunLanguage = async (ctx: RunnerContext): Promise<string> => {
 // reads brandContext (resolveCopyConfig), so this brings the media prompts to parity: a rich
 // analyzed profile reaches the image/video subject instead of a bare product name.
 const resolveProductKnowledge = async (ctx: RunnerContext): Promise<string | null> => {
-  const slot = ctx.goal.slots.productDetails?.trim();
-  if (slot) return slot;
   const post = ctx.postId ? await getPostForCopyGen(ctx.postId, ctx.ownerId) : null;
-  return post?.campaign.brandContext?.trim() || null;
+  // Resolution chain (item 6): a linked library entry (post-level, then campaign-level) is the
+  // curated source of truth and wins; then the legacy campaign.brandContext; then the goal slot.
+  const linked = await resolveLinkedKnowledge(
+    ctx.ownerId,
+    post?.productKnowledgeId ?? null,
+    post?.campaign.productKnowledgeId ?? null,
+  );
+  if (linked) return linked;
+  if (post?.campaign.brandContext?.trim()) return post.campaign.brandContext.trim();
+  return ctx.goal.slots.productDetails?.trim() || null;
 };
 
 // `resolvedLang` (the setup language) pins the CONTENT language when provided; without it

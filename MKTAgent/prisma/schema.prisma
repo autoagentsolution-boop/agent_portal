@@ -114,6 +114,7 @@ model User {
   agentChatSessions AgentChatSession[]
   agentCredentials   AgentCredential[]
   workflowRuns       WorkflowRun[]
+  productKnowledge   ProductKnowledge[]
 
   @@map("mkt_user")
 }
@@ -151,6 +152,10 @@ model Campaign {
   product      String
   angle        String?
   brandContext String?  @map("brand_context")
+  // Optional link to a reusable Product Knowledge library entry (item 6). When set, it is the
+  // primary source of product facts for grounding (resolution: post.pk → campaign.pk →
+  // campaign.brandContext → goal slot). SetNull on entry delete → content survives.
+  productKnowledgeId String? @map("product_knowledge_id") @db.Uuid
   leadsForm    String?  @map("leads_form") // optional CTA form URL injected into copy
   active       Boolean  @default(true)
   // Config-as-data defaults (T3 §2). All nullable → inherit from User; a Post can
@@ -166,11 +171,13 @@ model Campaign {
 
   owner User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   flow  WorkflowRun? @relation(fields: [flowId], references: [id], onDelete: SetNull)
+  productKnowledge ProductKnowledge? @relation(fields: [productKnowledgeId], references: [id], onDelete: SetNull)
   posts Post[]
 
   @@index([active], name: "ix_campaign_active")
   @@index([ownerId], name: "ix_campaign_owner")
   @@index([flowId], name: "ix_campaign_flow")
+  @@index([productKnowledgeId], name: "ix_campaign_pk")
   @@map("mkt_campaign")
 }
 
@@ -215,6 +222,9 @@ model Post {
   // 'image'). The executor fills one key per DISTINCT asset type it generates; the publisher
   // picks the right media per platform from this map.
   assetMedia    Json?        @map("asset_media")
+  // Optional per-post override of the Product Knowledge library entry (item 6). Null →
+  // inherit the campaign's link → brandContext → goal slot. SetNull on entry delete.
+  productKnowledgeId String?  @map("product_knowledge_id") @db.Uuid
   // Targeting + scheduling.
   platforms   SocialPlatform[]
   scheduledAt DateTime?        @map("scheduled_at") @db.Timestamptz(6)
@@ -228,12 +238,38 @@ model Post {
   campaign Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   owner    User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   run      WorkflowRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  productKnowledge ProductKnowledge? @relation(fields: [productKnowledgeId], references: [id], onDelete: SetNull)
 
   @@index([status, scheduledAt], name: "ix_post_status_sched")
   @@index([campaignId], name: "ix_post_campaign")
   @@index([ownerId], name: "ix_post_owner")
   @@index([runId], name: "ix_post_run")
+  @@index([productKnowledgeId], name: "ix_post_pk")
   @@map("mkt_post")
+}
+
+// Reusable per-user Product Knowledge library entry (item 6). Analyze documents/images ONCE
+// (Gemini multimodal → a rich factual profile) and reuse it across campaigns/posts to ground
+// copy/image/video prompts — instead of re-analyzing per campaign. productDetails is the rich
+// paragraph that fills the grounding slot; profile keeps the structured breakdown.
+model ProductKnowledge {
+  id             String   @id @default(uuid()) @db.Uuid
+  ownerId        String   @map("owner_id") @db.Uuid
+  name           String   // library label (usually the product name)
+  productDetails String   @map("product_details") // rich grounding paragraph
+  profile        Json?    // structured ProductProfile (summary/differentiators/audience/proof)
+  brandVoice     String?  @map("brand_voice")
+  language       String?
+  sourceDocs     String[] @map("source_docs") // uploaded file names, for provenance
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner      User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  campaigns  Campaign[]
+  posts      Post[]
+
+  @@index([ownerId], name: "ix_pk_owner")
+  @@map("mkt_product_knowledge")
 }
 
 // Inbound lead from any channel. Dedupe by email (30d) or calcom booking uid.

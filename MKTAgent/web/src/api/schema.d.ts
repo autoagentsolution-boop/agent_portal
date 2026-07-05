@@ -2467,6 +2467,8 @@ export interface components {
                 /** @enum {string} */
                 x?: "image" | "carousel" | "video";
             } | null;
+            /** Format: uuid */
+            productKnowledgeId: string | null;
             scheduledAt: string | null;
             postUrls: {
                 [key: string]: string;
@@ -2512,6 +2514,8 @@ export interface components {
                 /** @enum {string} */
                 x?: "image" | "carousel" | "video";
             } | null;
+            /** Format: uuid */
+            productKnowledgeId: string | null;
             scheduledAt: string | null;
             postUrls: {
                 [key: string]: string;
@@ -2652,6 +2656,8 @@ export interface components {
                     /** @enum {string} */
                     x?: "image" | "carousel" | "video";
                 } | null;
+                /** Format: uuid */
+                productKnowledgeId: string | null;
                 scheduledAt: string | null;
                 postUrls: {
                     [key: string]: string;
@@ -2685,6 +2691,8 @@ export interface components {
                 /** @enum {string} */
                 x?: "image" | "carousel" | "video";
             } | null;
+            /** Format: uuid */
+            productKnowledgeId?: string | null;
             scheduledAt?: string | null;
         };
         /** @enum {string} */

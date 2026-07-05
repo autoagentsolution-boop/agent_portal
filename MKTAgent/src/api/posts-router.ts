@@ -205,11 +205,15 @@ postsRouter.patch(
     if (!(await getPostForOwner(req.params.id, req.userId!)))
       return fail(res, 404, 'post_not_found');
     // platformAssets is a nullable Json column: an explicit null clears the per-platform map,
-    // which Prisma expresses as JsonNull (not SQL null) — translate before the update.
-    const { platformAssets, ...rest } = body;
+    // which Prisma expresses as JsonNull (not SQL null). productKnowledgeId is a relation FK:
+    // a string connects the library entry, null disconnects it. Translate both before update.
+    const { platformAssets, productKnowledgeId, ...rest } = body;
     const data: Prisma.PostUpdateInput = {
       ...rest,
       ...(platformAssets !== undefined ? { platformAssets: platformAssets === null ? Prisma.JsonNull : platformAssets } : {}),
+      ...(productKnowledgeId !== undefined
+        ? { productKnowledge: productKnowledgeId === null ? { disconnect: true } : { connect: { id: productKnowledgeId } } }
+        : {}),
     };
     const updated = await updatePostFields(req.params.id, req.userId!, data);
     if (!updated)
