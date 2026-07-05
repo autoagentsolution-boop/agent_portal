@@ -61,13 +61,52 @@ export interface RunnerOutput {
   cost?: NodeCost;
 }
 
+// BOUNDARY (item 4): concept_writer vs copy-gen are NOT redundant — they are two layers.
+//   • concept_writer (this file) = the DAG-NODE SEAM: it materializes OR locates the Post
+//     (+ campaign) the run operates on, drives copy-gen once, auto-approves review→ready so
+//     the publisher node can claim it, and returns the content_concept artifact. It owns NO
+//     copy prompt.
+//   • copy-gen's generateForPost (copygen/service.ts) = the REUSABLE COPY ENGINE: the actual
+//     LLM copy generation for an existing Post. Also driven standalone by POST
+//     /posts/:id/generate and the copygen cron — which is exactly why it must stay separate.
+// Merging them would couple the copy engine to the orchestrator and break those other callers.
+// The two concept_writer paths below differ ONLY in how they obtain the Post (create-from-goal
+// vs locate-attached); their shared tail lives in finalizeConcept().
+
+// Shared tail: run copy-gen on the post, require it reached review, auto-approve → ready,
+// and return the content_concept artifact. Both concept_writer paths funnel through here.
+const finalizeConcept = async (ctx: RunnerContext, postId: string): Promise<RunnerOutput> => {
+  const { ownerId, goal } = ctx;
+  const result = await generateForPost(postId, ownerId, ctx.geminiFn);
+  if (result.status !== 'review') {
+    throw new Error(`concept_writer: copy-gen did not reach review (${result.reason ?? result.error ?? result.status})`);
+  }
+  const row = await getPostForOwner(postId, ownerId);
+  const copy = (row?.copy as { body: string; threads: string; x: string } | null) ?? null;
+  if (!copy) throw new Error('concept_writer: copy missing after review');
+
+  // Approve review→ready (scheduledAt=now) so publisher can claim it this run.
+  await approveReview(postId, ownerId, new Date());
+
+  return {
+    type: 'content_concept',
+    postId,
+    data: {
+      mainAngle: goal.slots.angle ?? goal.slots.product ?? 'marketing concept',
+      keyMessage: copy.body.slice(0, 200),
+      copy,
+      postId,
+    },
+    cost: estimateLlmCost(goalContext(ctx), `${copy.body}\n${copy.threads}\n${copy.x}`),
+  };
+};
+
 // concept_writer instance path (LIVE): the Post already exists (created before the run,
 // post.runId = this run) and its Campaign already carries the merged strategy. We only
 // run copy-gen on it + approve review→ready — we do NOT create a new campaign/post. This
 // is the flow-as-template path: one template → many posts, each its own instance run.
 const runConceptWriterForExistingPost = async (ctx: RunnerContext, postId: string): Promise<RunnerOutput> => {
-  const { ownerId, goal } = ctx;
-  const post = await getPostForOwner(postId, ownerId);
+  const post = await getPostForOwner(postId, ctx.ownerId);
   if (!post) throw new Error('concept_writer: attached post not found');
 
   // Reset to `brief` so copy-gen runs whether this is the first execution (already brief)
@@ -76,28 +115,7 @@ const runConceptWriterForExistingPost = async (ctx: RunnerContext, postId: strin
   if (post.status !== 'brief' && post.status !== 'rework') {
     await setPostStatus(post.id, 'brief');
   }
-
-  const result = await generateForPost(post.id, ownerId, ctx.geminiFn);
-  if (result.status !== 'review') {
-    throw new Error(`concept_writer: copy-gen did not reach review (${result.reason ?? result.error ?? result.status})`);
-  }
-  const row = await getPostForOwner(post.id, ownerId);
-  const copy = (row?.copy as { body: string; threads: string; x: string } | null) ?? null;
-  if (!copy) throw new Error('concept_writer: copy missing after review');
-
-  await approveReview(post.id, ownerId, new Date());
-
-  return {
-    type: 'content_concept',
-    postId: post.id,
-    data: {
-      mainAngle: goal.slots.angle ?? goal.slots.product ?? 'marketing concept',
-      keyMessage: copy.body.slice(0, 200),
-      copy,
-      postId: post.id,
-    },
-    cost: estimateLlmCost(goalContext(ctx), `${copy.body}\n${copy.threads}\n${copy.x}`),
-  };
+  return finalizeConcept(ctx, post.id);
 };
 
 // concept_writer (LIVE): create a real Campaign+Post from the goal, run copy-gen,
@@ -141,28 +159,7 @@ const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     assetType: assetTypeFromOutputs(goal.outputs),
   });
 
-  const result = await generateForPost(post.id, ownerId, ctx.geminiFn);
-  if (result.status !== 'review') {
-    throw new Error(`concept_writer: copy-gen did not reach review (${result.reason ?? result.error ?? result.status})`);
-  }
-  const row = await getPostForOwner(post.id, ownerId);
-  const copy = (row?.copy as { body: string; threads: string; x: string } | null) ?? null;
-  if (!copy) throw new Error('concept_writer: copy missing after review');
-
-  // Approve review→ready (scheduledAt=now) so publisher can claim it this run.
-  await approveReview(post.id, ownerId, new Date());
-
-  return {
-    type: 'content_concept',
-    postId: post.id,
-    data: {
-      mainAngle: goal.slots.angle ?? goal.slots.product ?? 'marketing concept',
-      keyMessage: copy.body.slice(0, 200),
-      copy,
-      postId: post.id,
-    },
-    cost: estimateLlmCost(goalContext(ctx), `${copy.body}\n${copy.threads}\n${copy.x}`),
-  };
+  return finalizeConcept(ctx, post.id);
 };
 
 // publisher (LIVE): publish the Post materialized by concept_writer. Gated by the
