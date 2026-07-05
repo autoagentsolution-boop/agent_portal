@@ -22,7 +22,9 @@ export const DRIVE_REFRESH_KEY = 'google_drive_refresh_token';
 export const hasDriveConnected = async (ownerId: string): Promise<boolean> =>
   Boolean(await getPublisherAppCred(ownerId, DRIVE_REFRESH_KEY));
 
-const getDriveForOwner = async (ownerId: string) => {
+type Drive = ReturnType<typeof google.drive>;
+
+const getDriveForOwner = async (ownerId: string): Promise<Drive> => {
   const refreshToken = await getPublisherAppCred(ownerId, DRIVE_REFRESH_KEY);
   if (!refreshToken) throw new Error('drive: owner has no Drive connected');
   const auth = new google.auth.OAuth2(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET);
@@ -30,14 +32,63 @@ const getDriveForOwner = async (ownerId: string) => {
   return google.drive({ version: 'v3', auth });
 };
 
+// Find-or-create a folder by name (optionally under a parent), returning its id. With the
+// drive.file scope the app only ever sees the folders it created, so this never touches the
+// user's own Drive tree. Cached per (owner, parent, name) to avoid a lookup on every image.
+const folderCache = new Map<string, string>();
+
+const ensureFolder = async (ownerId: string, drive: Drive, name: string, parentId?: string): Promise<string> => {
+  const cacheKey = `${ownerId}:${parentId ?? 'root'}:${name}`;
+  const cached = folderCache.get(cacheKey);
+  if (cached) return cached;
+
+  const esc = name.replace(/'/g, "\\'");
+  const parentClause = parentId ? ` and '${parentId}' in parents` : '';
+  const q = `mimeType='application/vnd.google-apps.folder' and name='${esc}' and trashed=false${parentClause}`;
+  const list = await drive.files.list({ q, fields: 'files(id)', pageSize: 1 });
+  let id = list.data.files?.[0]?.id ?? null;
+  if (!id) {
+    const created = await drive.files.create({
+      requestBody: {
+        name,
+        mimeType: 'application/vnd.google-apps.folder',
+        ...(parentId ? { parents: [parentId] } : {}),
+      },
+      fields: 'id',
+    });
+    id = created.data.id ?? null;
+  }
+  if (!id) throw new Error(`drive: could not ensure folder ${name}`);
+  folderCache.set(cacheKey, id);
+  return id;
+};
+
+// Resolve the target folder for a campaign's media: MKTAgent/<campaign>. Returns the
+// campaign folder id to pass as `parents` on upload. Cached, so repeated posts under the
+// same campaign don't re-list.
+export const resolveCampaignFolder = async (ownerId: string, campaignName: string): Promise<string> => {
+  const drive = await getDriveForOwner(ownerId);
+  const root = await ensureFolder(ownerId, drive, 'MKTAgent');
+  const safe = (campaignName || '').trim().slice(0, 80) || 'Uncategorized';
+  return ensureFolder(ownerId, drive, safe, root);
+};
+
 // Upload one local image file to the owner's Drive, make it anyone-with-link readable
-// (so Meta can fetch the lh3 URL), and return the Drive fileId. Throws on any failure —
-// the caller (publish materialization) decides how to degrade.
-export const uploadImageToDrive = async (ownerId: string, filePath: string): Promise<string> => {
+// (so Meta can fetch the lh3 URL), and return the Drive fileId. `folderId` targets a
+// campaign folder; `name` carries an ordering prefix so files sort correctly in Drive too.
+// Throws on any failure — the caller (publish materialization) decides how to degrade.
+export const uploadImageToDrive = async (
+  ownerId: string,
+  filePath: string,
+  opts: { folderId?: string; name?: string } = {},
+): Promise<string> => {
   const drive = await getDriveForOwner(ownerId);
   const created = await drive.files.create({
     media: { body: createReadStream(filePath) },
-    requestBody: { name: basename(filePath) },
+    requestBody: {
+      name: opts.name ?? basename(filePath),
+      ...(opts.folderId ? { parents: [opts.folderId] } : {}),
+    },
     fields: 'id',
   });
   const fileId = created.data.id;

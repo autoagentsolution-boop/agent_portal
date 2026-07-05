@@ -17,8 +17,9 @@ import {
   updatePost,
 } from '../db/repos/post-repo.ts';
 import { publishTo } from '../social/index.ts';
-import { hasDriveConnected } from '../assets/drive-client.ts';
-import { materializeForPublicUrl, NEEDS_PUBLIC_URL } from '../assets/materialize.ts';
+import { hasDriveConnected, resolveCampaignFolder } from '../assets/drive-client.ts';
+import { materializeForPublicUrl, NEEDS_PUBLIC_URL, slugify } from '../assets/materialize.ts';
+import { getCampaign } from '../db/repos/campaign-repo.ts';
 import { publishPostStatus } from '../events/bus.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
@@ -71,7 +72,15 @@ export async function processPost(post: Post, publish: PublishFn): Promise<TickR
   const needsPublic = input.assetType !== 'video' && post.platforms.some((p) => NEEDS_PUBLIC_URL.has(p));
   if (needsPublic && (await hasDriveConnected(post.ownerId))) {
     try {
-      publicInput = { ...input, assets: await materializeForPublicUrl(post.ownerId, input.assets) };
+      // Upload into MKTAgent/<campaign>/ with index-ordered filenames. Order comes from the
+      // assets[] array, not generation-completion time (see materialize.ts).
+      const campaign = await getCampaign(post.campaignId, post.ownerId);
+      const name = campaign?.product ?? 'Uncategorized';
+      const folderId = await resolveCampaignFolder(post.ownerId, name);
+      publicInput = {
+        ...input,
+        assets: await materializeForPublicUrl(post.ownerId, input.assets, { folderId, slug: slugify(name) }),
+      };
     } catch (e) {
       logger.warn('drive_materialize_failed', { postId: post.id, error: String(e).slice(0, 200) });
     }
