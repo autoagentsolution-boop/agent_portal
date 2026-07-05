@@ -45,6 +45,11 @@ export const imageCost = (): NodeCost => ({ ...ZERO_COST, costUsd: IMAGE_FLAT_US
 const VIDEO_CLIP_FLAT_USD = 0.2;
 export const videoClipCost = (clips: number): NodeCost => ({ ...ZERO_COST, costUsd: VIDEO_CLIP_FLAT_USD * Math.max(0, clips) });
 
+// Flat cost for one generated TTS voiceover (Gemini TTS bills audio-output tokens; this is a
+// demo-safe per-clip estimate so the video node's cost isn't understated by the narration).
+const TTS_FLAT_USD = 0.02;
+export const ttsCost = (): NodeCost => ({ ...ZERO_COST, costUsd: TTS_FLAT_USD });
+
 // Sum two node costs (LLM planning + N media generations in one node).
 export const sumCost = (a: NodeCost | undefined, b: NodeCost | undefined): NodeCost => ({
   promptTokens: (a?.promptTokens ?? 0) + (b?.promptTokens ?? 0),

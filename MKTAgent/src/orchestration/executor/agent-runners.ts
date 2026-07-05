@@ -22,7 +22,7 @@ import { stitchClips, muxAudio } from '../../video/stitch.ts';
 import { access } from 'node:fs/promises';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
 import { logger } from '../../lib/logger.ts';
-import { estimateLlmCost, imageCost, videoClipCost, sumCost, type NodeCost } from './node-cost.ts';
+import { estimateLlmCost, imageCost, videoClipCost, ttsCost, sumCost, type NodeCost } from './node-cost.ts';
 
 // Per-run mutable context threaded through node executions. Artifacts already
 // produced upstream are addressable by type (the executor passes them in).
@@ -446,10 +446,12 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   // onto the stitched (silent) video. Best-effort — a TTS/mux hiccup falls back to the silent
   // video rather than failing the whole node.
   const narration = frames.map((f) => (f.caption ?? '').trim()).filter(Boolean).join(' ');
+  let ttsRendered = false;
   if (narration) {
     try {
       const tts = ctx.ttsFn ?? ((req: TtsRequest) => generateTts(req));
       const audio = await tts({ text: narration });
+      if (!audio.cached) ttsRendered = true;
       finalVideo = await muxAudio(finalVideo, audio.outputFile);
     } catch (e) {
       logger.warn('video_voiceover_failed', { error: String(e).slice(0, 160) });
@@ -466,7 +468,8 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 
   const parsed = videoPrompt.safeParse({ videoRef, durationSec, clipCount: clipPaths.length });
   if (!parsed.success) throw new Error(`video: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
-  return { type: 'video_prompt', data: parsed.data, cost: videoClipCost(rendered) };
+  // Video node cost = Veo clips + the TTS voiceover (previously uncounted).
+  return { type: 'video_prompt', data: parsed.data, cost: sumCost(videoClipCost(rendered), ttsRendered ? ttsCost() : undefined) };
 };
 
 // Stubs — schema-valid placeholders so the DAG completes end-to-end in M1.
