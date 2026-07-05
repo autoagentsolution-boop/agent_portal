@@ -5,6 +5,29 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-05
 
+### Video polish — Veo audio off, consistent frames, voiceover in user's language
+Follow-up fixes after the first storyboard/video pass:
+- **Veo RAI audio filter fixed** — live Veo returned `raiMediaFilteredCount` ("issue with the
+  audio for your prompt"). Veo's native audio is uncontrollable AI-invented sound, so we set
+  `generateAudio: false` and surface the RAI reason instead of a cryptic no-video. Voiceover
+  comes from a dedicated TTS step, not Veo.
+- **Storyboard visual consistency** — the first successful frame anchors the rest via
+  nano-banana `edit` (reference conditioning); the prompt enforces a shared style+subject anchor
+  phrase, so frames cohere instead of drifting per independent gen. (imageFn seam widened to
+  ImageRequest.)
+- **Voiceover** — new `src/video/tts.ts` (Gemini TTS `gemini-2.5-flash-preview-tts`, reuses
+  `GEMINI_API_KEY`, multilingual, PCM→WAV, cached); `stitch.muxAudio` mixes it onto the stitched
+  video with `apad + -shortest` so the output is ALWAYS the video length (never truncated).
+  `ttsFn` seam stubbed in the 4 verify scripts.
+- **Voiceover language follows the USER, not the product** — captions (= narration) were drifting
+  to the product's language (a VN-named product → Vietnamese voice). The storyboard now resolves
+  the effective language = campaign language → user's `defaultLanguage` → English, and forces
+  captions into it. Verified: EN campaign + "Bò Kho" product → English captions.
+
+Note: rerun-infographic "video doesn't run" was traced to the video node FAILING on the Veo audio
+error (the DAG is correct — video is downstream of storyboard, not infographic). Veo still not
+live-tested end-to-end (paid, slow); the audio fix should clear the failure.
+
 ### Storyboard = real images · Video = Veo i2v (rendered mp4)
 The `storyboard` and `video` agents produce real **media**, reviewable in the UI (corrects an
 earlier text-only version). `runStoryboard`: LLM plans 3-6 frames → generates an image per frame
