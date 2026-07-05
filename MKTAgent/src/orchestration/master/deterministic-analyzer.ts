@@ -81,16 +81,19 @@ const isCampaign = (t: string): boolean =>
 
 const inferOutputs = (t: string): GoalSpec['outputs'] => {
   const campaign = isCampaign(t);
+  // A carousel / multiple images → the storyboard produces the slides (NOT a single
+  // infographic). assetTypeFromOutputs then resolves storyboard-only → 'carousel'.
+  const carousel = /\b(carousel|multiple images?|nhiều ảnh|nhieu anh|nhiều hình|nhieu hinh|nhiều tấm|nhieu tam|slides?|album)\b/i.test(t);
   return {
     needsIdeation: campaign,
     needsStrategy: campaign,
     needsResearch: /\b(research|nghiên cứu|nghien cuu|competitor|đối thủ|market)\b/i.test(t),
     needsTextPost: true,
-    needsInfographic: campaign || /\b(infographic|visual|hình ảnh thông tin|hình ảnh|hinh anh|image)\b/i.test(t),
+    needsInfographic: !carousel && (campaign || /\b(infographic|visual|hình ảnh thông tin|hình ảnh|hinh anh|image)\b/i.test(t)),
     // Storyboard is independent of video. A video request also implies storyboard (the
-    // planner enforces video ⇒ storyboard), so needsVideo OR an explicit storyboard word
-    // both enable it. \b works here (all-ASCII keywords).
-    needsStoryboard: /\b(video|reel|clip|short|tiktok|storyboard|kịch bản|kich ban|phân cảnh|phan canh)\b/i.test(t),
+    // planner enforces video ⇒ storyboard), and a carousel needs it for the slides, so any
+    // of those enable it. \b works here (all-ASCII keywords).
+    needsStoryboard: carousel || /\b(video|reel|clip|short|tiktok|storyboard|kịch bản|kich ban|phân cảnh|phan canh)\b/i.test(t),
     needsVideo: /\b(video|reel|clip|short|tiktok)\b/i.test(t),
     needsPublishing: !/\b(draft only|chỉ nháp|chi nhap|don't publish|do not publish|không đăng|khong dang)\b/i.test(t),
   };

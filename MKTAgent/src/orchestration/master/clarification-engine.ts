@@ -106,13 +106,14 @@ export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
   const thin =
     Boolean(goal.slots.product) && anyOutput && highImpactFilled < RICHNESS_THRESHOLD;
 
-  // Publishing with no platform named → ask. Required under the richness gate (a
-  // multi-platform intent must be explicit before an external write), else optional.
+  // Publishing with no platform named → ALWAYS ask (mandatory brief field). We must never
+  // silently default the publish targets (the "defaulted to Facebook" bug): the user has to
+  // choose where this goes before an external write.
   if (goal.outputs.needsPublishing && goal.platforms.length === 0) {
     q.push({
       slot: 'platforms',
       question: 'Which platforms should this publish to?',
-      required: thin,
+      required: true,
       choices: ['facebook', 'instagram', 'threads', 'linkedin', 'x'],
       multiSelect: true,
     });
