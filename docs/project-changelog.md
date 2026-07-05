@@ -5,6 +5,13 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-05
 
+### Drive uploads organized by campaign folder + ordered filenames
+Generated images now upload into `MKTAgent/<campaign>/` (find-or-create folder, cached) instead
+of the Drive root, with filenames stamped `NN-<campaign-slug>-<hash>.png`. Publish/upload order is
+the `assets[]` array index — never generation-completion time — so multi-image posts stay in the
+intended sequence, and the index prefix makes them sort correctly in the Drive UI too. `slugify`
+strips Vietnamese diacritics.
+
 ### Connection status honesty + Drive redirect fix
 - **Status was lying:** a pasted access token showed "connected" with **zero verification** (any
   saved vault key → connected). Now a save runs a real **liveness check** (`verifyAndRecordFormToken`)
