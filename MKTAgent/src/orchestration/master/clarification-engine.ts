@@ -88,7 +88,7 @@ export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
       slot: 'output_format',
       question: 'What do you want to produce?',
       required: true,
-      choices: ['Text post only', 'Text + infographic', 'Text + infographic + video', 'Full multi-platform campaign'],
+      choices: ['Text post only', 'Text + infographic', 'Text + carousel', 'Text + video', 'Full multi-platform campaign'],
     });
   }
 

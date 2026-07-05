@@ -79,16 +79,20 @@ const first = (v: string | string[]): string => (Array.isArray(v) ? (v[0] ?? '')
 const applyOutputFormat = (goal: GoalSpec, label: string): void => {
   const l = label.toLowerCase();
   const fullCampaign = /campaign/.test(l);
+  // A carousel is a multi-image swipe deck → the storyboard produces its slides. It is NOT a
+  // single infographic image and NOT a video, so it maps to storyboard-only (assetTypeFromOutputs
+  // then resolves it to 'carousel').
+  const carousel = /carousel/.test(l);
   goal.outputs.needsTextPost = true;
   // A full multi-platform campaign runs the whole branding flow: ideate → strategy
   // → copy → image. The narrower formats only enable the media they name.
   goal.outputs.needsIdeation = fullCampaign;
   goal.outputs.needsStrategy = fullCampaign;
-  goal.outputs.needsInfographic = /infographic/.test(l) || fullCampaign;
+  goal.outputs.needsInfographic = (/infographic/.test(l) || fullCampaign) && !carousel;
   goal.outputs.needsVideo = /video/.test(l);
-  // Storyboard is independent + implied by video. Enable it for an explicit storyboard
-  // choice or any video (the planner also enforces video ⇒ storyboard as a backstop).
-  goal.outputs.needsStoryboard = /storyboard/.test(l) || goal.outputs.needsVideo;
+  // Storyboard is independent + implied by video AND by a carousel choice. Enable it for an
+  // explicit storyboard/carousel choice or any video (planner enforces video ⇒ storyboard too).
+  goal.outputs.needsStoryboard = /storyboard/.test(l) || carousel || goal.outputs.needsVideo;
   goal.outputs.needsPublishing = true;
 };
 
