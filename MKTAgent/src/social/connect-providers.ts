@@ -9,6 +9,7 @@
 // are set — same gate as Google login. Test now with your OWN dev-mode app.
 import { env } from '../config/env.ts';
 import { withRetry } from '../lib/retry.ts';
+import { getPublisherAppCred } from '../db/repos/agent-credential-repo.ts';
 import type { SocialPlatform } from '../../prisma/generated/prisma/client.ts';
 
 export interface ConnectExchange {
@@ -18,19 +19,31 @@ export interface ConnectExchange {
   meta?: Record<string, unknown> | null;
 }
 
+// Every provider method receives the connecting user's ownerId so a provider can
+// resolve PER-USER app creds from the vault (X: each user brings their own X app,
+// because /2/media/upload needs a user-context token). Env-app providers (Meta,
+// Threads, LinkedIn use DAIS's shared app) ignore ownerId and read env.
 export interface ConnectProvider {
   platform: SocialPlatform;
   // PKCE (X) needs a per-attempt code_verifier round-tripped through signed state.
   usesPkce?: boolean;
-  // Throws if this platform's OAuth client isn't configured (→ router maps to 500).
-  assertConfigured(): void;
-  buildAuthUrl(redirectUri: string, state: string, codeChallenge?: string): string;
+  // Rejects if this platform's OAuth client isn't configured (→ router maps to 500).
+  assertConfigured(ownerId: string): Promise<void>;
+  buildAuthUrl(redirectUri: string, state: string, codeChallenge: string | undefined, ownerId: string): Promise<string>;
   exchangeCode(
     code: string,
     redirectUri: string,
-    codeVerifier?: string,
+    codeVerifier: string | undefined,
+    ownerId: string,
   ): Promise<ConnectExchange>;
 }
+
+// X app creds resolved vault-first (user pasted Client ID/Secret in Connections) →
+// env fallback (DAIS default). The only platform whose OAuth client is per-user.
+const xConnectCreds = async (ownerId: string): Promise<{ clientId: string; clientSecret: string }> => ({
+  clientId: (await getPublisherAppCred(ownerId, 'x_client_id')) || env.X_CLIENT_ID,
+  clientSecret: (await getPublisherAppCred(ownerId, 'x_client_secret')) || env.X_CLIENT_SECRET,
+});
 
 const need = (v: string, name: string): string => {
   if (!v) throw new Error(`connect: ${name} not set`);
@@ -59,11 +72,11 @@ const metaScopes = 'pages_show_list,pages_manage_posts,pages_read_engagement,ins
 
 const meta = (platform: SocialPlatform): ConnectProvider => ({
   platform,
-  assertConfigured() {
+  async assertConfigured() {
     need(env.META_APP_ID, 'META_APP_ID');
     need(env.META_APP_SECRET, 'META_APP_SECRET');
   },
-  buildAuthUrl(redirectUri, state) {
+  async buildAuthUrl(redirectUri, state) {
     const q = new URLSearchParams({
       client_id: env.META_APP_ID,
       redirect_uri: redirectUri,
@@ -106,11 +119,11 @@ const meta = (platform: SocialPlatform): ConnectProvider => ({
 // ── Threads (graph.threads.net, separate app) ───────────────────────────────────
 const threads: ConnectProvider = {
   platform: 'threads',
-  assertConfigured() {
+  async assertConfigured() {
     need(env.THREADS_APP_ID, 'THREADS_APP_ID');
     need(env.THREADS_APP_SECRET, 'THREADS_APP_SECRET');
   },
-  buildAuthUrl(redirectUri, state) {
+  async buildAuthUrl(redirectUri, state) {
     const q = new URLSearchParams({
       client_id: env.THREADS_APP_ID,
       redirect_uri: redirectUri,
@@ -142,11 +155,11 @@ const threads: ConnectProvider = {
 // ── LinkedIn (OAuth 2.0 authorization code) ─────────────────────────────────────
 const linkedin: ConnectProvider = {
   platform: 'linkedin',
-  assertConfigured() {
+  async assertConfigured() {
     need(env.LINKEDIN_CLIENT_ID, 'LINKEDIN_CLIENT_ID');
     need(env.LINKEDIN_CLIENT_SECRET, 'LINKEDIN_CLIENT_SECRET');
   },
-  buildAuthUrl(redirectUri, state) {
+  async buildAuthUrl(redirectUri, state) {
     const q = new URLSearchParams({
       response_type: 'code',
       client_id: env.LINKEDIN_CLIENT_ID,
@@ -181,13 +194,15 @@ const linkedin: ConnectProvider = {
 const x: ConnectProvider = {
   platform: 'x',
   usesPkce: true,
-  assertConfigured() {
-    need(env.X_CLIENT_ID, 'X_CLIENT_ID');
+  async assertConfigured(ownerId) {
+    const { clientId } = await xConnectCreds(ownerId);
+    need(clientId, 'X_CLIENT_ID (paste your X app Client ID on the X card, or set env)');
   },
-  buildAuthUrl(redirectUri, state, codeChallenge) {
+  async buildAuthUrl(redirectUri, state, codeChallenge, ownerId) {
+    const { clientId } = await xConnectCreds(ownerId);
     const q = new URLSearchParams({
       response_type: 'code',
-      client_id: env.X_CLIENT_ID,
+      client_id: clientId,
       redirect_uri: redirectUri,
       state,
       scope: 'tweet.read tweet.write media.write users.read offline.access',
@@ -196,18 +211,19 @@ const x: ConnectProvider = {
     });
     return `https://twitter.com/i/oauth2/authorize?${q.toString()}`;
   },
-  async exchangeCode(code, redirectUri, codeVerifier) {
+  async exchangeCode(code, redirectUri, codeVerifier, ownerId) {
+    const { clientId, clientSecret } = await xConnectCreds(ownerId);
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
       code,
       redirect_uri: redirectUri,
-      client_id: env.X_CLIENT_ID,
+      client_id: clientId,
       code_verifier: codeVerifier ?? '',
     });
     const headers: Record<string, string> = {};
     // Confidential client → HTTP Basic on the token endpoint.
-    if (env.X_CLIENT_SECRET) {
-      headers.Authorization = 'Basic ' + Buffer.from(`${env.X_CLIENT_ID}:${env.X_CLIENT_SECRET}`).toString('base64');
+    if (clientSecret) {
+      headers.Authorization = 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
     }
     const j = await postForm('https://api.twitter.com/2/oauth2/token', body, headers);
     if (j?.error || !j?.access_token) {

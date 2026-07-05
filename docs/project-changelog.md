@@ -3,6 +3,31 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-05
+
+### Publish-enablement IMPLEMENTED — Drive media + X self-serve + auto-refresh
+Built all three pieces planned 2026-07-03. Verified against the rebuilt container
+(typecheck + web build clean; verify-vault / verify-api / verify-runtime green; token cron
+starts; `token maintain` clean). Live e2e pending user's external console setup.
+
+- **Piece 1 — auto-refresh.** `ENABLE_TOKEN_CRON=true`. Extracted shared `refreshIfDue()`
+  (`src/tokens/service.ts`) used by both the cron sweep and a new **lazy on-access refresh** in
+  `getActiveToken` (closes the sub-sweep gap; X window = 15 min; best-effort with fall-through).
+  Sweep now separates refresh from liveness — a refresh failure no longer flags a live token.
+  LinkedIn `refresh()` added (creds vault-first→env).
+- **Piece 2 — X self-serve.** `ConnectProvider` methods owner-aware (`ownerId` threaded through
+  connect-router → provider); X connect + refresh read `x_client_id`/`x_client_secret`
+  vault-first→env. Meta/Threads/LinkedIn unchanged (shared env app). UI fields already present.
+- **Piece 3 — Google Drive.** New `src/assets/drive-client.ts` (upload + `anyone:reader` +
+  OAuth2 self-refresh), `src/assets/materialize.ts` (`local:`→Drive fileId, IG/Threads only,
+  images only), `src/api/drive-connect-router.ts` (`/connect/drive/*`, `drive.file` scope),
+  mounted before the social `/connect` router. `processPost` materializes once per post before
+  fan-out; partial-success preserved. New `GET /connections/storage` + Storage UI card enabled.
+  Reusable `savePublisherCredential()` write helper. Allowlist gains `google_drive_refresh_token`.
+
+No migration (reuses `AgentCredential` vault). External setup (Drive API + redirect + scope; X
+callback + Client ID/Secret) documented in `docs/publishing-media-constraints.md` "Resolution".
+
 ## 2026-07-03
 
 ### Publish-enablement plan: Drive media + X self-serve + auto-refresh (PLANNED, not built)

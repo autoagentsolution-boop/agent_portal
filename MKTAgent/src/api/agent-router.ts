@@ -29,6 +29,7 @@ const credentialAllowlist: Record<string, string[]> = {
     'google_client_id',
     'google_client_secret',
     'google_refresh_token',
+    'google_drive_refresh_token',
     'facebook_app_id',
     'facebook_app_secret',
     'facebook_page_id',

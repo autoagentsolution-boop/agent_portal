@@ -21,10 +21,13 @@ export interface PlatformTokenProvider {
   // Liveness probe (cheap GET). Always implemented.
   check(token: string, meta: Record<string, unknown> | null): Promise<TokenCheckResult>;
   // Refresh ahead of expiry. Undefined = never-expire (FB/IG page tokens) → no-op.
+  // ownerId lets a provider resolve per-user app creds (X/LinkedIn client id+secret)
+  // from the vault; env-only providers ignore it.
   refresh?: (
     token: string,
     refreshToken: string | null,
     meta: Record<string, unknown> | null,
+    ownerId?: string,
   ) => Promise<RefreshResult>;
   // Refresh when remaining lifetime drops below this. Ignored if no refresh().
   refreshWhenWithinMs?: number;

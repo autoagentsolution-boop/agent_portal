@@ -106,11 +106,21 @@ export function ConnectionsPanel({ notify }: Props) {
   );
 }
 
-// Storage as a first-class Connection (item 4 — shell only). Generated media is written to
-// local disk and served at /media/images, so local storage is "active" with no setup.
-// Google Drive is surfaced as a coming-soon target (no OAuth this round). This card touches
-// NO backend and is NOT a SocialPlatform — it never enters the publish/connection resolver.
+// Storage as a first-class Connection (item 4). Generated media is written to local disk
+// and served at /media/images, so local storage is always "active". Google Drive is a
+// per-user OAuth target: connecting it lets the agent upload generated images to the
+// user's Drive so IG/Threads (which fetch a public image_url server-side) can publish
+// them. Drive is NOT a SocialPlatform → its state comes from /connections/storage.
 function StorageSection() {
+  const [driveConnected, setDriveConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    void api.storageStatus().then((r) => {
+      if (r.ok) setDriveConnected(r.data.drive.connected);
+    });
+  }, []);
+
+  const driveCls = driveConnected ? 'st-connected' : 'st-not_connected';
   return (
     <>
       <div className="orchestrate-head" style={{ marginTop: 22 }}>
@@ -129,14 +139,22 @@ function StorageSection() {
           </div>
           <p className="muted small" style={{ margin: '4px 0 0' }}>Media is saved to this workspace and served at <code>/media</code>. No setup required.</p>
         </div>
-        <div className="connection-card st-not_connected">
+        <div className={`connection-card ${driveCls}`}>
           <div className="connection-head">
             <span className="connection-name">Google Drive</span>
-            <span className="connection-state st-not_connected"><span className="connection-dot">○</span> Coming soon</span>
+            <span className={`connection-state ${driveCls}`}>
+              <span className="connection-dot">{driveConnected ? '●' : '○'}</span>{' '}
+              {driveConnected ? 'Connected' : 'Not connected'}
+            </span>
           </div>
-          <div className="chip-row"><span className="cap-chip">folders</span></div>
+          <div className="chip-row"><span className="cap-chip">public image URL</span></div>
+          <p className="muted small" style={{ margin: '4px 0 0' }}>
+            Connect Drive to publish generated images to Instagram and Threads (they fetch a public URL).
+          </p>
           <div className="conn-actions">
-            <button className="btn primary small" disabled title="Google Drive storage is coming soon">Connect Google Drive</button>
+            <a className="btn primary small" href={connectUrl('/connect/drive/start')}>
+              {driveConnected ? 'Reconnect Google Drive' : 'Connect Google Drive'}
+            </a>
           </div>
         </div>
       </div>

@@ -1,5 +1,19 @@
 # Publish-enablement: Drive media + X self-serve + auto-refresh
 
+## Status: IMPLEMENTED 2026-07-05 ✅
+
+All 3 pieces built + verified against the rebuilt container. Typecheck + web build clean;
+verify-vault / verify-api / verify-runtime green; token cron starts (`token_cron_started`);
+`token maintain` CLI runs clean (refresh/liveness separation confirmed — LinkedIn not
+falsely flagged). Routes mounted (`/connect/drive/*`, `/connections/storage`, X owner-aware).
+**Remaining = USER external console setup** (Google Drive API + redirect + `drive.file` scope;
+X callback + paste Client ID/Secret) — see docs/publishing-media-constraints.md "Resolution".
+Live e2e (real Drive upload, real X OAuth) pending that console config.
+
+- P1 auto-refresh: cron flag + lazy `getActiveToken` refresh + shared `refreshIfDue()` + LinkedIn refresh ✅
+- P2 X vault: owner-aware `ConnectProvider` + X refresh vault-first ✅ (UI fields already existed)
+- P3 Drive: `drive-client.ts` + `materialize.ts` + `drive-connect-router.ts` + `processPost` seam + Storage UI ✅
+
 ## Context
 
 MKTAgent generates post images to local disk (`local:<abspath>`) but three platforms can't publish them:

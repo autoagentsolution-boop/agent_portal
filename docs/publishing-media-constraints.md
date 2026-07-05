@@ -1,6 +1,63 @@
 # Publishing Media Constraints (per-platform)
 
-Status: **known limitation, local-only environment** — recorded 2026-07-02.
+Status: **RESOLVED 2026-07-05** (code) — see "Resolution" below. Original analysis
+(recorded 2026-07-02) kept for context.
+
+---
+
+## Resolution (implemented 2026-07-05)
+
+Both deferred fixes shipped as three pieces. Code is live; each needs a one-time
+**external console** step (below) before it publishes for real.
+
+### Piece 1 — Token auto-refresh (fixes "X token expires in ~2h")
+- `ENABLE_TOKEN_CRON=true` (set in `MKTAgent/.env`) — the per-tenant refresh-ahead +
+  liveness sweep (`runTokenMaintenance`) now runs hourly.
+- **Lazy on-access refresh** in `getActiveToken` (`src/tokens/service.ts`): a token
+  inside its refresh window is refreshed inline at publish time — closes the gap between
+  sweeps (X's window is only 15 min). Shared `refreshIfDue()` helper = one implementation
+  for cron + lazy. Best-effort: a refresh hiccup falls through to the existing token.
+- Refresh and liveness are now **independent** in the sweep — a refresh failure (e.g.
+  LinkedIn tier issues no refresh_token) no longer flags an otherwise-live token.
+- LinkedIn `refresh()` added (standard `grant_type=refresh_token`), creds vault-first→env.
+
+### Piece 2 — X self-serve via vault (fixes "X_CLIENT_ID env-only")
+- X connect + refresh read `x_client_id` / `x_client_secret` **vault-first, env-fallback**.
+  A user pastes their X app Client ID/Secret on the X card → **Connect (OAuth)** → Authorize
+  → a user-context token + refresh_token land in the store, and auto-refresh keeps them live.
+- `ConnectProvider` methods are now owner-aware (`ownerId` threaded through); only X uses it
+  (Meta/Threads/LinkedIn keep DAIS's shared env app).
+
+### Piece 3 — Per-user Google Drive → lh3 public URL (fixes IG/Threads "no public URL")
+- **Connect once:** Connections → Storage → **Connect Google Drive** (`/connect/drive/start`,
+  scope `drive.file` — non-sensitive, no Google app review). Refresh token stored encrypted in
+  the vault; `google.auth.OAuth2` self-refreshes → no token-cron entry needed.
+- **At publish:** `processPost` (`src/scheduler/tick.ts`) uploads any `local:` **image** to the
+  owner's Drive **once per post** (`materializeForPublicUrl`), makes it anyone-with-link
+  readable, and hands IG/Threads the resulting lh3 URL. FB/LinkedIn/X keep `local:` (bytes off
+  disk). The lh3 URL is public regardless of our host → **works from localhost, no tunnel.**
+- Partial-success preserved: no Drive / upload failure → IG/Threads fail with a clear message
+  while FB/X still publish. **Video → IG/Threads stays unsupported** (lh3 serves a thumbnail).
+
+### One-time external console setup (USER action)
+
+**Google Cloud console** (same OAuth client as Google login, `GOOGLE_CLIENT_ID`):
+1. APIs & Services → **Enable the Google Drive API** for the project.
+2. Credentials → the OAuth 2.0 Client → **Authorized redirect URIs** → add
+   `http://localhost:7100/connect/drive/callback` (and the prod URL when deployed).
+3. OAuth consent screen → **Scopes** → add `.../auth/drive.file` (non-sensitive; if the app is
+   in Testing, add your Google account under **Test users**).
+
+**X Developer Portal** (per user who wants X):
+1. App → User authentication settings → App permissions **Read and write** → Type **Web App** →
+   Callback URI `http://localhost:7100/connect/x/callback` → Save.
+2. Copy the **OAuth 2.0** Client ID + Client Secret → paste on the X card in Connections →
+   Save → **Connect** → Authorize. (The old Postman manual-token path still works but has no
+   refresh — the Connect flow is the durable one.)
+
+---
+
+## Original analysis (2026-07-02) — known limitation, local-only environment
 
 How each adapter consumes post media splits the platforms into two camps, and that
 split is the source of the IG/Threads/X failures seen in the post playground.

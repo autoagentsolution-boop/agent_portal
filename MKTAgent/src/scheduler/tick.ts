@@ -17,6 +17,8 @@ import {
   updatePost,
 } from '../db/repos/post-repo.ts';
 import { publishTo } from '../social/index.ts';
+import { hasDriveConnected } from '../assets/drive-client.ts';
+import { materializeForPublicUrl, NEEDS_PUBLIC_URL } from '../assets/materialize.ts';
 import { publishPostStatus } from '../events/bus.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
@@ -60,8 +62,25 @@ export async function processPost(post: Post, publish: PublishFn): Promise<TickR
     throw e;
   }
 
+  // Materialize local: images → public Drive fileIds ONCE for platforms that fetch a
+  // public URL server-side (IG/Threads). FB/LinkedIn/X keep local: (they upload bytes off
+  // disk). Images only — lh3 serves a thumbnail for video fileIds. Best-effort: if Drive
+  // isn't connected or the upload fails, IG/Threads fall through to their adapter's clear
+  // public-URL error while the disk-upload platforms still publish (partial success holds).
+  let publicInput = input;
+  const needsPublic = input.assetType !== 'video' && post.platforms.some((p) => NEEDS_PUBLIC_URL.has(p));
+  if (needsPublic && (await hasDriveConnected(post.ownerId))) {
+    try {
+      publicInput = { ...input, assets: await materializeForPublicUrl(post.ownerId, input.assets) };
+    } catch (e) {
+      logger.warn('drive_materialize_failed', { postId: post.id, error: String(e).slice(0, 200) });
+    }
+  }
+
   // publishTo never throws → Promise.all is safe; one slow platform doesn't block.
-  const results = await Promise.all(post.platforms.map((p) => publish(p, input)));
+  const results = await Promise.all(
+    post.platforms.map((p) => publish(p, NEEDS_PUBLIC_URL.has(p) ? publicInput : input)),
+  );
   const outcome = aggregate(results);
   await updatePost(post.id, toWriteBack(outcome));
   await logRun(

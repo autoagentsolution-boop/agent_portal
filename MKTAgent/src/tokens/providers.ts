@@ -2,8 +2,19 @@
 // verbatim from the n8n mkt-meta-token-refresh workflow + the X OAuth2 model.
 import { env } from '../config/env.ts';
 import { withRetry } from '../lib/retry.ts';
+import { getPublisherAppCred } from '../db/repos/agent-credential-repo.ts';
 import type { PlatformTokenProvider, TokenCheckResult, RefreshResult } from './types.ts';
 import { DAY_MS } from './types.ts';
+
+// Resolve an app credential vault-first (per-user, set via the Connections form),
+// env-fallback (DAIS/system default). ownerId absent → env only.
+const appCred = async (ownerId: string | undefined, vaultKey: string, envVal: string): Promise<string> => {
+  if (ownerId) {
+    const v = await getPublisherAppCred(ownerId, vaultKey);
+    if (v) return v;
+  }
+  return envVal;
+};
 
 const G = env.GRAPH_VERSION;
 
@@ -58,10 +69,13 @@ const threads: PlatformTokenProvider = {
   },
 };
 
-// LinkedIn: 60d access token (+365d refresh). Liveness via /v2/userinfo. Refresh
-// deferred — 60d window is long enough for the early phase; flag when dead.
+// LinkedIn: 60d access token (+365d refresh). Liveness via /v2/userinfo. Refresh via
+// standard grant_type=refresh_token — only fires when the connect issued a refresh_token
+// (depends on the app tier / r_liveness offline scope). No refresh_token → refresh throws,
+// runTokenMaintenance logs it WITHOUT downgrading status; liveness still decides active.
 const linkedin: PlatformTokenProvider = {
   platform: 'linkedin',
+  refreshWhenWithinMs: 10 * DAY_MS,
   async check(token): Promise<TokenCheckResult> {
     const res = await withRetry(
       () => fetch('https://api.linkedin.com/v2/userinfo', { headers: { Authorization: `Bearer ${token}` } }),
@@ -70,6 +84,34 @@ const linkedin: PlatformTokenProvider = {
     if (!res.ok) return { alive: false, reason: `userinfo ${res.status}` };
     const j = (await res.json()) as any;
     return { alive: Boolean(j?.sub), identity: j?.name ?? j?.sub };
+  },
+  async refresh(_token, refreshToken, _meta, ownerId): Promise<RefreshResult> {
+    if (!refreshToken) throw new Error('linkedin refresh: no refresh_token (app tier issues none — liveness only)');
+    const clientId = await appCred(ownerId, 'linkedin_client_id', env.LINKEDIN_CLIENT_ID);
+    const clientSecret = await appCred(ownerId, 'linkedin_client_secret', env.LINKEDIN_CLIENT_SECRET);
+    if (!clientId || !clientSecret) throw new Error('linkedin refresh: client id/secret not set');
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    });
+    const res = await withRetry(
+      () => fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      }),
+      { label: 'li_refresh' },
+    );
+    const j = (await res.json()) as any;
+    if (!res.ok || !j?.access_token) throw new Error(`linkedin refresh failed: ${res.status} ${j?.error ?? ''}`);
+    const expiresIn = Number(j.expires_in ?? 0);
+    return {
+      token: j.access_token,
+      refreshToken: j.refresh_token ?? refreshToken,
+      expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
+    };
   },
 };
 
@@ -87,11 +129,12 @@ const x: PlatformTokenProvider = {
     const j = (await res.json()) as any;
     return { alive: Boolean(j?.data?.id), identity: j?.data?.username };
   },
-  async refresh(_token, refreshToken): Promise<RefreshResult> {
+  async refresh(_token, refreshToken, _meta, ownerId): Promise<RefreshResult> {
     if (!refreshToken) throw new Error('x refresh: no refresh_token');
-    const clientId = process.env.X_CLIENT_ID ?? '';
-    const clientSecret = process.env.X_CLIENT_SECRET ?? '';
-    if (!clientId) throw new Error('x refresh: X_CLIENT_ID not set');
+    // Vault-first (per-user creds pasted in Connections) → env fallback (DAIS default).
+    const clientId = await appCred(ownerId, 'x_client_id', env.X_CLIENT_ID);
+    const clientSecret = await appCred(ownerId, 'x_client_secret', env.X_CLIENT_SECRET);
+    if (!clientId) throw new Error('x refresh: X_CLIENT_ID not set (paste it on the X card or set env)');
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,

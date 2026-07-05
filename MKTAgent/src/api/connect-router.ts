@@ -74,7 +74,7 @@ connectRouter.get(
     if (!platform) return fail(res, 404, 'unknown_platform');
     const provider = connectProviders[platform];
     try {
-      provider.assertConfigured();
+      await provider.assertConfigured(req.userId!);
     } catch (e) {
       // App creds not provisioned yet — external-onboarding gate, not a code bug.
       logger.warn('connect_not_configured', { platform, error: String(e) });
@@ -83,10 +83,11 @@ connectRouter.get(
 
     const verifier = provider.usesPkce ? randomBytes(32).toString('base64url') : undefined;
     const state = issueState({ ownerId: req.userId!, platform, pkce: verifier });
-    const url = provider.buildAuthUrl(
+    const url = await provider.buildAuthUrl(
       redirectUri(platform),
       state,
       verifier ? pkceChallenge(verifier) : undefined,
+      req.userId!,
     );
     res.redirect(url);
   }),
@@ -107,7 +108,7 @@ connectRouter.get(
 
     const provider = connectProviders[platform];
     try {
-      const ex = await provider.exchangeCode(code, redirectUri(platform), st.pkce);
+      const ex = await provider.exchangeCode(code, redirectUri(platform), st.pkce, st.ownerId);
       await upsertToken({
         ownerId: st.ownerId,
         platform,

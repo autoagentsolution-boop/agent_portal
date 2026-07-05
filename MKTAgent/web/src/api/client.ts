@@ -173,6 +173,11 @@ export const api = {
 
   // ---- Connections (M2-lite) ----
   listConnections: () => request<ConnectionDto[]>('/connections'),
+  // Media storage targets (Drive is not a SocialPlatform → reported separately).
+  storageStatus: () =>
+    request<{ local: { connected: boolean }; drive: { connected: boolean; connectPath: string } }>(
+      '/connections/storage',
+    ),
   // Store a platform credential (OAuth-less form path) encrypted in the vault under
   // the publisher agent. Value is write-only — never read back.
   savePublisherCredential: (key: string, value: string) =>

@@ -15,6 +15,7 @@ import { postsRouter } from './api/posts-router.ts';
 import { campaignsRouter } from './api/campaigns-router.ts';
 import { authRouter } from './api/auth-router.ts';
 import { connectRouter } from './api/connect-router.ts';
+import { driveConnectRouter } from './api/drive-connect-router.ts';
 import { eventsRouter } from './api/events-router.ts';
 import { leadsRouter } from './api/leads-router.ts';
 import { agentRouter } from './api/agent-router.ts';
@@ -51,6 +52,9 @@ app.use('/auth', authRouter);
 
 // Per-user social connect (T4). /start self-guards with requireAuth; /callback is
 // public (platform redirect, no auth header) but ownerId rides a signed state JWT.
+// Drive (Piece 3) mounts FIRST so /connect/drive/* isn't shadowed by the social
+// router's /connect/:platform match.
+app.use('/connect/drive', driveConnectRouter);
 app.use('/connect', connectRouter);
 
 // P7 review-API slice — JWT/tenant-scoped (T2). requireAuth attaches req.userId;

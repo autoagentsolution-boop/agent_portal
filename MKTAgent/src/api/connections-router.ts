@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { ok, asyncHandler } from './http.ts';
 import { listTokenStatusForOwner, type TokenStatusRow } from '../db/repos/token-repo.ts';
 import { listPublisherPlatformTokenKeys, platformTokenKey } from '../db/repos/agent-credential-repo.ts';
+import { hasDriveConnected } from '../assets/drive-client.ts';
 import { CONNECTORS, connectStartPath } from '../connectors/registry/connector-registry.ts';
 import type { SocialPlatform, TokenStatus } from '../../prisma/generated/prisma/client.ts';
 
@@ -55,5 +56,19 @@ connectionsRouter.get(
       };
     });
     ok(res, data, { count: data.length, nextCursor: null });
+  }),
+);
+
+// Media storage targets. Drive is NOT a SocialPlatform (own connect route family), so its
+// connected state — presence of the per-user Drive refresh token in the vault — is reported
+// here, separate from the social connections list. Local is always active.
+connectionsRouter.get(
+  '/storage',
+  asyncHandler(async (req, res) => {
+    const driveConnected = await hasDriveConnected(req.userId!);
+    ok(res, {
+      local: { connected: true },
+      drive: { connected: driveConnected, connectPath: '/connect/drive/start' },
+    });
   }),
 );
