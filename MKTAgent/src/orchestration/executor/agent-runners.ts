@@ -9,6 +9,7 @@ import { campaignIdeas, strategyBrief, storyboard, videoPrompt, type ArtifactTyp
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
 import { createPost, getPostForOwner, approveReview, setPostHeroFile, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
+import { getUserById } from '../../db/repos/user-repo.ts';
 import { generateForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
@@ -298,7 +299,13 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const concept = ctx.upstream.content_concept as
     | { mainAngle?: string; keyMessage?: string; copy?: { body?: string } }
     | undefined;
+  // The captions become the video voiceover, so pin them to the USER's language: the campaign
+  // language if set, else the user's account default, else English — never drift to the
+  // product's language (which would make a VN-named product narrate in Vietnamese by accident).
+  const campaignLang = ctx.goal.slots.language && ctx.goal.slots.language.trim() ? ctx.goal.slots.language.trim() : null;
+  const effectiveLang = campaignLang ?? (await getUserById(ctx.ownerId))?.defaultLanguage ?? 'en';
   const parts = [goalContext(ctx)];
+  if (!campaignLang) parts.push(`Language: ${effectiveLang}`); // goalContext already adds it when set
   if (concept?.keyMessage) parts.push(`Key message: ${concept.keyMessage}`);
   if (concept?.mainAngle) parts.push(`Main angle: ${concept.mainAngle}`);
   const planPrompt = parts.join('\n');
