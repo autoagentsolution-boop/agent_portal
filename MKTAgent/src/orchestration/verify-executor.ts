@@ -37,6 +37,7 @@ const stubLlmJson: LlmJsonFn = async (systemPrompt) => {
 };
 // Stub Veo i2v — return a fake mp4 path WITHOUT rendering a real (slow, paid) video.
 const stubVideo = async () => ({ outputFile: '/tmp/stub-video.mp4', cached: false, durationMs: 0 });
+const stubTts = async () => ({ outputFile: '/tmp/stub-voice.wav', cached: false });
 
 // Stub image gen — return a fake local path WITHOUT generating a real image / file.
 // The publish path is per-platform stubbed so fetchBinary is never called.
@@ -61,7 +62,7 @@ async function main(): Promise<void> {
     await createNodes(run.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
 
     // First pass — should run concept_writer + infographic, then HALT at publisher.
-    const r1 = await runWorkflow(run.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo });
+    const r1 = await runWorkflow(run.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts });
     check('first pass halts needs_approval', r1.status === 'needs_approval', r1);
     if (r1.status === 'needs_approval') {
       const pub = planned.plan.nodes.find((n) => n.agentId === 'publisher')!;

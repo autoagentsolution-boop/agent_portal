@@ -29,6 +29,7 @@ const stubLlmJson: LlmJsonFn = async (systemPrompt) => {
   return { positioning: 'Stub positioning', audience: 'Stub audience', pillars: ['p1', 'p2'], funnelStage: 'awareness' };
 };
 const stubVideo = async () => ({ outputFile: '/tmp/stub-video.mp4', cached: false, durationMs: 0 });
+const stubTts = async () => ({ outputFile: '/tmp/stub-voice.wav', cached: false });
 const stubImage = async () => ({ imagePath: '/files/images/stub.png', outputFile: '/tmp/stub-image.png', cached: false, durationMs: 0 });
 
 const call = async (method: string, path: string, token: string): Promise<{ status: number; body: any }> => {
@@ -46,7 +47,7 @@ async function main(): Promise<void> {
 
   const user = await prisma.user.create({ data: { email: `flowcost-${Date.now()}@test.local`, defaultLanguage: 'en' } });
   const token = signSession({ sub: user.id, email: user.email });
-  const runOpts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo };
+  const runOpts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts };
 
   try {
     // Seed a TEMPLATE (saved flow) with an infographic so nodes spend.

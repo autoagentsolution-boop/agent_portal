@@ -45,6 +45,7 @@ const stubLlmJson: LlmJsonFn = async (systemPrompt) => {
   return { positioning: 'Stub positioning', audience: 'Stub audience', pillars: ['p1', 'p2'], funnelStage: 'awareness' };
 };
 const stubVideo = async () => ({ outputFile: '/tmp/stub-video.mp4', cached: false, durationMs: 0 });
+const stubTts = async () => ({ outputFile: '/tmp/stub-voice.wav', cached: false });
 const stubImage = async (): Promise<{ imagePath: string; outputFile: string; cached: boolean; durationMs: number }> => ({
   imagePath: '/files/images/stub.png', outputFile: '/tmp/stub-image.png', cached: false, durationMs: 0,
 });
@@ -107,7 +108,7 @@ async function main(): Promise<void> {
 
     const instGoal = analyzeDeterministic('Build a full branding campaign for our AI automation product on facebook with an infographic');
     const instPlan = workflowPlan.parse(instance!.plan);
-    const r1 = await runWorkflow(instance!.id, user.id, instGoal, instPlan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo });
+    const r1 = await runWorkflow(instance!.id, user.id, instGoal, instPlan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts });
     check('instance run halts at publisher gate', r1.status === 'needs_approval', r1);
 
     const campaignsAfter = await prisma.campaign.count({ where: { ownerId: user.id } });

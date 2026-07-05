@@ -31,10 +31,11 @@ const stubLlmJson: LlmJsonFn = async (sys) => {
   return { positioning: 'P', audience: 'Aud', pillars: ['p1'], funnelStage: 'awareness' };
 };
 const stubVideo = async () => ({ outputFile: '/tmp/stub-video.mp4', cached: false, durationMs: 0 });
+const stubTts = async () => ({ outputFile: '/tmp/stub-voice.wav', cached: false });
 let imageRuns = 0;
 const stubImage = async () => { imageRuns++; return { imagePath: `/tmp/img${imageRuns}.png`, outputFile: `/tmp/img${imageRuns}.png`, cached: false, durationMs: 1 }; };
 
-const opts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo };
+const opts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts };
 
 async function main(): Promise<void> {
   const user = await prisma.user.create({ data: { email: `rr-${Date.now()}@test.local` } });

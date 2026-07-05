@@ -34,3 +34,20 @@ export const stitchClips = async (clipPaths: string[]): Promise<string> => {
   await runFfmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', outputFile]);
   return outputFile;
 };
+
+// Mux a voiceover onto a (silent) video → new mp4. Output length ALWAYS equals the VIDEO:
+// `apad` pads the audio with trailing silence to infinity, then `-shortest` clamps to the
+// video length. So a short voiceover plays then goes silent (video keeps running), and a long
+// voiceover is trimmed to the video — never a truncated video. Video copied; audio → AAC.
+export const muxAudio = async (videoPath: string, audioPath: string): Promise<string> => {
+  await mkdir(VIDEO_OUTPUT_DIR, { recursive: true });
+  const key = createHash('sha256').update(`${videoPath}|${audioPath}`).digest('hex').slice(0, 24);
+  const outputFile = path.join(VIDEO_OUTPUT_DIR, `voiced-${key}.mp4`);
+  await runFfmpeg([
+    '-y', '-i', videoPath, '-i', audioPath,
+    '-filter_complex', '[1:a]apad[a]',
+    '-map', '0:v:0', '-map', '[a]',
+    '-c:v', 'copy', '-c:a', 'aac', '-shortest', outputFile,
+  ]);
+  return outputFile;
+};

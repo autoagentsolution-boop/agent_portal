@@ -15,7 +15,8 @@ import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
 import { ideationSystemPrompt, strategySystemPrompt, storyboardSystemPrompt } from '../prompts/agent-prompts.ts';
 import { generate as generateImage, type ImageResult, type ImageRequest } from '../../imagegen/nano-banana.ts';
 import { generate as generateVideo, type VideoRequest, type VideoResult } from '../../video/veo.ts';
-import { stitchClips } from '../../video/stitch.ts';
+import { generate as generateTts, type TtsRequest } from '../../video/tts.ts';
+import { stitchClips, muxAudio } from '../../video/stitch.ts';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
 import { logger } from '../../lib/logger.ts';
 import { estimateLlmCost, imageCost, videoClipCost, sumCost, type NodeCost } from './node-cost.ts';
@@ -42,6 +43,8 @@ export interface RunnerContext {
   // Video generation seam (video agent — Veo i2v). Stubbed in DRY-RUN verification so
   // no real (slow, paid) video is rendered.
   videoFn?: (req: VideoRequest) => Promise<VideoResult>;
+  // Voiceover (TTS) seam (video agent). Stubbed in DRY-RUN verification.
+  ttsFn?: (req: TtsRequest) => Promise<{ outputFile: string; cached: boolean }>;
   // The Post row id materialized by concept_writer, reused by publisher.
   postId?: string;
 }
@@ -364,8 +367,23 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     if (!clip.cached) rendered++;
   }
 
-  const stitched = await stitchClips(clipPaths);
-  const videoRef = `local:${stitched}`;
+  let finalVideo = await stitchClips(clipPaths);
+
+  // Voiceover: narrate the frame captions (already in the campaign language) and mux the audio
+  // onto the stitched (silent) video. Best-effort — a TTS/mux hiccup falls back to the silent
+  // video rather than failing the whole node.
+  const narration = frames.map((f) => (f.caption ?? '').trim()).filter(Boolean).join(' ');
+  if (narration) {
+    try {
+      const tts = ctx.ttsFn ?? ((req: TtsRequest) => generateTts(req));
+      const audio = await tts({ text: narration });
+      finalVideo = await muxAudio(finalVideo, audio.outputFile);
+    } catch (e) {
+      logger.warn('video_voiceover_failed', { error: String(e).slice(0, 160) });
+    }
+  }
+
+  const videoRef = `local:${finalVideo}`;
   if (ctx.postId) {
     const updated = await setPostHeroFile(ctx.postId, ctx.ownerId, videoRef);
     if (!updated) throw new Error('video: could not attach video to post (locked or not found)');
