@@ -5,14 +5,16 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-05
 
-### Storyboard + Video agents live (no more stubs)
-The `storyboard` and `video` orchestration agents now produce real output instead of
-placeholders. `runStoryboard` turns the content concept into an ordered scene list + voiceover
-script (in the campaign language); `runVideo` synthesizes the storyboard into a single Veo-style
-generation prompt (English) with `durationSec` snapped to the model's allowed {4,6,8}. Both are
-LLM text→JSON (~$0.0006/call). Actual mp4 rendering is still out of scope — that infra lives in the
-separate video-farm scripts. The DRY-RUN `stubLlmJson` in the 4 verify scripts learned the new
-shapes so the DAG runs end-to-end with no spend. (Only `content_search` remains a stub — optional.)
+### Storyboard = real images · Video = Veo i2v (rendered mp4)
+The `storyboard` and `video` agents produce real **media**, reviewable in the UI (corrects an
+earlier text-only version). `runStoryboard`: LLM plans 3-6 frames → generates an image per frame
+(nano-banana), tolerant of the ~1/3 flaky no-image responses (skips a failed frame). `runVideo`:
+new `src/video/veo.ts` (Veo i2v `predictLongRunning`, veo-3.1-lite, poll + cache) animates each
+frame → `src/video/stitch.ts` ffmpeg-concats the clips → one mp4 → set as the Post hero. ffmpeg
+added to the Docker image; `/media/videos` served static; `videoFn` seam stubbed in the 4 verify
+scripts (no Veo spend in DRY). Review UI renders a storyboard gallery + a `<video>` player. Live:
+storyboard = 4 real VN-captioned frames ($0.16); Veo left for a paid live smoke test. (Only
+`content_search` remains a stub.)
 
 ### Drive uploads organized by campaign folder + ordered filenames
 Generated images now upload into `MKTAgent/<campaign>/` (find-or-create folder, cached) instead
