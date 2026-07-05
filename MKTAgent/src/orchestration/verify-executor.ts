@@ -62,7 +62,7 @@ async function main(): Promise<void> {
     await createNodes(run.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
 
     // First pass — should run concept_writer + infographic, then HALT at publisher.
-    const r1 = await runWorkflow(run.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts });
+    const r1 = await runWorkflow(run.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts, autoPublish: false });
     check('first pass halts needs_approval', r1.status === 'needs_approval', r1);
     if (r1.status === 'needs_approval') {
       const pub = planned.plan.nodes.find((n) => n.agentId === 'publisher')!;
@@ -122,7 +122,7 @@ async function main(): Promise<void> {
     if (planned2.ok) {
       const run2 = await createRun({ ownerId: user.id, goal: goal2, plan: planned2.plan, status: 'planned' });
       await createNodes(run2.id, user.id, planned2.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
-      await runWorkflow(run2.id, user.id, goal2, planned2.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson });
+      await runWorkflow(run2.id, user.id, goal2, planned2.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, autoPublish: false });
       const pub2 = planned2.plan.nodes.find((n) => n.agentId === 'publisher')!;
       const r2b = await runWorkflow(run2.id, user.id, goal2, planned2.plan, { geminiFn: stubGemini, publishFn: stubPublish, approveNodeId: pub2.nodeId });
       const full2 = await getRunWithNodes(run2.id, user.id);

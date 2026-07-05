@@ -35,7 +35,9 @@ const stubTts = async () => ({ outputFile: '/tmp/stub-voice.wav', cached: false 
 let imageRuns = 0;
 const stubImage = async () => { imageRuns++; return { imagePath: `/tmp/img${imageRuns}.png`, outputFile: `/tmp/img${imageRuns}.png`, cached: false, durationMs: 1 }; };
 
-const opts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts };
+// autoPublish:false forces the manual publisher gate so this suite exercises the
+// gate/resume + single-node re-run mechanics (item 2 auto-publish is opt-out here).
+const opts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts, autoPublish: false };
 
 async function main(): Promise<void> {
   const user = await prisma.user.create({ data: { email: `rr-${Date.now()}@test.local` } });

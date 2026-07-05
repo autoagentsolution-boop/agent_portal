@@ -590,9 +590,22 @@ registry.registerPath({
   path: '/orchestration/runs/{id}/execute',
   tags: ['orchestration'],
   summary: 'Execute a planned/failed run (async) → returns immediately as running',
-  description: 'Flips the run to running and executes the DAG DETACHED (the request returns at once — no long hang). SSE (/events) drives live node status; the executor halts BEFORE the external-write node (publisher) → needs_approval. Re-runnable from a failed state.',
+  description: 'Flips the run to running and executes the DAG DETACHED (the request returns at once — no long hang). SSE (/events) drives live node status. Auto-publish (default): a cleanly-postable post publishes with no Approve step; the executor still halts at the publisher for a review when a target platform cannot take the asset type → needs_approval. The pre-video cost gate always holds. Pass autoPublish=false to force the manual publisher gate. Re-runnable from a failed state.',
   security: userAuth,
-  request: { params: runIdParam },
+  request: {
+    params: runIdParam,
+    body: {
+      required: false,
+      content: json(
+        z.object({
+          autoPublish: z
+            .boolean()
+            .optional()
+            .describe('Default true. false → halt at the publisher gate for manual approval.'),
+        }),
+      ),
+    },
+  },
   responses: {
     200: { description: 'Run now running (live status via SSE)', content: json(dataEnvelope(WorkflowRunDto)) },
     401: errorResponse('Unauthorized'),

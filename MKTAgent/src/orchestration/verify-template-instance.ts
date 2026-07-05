@@ -108,7 +108,7 @@ async function main(): Promise<void> {
 
     const instGoal = analyzeDeterministic('Build a full branding campaign for our AI automation product on facebook with an infographic');
     const instPlan = workflowPlan.parse(instance!.plan);
-    const r1 = await runWorkflow(instance!.id, user.id, instGoal, instPlan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts });
+    const r1 = await runWorkflow(instance!.id, user.id, instGoal, instPlan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts, autoPublish: false });
     check('instance run halts at publisher gate', r1.status === 'needs_approval', r1);
 
     const campaignsAfter = await prisma.campaign.count({ where: { ownerId: user.id } });

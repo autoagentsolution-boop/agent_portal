@@ -20,6 +20,7 @@ import {
   setNodeStatus,
 } from '../../db/repos/workflow-run-repo.ts';
 import { getPostByRunId } from '../../db/repos/post-repo.ts';
+import { partitionByPostability } from '../../social/postability.ts';
 import { publishNodeStatus } from '../../events/bus.ts';
 import { logRun } from '../../db/client.ts';
 import type { NodeExecResult } from './agent-executor.ts';
@@ -52,6 +53,12 @@ export interface ExecuteOptions {
   ttsFn?: RunnerContext['ttsFn'];
   // When true, the executor RUNS the gated node instead of halting (post-approval).
   approveNodeId?: string;
+  // Auto-publish (item 2): when true (DEFAULT), the publisher external-write gate is
+  // skipped so a post flows straight through to publish with no Approve step. The
+  // pre-VIDEO cost gate is NOT affected — that halt is keyed on agentId 'video'. Set
+  // false to restore the manual "nothing publishes until you approve" gate (also how
+  // the verify scripts exercise the gate/resume path without ever publishing).
+  autoPublish?: boolean;
   // Single-node re-execute: run ONLY this node (its upstream artifacts are seeded from
   // what's already stored), then stop. Its downstream dependents are reset to pending by
   // the caller (marked stale) but NOT auto-run — the user re-runs them explicitly.
@@ -157,7 +164,22 @@ export const runWorkflow = async (
     // Approval halt: a gated node stops the run UNLESS it's the one just approved. Read the
     // gating policy from the LIVE registry (not the frozen plan) so a policy change — e.g.
     // adding the pre-video cost gate — applies to already-planned templates/runs too.
-    const requiresApproval = getAgent(planNode.agentId)?.requiresApproval ?? planNode.requiresApproval;
+    const gated = getAgent(planNode.agentId)?.requiresApproval ?? planNode.requiresApproval;
+    // Auto-publish default (item 2): waive the publisher gate when the post is cleanly
+    // postable — every target platform's adapter supports the asset type. The connection
+    // resolver already ran before the DAG, so by here every target IS connected; the only
+    // remaining blocker is asset compatibility (item 1). If some target can't take the asset,
+    // KEEP the gate so the publish review (item 3) surfaces exactly what would be skipped
+    // before anything goes out. The video cost gate (agentId 'video') is separate and always
+    // holds. autoPublish=false restores the manual gate (verify scripts, opt-out).
+    const autoPublish = opts.autoPublish ?? true;
+    let requiresApproval = gated;
+    if (gated && planNode.agentId === 'publisher' && autoPublish) {
+      const targets = attachedPost?.platforms ?? [];
+      const cleanlyPostable =
+        !!postAssetType && targets.length > 0 && partitionByPostability(targets, postAssetType).skipped.length === 0;
+      requiresApproval = !cleanlyPostable; // clean → auto-run; any skip/unknown → gate for review
+    }
     if (requiresApproval && opts.approveNodeId !== planNodeId) {
       await setNodeStatus(nodeRow.id, 'awaiting_approval');
       await setRunStatus(runId, 'needs_approval');

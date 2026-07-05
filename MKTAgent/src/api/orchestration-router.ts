@@ -268,9 +268,15 @@ orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
     return respondRun(res, run.id, req.userId!, { requiredActions: resolution.required });
   }
 
+  // Auto-publish (item 2): default ON — a cleanly-postable post publishes with no Approve
+  // step; the executor still halts for the publish review when some target can't take the
+  // asset (item 1/3). Callers (e.g. verify scripts) may opt out with autoPublish=false to
+  // force the manual gate. Only an explicit `false` disables it; anything else → default.
+  const autoPublish = (req.body as { autoPublish?: unknown } | undefined)?.autoPublish !== false;
+
   // Claim into running before responding so a double-click can't spawn two executors.
   await setRunStatus(run.id, 'running');
-  launchWorkflow(run.id, req.userId!, goal, plan);
+  launchWorkflow(run.id, req.userId!, goal, plan, { autoPublish });
   return respondRun(res, run.id, req.userId!);
 }));
 
