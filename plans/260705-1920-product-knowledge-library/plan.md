@@ -73,6 +73,20 @@ platform, can it post THIS format (assetType) given the user's setup/connection?
 compatible vs incompatible platforms (and why) so the user sees exactly what will go where. This
 replaces the opaque gate with an informative pre-publish check (pairs with items 1 + 2).
 
+### 5. Per-platform ASSET-TYPE SETUP (the user CHOOSES asset type per platform)
+Distinct from item 1 (which is validation): the user should be able to CONFIGURE a different asset
+type per target platform during setup — e.g. FB = carousel, IG = video, LinkedIn/X = single image.
+This is the core of per-platform asset type (#4 in `260705-1846-product-knowledge-and-cost` plan):
+- Data model: replace the single `Post.assetType` with a per-platform map (e.g.
+  `platformAssets: { platform: assetType }[]`, JSON col or child table; additive migration, legacy
+  rows → single-type). Keep `assetType` as the default.
+- UI: in the post/campaign brief AND at the Master Agent, let the user pick asset type per selected
+  platform (dropdown per platform), defaulting to what each platform supports (item 1).
+- Executor: the "heavier storyboard" — generate each DISTINCT asset type once (carousel slides +
+  video keyframes+video), de-duped by type; publisher fans out per platform using its asset.
+- Media model: per-asset-type hero refs on the post (carousel CSV, video ref, image ref); publisher
+  picks the right one per platform. Depends on items 1 (validation) + 3 (publish review).
+
 ### 4. Copy-gen vs concept_writer — duplicated?
 `concept_writer` wraps `generateForPost` (copy-gen). Review whether they're redundant: is
 concept_writer just an orchestration adapter around copy-gen, or is there real duplication to
