@@ -507,7 +507,9 @@ a { color: var(--accent); }
 .dag-node.st-awaiting_approval { border-color: var(--amber); }
 .dag-node.st-failed { border-color: var(--red); }
 .dag-dot { font-size: 13px; width: 16px; text-align: center; }
-.dag-node.st-running .dag-dot { color: var(--accent); }
+@keyframes dag-spin { to { transform: rotate(360deg); } }
+.dag-node.st-running .dag-dot { color: var(--accent); display: inline-block; animation: dag-spin 1.1s linear infinite; }
+.dag-elapsed { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--accent); font-variant-numeric: tabular-nums; }
 .dag-node.st-completed .dag-dot { color: var(--green); }
 .dag-node.st-awaiting_approval .dag-dot { color: var(--amber); }
 .dag-node.st-failed .dag-dot { color: var(--red); }

@@ -265,11 +265,19 @@ postsRouter.post(
     const body = parseOr422(res, approvePostBody, req.body ?? {});
     if (!body) return;
     // 404 first (not found / cross-tenant → no existence leak), then 409 for state.
-    if (!(await getPostForOwner(req.params.id, req.userId!))) return fail(res, 404, 'post_not_found');
+    const current = await getPostForOwner(req.params.id, req.userId!);
+    if (!current) return fail(res, 404, 'post_not_found');
     const updated = await approveReview(req.params.id, req.userId!, body.scheduledAt ?? new Date());
-    if (!updated) return fail(res, 409, 'not_in_review', 'post is not in review state');
-    publishPostStatus(req.userId!, { postId: updated.id, status: updated.status, campaignId: updated.campaignId });
-    ok(res, toPostDto(updated));
+    if (updated) {
+      publishPostStatus(req.userId!, { postId: updated.id, status: updated.status, campaignId: updated.campaignId });
+      return ok(res, toPostDto(updated));
+    }
+    // Idempotent: a flow post's concept step auto-approves review→ready, so a stale card can
+    // fire Approve on a post that already moved on. If it's already at/past approval, treat
+    // this as a no-op success (returns the fresh DTO → the card self-corrects) rather than a
+    // dead-end 409. Only a truly pre-review post (brief/rework) has nothing to approve.
+    if (current.status !== 'brief' && current.status !== 'rework') return ok(res, toPostDto(current));
+    return fail(res, 409, 'not_in_review', 'post is not in review state');
   }),
 );
 

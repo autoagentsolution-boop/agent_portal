@@ -25,9 +25,15 @@ services:
       DATABASE_URL: postgresql://mktagent:mktagent@postgres:5432/mktagent
     ports:
       - "7100:7100"
+    # Persist generated media (output/images, videos, audio) across rebuilds/recreates.
+    # Without this the DB keeps artifact refs (local:<hash>) but the files vanish on every
+    # rebuild → re-running Video hits ENOENT reading a storyboard frame that no longer exists.
+    volumes:
+      - mktagent-media:/app/output
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   mktagent-pg:
+  mktagent-media:

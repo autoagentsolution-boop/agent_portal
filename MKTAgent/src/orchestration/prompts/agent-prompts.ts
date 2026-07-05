@@ -12,7 +12,25 @@ Rules:
 - Ground every idea in the "Product knowledge" facts provided — do not invent capabilities or claims beyond them.
 - 3-5 ideas, each one concise sentence describing an angle/hook.
 - "chosen" must be one of the ideas (verbatim or a tightened version).
-- Write in the campaign's "Language" if stated; otherwise match the product's language. Write ALL idea text in that one language — do not mix languages.
+- Write EVERY idea entirely in the "Language" specified above (the user's language). Never use another language — not even the language of the product's name — and never mix languages.
+- Output JSON only. No prose, no markdown fences.`;
+
+// Carousel deliverable: a SWIPEABLE explainer of the product's value — NOT cinematic video
+// frames. Each slide is a self-contained marketing image advancing a business-story narrative
+// (hook → what it is → how it works → benefit → CTA), illustrating the PRODUCT and its workflow.
+export const storyboardCarouselSystemPrompt = `You are AgentPortal's carousel agent. Plan the images for a SWIPEABLE social CAROUSEL that explains the product's value to its audience — a mini explainer deck, NOT a cinematic video.
+Return ONLY valid JSON of this exact shape:
+{
+  "frames": [
+    { "index": 0, "imagePrompt": "a detailed English prompt for an image generator: subject, composition, style", "caption": "the on-slide text for this frame" }
+  ]
+}
+Rules:
+- 4 to 6 slides forming ONE clear narrative the reader swipes through: hook/problem → what the product is → how it works (its business workflow) → key benefits / who it helps → call to action.
+- Each slide is a COMPLETE, self-contained marketing image — NOT a movie still of a person. Illustrate the PRODUCT and its value: product-in-context, screens/UI, a simple workflow diagram, before→after, benefit visuals. Concrete and on-brand.
+- CONSISTENCY: one shared visual style + brand look across ALL slides. Begin every "imagePrompt" with one identical style+brand anchor phrase, then add what is unique to that slide.
+- "imagePrompt" is written in ENGLISH (image models perform best in English), grounded in the Product knowledge — invent nothing beyond it.
+- "caption" is the on-slide copy, written ENTIRELY in the "Language" specified above (the user's language) — never mix languages, never use the product name's language if it differs.
 - Output JSON only. No prose, no markdown fences.`;
 
 export const storyboardSystemPrompt = `You are AgentPortal's storyboard agent. Plan a set of product images that together tell a short visual story about the product (a storyboard).
@@ -41,6 +59,6 @@ Return ONLY valid JSON of this exact shape:
 Rules:
 - Ground the brief in the "Product knowledge" facts provided — do not invent capabilities or claims beyond them.
 - 2-4 pillars, each a short phrase.
-- funnelStage must be one of the four listed values.
-- Write in the campaign's "Language" if stated; otherwise match the product's language. Write ALL text in that one language — do not mix languages.
+- funnelStage must be one of the four listed values (these enum values stay in English; ALL other text follows the Language rule below).
+- Write EVERY other field entirely in the "Language" specified above (the user's language). Never use another language — not even the language of the product's name — and never mix languages.
 - Output JSON only. No prose, no markdown fences.`;

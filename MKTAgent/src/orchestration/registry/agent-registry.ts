@@ -84,7 +84,10 @@ export const AGENTS: AgentDefinition[] = [
     optional: [],
     produces: ['video_prompt'],
     requiresConnection: false,
-    requiresApproval: false,
+    // Cost gate: Veo i2v is the most expensive step. Halt BEFORE it so the user reviews the
+    // (already-generated) storyboard frames and can re-run/adjust them before spending on
+    // video. The executor's approval-halt supports this sequential gate (video, then publisher).
+    requiresApproval: true,
   },
   {
     id: 'publisher',

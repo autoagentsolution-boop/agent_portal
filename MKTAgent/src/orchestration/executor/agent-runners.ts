@@ -8,16 +8,18 @@ import type { GoalSpec } from '../schemas/goal-spec.ts';
 import { campaignIdeas, strategyBrief, storyboard, videoPrompt, type ArtifactType } from '../schemas/artifact-schemas.ts';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
-import { createPost, getPostForOwner, approveReview, setPostHeroFile, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
+import { createPost, getPostForOwner, getPostForCopyGen, approveReview, setPostHeroFile, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
+import { resolveCopyConfig } from '../../copygen/resolve-config.ts';
 import { getUserById } from '../../db/repos/user-repo.ts';
 import { generateForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
-import { ideationSystemPrompt, strategySystemPrompt, storyboardSystemPrompt } from '../prompts/agent-prompts.ts';
+import { ideationSystemPrompt, strategySystemPrompt, storyboardSystemPrompt, storyboardCarouselSystemPrompt } from '../prompts/agent-prompts.ts';
 import { generate as generateImage, type ImageResult, type ImageRequest } from '../../imagegen/nano-banana.ts';
 import { generate as generateVideo, type VideoRequest, type VideoResult } from '../../video/veo.ts';
 import { generate as generateTts, type TtsRequest } from '../../video/tts.ts';
 import { stitchClips, muxAudio } from '../../video/stitch.ts';
+import { access } from 'node:fs/promises';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
 import { logger } from '../../lib/logger.ts';
 import { estimateLlmCost, imageCost, videoClipCost, sumCost, type NodeCost } from './node-cost.ts';
@@ -184,8 +186,23 @@ const runPublisher = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 
 // Compact, language-agnostic description of the goal for the ideation/strategy LLM
 // prompts. Includes upstream artifacts (research, chosen idea) when present.
-const goalContext = (ctx: RunnerContext): string => {
+// Single source of truth for the language a run's CONTENT is generated in. Deliberately
+// SEPARATE from the master-agent chat language (which mirrors the user's input): the flow
+// follows the user's SETUP — post → campaign → user default — so a user can chat in one
+// language and still post in the language they configured. Same chain copy-gen uses, so
+// copy / ideation / strategy / infographic / storyboard voiceover all agree. Falls back to
+// the goal slot / user default only for legacy runs with no attached post.
+const resolveRunLanguage = async (ctx: RunnerContext): Promise<string> => {
+  const post = ctx.postId ? await getPostForCopyGen(ctx.postId, ctx.ownerId) : null;
+  if (post) return resolveCopyConfig(post).language;
+  return ctx.goal.slots.language?.trim() || (await getUserById(ctx.ownerId))?.defaultLanguage || 'en';
+};
+
+// `resolvedLang` (the setup language) pins the CONTENT language when provided; without it
+// this falls back to the goal slot (cost-estimation callers that don't send an LLM prompt).
+const goalContext = (ctx: RunnerContext, resolvedLang?: string): string => {
   const { goal, upstream } = ctx;
+  const language = (resolvedLang ?? goal.slots.language ?? '').trim() || null;
   const lines = [
     `Product: ${goal.slots.product ?? 'Unspecified product'}`,
     goal.slots.productDetails ? `Product knowledge (use these facts, do not invent beyond them): ${goal.slots.productDetails}` : null,
@@ -193,7 +210,7 @@ const goalContext = (ctx: RunnerContext): string => {
     goal.slots.targetAudience ? `Audience: ${goal.slots.targetAudience}` : null,
     goal.slots.angle ? `Angle: ${goal.slots.angle}` : null,
     goal.slots.brandVoice ? `Brand voice: ${goal.slots.brandVoice}` : null,
-    goal.slots.language ? `Language: ${goal.slots.language}` : null,
+    language ? `Language: ${language}` : null,
     goal.platforms.length ? `Platforms: ${goal.platforms.join(', ')}` : null,
   ].filter(Boolean);
   const research = upstream.research_summary as { summary?: string } | undefined;
@@ -207,7 +224,7 @@ const goalContext = (ctx: RunnerContext): string => {
 // output against the artifact schema here so a bad response fails the node loudly.
 const runIdeation = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
-  const prompt = goalContext(ctx);
+  const prompt = goalContext(ctx, await resolveRunLanguage(ctx));
   const raw = await call(ideationSystemPrompt, prompt);
   const parsed = campaignIdeas.safeParse(raw);
   if (!parsed.success) throw new Error(`ideation: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
@@ -217,7 +234,7 @@ const runIdeation = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 // strategy (LIVE): turn the chosen idea into a positioning/audience/pillars brief.
 const runStrategy = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
-  const prompt = goalContext(ctx);
+  const prompt = goalContext(ctx, await resolveRunLanguage(ctx));
   const raw = await call(strategySystemPrompt, prompt);
   const parsed = strategyBrief.safeParse(raw);
   if (!parsed.success) throw new Error(`strategy: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
@@ -234,7 +251,7 @@ const runStrategy = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 //   - visualBrief  → stored on the artifact and shown to the USER. Composed in the user's
 //                    language (Vietnamese when goal.language=vi) so the brief never mixes
 //                    English scaffolding around Vietnamese content.
-const buildImagePrompt = (ctx: RunnerContext): { visualBrief: string; imagePrompt: string } => {
+const buildImagePrompt = (ctx: RunnerContext, resolvedLang: string): { visualBrief: string; imagePrompt: string } => {
   const { goal, upstream } = ctx;
   const concept = upstream.content_concept as { mainAngle?: string; keyMessage?: string } | undefined;
   const strat = upstream.strategy_brief as { positioning?: string; pillars?: string[] } | undefined;
@@ -244,7 +261,9 @@ const buildImagePrompt = (ctx: RunnerContext): { visualBrief: string; imagePromp
   const keyMessage = concept?.keyMessage?.trim();
   const positioning = strat?.positioning?.trim();
   const pillars = strat?.pillars?.length ? strat.pillars.join(', ') : null;
-  const isVi = /^vi/i.test(goal.slots.language ?? '');
+  // Setup language (post → campaign → user), NOT the chat language — the user-facing brief
+  // matches the post it belongs to, even if the user chatted in another language.
+  const isVi = /^vi/i.test(resolvedLang);
 
   // imagePrompt — ENGLISH, knowledge-rich. Subject derived from real product facts.
   const subject = details ? `${product} — ${details}` : product;
@@ -280,12 +299,13 @@ const buildImagePrompt = (ctx: RunnerContext): { visualBrief: string; imagePromp
 // to the Post the publisher will post (heroFile = `local:<path>`). The Post is the
 // single source of truth for media; the artifact just references it.
 const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
-  const { visualBrief, imagePrompt } = buildImagePrompt(ctx);
+  const { visualBrief, imagePrompt } = buildImagePrompt(ctx, await resolveRunLanguage(ctx));
   const gen = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
   const image = await gen({ prompt: imagePrompt, mode: 'text-to-image' });
   const ref = `local:${image.outputFile}`;
   if (ctx.postId) {
-    const updated = await setPostHeroFile(ctx.postId, ctx.ownerId, ref);
+    // A single infographic image → assetType 'image' (exactly-1-asset publish validation).
+    const updated = await setPostHeroFile(ctx.postId, ctx.ownerId, ref, 'image');
     if (!updated) throw new Error('infographic: could not attach image to post (locked or not found)');
   }
   // A cached image cost nothing to regenerate; a fresh one is the flat per-image price.
@@ -299,24 +319,34 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const concept = ctx.upstream.content_concept as
     | { mainAngle?: string; keyMessage?: string; copy?: { body?: string } }
     | undefined;
-  // The captions become the video voiceover, so pin them to the USER's language: the campaign
-  // language if set, else the user's account default, else English — never drift to the
-  // product's language (which would make a VN-named product narrate in Vietnamese by accident).
-  const campaignLang = ctx.goal.slots.language && ctx.goal.slots.language.trim() ? ctx.goal.slots.language.trim() : null;
-  const effectiveLang = campaignLang ?? (await getUserById(ctx.ownerId))?.defaultLanguage ?? 'en';
-  const parts = [goalContext(ctx)];
-  if (!campaignLang) parts.push(`Language: ${effectiveLang}`); // goalContext already adds it when set
+  // Load the post once: it drives BOTH the setup language and the deliverable branch below.
+  const post = ctx.postId ? await getPostForCopyGen(ctx.postId, ctx.ownerId) : null;
+  const effectiveLang = post
+    ? resolveCopyConfig(post).language
+    : (ctx.goal.slots.language?.trim() || (await getUserById(ctx.ownerId))?.defaultLanguage || 'en');
+  // Storyboard intent depends on the media the user chose when editing the post:
+  //   carousel → each frame is a STANDALONE slide the viewer swipes through; together they tell
+  //              the product story. Full, polished marketing images (not movie stills).
+  //   video    → frames are KEYFRAMES that get animated + stitched into ONE continuous video.
+  const isCarousel = post?.assetType === 'carousel';
+  const parts = [goalContext(ctx, effectiveLang)];
+  parts.push(isCarousel
+    ? 'DELIVERABLE = CAROUSEL: each frame is a STANDALONE slide the viewer swipes through; together they tell the product story start → finish. Make each a complete, self-contained marketing image, not a movie still.'
+    : 'DELIVERABLE = VIDEO: these frames are KEYFRAMES that will be ANIMATED with motion and stitched in sequence. Plan them as consecutive moments of ONE continuous shot/story so the motion between frames flows.');
+  parts.push(`Write every caption in this language: ${effectiveLang}. This is the ${isCarousel ? 'slide caption' : 'video voiceover'} language and must match the post copy.`);
   if (concept?.keyMessage) parts.push(`Key message: ${concept.keyMessage}`);
   if (concept?.mainAngle) parts.push(`Main angle: ${concept.mainAngle}`);
   const planPrompt = parts.join('\n');
-  const raw = (await call(storyboardSystemPrompt, planPrompt)) as {
+  // Carousel → business-explainer slides; video → cinematic keyframes.
+  const sbPrompt = isCarousel ? storyboardCarouselSystemPrompt : storyboardSystemPrompt;
+  const raw = (await call(sbPrompt, planPrompt)) as {
     frames?: Array<{ index?: number; imagePrompt?: string; caption?: string }>;
   };
   const plan = Array.isArray(raw?.frames) ? raw.frames : [];
   if (plan.length === 0) throw new Error('storyboard: LLM returned no frames');
 
   const gen = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
-  let cost: NodeCost = estimateLlmCost(storyboardSystemPrompt + planPrompt, JSON.stringify(raw));
+  let cost: NodeCost = estimateLlmCost(sbPrompt + planPrompt, JSON.stringify(raw));
   const frames: Array<{ index: number; imageRef: string; caption: string; imagePrompt: string }> = [];
   // Visual consistency: the FIRST successful frame becomes a style/product anchor; every later
   // frame is generated in 'edit' mode conditioned on it, so the product + look stay coherent
@@ -342,6 +372,15 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 
   const parsed = storyboard.safeParse({ frames });
   if (!parsed.success) throw new Error(`storyboard: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+
+  // Carousel deliverable: the storyboard frames ARE the slides → publish them as the carousel
+  // (CSV of local refs, ≥2 → satisfies the carousel publish validation). For a video post the
+  // frames are keyframes and the video step sets the stitched-video hero instead.
+  if (isCarousel && ctx.postId && frames.length >= 1) {
+    const csv = frames.map((f) => f.imageRef).join(',');
+    await setPostHeroFile(ctx.postId, ctx.ownerId, csv, 'carousel');
+  }
+
   return { type: 'storyboard', data: parsed.data, cost };
 };
 
@@ -368,6 +407,15 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   let rendered = 0;
   for (const f of frames) {
     const localPath = f.imageRef.startsWith('local:') ? f.imageRef.slice('local:'.length) : f.imageRef;
+    // The frame PNG lives on disk (output/images). It can be absent if the container was
+    // rebuilt/recreated without a persisted output volume — the DB still refs the hash but
+    // the file is gone. Fail with an actionable message instead of a raw ENOENT so the UI
+    // tells the user to re-run Storyboard (which regenerates the frames) before Video.
+    try {
+      await access(localPath);
+    } catch {
+      throw new Error('storyboard frame image is missing on disk — re-run the Storyboard step to regenerate the frames, then re-run Video');
+    }
     const motionPrompt = (f.imagePrompt || f.caption || 'Subtle cinematic camera motion, gentle push-in').trim();
     const clip = await gen({ referenceImagePath: localPath, prompt: motionPrompt, durationSec });
     clipPaths.push(clip.outputFile);
@@ -392,7 +440,9 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 
   const videoRef = `local:${finalVideo}`;
   if (ctx.postId) {
-    const updated = await setPostHeroFile(ctx.postId, ctx.ownerId, videoRef);
+    // The deliverable is ONE stitched video → set assetType so the publish validator checks
+    // it as a single-asset video (a stale 'carousel' assetType would fail "needs >=2 assets").
+    const updated = await setPostHeroFile(ctx.postId, ctx.ownerId, videoRef, 'video');
     if (!updated) throw new Error('video: could not attach video to post (locked or not found)');
   }
 

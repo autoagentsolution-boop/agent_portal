@@ -30,16 +30,25 @@ const SCRIPT_PROBES: Array<[code: string, re: RegExp]> = [
 // "São"). What remains is essentially unique to Vietnamese: đ, the horn vowels (ơ ư +
 // tones), the breve a (ă + tones), and vowels carrying a dot-below or a hook-above tone,
 // which those European languages do not use.
-const VI_DIACRITICS = /[đăơưạảặẳẵậẩẫẹẻệểễịỉọỏộổỗợởỡụủựửữỳỵỷ]/i;
+// Includes the stacked-tone vowels (circumflex/breve/horn + grave or acute — ầấằắềếồốờớừứ)
+// which are distinctively Vietnamese: French/Spanish/Portuguese never stack a tone on a
+// modified vowel, so these are near-zero false positive.
+const VI_DIACRITICS = /[đăơưạảặẳẵậẩẫầấằắẹẻệểễềếịỉọỏộổỗồốợởỡờớụủựửữừứỳỵỷ]/i;
 // Common unaccented Vietnamese function words — covers users typing VN without accents.
-const VI_WORDS = /\b(toi|minh|ban|muon|lam|cho|cua|va|moi|ngay|san pham|dich vu|quang cao|dang bai|gium|giup|thuong hieu)\b/i;
+// GLOBAL so we can COUNT distinct hits: bare tokens like "ban", "cho", "va", "moi", "lam"
+// also appear in English text and product/brand names, so a SINGLE hit is not enough to
+// call a message Vietnamese (that false-positive flipped English flows to VN). Require ≥2
+// distinct hits; accented VN (VI_DIACRITICS) remains a confident single-hit signal.
+const VI_WORDS = /(?<![\p{L}])(toi|minh|ban|muon|lam|cho|cua|va|moi|ngay|san pham|dich vu|quang cao|dang bai|gium|giup|thuong hieu)(?![\p{L}])/giu;
 
 // Detect a language code from a raw message, or null when the script is Latin and
 // ambiguous (caller should defer to the LLM mirroring the message). Covers the major
 // non-Latin scripts + Vietnamese; everything else → null (NOT assumed English).
 export const detectLanguage = (message: string): string | null => {
   const m = message ?? '';
-  if (VI_DIACRITICS.test(m) || VI_WORDS.test(m)) return 'vi';
+  if (VI_DIACRITICS.test(m)) return 'vi';
+  const viHits = new Set((m.toLowerCase().match(VI_WORDS) ?? []).map((w) => w.trim())).size;
+  if (viHits >= 2) return 'vi';
   for (const [code, re] of SCRIPT_PROBES) {
     if (re.test(m)) return code;
   }

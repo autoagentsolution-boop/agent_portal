@@ -233,14 +233,19 @@ export const editPostCopy = async (
 // Unlike updatePostFields this is NOT user-edit-gated (the post is already `ready`
 // after concept_writer's auto-approve), but it still refuses a row the scheduler is
 // actively publishing (status=posting) to avoid racing the worker. Owner-scoped.
+// Set the post's hero asset, and optionally its assetType so the two stay consistent — a
+// media agent knows what it produced (single video/image, or a carousel CSV), and the
+// publish validator checks assetType against the asset count. Without this a 'carousel'
+// post that a video step filled with ONE asset fails "carousel needs >=2 assets".
 export const setPostHeroFile = async (
   id: string,
   ownerId: string,
   heroFile: string,
+  assetType?: Post['assetType'],
 ): Promise<Post | null> => {
   const r = await prisma.post.updateMany({
     where: { id, ownerId, status: { not: 'posting' } },
-    data: { heroFile },
+    data: { heroFile, ...(assetType ? { assetType } : {}) },
   });
   return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
 };

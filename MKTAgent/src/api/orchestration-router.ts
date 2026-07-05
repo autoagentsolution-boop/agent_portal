@@ -301,7 +301,11 @@ orchestrationRouter.post('/runs/:id/rerun-node/:nodeId', asyncHandler(async (req
 
   const node = full.nodes.find((n) => n.nodeId === req.params.nodeId);
   if (!node) return fail(res, 404, 'node_not_found');
-  if (getAgent(node.agentId as Parameters<typeof getAgent>[0])?.requiresApproval) return fail(res, 409, 'node_not_rerunnable', 'the publish step runs via approval, not re-run');
+  // Block re-run only for the external-WRITE gate (publisher) — re-running it would re-publish.
+  // An internal cost-gated step like video is re-runnable: a deliberate re-run is the user
+  // choosing to spend, distinct from the automatic pre-video approval halt. Only the publisher
+  // requiresConnection, so it uniquely identifies the external write.
+  if (getAgent(node.agentId as Parameters<typeof getAgent>[0])?.requiresConnection) return fail(res, 409, 'node_not_rerunnable', 'the publish step runs via approval, not re-run');
   if (node.status !== 'completed' && node.status !== 'failed') return fail(res, 409, 'node_not_rerunnable', 'only a finished step can be re-run');
 
   // Upstream deps must be completed so the node has valid inputs to read.

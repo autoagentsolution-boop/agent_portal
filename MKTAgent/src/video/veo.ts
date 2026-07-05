@@ -49,32 +49,51 @@ const fileExists = async (p: string): Promise<boolean> => {
   }
 };
 
-// Kick off the long-running op, poll until done, return the mp4 bytes.
-const callVeo = async (req: VideoRequest, imgB64: string, apiKey: string): Promise<Buffer> => {
+// Start the long-running op. Veo's native audio is AI-invented (ambient/speech we can't
+// control) and a common RAI-filter cause — so where the model supports it we send
+// generateAudio:false and mix a scripted TTS voiceover downstream. But silent-only tiers
+// (e.g. veo-3.1-lite) REJECT the param with a 400 rather than ignoring it. So we try with
+// the param, and if that specific 400 fires, retry once without it (a silent model has no
+// native audio to suppress anyway). Returns the operation name.
+const startVeoOp = async (req: VideoRequest, imgB64: string, apiKey: string): Promise<string> => {
   const startUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:predictLongRunning?key=${apiKey}`;
-  const body = {
+  const build = (withAudio: boolean) => ({
     instances: [{ prompt: req.prompt, image: { bytesBase64Encoded: imgB64, mimeType: 'image/png' } }],
     parameters: {
       aspectRatio: req.aspectRatio ?? '9:16',
       personGeneration: 'allow_all',
       durationSeconds: req.durationSec ?? 8,
-      // Veo's native audio is AI-invented (ambient/speech we can't control) and is a common
-      // RAI-filter cause ("issue with the audio for your prompt"). We want a scripted voiceover
-      // in the user's language instead → disable native audio; TTS is mixed in downstream.
-      generateAudio: false,
+      ...(withAudio ? { generateAudio: false } : {}),
     },
-  };
-  const r = await fetch(startUrl, {
+  });
+  const post = (body: object) => fetch(startUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
+
+  let r = await post(build(true));
+  if (r.status === 400) {
+    const text = await r.text();
+    if (/generateAudio/i.test(text)) {
+      logger.info('veo_retry_without_generate_audio', { model: MODEL });
+      r = await post(build(false));
+    } else {
+      throw new Error(`veo_start_400: ${text.slice(0, 400)}`);
+    }
+  }
   if (!r.ok) throw new Error(`veo_start_${r.status}: ${(await r.text()).slice(0, 400)}`);
   const op = (await r.json()) as { name?: string };
   if (!op.name) throw new Error('veo_no_operation');
-  logger.info('veo_started', { op: op.name, model: MODEL });
+  return op.name;
+};
 
-  const pollUrl = `https://generativelanguage.googleapis.com/v1beta/${op.name}?key=${apiKey}`;
+// Kick off the long-running op, poll until done, return the mp4 bytes.
+const callVeo = async (req: VideoRequest, imgB64: string, apiKey: string): Promise<Buffer> => {
+  const opName = await startVeoOp(req, imgB64, apiKey);
+  logger.info('veo_started', { op: opName, model: MODEL });
+
+  const pollUrl = `https://generativelanguage.googleapis.com/v1beta/${opName}?key=${apiKey}`;
   const start = Date.now();
   while (Date.now() - start < TIMEOUT_MS) {
     await new Promise((res) => setTimeout(res, POLL_MS));

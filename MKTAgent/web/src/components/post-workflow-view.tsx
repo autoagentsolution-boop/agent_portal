@@ -27,6 +27,19 @@ const STATUS_HINT: Record<string, string> = {
 
 interface Copy { body: string; threads: string; x: string }
 
+// The executor is detached: it emits a node's `running` SSE event within milliseconds of
+// launch — usually BEFORE the browser's EventSource connects, and SSE has no replay. So we
+// optimistically flip the node that's about to run to `running` right off the API response,
+// otherwise it sits on its stale dot (○) until `completed` lands ~60s later (video gen).
+const markRunning = (run: WorkflowRunDto, nodeId: string | null): WorkflowRunDto =>
+  nodeId ? { ...run, nodes: run.nodes.map((n) => n.nodeId === nodeId ? { ...n, status: 'running' } : n) } : run;
+
+// First pending node whose deps are all satisfied — the frontier the executor runs next.
+const nextRunnableNodeId = (nodes: WorkflowRunDto['nodes']): string | null => {
+  const done = new Set(nodes.filter((n) => n.status === 'completed' || n.status === 'skipped').map((n) => n.nodeId));
+  return nodes.find((n) => n.status === 'pending' && n.dependsOn.every((d) => done.has(d)))?.nodeId ?? null;
+};
+
 export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   const [run, setRun] = useState<WorkflowRunDto | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -57,7 +70,10 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     try {
       const r = await api.executeRun(run.id);
       if (!r.ok) { notify(`Execute: ${r.error.error}`, 'err'); return; }
-      setRun(r.data); notify('Workflow executing…');
+      // Only optimistically show running when the run actually started (not gated to
+      // needs_connection, where no node runs yet).
+      setRun(r.data.status === 'running' ? markRunning(r.data, nextRunnableNodeId(r.data.nodes)) : r.data);
+      notify('Workflow executing…');
     } finally { setBusy(false); }
   };
 
@@ -77,7 +93,9 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     try {
       const r = await api.rerunRunNode(run.id, nodeId);
       if (!r.ok) { notify(`Re-run: ${r.error.error}`, 'err'); return; }
-      setRun(r.data);
+      // rerun-node launches the executor on exactly this node and returns status=running;
+      // show it running immediately (the response still carries the reset pending node).
+      setRun(markRunning(r.data, nodeId));
       notify('Re-running step — downstream steps marked stale');
     } finally { setBusy(false); }
   };
@@ -108,6 +126,11 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   if (!run) return <div className="post-workflow"><p className="muted small">Loading workflow…</p></div>;
 
   const gateNode = run.nodes.find((n) => n.status === 'awaiting_approval');
+  // The needs_approval hint depends on WHICH gate we're at — the video cost-gate reads
+  // differently from the publisher external-write gate.
+  const statusHint = run.status === 'needs_approval' && gateNode?.agentId === 'video'
+    ? 'Paused before video generation (the costly step) — review the storyboard, then approve.'
+    : STATUS_HINT[run.status] ?? run.status;
   const publishArtifact = run.artifacts.find((a) => a.type === 'publish_result');
   const publishUrls = (publishArtifact?.data as { postUrls?: Record<string, string> | null } | undefined)?.postUrls ?? null;
   const requiredActions = run.requiredActions ?? [];
@@ -148,7 +171,7 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
           </button>
         )}
       </div>
-      <p className="muted small">{isResume ? 'A step was re-run — later steps are stale. Click Continue to regenerate them, then approve to publish.' : STATUS_HINT[run.status] ?? run.status}</p>
+      <p className="muted small">{isResume ? 'A step was re-run — later steps are stale. Click Continue to regenerate them, then approve to publish.' : statusHint}</p>
 
       <div className="post-workflow-body">
         <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} />
@@ -168,10 +191,21 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
 
         {run.status === 'needs_approval' && gateNode && (
           <div className="gate-block">
-            <p className="muted small">Paused before <strong>{gateNode.agentId.replace(/_/g, ' ')}</strong> — an external action. Approve to proceed.</p>
-            <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId)}>
-              {busy ? 'Publishing…' : `Approve ${gateNode.agentId.replace(/_/g, ' ')}`}
-            </button>
+            {gateNode.agentId === 'video' ? (
+              <>
+                <p className="muted small">Storyboard ready — <strong>review the frames above</strong>. Video generation is the costly step, so it waits for your OK. Not happy with a frame? Re-run the storyboard first, then approve.</p>
+                <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId)}>
+                  {busy ? 'Starting…' : '▶ Approve — generate video'}
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="muted small">Paused before <strong>{gateNode.agentId.replace(/_/g, ' ')}</strong> — an external action. Approve to proceed.</p>
+                <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId)}>
+                  {busy ? 'Publishing…' : `Approve ${gateNode.agentId.replace(/_/g, ' ')}`}
+                </button>
+              </>
+            )}
           </div>
         )}
 

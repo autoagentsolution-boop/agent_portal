@@ -33,6 +33,16 @@ const costFields = (result: NodeExecResult) => ({
   costUsd: result.cost?.costUsd ?? 0,
 });
 
+// Media node ↔ post assetType. A media step runs only when it matches the chosen assetType:
+// carousel/image never trigger (and never pay for) the video pipeline, and a carousel's
+// single-image infographic doesn't clobber its multi-slide hero. storyboard serves both
+// carousel (story slides) and video (keyframes) so it maps to both.
+const MEDIA_AGENT_ASSET: Record<string, ReadonlyArray<string>> = {
+  infographic: ['image'],
+  storyboard: ['carousel', 'video'],
+  video: ['video'],
+};
+
 export interface ExecuteOptions {
   geminiFn?: RunnerContext['geminiFn'];
   publishFn?: RunnerContext['publishFn'];
@@ -85,7 +95,12 @@ export const runWorkflow = async (
   // Seed that postId so concept_writer fills the existing post (+ its campaign) rather
   // than materializing a new campaign+post. Legacy runs have no attached post → falls
   // back to concept_writer's create path. The artifact-derived postId (resume) wins.
-  if (!postId) postId = (await getPostByRunId(runId))?.id;
+  const attachedPost = await getPostByRunId(runId);
+  if (!postId) postId = attachedPost?.id;
+  // The post's chosen media (assetType) governs WHICH media steps run: skip the ones it
+  // doesn't need, so a carousel/image post never spends on video and vice-versa (#2). Null
+  // (post not yet created on a legacy first run) → no gating; run per plan.
+  const postAssetType = attachedPost?.assetType ?? null;
 
   await setRunStatus(runId, 'running');
 
@@ -130,8 +145,20 @@ export const runWorkflow = async (
     const nodeRow = nodeRowByPlanId.get(planNodeId)!;
     if (nodeRow.status === 'completed' || nodeRow.status === 'skipped') continue;
 
-    // Approval halt: a gated node stops the run UNLESS it's the one just approved.
-    if (planNode.requiresApproval && opts.approveNodeId !== planNodeId) {
+    // Media selection by assetType (#2): skip a media step the chosen assetType doesn't
+    // need — BEFORE the approval halt, so a carousel post never stops at the video gate.
+    const wantAssets = MEDIA_AGENT_ASSET[planNode.agentId];
+    if (wantAssets && postAssetType && !wantAssets.includes(postAssetType)) {
+      await setNodeStatus(nodeRow.id, 'skipped');
+      publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'skipped' });
+      continue;
+    }
+
+    // Approval halt: a gated node stops the run UNLESS it's the one just approved. Read the
+    // gating policy from the LIVE registry (not the frozen plan) so a policy change — e.g.
+    // adding the pre-video cost gate — applies to already-planned templates/runs too.
+    const requiresApproval = getAgent(planNode.agentId)?.requiresApproval ?? planNode.requiresApproval;
+    if (requiresApproval && opts.approveNodeId !== planNodeId) {
       await setNodeStatus(nodeRow.id, 'awaiting_approval');
       await setRunStatus(runId, 'needs_approval');
       publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval' });
