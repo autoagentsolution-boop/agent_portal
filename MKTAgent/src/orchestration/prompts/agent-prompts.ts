@@ -24,6 +24,7 @@ Return ONLY valid JSON of this exact shape:
 }
 Rules:
 - 3 to 6 frames. index starts at 0 and increments by 1 in visual order (e.g. wide establishing shot → detail → context/use → call-to-action).
+- CONSISTENCY IS REQUIRED: every frame depicts the SAME product/subject with the SAME visual style. Begin every "imagePrompt" with one shared style+subject anchor phrase (identical wording — e.g. "Photorealistic studio shot of <the product>, warm cinematic lighting, shallow depth of field") then add what is unique to that frame. This keeps the storyboard coherent, not a set of unrelated images.
 - "imagePrompt" is written in ENGLISH (image models perform best in English), concrete and photographic, grounded in the Product knowledge — do not invent features or claims beyond them.
 - "caption" is written in the campaign's "Language" if stated, else the product's language. Do not mix languages in captions.
 - Output JSON only. No prose, no markdown fences.`;

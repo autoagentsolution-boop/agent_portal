@@ -13,7 +13,7 @@ import { generateForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
 import { ideationSystemPrompt, strategySystemPrompt, storyboardSystemPrompt } from '../prompts/agent-prompts.ts';
-import { generate as generateImage, type ImageResult } from '../../imagegen/nano-banana.ts';
+import { generate as generateImage, type ImageResult, type ImageRequest } from '../../imagegen/nano-banana.ts';
 import { generate as generateVideo, type VideoRequest, type VideoResult } from '../../video/veo.ts';
 import { stitchClips } from '../../video/stitch.ts';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
@@ -35,9 +35,10 @@ export interface RunnerContext {
   // Generic text→JSON LLM seam for ideation/strategy (distinct from geminiFn, which
   // is copy-gen-body shaped). Stubbed in DRY-RUN verification.
   llmJsonFn?: LlmJsonFn;
-  // Image generation seam (infographic + storyboard agents). Stubbed in DRY-RUN
-  // verification so no real image is generated / no API spend.
-  imageFn?: (prompt: string) => Promise<ImageResult>;
+  // Image generation seam (infographic + storyboard agents). Takes a full ImageRequest so
+  // storyboard can reference-condition frames (mode 'edit') for visual consistency. Stubbed
+  // in DRY-RUN verification so no real image is generated / no API spend.
+  imageFn?: (req: ImageRequest) => Promise<ImageResult>;
   // Video generation seam (video agent — Veo i2v). Stubbed in DRY-RUN verification so
   // no real (slow, paid) video is rendered.
   videoFn?: (req: VideoRequest) => Promise<VideoResult>;
@@ -276,8 +277,8 @@ const buildImagePrompt = (ctx: RunnerContext): { visualBrief: string; imagePromp
 // single source of truth for media; the artifact just references it.
 const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const { visualBrief, imagePrompt } = buildImagePrompt(ctx);
-  const gen = ctx.imageFn ?? ((prompt: string) => generateImage({ prompt, mode: 'text-to-image' }));
-  const image = await gen(imagePrompt);
+  const gen = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
+  const image = await gen({ prompt: imagePrompt, mode: 'text-to-image' });
   const ref = `local:${image.outputFile}`;
   if (ctx.postId) {
     const updated = await setPostHeroFile(ctx.postId, ctx.ownerId, ref);
@@ -304,13 +305,21 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const plan = Array.isArray(raw?.frames) ? raw.frames : [];
   if (plan.length === 0) throw new Error('storyboard: LLM returned no frames');
 
-  const gen = ctx.imageFn ?? ((p: string) => generateImage({ prompt: p, mode: 'text-to-image' }));
+  const gen = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
   let cost: NodeCost = estimateLlmCost(storyboardSystemPrompt + planPrompt, JSON.stringify(raw));
   const frames: Array<{ index: number; imageRef: string; caption: string; imagePrompt: string }> = [];
+  // Visual consistency: the FIRST successful frame becomes a style/product anchor; every later
+  // frame is generated in 'edit' mode conditioned on it, so the product + look stay coherent
+  // across the storyboard instead of drifting per independent gen.
+  let anchor: string | null = null;
   for (const [i, f] of plan.entries()) {
     const imagePrompt = (f.imagePrompt ?? '').trim() || `Product image, frame ${i + 1}`;
     try {
-      const image = await gen(imagePrompt);
+      const req: ImageRequest = anchor
+        ? { prompt: imagePrompt, mode: 'edit', referenceImagePath: anchor }
+        : { prompt: imagePrompt, mode: 'text-to-image' };
+      const image = await gen(req);
+      if (!anchor) anchor = image.outputFile;
       frames.push({ index: f.index ?? i, imageRef: `local:${image.outputFile}`, caption: f.caption ?? '', imagePrompt });
       if (!image.cached) cost = sumCost(cost, imageCost());
     } catch (e) {

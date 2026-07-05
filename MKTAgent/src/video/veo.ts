@@ -58,6 +58,10 @@ const callVeo = async (req: VideoRequest, imgB64: string, apiKey: string): Promi
       aspectRatio: req.aspectRatio ?? '9:16',
       personGeneration: 'allow_all',
       durationSeconds: req.durationSec ?? 8,
+      // Veo's native audio is AI-invented (ambient/speech we can't control) and is a common
+      // RAI-filter cause ("issue with the audio for your prompt"). We want a scripted voiceover
+      // in the user's language instead → disable native audio; TTS is mixed in downstream.
+      generateAudio: false,
     },
   };
   const r = await fetch(startUrl, {
@@ -79,6 +83,13 @@ const callVeo = async (req: VideoRequest, imgB64: string, apiKey: string): Promi
     const pj = (await p.json()) as any;
     if (!pj.done) continue;
     if (pj.error) throw new Error(`veo_failed: ${JSON.stringify(pj.error).slice(0, 300)}`);
+    // RAI / safety filter: the response carries a filtered count + reason but no video.
+    // Surface the actual reason so the user knows WHY (e.g. a flagged prompt), not a cryptic no-video.
+    const gvr = pj.response?.generateVideoResponse ?? pj.response;
+    if (gvr?.raiMediaFilteredCount && !gvr?.generatedSamples?.length) {
+      const reason = Array.isArray(gvr.raiMediaFilteredReasons) ? gvr.raiMediaFilteredReasons[0] : 'safety filter';
+      throw new Error(`veo_rai_filtered: ${String(reason).slice(0, 300)}`);
+    }
     const v0 =
       pj.response?.generateVideoResponse?.generatedSamples?.[0] ??
       pj.response?.generatedVideos?.[0] ??
