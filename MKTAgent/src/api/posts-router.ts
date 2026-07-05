@@ -9,12 +9,14 @@ import {
   rejectPostBody,
   refinePostBody,
   editCopyBody,
+  selectVariantBody,
   createPostBody,
   createPostFromAgentBody,
   updatePostBody,
   type CreatePostBody,
 } from './schemas.ts';
 import { toPostDto, toPostDetailDto } from './mappers.ts';
+import { listArtifacts, updateArtifactData } from '../orchestration/executor/artifact-store.ts';
 import { checkPostability } from '../social/postability.ts';
 import { platformAssetType } from '../scheduler/resolve-input.ts';
 import { resolveConnectionStates } from './connection-state.ts';
@@ -292,6 +294,34 @@ postsRouter.post(
     if (!post) return fail(res, 409, 'not_editable', 'post copy can only be edited in review or ready state');
     publishPostStatus(req.userId!, { postId: post.id, status: 'review', campaignId: post.campaignId });
     ok(res, toPostDto(post));
+  }),
+);
+
+// Concept selection: pick one of the 3-5 versions concept_writer generated. Reads them from
+// the run's content_concept artifact, sets post.copy = versions[index] (→ review), and persists
+// the chosen index back onto the artifact so a reload reflects the pick. Editable-state only.
+postsRouter.post(
+  '/:id/select-variant',
+  asyncHandler(async (req, res) => {
+    const body = parseOr422(res, selectVariantBody, req.body ?? {});
+    if (!body) return;
+    const post = await getPostForOwner(req.params.id, req.userId!);
+    if (!post) return fail(res, 404, 'post_not_found');
+    if (!post.runId) return fail(res, 409, 'no_versions', 'this post has no workflow versions to choose from');
+    const arts = await listArtifacts(post.runId);
+    const concept = arts.find((a) => a.type === 'content_concept');
+    const data = concept?.data as
+      | { variants?: Array<{ body: string; threads: string; x: string }>; [k: string]: unknown }
+      | undefined;
+    const chosen = data?.variants?.[body.index];
+    if (!chosen) return fail(res, 422, 'invalid_version', `no version at index ${body.index}`);
+    const updated = await editPostCopy(post.id, req.userId!, chosen);
+    if (!updated) return fail(res, 409, 'not_editable', 'versions can only be chosen before publishing');
+    if (concept) {
+      await updateArtifactData(concept.id, req.userId!, 'content_concept', { ...data, copy: chosen, chosen: body.index }).catch(() => {});
+    }
+    publishPostStatus(req.userId!, { postId: post.id, status: 'review', campaignId: post.campaignId });
+    ok(res, toPostDto(updated));
   }),
 );
 

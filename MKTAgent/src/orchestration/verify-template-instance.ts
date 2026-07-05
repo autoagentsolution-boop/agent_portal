@@ -36,7 +36,10 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
 };
 
 const stubGemini: GeminiFn = async () => ({
-  candidates: [{ content: { parts: [{ text: JSON.stringify({ body: 'Stub body copy.', threads: 'Stub threads.', x: 'Stub x.' }) }] } }],
+  candidates: [{ content: { parts: [{ text: JSON.stringify({ variants: [
+    { body: 'Stub body copy.', threads: 'Stub threads.', x: 'Stub x.' },
+    { body: 'Stub body copy v2.', threads: 'Stub threads 2.', x: 'Stub x 2.' },
+  ] }) }] } }],
 });
 const stubPublish: PublishFn = async (platform) => ({ platform, ok: true, url: `https://dry-run/${platform}`, error: null });
 const stubLlmJson: LlmJsonFn = async (systemPrompt) => {
@@ -108,7 +111,7 @@ async function main(): Promise<void> {
 
     const instGoal = analyzeDeterministic('Build a full branding campaign for our AI automation product on facebook with an infographic');
     const instPlan = workflowPlan.parse(instance!.plan);
-    const r1 = await runWorkflow(instance!.id, user.id, instGoal, instPlan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts, autoPublish: false });
+    const r1 = await runWorkflow(instance!.id, user.id, instGoal, instPlan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts, autoPublish: false, conceptGate: false });
     check('instance run halts at publisher gate', r1.status === 'needs_approval', r1);
 
     const campaignsAfter = await prisma.campaign.count({ where: { ownerId: user.id } });

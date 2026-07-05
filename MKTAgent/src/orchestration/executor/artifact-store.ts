@@ -39,6 +39,24 @@ export const putArtifact = async (
   return { id: row.id, type, nodeId, data: parsed.data };
 };
 
+// Re-validate + overwrite an artifact's data (owner-scoped). Used by the concept selection
+// gate to persist the chosen version index back onto the content_concept artifact so a reload
+// reflects the pick. Returns null when not found / wrong tenant.
+export const updateArtifactData = async (
+  id: string,
+  ownerId: string,
+  type: ArtifactType,
+  data: unknown,
+): Promise<StoredArtifact | null> => {
+  const schema = artifactSchemaFor[type];
+  const parsed = schema.safeParse(data);
+  if (!parsed.success) {
+    throw new ArtifactValidationError(type, parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`));
+  }
+  const r = await prisma.artifact.updateMany({ where: { id, ownerId }, data: { data: parsed.data as object } });
+  return r.count === 1 ? getArtifact(id, ownerId) : null;
+};
+
 export const getArtifact = async (id: string, ownerId: string): Promise<StoredArtifact | null> => {
   const row = await prisma.artifact.findFirst({ where: { id, ownerId } });
   if (!row) return null;

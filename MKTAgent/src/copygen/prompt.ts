@@ -121,3 +121,34 @@ export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDire
     },
   };
 }
+
+// Multi-variant request (concept selection): reuse the single-copy prompt's system +
+// guardrails, but ask for N DISTINCT versions the user can choose from, and return an array.
+// Each variant honors every hard guardrail; they must differ in hook/angle, not be rephrasings.
+export function buildVariantsBody(post: PostWithCampaignOwner, n: number): GeminiRequestBody {
+  const base = buildGeminiBody(post);
+  const baseUser = base.contents[0]?.parts[0]?.text ?? '';
+  const user =
+    baseUser +
+    `\n\nPRODUCE ${n} DISTINCT versions of this post so the user can pick their favorite. Each version MUST open with a DIFFERENT hook and take a DIFFERENT angle/approach — do NOT rephrase one idea ${n} ways. Every version must independently honor every hard guardrail (hook ≤50 chars, threads ≤480, x ≤280, no HTML/markdown, correct length). Return {"variants":[{body,threads,x}, …]} with exactly ${n} items.`;
+  const variant = {
+    type: 'OBJECT',
+    properties: { body: { type: 'STRING' }, threads: { type: 'STRING' }, x: { type: 'STRING' } },
+    required: ['body', 'threads', 'x'],
+  };
+  return {
+    systemInstruction: base.systemInstruction,
+    contents: [{ role: 'user', parts: [{ text: user }] }],
+    generationConfig: {
+      temperature: 1.0,
+      topP: 0.95,
+      maxOutputTokens: 8192,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'OBJECT',
+        properties: { variants: { type: 'ARRAY', items: variant } },
+        required: ['variants'],
+      },
+    },
+  };
+}

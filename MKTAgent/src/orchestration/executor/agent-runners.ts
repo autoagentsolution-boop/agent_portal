@@ -10,10 +10,10 @@ import { resolveLinkedKnowledge } from '../../db/repos/product-knowledge-repo.ts
 import { campaignIdeas, strategyBrief, storyboard, videoPrompt, type ArtifactType } from '../schemas/artifact-schemas.ts';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
-import { createPost, getPostForOwner, getPostForCopyGen, approveReview, attachPostMedia, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
+import { createPost, getPostForOwner, getPostForCopyGen, attachPostMedia, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
 import { resolveCopyConfig } from '../../copygen/resolve-config.ts';
 import { getUserById } from '../../db/repos/user-repo.ts';
-import { generateForPost, type GeminiFn } from '../../copygen/service.ts';
+import { generateVariantsForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
 import { ideationSystemPrompt, strategySystemPrompt, storyboardSystemPrompt, storyboardCarouselSystemPrompt } from '../prompts/agent-prompts.ts';
@@ -75,20 +75,20 @@ export interface RunnerOutput {
 // The two concept_writer paths below differ ONLY in how they obtain the Post (create-from-goal
 // vs locate-attached); their shared tail lives in finalizeConcept().
 
-// Shared tail: run copy-gen on the post, require it reached review, auto-approve → ready,
-// and return the content_concept artifact. Both concept_writer paths funnel through here.
+// Shared tail: run copy-gen on the post to produce 3-5 VARIANTS, stash them on the artifact,
+// and default-select variant[0]. Does NOT approve the post — the executor's concept selection
+// gate pauses here so the user picks a version (+ optional reference image) before media/publish
+// (the review→ready approval happens when the user Continues past the gate). Both concept_writer
+// paths funnel through here. copy == variants[chosen] (the active version).
+const CONCEPT_VARIANTS = 4;
 const finalizeConcept = async (ctx: RunnerContext, postId: string): Promise<RunnerOutput> => {
   const { ownerId, goal } = ctx;
-  const result = await generateForPost(postId, ownerId, ctx.geminiFn);
-  if (result.status !== 'review') {
+  const result = await generateVariantsForPost(postId, ownerId, CONCEPT_VARIANTS, ctx.geminiFn);
+  if (result.status !== 'review' || !result.variants?.length) {
     throw new Error(`concept_writer: copy-gen did not reach review (${result.reason ?? result.error ?? result.status})`);
   }
-  const row = await getPostForOwner(postId, ownerId);
-  const copy = (row?.copy as { body: string; threads: string; x: string } | null) ?? null;
-  if (!copy) throw new Error('concept_writer: copy missing after review');
-
-  // Approve review→ready (scheduledAt=now) so publisher can claim it this run.
-  await approveReview(postId, ownerId, new Date());
+  const variants = result.variants;
+  const copy = variants[0]!;
 
   return {
     type: 'content_concept',
@@ -97,9 +97,11 @@ const finalizeConcept = async (ctx: RunnerContext, postId: string): Promise<Runn
       mainAngle: goal.slots.angle ?? goal.slots.product ?? 'marketing concept',
       keyMessage: copy.body.slice(0, 200),
       copy,
+      variants,
+      chosen: 0,
       postId,
     },
-    cost: estimateLlmCost(goalContext(ctx), `${copy.body}\n${copy.threads}\n${copy.x}`),
+    cost: estimateLlmCost(goalContext(ctx), variants.map((v) => `${v.body}\n${v.threads}\n${v.x}`).join('\n')),
   };
 };
 

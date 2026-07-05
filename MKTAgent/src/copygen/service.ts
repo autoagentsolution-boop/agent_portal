@@ -14,10 +14,10 @@ import {
   updatePost,
   type PostWithCampaignOwner,
 } from '../db/repos/post-repo.ts';
-import { buildGeminiBody } from './prompt.ts';
+import { buildGeminiBody, buildVariantsBody } from './prompt.ts';
 import { resolveCopyConfig } from './resolve-config.ts';
 import { callGemini } from './gemini.ts';
-import { parseGeminiResponse } from './parse.ts';
+import { parseGeminiResponse, parseVariants, type CopyVariants } from './parse.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
 import { publishPostStatus } from '../events/bus.ts';
@@ -151,6 +151,46 @@ export async function refineForPost(
     return { picked: true, postId: post.id, status: 'review' };
   } catch (e) {
     logger.error('copygen_refine_error', { postId, error: String(e).slice(0, 300) });
+    return { picked: false, postId, reason: 'error' };
+  } finally {
+    await lock.release();
+  }
+}
+
+export interface VariantsGenResult extends CopyGenResult {
+  variants?: CopyVariants[];
+}
+
+// Generate N distinct copy variants for the concept selection step (item: concept versions).
+// Sets post.copy = variants[0] as a working default (status→review) so the post always has
+// copy; the user picks another via /select-variant at the concept gate. Returns the full
+// variant list for the caller (concept_writer) to stash on its artifact. Shares the copy-gen
+// advisory lock; on a model/parse failure leaves the row regenerable (status=retry).
+export async function generateVariantsForPost(
+  postId: string,
+  ownerId: string,
+  n = 4,
+  callFn: GeminiFn = callGemini,
+): Promise<VariantsGenResult> {
+  const lock = await acquireAdvisoryLock(LOCK_KEY);
+  if (!lock.acquired) return { picked: false, reason: 'lock_held' };
+  try {
+    const post = await getPostForCopyGen(postId, ownerId);
+    if (!post) return { picked: false, reason: 'not_found' };
+    if (post.status !== 'brief' && post.status !== 'rework') return { picked: false, postId, reason: 'not_generatable' };
+    const raw = await callFn(buildVariantsBody(post, n));
+    const result = parseVariants(raw);
+    if (!result.ok) {
+      logger.warn('copygen_variants_failed', { postId, error: result.error.slice(0, 200) });
+      return { picked: true, postId, status: 'retry', error: result.error };
+    }
+    const cfg = resolveCopyConfig(post);
+    await updatePost(post.id, { copy: result.variants[0] as unknown as object, language: cfg.language, status: 'review', error: null });
+    await logRun('info', 'mkt_copygen', { id: post.id, status: 'review', variants: result.variants.length, language: cfg.language }, post.ownerId);
+    publishPostStatus(post.ownerId, { postId: post.id, status: 'review', campaignId: post.campaignId });
+    return { picked: true, postId: post.id, status: 'review', variants: result.variants };
+  } catch (e) {
+    logger.error('copygen_variants_error', { postId, error: String(e).slice(0, 300) });
     return { picked: false, postId, reason: 'error' };
   } finally {
     await lock.release();

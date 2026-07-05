@@ -688,6 +688,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/posts/{id}/select-variant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pick one of the 3-5 concept versions
+         * @description At the concept selection gate, sets post.copy = versions[index] (from the run's content_concept artifact) and records the chosen index. Editable-state only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        index: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Post with the selected version (status=review) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["PostDto"];
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found / cross-tenant */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description No versions / not editable */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Invalid version index */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/posts/{id}/edit-copy": {
         parameters: {
             query?: never;
@@ -2046,6 +2131,8 @@ export interface paths {
                     "application/json": {
                         /** @description Default true. false → halt at the publisher gate for manual approval. */
                         autoPublish?: boolean;
+                        /** @description Default true. Pause after concept_writer produces its 3-5 versions so the user picks one (+ optional reference image). false → auto-select version 1 and continue. */
+                        conceptGate?: boolean;
                     };
                 };
             };

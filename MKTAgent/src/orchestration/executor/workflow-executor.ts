@@ -20,7 +20,7 @@ import {
   setRunStatus,
   setNodeStatus,
 } from '../../db/repos/workflow-run-repo.ts';
-import { getPostByRunId } from '../../db/repos/post-repo.ts';
+import { getPostByRunId, approveReview } from '../../db/repos/post-repo.ts';
 import { platformSupportsAsset } from '../../social/postability.ts';
 import { platformAssetType, distinctAssetTypes } from '../../scheduler/resolve-input.ts';
 import { publishNodeStatus } from '../../events/bus.ts';
@@ -46,6 +46,12 @@ const MEDIA_AGENT_ASSET: Record<string, ReadonlyArray<string>> = {
   video: ['video'],
 };
 
+// Agents that PAUSE the run right AFTER they execute (produce-then-gate), for a user
+// decision on the just-produced output. concept_writer parks so the user picks one of its
+// 3-5 versions (+ optional reference image) before media/publish run. Distinct from the
+// requiresApproval BEFORE-gate (publisher/video), which halts before spending.
+const SELECTION_GATE = new Set<string>(['concept_writer']);
+
 export interface ExecuteOptions {
   geminiFn?: RunnerContext['geminiFn'];
   publishFn?: RunnerContext['publishFn'];
@@ -61,6 +67,11 @@ export interface ExecuteOptions {
   // false to restore the manual "nothing publishes until you approve" gate (also how
   // the verify scripts exercise the gate/resume path without ever publishing).
   autoPublish?: boolean;
+  // Concept selection gate: when true (DEFAULT), the run PAUSES right after concept_writer
+  // produces its 3-5 versions so the user picks one (+ optionally uploads a reference image)
+  // before media/publish run. Resume via approve-node(concept). false = auto-select version 1
+  // and continue (the verify scripts + any headless path opt out).
+  conceptGate?: boolean;
   // Single-node re-execute: run ONLY this node (its upstream artifacts are seeded from
   // what's already stored), then stop. Its downstream dependents are reset to pending by
   // the caller (marked stale) but NOT auto-run — the user re-runs them explicitly.
@@ -155,6 +166,21 @@ export const runWorkflow = async (
     const nodeRow = nodeRowByPlanId.get(planNodeId)!;
     if (nodeRow.status === 'completed' || nodeRow.status === 'skipped') continue;
 
+    // Concept selection gate — RESUME: the run parked here after concept produced its versions.
+    // On approve-node(concept) the user has picked a version (+ optional reference image) → approve
+    // the post (review→ready) so the publisher can claim it, mark the node completed, and continue
+    // to media/publish. A re-execute that doesn't target this node keeps the run parked.
+    if (SELECTION_GATE.has(planNode.agentId) && nodeRow.status === 'awaiting_approval') {
+      if (opts.approveNodeId === planNodeId) {
+        if (postId) await approveReview(postId, ownerId, new Date());
+        await setNodeStatus(nodeRow.id, 'completed');
+        publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed' });
+        continue;
+      }
+      await setRunStatus(runId, 'needs_approval');
+      return { status: 'needs_approval', nodeId: planNodeId };
+    }
+
     // Media selection by needed asset types (#2, item 5): skip a media step none of the
     // targets need — BEFORE the approval halt, so a carousel-only post never stops at the
     // video gate. A step runs if it produces ANY needed asset type.
@@ -210,6 +236,19 @@ export const runWorkflow = async (
       });
       publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed' });
       void def;
+
+      // Concept selection gate — PARK: pause right after concept produced its 3-5 versions so the
+      // user picks one (+ optional reference image) before media/publish run. conceptGate=false
+      // (verify scripts / headless) auto-selects version 1 and approves so the flow continues.
+      if (SELECTION_GATE.has(planNode.agentId)) {
+        if (opts.conceptGate ?? true) {
+          await setNodeStatus(nodeRow.id, 'awaiting_approval');
+          await setRunStatus(runId, 'needs_approval');
+          publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval' });
+          return { status: 'needs_approval', nodeId: planNodeId };
+        }
+        if (postId) await approveReview(postId, ownerId, new Date());
+      }
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e).slice(0, 500);
       await setNodeStatus(nodeRow.id, 'failed', { finishedAt: new Date(), error: msg });

@@ -21,6 +21,38 @@ const cap = (s: string, max: number): string => {
   return cut.slice(0, cut.lastIndexOf(' ')) + '…';
 };
 
+// Extract the model's JSON text from a Gemini response, or throw a faithful error.
+const geminiText = (resp: any): string => {
+  if (resp && resp.error) {
+    const e = resp.error;
+    throw new Error(`Gemini HTTP ${e.status || e.code || ''}: ${e.message || 'upstream error'}`);
+  }
+  const cand = resp?.candidates?.[0];
+  const text = cand?.content?.parts?.[0]?.text;
+  if (!text) throw new Error(`empty Gemini response (finishReason=${cand?.finishReason || 'none'})`);
+  return text;
+};
+
+export type VariantsResult =
+  | { ok: true; variants: CopyVariants[] }
+  | { ok: false; error: string };
+
+// Parse the multi-variant response { variants: [{body,threads,x}, …] }. Keeps the same
+// length safety-net per variant; drops any variant missing a body rather than failing all.
+export function parseVariants(resp: any): VariantsResult {
+  try {
+    const parsed = JSON.parse(geminiText(resp));
+    const arr: any[] = Array.isArray(parsed?.variants) ? parsed.variants : [];
+    const variants = arr
+      .map((v) => ({ body: String(v?.body || '').trim(), threads: cap(String(v?.threads || '').trim(), 480), x: cap(String(v?.x || '').trim(), 280) }))
+      .filter((v) => v.body);
+    if (variants.length === 0) throw new Error('no usable variants in model output');
+    return { ok: true, variants };
+  } catch (e) {
+    return { ok: false, error: 'copygen: ' + (e instanceof Error ? e.message : String(e)) };
+  }
+}
+
 export function parseGeminiResponse(resp: any): ParseResult {
   try {
     // Upstream HTTP/quota error: surface the real Gemini message, not "empty".

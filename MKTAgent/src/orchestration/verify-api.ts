@@ -171,7 +171,7 @@ async function main(): Promise<void> {
     const t0 = Date.now();
     // autoPublish:false → force the manual publisher gate so this suite asserts the gate +
     // approve/resume path (and never publishes off a live default). Item 2 default is ON.
-    const exec = await call('POST', `/orchestration/runs/${instRunId}/execute`, tokenA, { autoPublish: false });
+    const exec = await call('POST', `/orchestration/runs/${instRunId}/execute`, tokenA, { autoPublish: false, conceptGate: false });
     const execMs = Date.now() - t0;
     check('execute → 200 running', exec.status === 200 && exec.body?.data?.status === 'running', { s: exec.status, st: exec.body?.data?.status });
     check('execute returns FAST (<3s, not the 30-60s sync hang)', execMs < 3000, `${execMs}ms`);
@@ -227,7 +227,7 @@ async function main(): Promise<void> {
     check('vi goal inferred accountType=company', (vi.body?.data?.goal as any)?.slots?.accountType === 'company', (vi.body?.data?.goal as any)?.slots?.accountType);
 
     if (viRunId && vi.body?.data?.status === 'planned') {
-      await call('POST', `/orchestration/runs/${viRunId}/execute`, tokenA, { autoPublish: false });
+      await call('POST', `/orchestration/runs/${viRunId}/execute`, tokenA, { autoPublish: false, conceptGate: false });
       let viGated: any = null;
       for (let i = 0; i < 60; i++) {
         const r = await call('GET', `/orchestration/runs/${viRunId}`, tokenA);

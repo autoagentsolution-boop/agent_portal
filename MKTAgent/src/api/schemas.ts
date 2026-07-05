@@ -56,6 +56,10 @@ export const editCopyBody = z.object({
 export type EditCopyBody = z.infer<typeof editCopyBody>;
 export type RefinePostBody = z.infer<typeof refinePostBody>;
 
+// Concept selection: pick one of the 3-5 generated versions at the concept gate.
+export const selectVariantBody = z.object({ index: z.number().int().min(0).max(9) });
+export type SelectVariantBody = z.infer<typeof selectVariantBody>;
+
 // ---- CRUD bodies (T7) ----
 // ownerId is NEVER accepted from the client — it is taken from the JWT. Post.copy
 // and Post.status are owned by copy-gen/the review gate, so neither is settable here.

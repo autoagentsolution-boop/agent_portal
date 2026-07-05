@@ -273,10 +273,12 @@ orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
   // asset (item 1/3). Callers (e.g. verify scripts) may opt out with autoPublish=false to
   // force the manual gate. Only an explicit `false` disables it; anything else → default.
   const autoPublish = (req.body as { autoPublish?: unknown } | undefined)?.autoPublish !== false;
+  // Concept selection gate default ON: pause after concept for the user to pick a version.
+  const conceptGate = (req.body as { conceptGate?: unknown } | undefined)?.conceptGate !== false;
 
   // Claim into running before responding so a double-click can't spawn two executors.
   await setRunStatus(run.id, 'running');
-  launchWorkflow(run.id, req.userId!, goal, plan, { autoPublish });
+  launchWorkflow(run.id, req.userId!, goal, plan, { autoPublish, conceptGate });
   return respondRun(res, run.id, req.userId!);
 }));
 

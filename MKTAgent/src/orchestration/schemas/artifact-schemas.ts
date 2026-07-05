@@ -48,7 +48,12 @@ export const researchSummary = z.object({
 export const contentConcept = z.object({
   mainAngle: z.string(),
   keyMessage: z.string(),
-  copy: copyBag, // { body, threads, x } — the live copy-gen result
+  copy: copyBag, // { body, threads, x } — the SELECTED variant (== variants[chosen])
+  // 3-5 alternative copy versions the user chooses from at the concept selection gate.
+  // `chosen` is the active index (post.copy mirrors variants[chosen]). Optional for back-compat
+  // with legacy single-copy artifacts.
+  variants: z.array(copyBag).optional(),
+  chosen: z.number().int().optional(),
   // Reference to the real Post row this concept was generated against. The
   // publisher node uses this postId, NOT a copy of the text → Post stays the
   // single source of truth for content (plan: no second source of truth).

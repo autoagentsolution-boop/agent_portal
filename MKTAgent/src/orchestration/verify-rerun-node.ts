@@ -22,7 +22,10 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
 let conceptRuns = 0;
 const stubGemini: GeminiFn = async () => {
   conceptRuns++;
-  return { candidates: [{ content: { parts: [{ text: JSON.stringify({ body: `Body v${conceptRuns}`, threads: 'T', x: 'X' }) }] } }] };
+  return { candidates: [{ content: { parts: [{ text: JSON.stringify({ variants: [
+    { body: `Body v${conceptRuns}`, threads: 'T', x: 'X' },
+    { body: `Alt v${conceptRuns}`, threads: 'T2', x: 'X2' },
+  ] }) }] } }] };
 };
 const stubPublish: PublishFn = async (platform) => ({ platform, ok: true, url: `https://dry-run/${platform}`, error: null });
 const stubLlmJson: LlmJsonFn = async (sys) => {
@@ -37,7 +40,7 @@ const stubImage = async () => { imageRuns++; return { imagePath: `/tmp/img${imag
 
 // autoPublish:false forces the manual publisher gate so this suite exercises the
 // gate/resume + single-node re-run mechanics (item 2 auto-publish is opt-out here).
-const opts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts, autoPublish: false };
+const opts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts, autoPublish: false, conceptGate: false };
 
 async function main(): Promise<void> {
   const user = await prisma.user.create({ data: { email: `rr-${Date.now()}@test.local` } });

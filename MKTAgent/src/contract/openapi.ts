@@ -22,6 +22,7 @@ import {
   rejectPostBody,
   refinePostBody,
   editCopyBody,
+  selectVariantBody,
   campaignDto,
   postDto,
   postDetailDto,
@@ -242,6 +243,26 @@ registry.registerPath({
     404: errorResponse('Not found / cross-tenant'),
     409: errorResponse('Copy-gen busy, post not in review/ready, or no copy yet'),
     422: errorResponse('Invalid body'),
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/posts/{id}/select-variant',
+  tags: ['posts'],
+  summary: 'Pick one of the 3-5 concept versions',
+  description: 'At the concept selection gate, sets post.copy = versions[index] (from the run\'s content_concept artifact) and records the chosen index. Editable-state only.',
+  security: userAuth,
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { content: json(selectVariantBody) },
+  },
+  responses: {
+    200: { description: 'Post with the selected version (status=review)', content: json(dataEnvelope(PostDto)) },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Not found / cross-tenant'),
+    409: errorResponse('No versions / not editable'),
+    422: errorResponse('Invalid version index'),
   },
 });
 
@@ -602,6 +623,10 @@ registry.registerPath({
             .boolean()
             .optional()
             .describe('Default true. false → halt at the publisher gate for manual approval.'),
+          conceptGate: z
+            .boolean()
+            .optional()
+            .describe('Default true. Pause after concept_writer produces its 3-5 versions so the user picks one (+ optional reference image). false → auto-select version 1 and continue.'),
         }),
       ),
     },
