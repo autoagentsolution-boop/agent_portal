@@ -7,7 +7,15 @@ Transport decision: documents sent as **base64 in JSON** (no multipart/multer de
 `inlineData` wants base64 anyway; route gets a 20mb body limit). Supported now: PDF, images
 (png/jpg/webp), TXT/MD. DOCX deferred (needs a text extractor).
 
-## Phase 1 — Backend core  [THIS PASS]
+## STATUS (2026-07-05)
+- Phase 1 DONE (0bf11a6) — analyze module + endpoint, real usageMetadata cost, live-verified.
+- Phase 2 DONE (0c80d80) — analyzed knowledge (campaign.brandContext) grounds image/video prompts.
+- Phase 3 DONE (d522709) — Product Knowledge upload UI on the campaign board.
+- Phase 4 DONE (49ba524) — TTS voiceover now counted in the video node cost.
+- OPEN: Phase 5 (deepen mandatory questions), and rolling doc-analysis cost into a persistent
+  per-campaign/flow ledger (today it's shown per-upload, not summed into a running total).
+
+## Phase 1 — Backend core  [DONE]
 - `src/product-knowledge/analyze.ts` — Gemini `generateContent` with file parts (inlineData for
   pdf/images, text part for txt) + an extraction prompt → JSON product profile. Cost from REAL
   `usageMetadata` (first real-token plumbing; doc tokens counted) → NodeCost.
