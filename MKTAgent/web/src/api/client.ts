@@ -20,8 +20,21 @@ export type ProductKnowledgeResult = {
   language: string | null;
   cost: { promptTokens: number; outputTokens: number; totalTokens: number; costUsd: number };
   persistedToCampaign: boolean;
+  library?: { id: string; name: string } | null;
 };
 export type UploadedDocInput = { name: string; mimeType: string; dataB64: string };
+// Product Knowledge library entry (item 6; route not in openapi yet → hand-typed).
+export type ProductKnowledgeEntry = {
+  id: string;
+  name: string;
+  productDetails: string;
+  profile: unknown;
+  brandVoice: string | null;
+  language: string | null;
+  sourceDocs: string[];
+  createdAt: string;
+  updatedAt: string;
+};
 export type PostDto = Dto['PostDto'];
 export type PostDetailDto = Dto['PostDetailDto'];
 export type LeadDto = Dto['LeadDto'];
@@ -138,8 +151,15 @@ export const api = {
     request<AgentChatSessionDto>(`/agent/chats/${id}/messages`, { method: 'POST', body: { message, timezone } }),
   deleteAgentChat: (id: string) => request<void>(`/agent/chats/${id}`, { method: 'DELETE' }),
 
-  analyzeProductKnowledge: (files: UploadedDocInput[], opts?: { product?: string; campaignId?: string }) =>
+  analyzeProductKnowledge: (
+    files: UploadedDocInput[],
+    opts?: { product?: string; campaignId?: string; saveToLibrary?: boolean; libraryName?: string; productKnowledgeId?: string },
+  ) =>
     request<ProductKnowledgeResult>('/product-knowledge/analyze', { method: 'POST', body: { files, ...(opts ?? {}) } }),
+  listProductKnowledge: () => request<ProductKnowledgeEntry[]>('/product-knowledge'),
+  updateProductKnowledge: (id: string, body: { name?: string; productDetails?: string; brandVoice?: string | null; language?: string | null }) =>
+    request<ProductKnowledgeEntry>(`/product-knowledge/${id}`, { method: 'PATCH', body }),
+  deleteProductKnowledge: (id: string) => request<void>(`/product-knowledge/${id}`, { method: 'DELETE' }),
   listCampaigns: () => request<CampaignDto[]>('/campaigns'),
   createCampaign: (body: Dto['CreateCampaignBody']) =>
     request<CampaignDto>('/campaigns', { method: 'POST', body }),

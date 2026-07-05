@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type Dto, type PostDto } from '../api/client';
+import { api, type Dto, type PostDto, type ProductKnowledgeEntry } from '../api/client';
 import { PlatformChecklist } from './PlatformChecklist';
 import {
   assetTypeOptions,
@@ -59,10 +59,19 @@ const initialState = (post?: PostDto | null): PostBody => ({
 export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: Props) {
   const [form, setForm] = useState<PostBody>(() => initialState(post));
   const [platformAssets, setPlatformAssets] = useState<PlatformAssets>(() => (post?.platformAssets as PlatformAssets) ?? {});
+  const [knowledgeId, setKnowledgeId] = useState<string>(post?.productKnowledgeId ?? '');
+  const [library, setLibrary] = useState<ProductKnowledgeEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const mode = post ? 'edit' : 'create';
 
-  useEffect(() => { setForm(initialState(post)); setPlatformAssets((post?.platformAssets as PlatformAssets) ?? {}); }, [post]);
+  useEffect(() => {
+    setForm(initialState(post));
+    setPlatformAssets((post?.platformAssets as PlatformAssets) ?? {});
+    setKnowledgeId(post?.productKnowledgeId ?? '');
+  }, [post]);
+
+  // Product Knowledge library (item 6): the user picks a reusable entry to ground this post.
+  useEffect(() => { void api.listProductKnowledge().then((r) => { if (r.ok) setLibrary(r.data); }); }, []);
 
   const setField = <K extends keyof PostBody>(key: K, value: PostBody[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -87,20 +96,21 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
     // edit that clears all overrides resets the post back to the single default asset type.
     const overrides = cleanPlatformAssets(platformAssets, selected, form.assetType ?? 'image');
     const platformAssetsPayload = Object.keys(overrides).length ? overrides : null;
+    const knowledgePayload = knowledgeId || null;
     if (post) {
-      const result = await api.updatePost(post.id, { ...body, platformAssets: platformAssetsPayload });
+      const result = await api.updatePost(post.id, { ...body, platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload });
       setSaving(false);
       if (result.ok) { notify('Brief updated'); onSaved(result.data); }
       else notify(`Brief save failed: ${result.error.error}`, 'err');
       return;
     }
-    // Create then, if there are per-platform overrides, persist them with a follow-up PATCH
-    // (CreatePostBody has no platformAssets field — it's an edit-time refinement).
+    // Create then persist edit-only fields (platformAssets, library link) with a follow-up
+    // PATCH — CreatePostBody carries neither.
     const created = await api.createPost({ campaignId, ...body });
     if (!created.ok) { setSaving(false); notify(`Brief save failed: ${created.error.error}`, 'err'); return; }
     let saved = created.data;
-    if (platformAssetsPayload) {
-      const patched = await api.updatePost(saved.id, { platformAssets: platformAssetsPayload });
+    if (platformAssetsPayload || knowledgePayload) {
+      const patched = await api.updatePost(saved.id, { platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload });
       if (patched.ok) saved = patched.data;
     }
     setSaving(false);
@@ -136,6 +146,17 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
           </select>
         </div>
       </div>
+
+      {library.length > 0 && (
+        <div className="field">
+          <label>Product knowledge (library)</label>
+          <select value={knowledgeId} onChange={(e) => setKnowledgeId(e.target.value)}>
+            <option value="">Inherit from campaign</option>
+            {library.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+          <div className="help-text">Ground this post in a reusable product profile. Analyze docs once at the Master Agent (or a campaign) to build the library.</div>
+        </div>
+      )}
 
       <div className="field">
         <label>Media storage</label>

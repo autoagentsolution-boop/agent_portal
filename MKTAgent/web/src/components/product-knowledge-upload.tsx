@@ -33,6 +33,9 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ProductKnowledgeResult | null>(null);
   const [open, setOpen] = useState(false);
+  // Save the analysis as a REUSABLE library entry (item 6) so other posts/campaigns can link it.
+  const [saveToLibrary, setSaveToLibrary] = useState(false);
+  const [libraryName, setLibraryName] = useState(product ?? '');
 
   const analyze = async (fileList: FileList) => {
     const files = Array.from(fileList).slice(0, MAX_FILES);
@@ -43,7 +46,11 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
       const docs: UploadedDocInput[] = await Promise.all(
         files.map(async (f) => ({ name: f.name, mimeType: mimeOf(f), dataB64: await toB64(f) })),
       );
-      const r = await api.analyzeProductKnowledge(docs, { campaignId, ...(product ? { product } : {}) });
+      const r = await api.analyzeProductKnowledge(docs, {
+        campaignId,
+        ...(product ? { product } : {}),
+        ...(saveToLibrary ? { saveToLibrary: true, ...(libraryName.trim() ? { libraryName: libraryName.trim() } : {}) } : {}),
+      });
       if (!r.ok) { notify(`Analyze: ${r.error.error}`, 'err'); return; }
       setResult(r.data);
       onAnalyzed?.(r.data);
@@ -77,6 +84,21 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
           <div className="help-text" style={{ marginTop: 4 }}>
             PDF, PNG/JPG/WebP, or TXT/Markdown · up to {MAX_FILES} files · ~6MB each. Gemini reads them into the product profile below.
           </div>
+          <div className="row" style={{ gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label className="row small" style={{ gap: 6, alignItems: 'center' }}>
+              <input type="checkbox" checked={saveToLibrary} disabled={busy} onChange={(e) => setSaveToLibrary(e.target.checked)} />
+              Save as reusable library entry
+            </label>
+            {saveToLibrary && (
+              <input
+                value={libraryName}
+                disabled={busy}
+                onChange={(e) => setLibraryName(e.target.value)}
+                placeholder="Library name (e.g. product name)"
+                style={{ flex: 1, minWidth: 180 }}
+              />
+            )}
+          </div>
           {busy && <p className="muted small" style={{ marginTop: 8 }}>Analyzing documents…</p>}
 
           {result && (
@@ -87,6 +109,7 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
                 {result.language && <span>Language: {result.language}</span>}
                 <span>Cost: {result.cost.totalTokens} tok · ${result.cost.costUsd.toFixed(4)}</span>
                 {result.persistedToCampaign && <span>✓ saved to campaign</span>}
+                {result.library && <span>✓ library: {result.library.name}</span>}
               </div>
             </div>
           )}
