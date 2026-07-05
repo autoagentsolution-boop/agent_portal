@@ -8,6 +8,15 @@ items make the flow *consistent by construction* rather than patched after the f
 
 ---
 
+## PROGRESS (2026-07-05)
+The CORRECTNESS foundation of #3 is shipped (commits b6a3ece, 98bf68b):
+- `assetTypeFromOutputs` — one rule maps plan outputs → post.assetType, applied in
+  concept_writer / createCampaignFromFlow / goalToBrief. Fixes the #2-gating regression
+  (video/carousel flows no longer default to 'image' and skip storyboard/video).
+- Carousel is now a first-class intake choice ("Text + carousel" → storyboard-only → carousel post).
+Still OPEN below: whether to ASK Language/Length/Asset type/Brand voice explicitly (the form
+vs. conversational fork), and all of Phase 2.
+
 ## Phase 1 — Master agent collects mandatory brief fields (#3)
 
 Goal: the brief is complete before planning, so no step drifts (empty language → mixed output;
