@@ -201,14 +201,27 @@ const resolveRunLanguage = async (ctx: RunnerContext): Promise<string> => {
   return ctx.goal.slots.language?.trim() || (await getUserById(ctx.ownerId))?.defaultLanguage || 'en';
 };
 
+// Product knowledge that grounds the IMAGE/VIDEO prompts: the goal slot first, else the
+// campaign's brandContext — where uploaded-document analysis is persisted. Copy-gen already
+// reads brandContext (resolveCopyConfig), so this brings the media prompts to parity: a rich
+// analyzed profile reaches the image/video subject instead of a bare product name.
+const resolveProductKnowledge = async (ctx: RunnerContext): Promise<string | null> => {
+  const slot = ctx.goal.slots.productDetails?.trim();
+  if (slot) return slot;
+  const post = ctx.postId ? await getPostForCopyGen(ctx.postId, ctx.ownerId) : null;
+  return post?.campaign.brandContext?.trim() || null;
+};
+
 // `resolvedLang` (the setup language) pins the CONTENT language when provided; without it
 // this falls back to the goal slot (cost-estimation callers that don't send an LLM prompt).
-const goalContext = (ctx: RunnerContext, resolvedLang?: string): string => {
+// `knowledge` overrides the goal's productDetails when provided (campaign.brandContext fallback).
+const goalContext = (ctx: RunnerContext, resolvedLang?: string, knowledge?: string | null): string => {
   const { goal, upstream } = ctx;
   const language = (resolvedLang ?? goal.slots.language ?? '').trim() || null;
+  const productKnowledge = (knowledge ?? goal.slots.productDetails ?? '').trim() || null;
   const lines = [
     `Product: ${goal.slots.product ?? 'Unspecified product'}`,
-    goal.slots.productDetails ? `Product knowledge (use these facts, do not invent beyond them): ${goal.slots.productDetails}` : null,
+    productKnowledge ? `Product knowledge (use these facts, do not invent beyond them): ${productKnowledge}` : null,
     goal.slots.accountType ? `Marketer type: ${goal.slots.accountType}` : null,
     goal.slots.targetAudience ? `Audience: ${goal.slots.targetAudience}` : null,
     goal.slots.angle ? `Angle: ${goal.slots.angle}` : null,
@@ -227,7 +240,7 @@ const goalContext = (ctx: RunnerContext, resolvedLang?: string): string => {
 // output against the artifact schema here so a bad response fails the node loudly.
 const runIdeation = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
-  const prompt = goalContext(ctx, await resolveRunLanguage(ctx));
+  const prompt = goalContext(ctx, await resolveRunLanguage(ctx), await resolveProductKnowledge(ctx));
   const raw = await call(ideationSystemPrompt, prompt);
   const parsed = campaignIdeas.safeParse(raw);
   if (!parsed.success) throw new Error(`ideation: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
@@ -237,7 +250,7 @@ const runIdeation = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 // strategy (LIVE): turn the chosen idea into a positioning/audience/pillars brief.
 const runStrategy = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
-  const prompt = goalContext(ctx, await resolveRunLanguage(ctx));
+  const prompt = goalContext(ctx, await resolveRunLanguage(ctx), await resolveProductKnowledge(ctx));
   const raw = await call(strategySystemPrompt, prompt);
   const parsed = strategyBrief.safeParse(raw);
   if (!parsed.success) throw new Error(`strategy: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
@@ -254,12 +267,13 @@ const runStrategy = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 //   - visualBrief  → stored on the artifact and shown to the USER. Composed in the user's
 //                    language (Vietnamese when goal.language=vi) so the brief never mixes
 //                    English scaffolding around Vietnamese content.
-const buildImagePrompt = (ctx: RunnerContext, resolvedLang: string): { visualBrief: string; imagePrompt: string } => {
+const buildImagePrompt = (ctx: RunnerContext, resolvedLang: string, knowledge?: string | null): { visualBrief: string; imagePrompt: string } => {
   const { goal, upstream } = ctx;
   const concept = upstream.content_concept as { mainAngle?: string; keyMessage?: string } | undefined;
   const strat = upstream.strategy_brief as { positioning?: string; pillars?: string[] } | undefined;
   const product = goal.slots.product ?? 'the product';
-  const details = goal.slots.productDetails?.trim();
+  // Prefer resolved knowledge (goal slot → campaign brandContext from analyzed docs).
+  const details = (knowledge ?? goal.slots.productDetails)?.trim();
   const angle = concept?.mainAngle ?? goal.slots.angle ?? product;
   const keyMessage = concept?.keyMessage?.trim();
   const positioning = strat?.positioning?.trim();
@@ -302,7 +316,7 @@ const buildImagePrompt = (ctx: RunnerContext, resolvedLang: string): { visualBri
 // to the Post the publisher will post (heroFile = `local:<path>`). The Post is the
 // single source of truth for media; the artifact just references it.
 const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
-  const { visualBrief, imagePrompt } = buildImagePrompt(ctx, await resolveRunLanguage(ctx));
+  const { visualBrief, imagePrompt } = buildImagePrompt(ctx, await resolveRunLanguage(ctx), await resolveProductKnowledge(ctx));
   const gen = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
   const image = await gen({ prompt: imagePrompt, mode: 'text-to-image' });
   const ref = `local:${image.outputFile}`;
@@ -332,7 +346,8 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   //              the product story. Full, polished marketing images (not movie stills).
   //   video    → frames are KEYFRAMES that get animated + stitched into ONE continuous video.
   const isCarousel = post?.assetType === 'carousel';
-  const parts = [goalContext(ctx, effectiveLang)];
+  const knowledge = ctx.goal.slots.productDetails?.trim() || post?.campaign.brandContext?.trim() || null;
+  const parts = [goalContext(ctx, effectiveLang, knowledge)];
   parts.push(isCarousel
     ? 'DELIVERABLE = CAROUSEL: each frame is a STANDALONE slide the viewer swipes through; together they tell the product story start → finish. Make each a complete, self-contained marketing image, not a movie still.'
     : 'DELIVERABLE = VIDEO: these frames are KEYFRAMES that will be ANIMATED with motion and stitched in sequence. Plan them as consecutive moments of ONE continuous shot/story so the motion between frames flows.');
