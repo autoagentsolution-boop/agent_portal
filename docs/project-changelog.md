@@ -5,6 +5,55 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-05
 
+### Product Knowledge — upload documents → Gemini analysis → grounds every prompt
+Thin product knowledge was the cause of generic copy/images/video. New capability: the user
+uploads documents/images about the product and Gemini's multimodal model reads them into a rich,
+factual profile.
+- `src/product-knowledge/analyze-documents.ts` — `generateContent` with `inlineData` (PDF/images)
+  + text parts (txt/md); returns a composed `productDetails` + `brandVoice` + `language`. Cost from
+  REAL `usageMetadata` (first real-token plumbing — document tokens are counted).
+- `POST /product-knowledge/analyze` — files as base64 in JSON (no multipart dep); a 20mb route
+  parser is mounted BEFORE the global 1mb limit. Optional `campaignId` persists the profile to
+  `campaign.brandContext`. Auth-scoped; 415 for unsupported types, 422 empty, 502 upstream.
+- Wiring: copy-gen already read `brandContext`; the IMAGE/VIDEO prompts (`buildImagePrompt`,
+  storyboard, `goalContext`) now fall back to it too — so analyzed knowledge reaches the media
+  subject, not just the copy.
+- UI: `product-knowledge-upload.tsx` on the campaign board (📚 panel) — upload → extracted profile
+  + token cost → saved to campaign. Live-verified: 611 tok / $0.0005 on a sample doc.
+Commits: `0bf11a6` (backend), `0c80d80` (media wiring), `d522709` (UI).
+
+### Asset-type-aware media pipeline + pre-video cost gate + carousel
+- **assetType drives media** — executor skips media nodes the chosen assetType doesn't need
+  (carousel/image never pay for the video pipeline; infographic can't clobber a carousel). Media
+  agents set assetType to match their output (fixes "carousel needs >=2 assets"). `assetTypeFromOutputs`
+  derives post.assetType from the plan outputs across all create paths (concept_writer /
+  createCampaignFromFlow / goalToBrief) so the gating runs the right steps.
+- **Storyboard branches on assetType** — carousel = business-explainer slides (own prompt) published
+  AS the carousel (frame-CSV hero); video = cinematic keyframes stitched into one mp4.
+- **Pre-video approval gate** — `video.requiresApproval` halts BEFORE the costly Veo step so the user
+  reviews the storyboard first; the gate reads the LIVE registry so it applies to existing runs; a
+  deliberate video re-run stays allowed. **TTS voiceover** now counted in the video node cost (`49ba524`).
+- **Carousel is selectable** in intake ("Text + carousel") and the analyzer distinguishes a carousel /
+  multiple images from a single infographic.
+
+### Master Agent robustness — language, clarification loop, platforms
+- **Two language domains, separated** — content follows the SETUP (post→campaign→user), the chat
+  mirrors the user's INPUT. Tightened VN detection (≥2 unaccented hits; added stacked-tone diacritics)
+  so English stops flipping to Vietnamese; prompts forbid language mixing.
+- **Fixed the never-ending clarification loop** — refine turns were analyzed in isolation, so a short
+  reply never mapped to a slot → `product` stayed empty → asked forever. Refine now hands the analyzer
+  the prior goal as context; a personal post's topic/angle counts as its subject; the deterministic
+  platform parse is unioned into the Gemini result so a named platform is never dropped.
+- **Mandatory platform ask** on BOTH Master-Agent surfaces (Orchestrate flow + "Create with Master
+  Agent" post modal) — never silently defaults to Facebook.
+
+### UX / robustness
+- Live per-node elapsed timer + spinner; optimistic running state closes the SSE race (a re-run video
+  step now shows "processing" immediately). Idempotent post-approve (a stale card no longer dead-ends).
+- Persist `output/` via a named Docker volume so generated media survives container rebuilds.
+- Veo: retry the start call without `generateAudio` when the (silent-tier) model rejects it; guard a
+  missing storyboard frame on disk with an actionable message instead of a raw ENOENT.
+
 ### Video polish — Veo audio off, consistent frames, voiceover in user's language
 Follow-up fixes after the first storyboard/video pass:
 - **Veo RAI audio filter fixed** — live Veo returned `raiMediaFilteredCount` ("issue with the
