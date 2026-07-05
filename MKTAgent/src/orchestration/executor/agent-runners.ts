@@ -4,7 +4,7 @@
 //   publisher      → calls publishPostNow on that Post (live; gated upstream)
 //   others         → schema-valid STUB artifacts so the DAG runs end-to-end now
 // No copy-gen/scheduler logic is reimplemented — only their exported cores are used.
-import type { GoalSpec } from '../schemas/goal-spec.ts';
+import { assetTypeFromOutputs, type GoalSpec } from '../schemas/goal-spec.ts';
 import { campaignIdeas, strategyBrief, storyboard, videoPrompt, type ArtifactType } from '../schemas/artifact-schemas.ts';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
@@ -136,6 +136,9 @@ const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     language: goal.slots.language ?? null,
     lengthSpec: goal.slots.lengthSpec ?? null,
     heroFile: goal.slots.heroFile ?? null,
+    // Match the deliverable the plan produces so the executor's media gating runs the right
+    // steps (a video flow must NOT default to 'image', which would skip storyboard + video).
+    assetType: assetTypeFromOutputs(goal.outputs),
   });
 
   const result = await generateForPost(post.id, ownerId, ctx.geminiFn);

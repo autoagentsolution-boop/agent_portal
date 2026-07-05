@@ -51,6 +51,13 @@ export const goalSlots = z.object({
 });
 export type GoalSlots = z.infer<typeof goalSlots>;
 
+// The post's media assetType derived from the chosen outputs — the SINGLE rule mapping a
+// plan to its deliverable, so post.assetType always matches what the flow produces (and the
+// executor's media gating agrees). Priority: video ⇒ 'video'; storyboard-only ⇒ 'carousel'
+// (the storyboard frames ARE the slides); else ⇒ 'image'.
+export const assetTypeFromOutputs = (o: OutputFlags): 'image' | 'carousel' | 'video' =>
+  o.needsVideo ? 'video' : o.needsStoryboard ? 'carousel' : 'image';
+
 export const goalSpec = z.object({
   // Stable goal classifier. Milestone 1 only plans `marketing_content`; the field
   // exists so future goal types (lead_nurture, report, etc.) slot in additively.

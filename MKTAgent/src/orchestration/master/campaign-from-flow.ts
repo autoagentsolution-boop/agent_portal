@@ -3,7 +3,7 @@
 // with post Y", we ACTUALLY create it here — not just offer a button. The campaign carries
 // the template goal's strategy slots; a named post clones the flow DAG (flow-as-template)
 // and seeds its angle from the post title so concept_writer has a topic.
-import type { GoalSpec } from '../schemas/goal-spec.ts';
+import { assetTypeFromOutputs, type GoalSpec } from '../schemas/goal-spec.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
 import { cloneTemplateRun } from '../../db/repos/workflow-run-repo.ts';
 import { createPostForOwner } from '../../db/repos/post-repo.ts';
@@ -64,6 +64,8 @@ export const createCampaignFromFlow = async (
       language: clean(goal.slots.language) ?? undefined,
       angle: clean(names.postTitle),
       runId: instance?.id ?? null,
+      // Match the flow's deliverable so the executor's media gating runs the right steps.
+      assetType: assetTypeFromOutputs(goal.outputs),
     });
   }
 

@@ -2,7 +2,7 @@
 // The Master Agent's requirement analyzer produces a GoalSpec from the user's free-text
 // description; this projects the fields a Post brief cares about so the user never
 // hand-fills the form. Pure + synchronous — trivially testable, no I/O.
-import type { GoalSpec } from '../schemas/goal-spec.ts';
+import { assetTypeFromOutputs, type GoalSpec } from '../schemas/goal-spec.ts';
 import type { CreatePostBody } from '../../api/schemas.ts';
 import type { ClarificationQuestion } from './clarification-engine.ts';
 import type { Campaign, SocialPlatform } from '../../../prisma/generated/prisma/client.ts';
@@ -80,11 +80,14 @@ export const goalToBrief = (goal: GoalSpec, answers: BriefAnswers = {}): GoalToB
   const lengthSpec = clean(goal.slots.lengthSpec);
   const angle = clean(typeof answers.angle === 'string' ? answers.angle : null) ?? clean(goal.slots.angle);
   const brandVoice = clean(goal.slots.brandVoice);
-  // Carousel is never inferred (needs explicit media intent) — YAGNI. An explicit format
-  // answer wins; else video only when the goal asked for it, otherwise a single image.
+  // An explicit format answer wins; otherwise derive from the goal's outputs via the shared
+  // rule (video ⇒ video, storyboard-only ⇒ carousel, else image) so the post's assetType
+  // matches the deliverable the executor will produce.
   const answeredFormat = typeof answers.assetType === 'string' ? answers.assetType.trim().toLowerCase() : '';
   const assetType: CreatePostBody['assetType'] =
-    answeredFormat === 'video' || (answeredFormat !== 'image' && goal.outputs.needsVideo) ? 'video' : 'image';
+    answeredFormat === 'video' ? 'video'
+    : answeredFormat === 'image' ? 'image'
+    : assetTypeFromOutputs(goal.outputs);
   // Answered platforms win; else the analyzer's; else undefined so buildPostUnderCampaign
   // falls through to campaign inheritance rather than clobbering it with [].
   const platforms = asPlatforms(answers.platforms)
