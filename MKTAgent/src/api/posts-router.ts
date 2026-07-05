@@ -37,6 +37,7 @@ import {
   deletePost,
 } from '../db/repos/post-repo.ts';
 import type { Campaign, Post } from '../../prisma/generated/prisma/client.ts';
+import { Prisma } from '../../prisma/generated/prisma/client.ts';
 
 export const postsRouter: Router = Router();
 
@@ -203,7 +204,14 @@ postsRouter.patch(
     if (!body) return;
     if (!(await getPostForOwner(req.params.id, req.userId!)))
       return fail(res, 404, 'post_not_found');
-    const updated = await updatePostFields(req.params.id, req.userId!, body);
+    // platformAssets is a nullable Json column: an explicit null clears the per-platform map,
+    // which Prisma expresses as JsonNull (not SQL null) — translate before the update.
+    const { platformAssets, ...rest } = body;
+    const data: Prisma.PostUpdateInput = {
+      ...rest,
+      ...(platformAssets !== undefined ? { platformAssets: platformAssets === null ? Prisma.JsonNull : platformAssets } : {}),
+    };
+    const updated = await updatePostFields(req.params.id, req.userId!, data);
     if (!updated)
       return fail(res, 409, 'not_editable', 'post is in a non-editable (scheduler-owned) state');
     ok(res, toPostDto(updated));

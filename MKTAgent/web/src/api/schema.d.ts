@@ -2030,7 +2030,7 @@ export interface paths {
         put?: never;
         /**
          * Execute a planned/failed run (async) → returns immediately as running
-         * @description Flips the run to running and executes the DAG DETACHED (the request returns at once — no long hang). SSE (/events) drives live node status; the executor halts BEFORE the external-write node (publisher) → needs_approval. Re-runnable from a failed state.
+         * @description Flips the run to running and executes the DAG DETACHED (the request returns at once — no long hang). SSE (/events) drives live node status. Auto-publish (default): a cleanly-postable post publishes with no Approve step; the executor still halts at the publisher for a review when a target platform cannot take the asset type → needs_approval. The pre-video cost gate always holds. Pass autoPublish=false to force the manual publisher gate. Re-runnable from a failed state.
          */
         post: {
             parameters: {
@@ -2041,7 +2041,14 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** @description Default true. false → halt at the publisher gate for manual approval. */
+                        autoPublish?: boolean;
+                    };
+                };
+            };
             responses: {
                 /** @description Run now running (live status via SSE) */
                 200: {
@@ -2448,6 +2455,18 @@ export interface components {
             driveFolderId: string | null;
             heroFile: string | null;
             platforms: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];
+            platformAssets: {
+                /** @enum {string} */
+                facebook?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                instagram?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                threads?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                linkedin?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                x?: "image" | "carousel" | "video";
+            } | null;
             scheduledAt: string | null;
             postUrls: {
                 [key: string]: string;
@@ -2481,6 +2500,18 @@ export interface components {
             driveFolderId: string | null;
             heroFile: string | null;
             platforms: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];
+            platformAssets: {
+                /** @enum {string} */
+                facebook?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                instagram?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                threads?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                linkedin?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                x?: "image" | "carousel" | "video";
+            } | null;
             scheduledAt: string | null;
             postUrls: {
                 [key: string]: string;
@@ -2609,6 +2640,18 @@ export interface components {
                 driveFolderId: string | null;
                 heroFile: string | null;
                 platforms: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];
+                platformAssets: {
+                    /** @enum {string} */
+                    facebook?: "image" | "carousel" | "video";
+                    /** @enum {string} */
+                    instagram?: "image" | "carousel" | "video";
+                    /** @enum {string} */
+                    threads?: "image" | "carousel" | "video";
+                    /** @enum {string} */
+                    linkedin?: "image" | "carousel" | "video";
+                    /** @enum {string} */
+                    x?: "image" | "carousel" | "video";
+                } | null;
                 scheduledAt: string | null;
                 postUrls: {
                     [key: string]: string;
@@ -2630,6 +2673,18 @@ export interface components {
             driveFolderId?: string | null;
             heroFile?: string | null;
             platforms?: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];
+            platformAssets?: {
+                /** @enum {string} */
+                facebook?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                instagram?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                threads?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                linkedin?: "image" | "carousel" | "video";
+                /** @enum {string} */
+                x?: "image" | "carousel" | "video";
+            } | null;
             scheduledAt?: string | null;
         };
         /** @enum {string} */

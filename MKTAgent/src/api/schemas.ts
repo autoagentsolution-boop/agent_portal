@@ -120,6 +120,9 @@ export const updatePostBody = z
     driveFolderId: z.string().max(200).nullish(),
     heroFile: z.string().max(2000).nullish(),
     platforms: z.array(socialPlatform),
+    // Per-platform asset type (item 5): { facebook: 'carousel', instagram: 'image' }. A
+    // platform absent from the map uses the default `assetType`. null clears the override.
+    platformAssets: z.record(socialPlatform, assetType).nullish(),
     scheduledAt: z.coerce.date().nullish(),
   })
   .partial()
@@ -349,6 +352,8 @@ export const postDto = z.object({
   driveFolderId: z.string().nullable(),
   heroFile: z.string().nullable(),
   platforms: z.array(socialPlatform),
+  // Per-platform asset type override (item 5); null → all platforms use `assetType`.
+  platformAssets: z.record(socialPlatform, assetType).nullable(),
   scheduledAt: z.string().nullable(),
   postUrls: z.record(z.string()).nullable(),
   error: z.string().nullable(),

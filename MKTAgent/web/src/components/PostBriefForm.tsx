@@ -7,10 +7,29 @@ import {
   fromLocalDateTimeInput,
   languageOptions,
   lengthOptions,
+  platformAssetSupport,
+  platformOptions,
   toLocalDateTimeInput,
   type AssetType,
   type SocialPlatform,
 } from './form-options';
+
+// Per-platform asset overrides (item 5). Keep only entries that DIFFER from the default
+// asset type and are actually supported by that platform — everything else falls back to
+// the default at publish time, so the map stays minimal.
+type PlatformAssets = Partial<Record<SocialPlatform, AssetType>>;
+const cleanPlatformAssets = (
+  map: PlatformAssets,
+  platforms: SocialPlatform[],
+  fallback: AssetType,
+): PlatformAssets => {
+  const out: PlatformAssets = {};
+  for (const p of platforms) {
+    const v = map[p];
+    if (v && v !== fallback && platformAssetSupport[p].includes(v)) out[p] = v;
+  }
+  return out;
+};
 
 type PostBody = Omit<Dto['CreatePostBody'], 'campaignId'>;
 
@@ -39,10 +58,11 @@ const initialState = (post?: PostDto | null): PostBody => ({
 
 export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: Props) {
   const [form, setForm] = useState<PostBody>(() => initialState(post));
+  const [platformAssets, setPlatformAssets] = useState<PlatformAssets>(() => (post?.platformAssets as PlatformAssets) ?? {});
   const [saving, setSaving] = useState(false);
   const mode = post ? 'edit' : 'create';
 
-  useEffect(() => setForm(initialState(post)), [post]);
+  useEffect(() => { setForm(initialState(post)); setPlatformAssets((post?.platformAssets as PlatformAssets) ?? {}); }, [post]);
 
   const setField = <K extends keyof PostBody>(key: K, value: PostBody[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -62,16 +82,30 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
   const save = async () => {
     setSaving(true);
     const body = payload();
-    const result = post
-      ? await api.updatePost(post.id, body)
-      : await api.createPost({ campaignId, ...body });
-    setSaving(false);
-    if (result.ok) {
-      notify(mode === 'edit' ? 'Brief updated' : 'Brief created');
-      onSaved(result.data);
-    } else {
-      notify(`Brief save failed: ${result.error.error}`, 'err');
+    const selected = (form.platforms ?? []) as SocialPlatform[];
+    // Only overrides that differ from the default + are supported; null when empty so an
+    // edit that clears all overrides resets the post back to the single default asset type.
+    const overrides = cleanPlatformAssets(platformAssets, selected, form.assetType ?? 'image');
+    const platformAssetsPayload = Object.keys(overrides).length ? overrides : null;
+    if (post) {
+      const result = await api.updatePost(post.id, { ...body, platformAssets: platformAssetsPayload });
+      setSaving(false);
+      if (result.ok) { notify('Brief updated'); onSaved(result.data); }
+      else notify(`Brief save failed: ${result.error.error}`, 'err');
+      return;
     }
+    // Create then, if there are per-platform overrides, persist them with a follow-up PATCH
+    // (CreatePostBody has no platformAssets field — it's an edit-time refinement).
+    const created = await api.createPost({ campaignId, ...body });
+    if (!created.ok) { setSaving(false); notify(`Brief save failed: ${created.error.error}`, 'err'); return; }
+    let saved = created.data;
+    if (platformAssetsPayload) {
+      const patched = await api.updatePost(saved.id, { platformAssets: platformAssetsPayload });
+      if (patched.ok) saved = patched.data;
+    }
+    setSaving(false);
+    notify('Brief created');
+    onSaved(saved);
   };
 
   const currentAsset = assetTypeOptions.find((o) => o.value === form.assetType);
@@ -130,6 +164,33 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
         <label>Target platforms</label>
         <PlatformChecklist value={(form.platforms ?? []) as SocialPlatform[]} onChange={(v) => setField('platforms', v)} />
       </div>
+
+      {(form.platforms ?? []).length > 0 && (
+        <div className="field">
+          <label>Asset per platform (optional)</label>
+          <div className="help-text">Default is <strong>{currentAsset?.label ?? form.assetType}</strong> everywhere. Override where a platform should differ — only what it supports is offered (e.g. carousel/video are Facebook-only today).</div>
+          <div className="platform-asset-grid">
+            {((form.platforms ?? []) as SocialPlatform[]).map((p) => {
+              const supported = platformAssetSupport[p];
+              const label = platformOptions.find((o) => o.value === p)?.label ?? p;
+              const value = platformAssets[p] ?? form.assetType ?? 'image';
+              return (
+                <div className="platform-asset-row" key={p}>
+                  <span className="platform-asset-name">{label}</span>
+                  <select
+                    value={value}
+                    onChange={(e) => setPlatformAssets((prev) => ({ ...prev, [p]: e.target.value as AssetType }))}
+                  >
+                    {assetTypeOptions
+                      .filter((o) => supported.includes(o.value))
+                      .map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="field">
         <label>Schedule target</label>

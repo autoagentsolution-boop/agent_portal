@@ -40,6 +40,7 @@ export const toPostDto = (p: Post): PostDto => ({
   driveFolderId: p.driveFolderId,
   heroFile: p.heroFile,
   platforms: p.platforms,
+  platformAssets: (p.platformAssets as PostDto['platformAssets']) ?? null,
   scheduledAt: iso(p.scheduledAt),
   postUrls: (p.postUrls as Record<string, string> | null) ?? null,
   error: p.error,

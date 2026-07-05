@@ -528,6 +528,10 @@ a { color: var(--accent); }
 .publish-review-list li.blocked .publish-review-icon { color: var(--red); }
 .publish-review-platform { min-width: 88px; font-weight: 600; }
 .publish-review-note { flex: 1; }
+.platform-asset-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.platform-asset-row { display: flex; align-items: center; gap: 10px; }
+.platform-asset-name { min-width: 90px; font-size: 13px; }
+.platform-asset-row select { flex: 1; max-width: 220px; }
 .artifacts-block { font-size: 13px; }
 .artifacts-block summary { cursor: pointer; color: var(--muted); }
 .artifact-row { margin-top: 8px; }

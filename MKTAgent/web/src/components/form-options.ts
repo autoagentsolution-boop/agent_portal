@@ -17,6 +17,18 @@ export const assetTypeOptions: Array<{ value: AssetType; label: string; hint: st
   { value: 'video', label: 'Video', hint: '1 Drive video file ID' },
 ];
 
+// Which asset types each platform can actually publish (item 5) — MIRRORS the backend
+// social adapters' `supports` (FB does all; the others are image-only today). Used to
+// constrain the per-platform asset picker so a user can't pick carousel/video where the
+// adapter can't send it. Keep in lock-step with src/social/*.ts adapters.
+export const platformAssetSupport: Record<SocialPlatform, AssetType[]> = {
+  facebook: ['image', 'carousel', 'video'],
+  instagram: ['image'],
+  threads: ['image'],
+  linkedin: ['image'],
+  x: ['image'],
+};
+
 export const languageOptions = [
   { value: '', label: 'Inherit default' },
   { value: 'vi', label: 'Tiếng Việt' },
