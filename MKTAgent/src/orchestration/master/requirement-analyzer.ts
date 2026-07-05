@@ -5,7 +5,7 @@
 import { env } from '../../config/env.ts';
 import { z } from 'zod';
 import { goalSpec, type GoalSpec } from '../schemas/goal-spec.ts';
-import { analyzeDeterministic, parseRemovals, type Removals } from './deterministic-analyzer.ts';
+import { analyzeDeterministic, parseRemovals, parsePlatforms, type Removals } from './deterministic-analyzer.ts';
 import { requirementSystemPrompt } from '../prompts/requirement-prompt.ts';
 
 // Optional removal delta the LLM may emit on a refinement turn (subtractive intent).
@@ -34,42 +34,70 @@ export interface RequirementAnalyzer {
   analyze(message: string): Promise<GoalSpec>;
   // Refinement variant: also surfaces removal intent (subtractive edits) so the
   // refine path can un-set outputs/platforms. `handle` (fresh goal) ignores removals.
-  analyzeWithRemovals(message: string): Promise<AnalysisWithRemovals>;
+  // `prior` (the goal gathered so far) gives the model conversation context so a short
+  // reply ("đi làm với đồng nghiệp", "for everyone") maps to the RIGHT slot instead of
+  // extracting nothing — the fix for the never-ending clarification loop.
+  analyzeWithRemovals(message: string, prior?: GoalSpec): Promise<AnalysisWithRemovals>;
 }
+
+// Compact prior goal for the context prompt — only the fields the analyzer fills.
+const priorContext = (g: GoalSpec): unknown => ({
+  product: g.slots.product ?? null,
+  productDetails: g.slots.productDetails ?? null,
+  accountType: g.slots.accountType ?? null,
+  targetAudience: g.slots.targetAudience ?? null,
+  angle: g.slots.angle ?? null,
+  brandVoice: g.slots.brandVoice ?? null,
+  language: g.slots.language ?? null,
+  platforms: g.platforms,
+  outputs: g.outputs,
+});
 
 export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
   async analyze(message: string): Promise<GoalSpec> {
     return (await this.analyzeWithRemovals(message)).goal;
   }
 
-  async analyzeWithRemovals(message: string): Promise<AnalysisWithRemovals> {
-    if (!env.GEMINI_API_KEY) {
-      return { goal: analyzeDeterministic(message), removals: parseRemovals(message) };
-    }
+  async analyzeWithRemovals(message: string, prior?: GoalSpec): Promise<AnalysisWithRemovals> {
+    const fallback = (): AnalysisWithRemovals => ({
+      // Even the deterministic fallback keeps prior context: merge is additive downstream,
+      // but seed the message's platforms so nothing is lost when the LLM is unavailable.
+      goal: analyzeDeterministic(message),
+      removals: parseRemovals(message),
+    });
+    if (!env.GEMINI_API_KEY) return fallback();
     try {
+      // On a refinement turn, hand the model the known goal + the new reply, and tell it to
+      // return the UPDATED goal (map a topic→product, an audience→targetAudience, etc.).
+      const userText = prior
+        ? `Known goal so far (JSON): ${JSON.stringify(priorContext(prior))}\n\nThe user just replied: "${message}"\n\nThis reply is usually a short answer to a clarification. Return the UPDATED full goal: carry over every field already known and fill the ones this reply provides. Map a topic/subject → "product" (for a personal life/experience post the topic IS the product), an audience → "targetAudience", a tone/style → "brandVoice", a specific message → "angle". Never blank out a field that is already known.`
+        : message;
       const res = await fetch(endpoint(env.GEMINI_MODEL), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: requirementSystemPrompt }] },
-          contents: [{ role: 'user', parts: [{ text: message }] }],
+          contents: [{ role: 'user', parts: [{ text: userText }] }],
           generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
         }),
         signal: AbortSignal.timeout(60_000),
       });
-      if (!res.ok) return { goal: analyzeDeterministic(message), removals: parseRemovals(message) };
+      if (!res.ok) return fallback();
       const raw = extractJson(await res.json());
       const parsed = goalSpec.safeParse(raw);
-      if (!parsed.success) return { goal: analyzeDeterministic(message), removals: parseRemovals(message) };
+      if (!parsed.success) return fallback();
       // Removals are optional in the LLM output; fall back to the regex parser when the
       // model omits them (so a deterministic removal phrase still works even via Gemini).
       const llmRemovals = removalsSchema.safeParse((raw as { removals?: unknown })?.removals);
       const removals = llmRemovals.success && (llmRemovals.data.disableOutputs.length || llmRemovals.data.dropPlatforms.length)
         ? llmRemovals.data
         : parseRemovals(message);
-      return { goal: { ...parsed.data, provider: `gemini:${env.GEMINI_MODEL}` }, removals };
+      // Platforms are regex-detectable facts — union the deterministic parse so a platform
+      // named in the message is never lost to an LLM miss ("asked fb+linkedin, only fb stuck").
+      const platforms = Array.from(new Set([...parsed.data.platforms, ...parsePlatforms(message)])) as GoalSpec['platforms'];
+      return { goal: { ...parsed.data, platforms, provider: `gemini:${env.GEMINI_MODEL}` }, removals };
     } catch {
-      return { goal: analyzeDeterministic(message), removals: parseRemovals(message) };
+      return fallback();
     }
   }
 }

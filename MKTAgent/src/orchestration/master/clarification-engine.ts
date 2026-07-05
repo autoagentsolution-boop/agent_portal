@@ -58,9 +58,13 @@ const isThinProduct = (product?: string | null, productDetails?: string | null):
 export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
   const q: ClarificationQuestion[] = [];
 
-  const thinProduct = isThinProduct(goal.slots.product, goal.slots.productDetails);
+  // A PERSONAL post shares an experience/topic, not a product. When the account is personal
+  // and a topic/angle is given, THAT is the subject — so we don't loop forever asking for a
+  // "product" the user will never have (the never-ending clarification bug).
+  const personalTopic = goal.slots.accountType === 'personal' && Boolean((goal.slots.angle ?? '').trim());
+  const thinProduct = !personalTopic && isThinProduct(goal.slots.product, goal.slots.productDetails);
 
-  if (!goal.slots.product) {
+  if (!goal.slots.product && !personalTopic) {
     q.push({
       slot: 'product',
       question: 'What product, service, or topic is this for?',

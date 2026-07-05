@@ -44,7 +44,7 @@ export class MasterAgent {
   // then re-plan. This is what keeps the conversation cumulative instead of each
   // turn re-asking everything.
   async refine(prior: GoalSpec, message: string): Promise<MasterAgentOutcome> {
-    const { goal: delta, removals } = await this.analyzer.analyzeWithRemovals(message);
+    const { goal: delta, removals } = await this.analyzer.analyzeWithRemovals(message, prior);
     // Additive merge first (keep everything gathered + add new), THEN subtract any
     // removals the turn expressed ("bỏ video"). Order matters: a turn that both adds
     // and removes resolves to add-then-remove.
