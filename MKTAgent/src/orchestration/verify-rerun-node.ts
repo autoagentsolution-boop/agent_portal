@@ -77,7 +77,12 @@ async function main(): Promise<void> {
     check('concept + downstream artifacts dropped', !mid!.artifacts.some((a) => toReset.includes(a.nodeId)), mid!.artifacts.map((a) => a.nodeId));
 
     const rr = await runWorkflow(run.id, user.id, goal, planned.plan, { ...opts, rerunOnly: concept.nodeId });
-    check('re-run returns needs_approval (parks before publish)', rr.status === 'needs_approval', rr);
+    // A single-node re-run regenerates only that node and parks the RUN at `planned`
+    // (resumable via the Continue button) — it returns `completed` for the one node and does
+    // NOT cascade downstream. The downstream-still-pending checks below assert that intent.
+    check('re-run of one node returns completed (run parked resumable)', rr.status === 'completed', rr);
+    const parked = await getRunWithNodes(run.id, user.id);
+    check('run parked at planned (resumable)', parked!.status === 'planned', parked!.status);
 
     const after = await getRunWithNodes(run.id, user.id);
     check('concept re-ran (completed again)', after!.nodes.find((n) => n.nodeId === concept.nodeId)!.status === 'completed');

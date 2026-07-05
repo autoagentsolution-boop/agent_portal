@@ -4,6 +4,7 @@
 //   npx tsx src/scheduler/verify-per-platform-publish.ts
 import { prisma } from '../db/client.ts';
 import { processPost, type PublishFn } from './tick.ts';
+import { attachPostMedia } from '../db/repos/post-repo.ts';
 import type { PublishInput } from '../social/types.ts';
 
 let failures = 0;
@@ -85,6 +86,36 @@ async function main(): Promise<void> {
     });
     const r4 = await processPost(p4, recorderFor(rec4));
     check('all-unsupported → error, nothing published', r4.status === 'error' && Object.keys(rec4).length === 0, { r4, rec4 });
+
+    // 5) attachPostMedia on a MULTI-asset post (5b): fills assetMedia per type WITHOUT
+    //    clobbering heroFile/assetType; both types coexist and publish from their own media.
+    const p5 = await prisma.post.create({
+      data: {
+        campaignId: campaign.id, ownerId: user.id, status: 'brief',
+        assetType: 'carousel', copy: { body: 'hi', threads: 'hi', x: 'hi' },
+        platformAssets: { facebook: 'carousel', instagram: 'image' },
+        platforms: ['facebook', 'instagram'],
+      },
+    });
+    await attachPostMedia(p5.id, user.id, 'carousel', 'c1,c2');
+    await attachPostMedia(p5.id, user.id, 'image', 'i1');
+    const a5 = await prisma.post.findUnique({ where: { id: p5.id } });
+    const media5 = a5?.assetMedia as Record<string, string> | null;
+    check('multi-asset: assetMedia holds BOTH types', media5?.carousel === 'c1,c2' && media5?.image === 'i1', media5);
+    check('multi-asset: heroFile untouched (per-platform map present)', a5?.heroFile === null, a5?.heroFile);
+    check('multi-asset: assetType untouched (still carousel)', a5?.assetType === 'carousel', a5?.assetType);
+    const rec5: Record<string, PublishInput> = {};
+    await prisma.post.update({ where: { id: p5.id }, data: { status: 'posting' } });
+    await processPost((await prisma.post.findUnique({ where: { id: p5.id } }))!, recorderFor(rec5));
+    check('multi-asset publish: fb carousel [c1,c2], ig image [i1]', rec5.facebook?.assets.length === 2 && rec5.instagram?.assetType === 'image' && rec5.instagram?.assets[0]?.id === 'i1', rec5);
+
+    // 6) attachPostMedia on a SINGLE-asset post (no map): also sets heroFile + assetType (legacy).
+    const p6 = await prisma.post.create({
+      data: { campaignId: campaign.id, ownerId: user.id, status: 'brief', assetType: 'image', copy: { body: 'hi', threads: 'hi', x: 'hi' }, platforms: ['facebook'] },
+    });
+    await attachPostMedia(p6.id, user.id, 'image', 'x1');
+    const a6 = await prisma.post.findUnique({ where: { id: p6.id } });
+    check('single-asset: heroFile + assetType set', a6?.heroFile === 'x1' && a6?.assetType === 'image', { hero: a6?.heroFile, at: a6?.assetType });
   } finally {
     await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
   }

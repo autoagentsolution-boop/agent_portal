@@ -5,10 +5,11 @@
 //   others         → schema-valid STUB artifacts so the DAG runs end-to-end now
 // No copy-gen/scheduler logic is reimplemented — only their exported cores are used.
 import { assetTypeFromOutputs, type GoalSpec } from '../schemas/goal-spec.ts';
+import { distinctAssetTypes } from '../../scheduler/resolve-input.ts';
 import { campaignIdeas, strategyBrief, storyboard, videoPrompt, type ArtifactType } from '../schemas/artifact-schemas.ts';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
-import { createPost, getPostForOwner, getPostForCopyGen, approveReview, setPostHeroFile, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
+import { createPost, getPostForOwner, getPostForCopyGen, approveReview, attachPostMedia, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
 import { resolveCopyConfig } from '../../copygen/resolve-config.ts';
 import { getUserById } from '../../db/repos/user-repo.ts';
 import { generateForPost, type GeminiFn } from '../../copygen/service.ts';
@@ -319,7 +320,7 @@ const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const ref = `local:${image.outputFile}`;
   if (ctx.postId) {
     // A single infographic image → assetType 'image' (exactly-1-asset publish validation).
-    const updated = await setPostHeroFile(ctx.postId, ctx.ownerId, ref, 'image');
+    const updated = await attachPostMedia(ctx.postId, ctx.ownerId, 'image', ref);
     if (!updated) throw new Error('infographic: could not attach image to post (locked or not found)');
   }
   // A cached image cost nothing to regenerate; a fresh one is the flat per-image price.
@@ -342,7 +343,9 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   //   carousel → each frame is a STANDALONE slide the viewer swipes through; together they tell
   //              the product story. Full, polished marketing images (not movie stills).
   //   video    → frames are KEYFRAMES that get animated + stitched into ONE continuous video.
-  const isCarousel = post?.assetType === 'carousel';
+  // Carousel if ANY target needs a carousel (per-platform asset types, item 5) — carousel
+  // slides are standalone images the video step can still animate if a video target coexists.
+  const isCarousel = post ? distinctAssetTypes(post).includes('carousel') : false;
   const knowledge = ctx.goal.slots.productDetails?.trim() || post?.campaign.brandContext?.trim() || null;
   const parts = [goalContext(ctx, effectiveLang, knowledge)];
   parts.push(isCarousel
@@ -393,7 +396,7 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   // frames are keyframes and the video step sets the stitched-video hero instead.
   if (isCarousel && ctx.postId && frames.length >= 1) {
     const csv = frames.map((f) => f.imageRef).join(',');
-    await setPostHeroFile(ctx.postId, ctx.ownerId, csv, 'carousel');
+    await attachPostMedia(ctx.postId, ctx.ownerId, 'carousel', csv);
   }
 
   return { type: 'storyboard', data: parsed.data, cost };
@@ -457,9 +460,10 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 
   const videoRef = `local:${finalVideo}`;
   if (ctx.postId) {
-    // The deliverable is ONE stitched video → set assetType so the publish validator checks
-    // it as a single-asset video (a stale 'carousel' assetType would fail "needs >=2 assets").
-    const updated = await setPostHeroFile(ctx.postId, ctx.ownerId, videoRef, 'video');
+    // The deliverable is ONE stitched video → assetType 'video' (single-asset publish
+    // validation). For a multi-asset post this fills assetMedia.video without disturbing the
+    // other platforms' media.
+    const updated = await attachPostMedia(ctx.postId, ctx.ownerId, 'video', videoRef);
     if (!updated) throw new Error('video: could not attach video to post (locked or not found)');
   }
 

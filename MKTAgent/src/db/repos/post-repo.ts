@@ -250,6 +250,31 @@ export const setPostHeroFile = async (
   return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
 };
 
+// Attach generated media for ONE asset type (item 5b). Merges the ref into the per-type
+// assetMedia map so a post that produces MULTIPLE asset types (carousel for FB, video for IG)
+// keeps them side-by-side instead of clobbering a single heroFile. For a legacy single-asset
+// post (no per-platform map) it ALSO updates heroFile+assetType so nothing about that path
+// changes. The executor is the only writer per run, so the read-modify-write is race-free.
+export const attachPostMedia = async (
+  id: string,
+  ownerId: string,
+  assetType: Post['assetType'],
+  ref: string,
+): Promise<Post | null> => {
+  const post = await prisma.post.findFirst({ where: { id, ownerId } });
+  if (!post || post.status === 'posting') return null;
+  const media = { ...((post.assetMedia as Record<string, string> | null) ?? {}), [assetType]: ref };
+  const singleAsset = post.platformAssets == null; // no per-platform map → keep legacy hero
+  const r = await prisma.post.updateMany({
+    where: { id, ownerId, status: { not: 'posting' } },
+    data: {
+      assetMedia: media as Prisma.InputJsonValue,
+      ...(singleAsset ? { heroFile: ref, assetType } : {}),
+    },
+  });
+  return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
+};
+
 // Scoped delete, blocked only while the scheduler holds the row (status=posting).
 // Returns: 'ok' | 'locked' (in-flight → 409). Not-found/wrong-tenant is handled by
 // the route's prior 404 probe, so a 0-count here means the locked guard tripped.

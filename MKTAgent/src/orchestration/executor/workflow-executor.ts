@@ -14,6 +14,7 @@ import type { RunnerContext } from './agent-runners.ts';
 import type { GoalSpec } from '../schemas/goal-spec.ts';
 import type { WorkflowPlan } from '../schemas/workflow-plan.ts';
 import type { ArtifactType } from '../schemas/artifact-schemas.ts';
+import type { AssetType } from '../../../prisma/generated/prisma/client.ts';
 import {
   getRunWithNodes,
   setRunStatus,
@@ -21,7 +22,7 @@ import {
 } from '../../db/repos/workflow-run-repo.ts';
 import { getPostByRunId } from '../../db/repos/post-repo.ts';
 import { platformSupportsAsset } from '../../social/postability.ts';
-import { platformAssetType } from '../../scheduler/resolve-input.ts';
+import { platformAssetType, distinctAssetTypes } from '../../scheduler/resolve-input.ts';
 import { publishNodeStatus } from '../../events/bus.ts';
 import { logRun } from '../../db/client.ts';
 import type { NodeExecResult } from './agent-executor.ts';
@@ -105,10 +106,11 @@ export const runWorkflow = async (
   // back to concept_writer's create path. The artifact-derived postId (resume) wins.
   const attachedPost = await getPostByRunId(runId);
   if (!postId) postId = attachedPost?.id;
-  // The post's chosen media (assetType) governs WHICH media steps run: skip the ones it
-  // doesn't need, so a carousel/image post never spends on video and vice-versa (#2). Null
-  // (post not yet created on a legacy first run) → no gating; run per plan.
-  const postAssetType = attachedPost?.assetType ?? null;
+  // The post's chosen media governs WHICH media steps run: skip the ones no target needs, so a
+  // carousel/image post never spends on video and vice-versa (#2). With per-platform asset types
+  // (item 5) this is the DISTINCT set across all targets — a media step runs if it produces ANY
+  // needed type. Empty (post not yet created on a legacy first run) → no gating; run per plan.
+  const neededAssets: AssetType[] = attachedPost ? distinctAssetTypes(attachedPost) : [];
 
   await setRunStatus(runId, 'running');
 
@@ -153,10 +155,11 @@ export const runWorkflow = async (
     const nodeRow = nodeRowByPlanId.get(planNodeId)!;
     if (nodeRow.status === 'completed' || nodeRow.status === 'skipped') continue;
 
-    // Media selection by assetType (#2): skip a media step the chosen assetType doesn't
-    // need — BEFORE the approval halt, so a carousel post never stops at the video gate.
+    // Media selection by needed asset types (#2, item 5): skip a media step none of the
+    // targets need — BEFORE the approval halt, so a carousel-only post never stops at the
+    // video gate. A step runs if it produces ANY needed asset type.
     const wantAssets = MEDIA_AGENT_ASSET[planNode.agentId];
-    if (wantAssets && postAssetType && !wantAssets.includes(postAssetType)) {
+    if (wantAssets && neededAssets.length > 0 && !wantAssets.some((a) => neededAssets.includes(a as AssetType))) {
       await setNodeStatus(nodeRow.id, 'skipped');
       publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'skipped' });
       continue;
