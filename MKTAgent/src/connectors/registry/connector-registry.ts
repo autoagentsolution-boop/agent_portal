@@ -61,6 +61,11 @@ interface ConnectorSeed {
   media: MediaConstraints;
 }
 
+// NOTE: `capabilities` here is the CONNECTION axis — what a platform could publish
+// once connected, driving whether a connection is required. It is intentionally
+// broader than what the adapters have IMPLEMENTED. The runtime truth of "can we
+// publish asset type Y right now" lives in each adapter's `supports` array and is
+// read via social/postability.ts. Don't wire asset-type validation off this table.
 const SEEDS: ConnectorSeed[] = [
   { platformKey: 'facebook', displayName: 'Facebook', capabilities: ['social.post.image', 'social.post.video', 'social.post.carousel'], media: { maxAssets: 10, bodyMaxChars: null } },
   { platformKey: 'instagram', displayName: 'Instagram', capabilities: ['social.post.image', 'social.post.video', 'social.post.carousel'], media: { maxAssets: 10, bodyMaxChars: 2200 } },

@@ -17,6 +17,7 @@ import {
   updatePost,
 } from '../db/repos/post-repo.ts';
 import { publishTo } from '../social/index.ts';
+import { partitionByPostability } from '../social/postability.ts';
 import { hasDriveConnected, resolveCampaignFolder } from '../assets/drive-client.ts';
 import { materializeForPublicUrl, NEEDS_PUBLIC_URL, slugify } from '../assets/materialize.ts';
 import { getCampaign } from '../db/repos/campaign-repo.ts';
@@ -86,10 +87,41 @@ export async function processPost(post: Post, publish: PublishFn): Promise<TickR
     }
   }
 
+  // Per-platform postability gate (item 1): a post's single assetType may not be
+  // publishable on every target (e.g. carousel → FB only; IG/Threads/LinkedIn/X are
+  // image-only in the adapter layer). Split targets so we never fire a doomed publish
+  // and the incompatible ones surface as an explicit, non-alarming "skipped" result
+  // rather than a raw adapter "does not support" error. Item 5 (per-platform asset)
+  // removes the skip by giving each platform an asset it can take.
+  const { supported, skipped } = partitionByPostability(post.platforms, input.assetType);
+  if (supported.length === 0) {
+    const reason = `no target platform can post ${input.assetType}: ${skipped
+      .map((s) => s.platform)
+      .join(', ')}`;
+    await updatePost(post.id, { status: 'error', error: reason.slice(0, 500), postedAt: new Date() });
+    await logRun('warn', 'mkt_post', { id: post.id, status: 'error', reason }, post.ownerId);
+    publishPostStatus(post.ownerId, {
+      postId: post.id,
+      status: 'error',
+      campaignId: post.campaignId,
+      error: reason.slice(0, 500),
+    });
+    return { picked: true, postId: post.id, status: 'error', reason };
+  }
+
   // publishTo never throws → Promise.all is safe; one slow platform doesn't block.
-  const results = await Promise.all(
-    post.platforms.map((p) => publish(p, NEEDS_PUBLIC_URL.has(p) ? publicInput : input)),
+  const published = await Promise.all(
+    supported.map((p) => publish(p, NEEDS_PUBLIC_URL.has(p) ? publicInput : input)),
   );
+  // Skipped targets become explicit ok:false rows so the outcome records exactly what
+  // did NOT go out and why (drives status=partial when some platforms succeed).
+  const skippedResults: PublishResult[] = skipped.map((s) => ({
+    platform: s.platform,
+    ok: false,
+    url: null,
+    error: `skipped: ${s.reason}`,
+  }));
+  const results = [...published, ...skippedResults];
   const outcome = aggregate(results);
   await updatePost(post.id, toWriteBack(outcome));
   await logRun(
