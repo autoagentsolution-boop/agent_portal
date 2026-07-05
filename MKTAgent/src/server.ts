@@ -20,6 +20,7 @@ import { eventsRouter } from './api/events-router.ts';
 import { leadsRouter } from './api/leads-router.ts';
 import { agentRouter } from './api/agent-router.ts';
 import { orchestrationRouter } from './api/orchestration-router.ts';
+import { productKnowledgeRouter } from './api/product-knowledge-router.ts';
 import { connectionsRouter } from './api/connections-router.ts';
 import { IMAGE_OUTPUT_DIR } from './imagegen/nano-banana.ts';
 import { VIDEO_OUTPUT_DIR } from './video/veo.ts';
@@ -34,6 +35,12 @@ if (env.UI_BASE_URL) {
   app.use(cors({ origin: env.UI_BASE_URL, credentials: true }));
 }
 app.use(cookieParser());
+
+// Product-knowledge document upload carries base64 files → needs a larger body than the
+// global 1mb. Mount it (with its own parser + auth) BEFORE the global limit so a big upload
+// isn't rejected by the 1mb parser first; other routes still get the tight 1mb cap.
+app.use('/product-knowledge', requireAuth, express.json({ limit: '20mb' }), productKnowledgeRouter);
+
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_req, res) => {
