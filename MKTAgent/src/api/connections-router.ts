@@ -5,24 +5,13 @@
 // appear as `not_connected` with a Connect link to the existing OAuth flow.
 import { Router } from 'express';
 import { ok, asyncHandler } from './http.ts';
-import { listTokenStatusForOwner, type TokenStatusRow } from '../db/repos/token-repo.ts';
-import { listPublisherPlatformTokenKeys, platformTokenKey } from '../db/repos/agent-credential-repo.ts';
+import { resolveConnectionStates, type ConnectionState } from './connection-state.ts';
 import { hasDriveConnected } from '../assets/drive-client.ts';
 import { isOAuthConfigured } from '../social/connect-providers.ts';
 import { CONNECTORS, connectStartPath } from '../connectors/registry/connector-registry.ts';
-import type { SocialPlatform, TokenStatus } from '../../prisma/generated/prisma/client.ts';
+import type { SocialPlatform } from '../../prisma/generated/prisma/client.ts';
 
 export const connectionsRouter: Router = Router();
-
-// UI-facing connection state. `not_connected` = no token row; otherwise derived
-// from the token's liveness status maintained by the token cron.
-export type ConnectionState = 'connected' | 'needs_attention' | 'not_connected';
-
-const toState = (status: TokenStatus | undefined): ConnectionState => {
-  if (!status) return 'not_connected';
-  if (status === 'active') return 'connected';
-  return 'needs_attention'; // needs_attention | revoked → user action required
-};
 
 interface ConnectionDto {
   platformKey: SocialPlatform;
@@ -40,25 +29,16 @@ interface ConnectionDto {
 connectionsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    const rows: TokenStatusRow[] = await listTokenStatusForOwner(req.userId!);
-    const byPlatform = new Map(rows.map((r) => [r.platform, r]));
-    // A form-entered access token (vault) also counts as connected, even without an
-    // OAuthToken row — so the OAuth-less publish path shows the right state + passes preflight.
-    const formKeys = await listPublisherPlatformTokenKeys(req.userId!);
+    const conn = await resolveConnectionStates(req.userId!);
     const data: ConnectionDto[] = await Promise.all(
       CONNECTORS.map(async (p) => {
-        const row = byPlatform.get(p.platformKey);
-        const hasFormToken = formKeys.has(platformTokenKey(p.platformKey));
-        // A verified token (OAuth or a liveness-checked paste) has a token-status row → its
-        // real status wins. A bare vault token with NO status row = pasted but never verified
-        // (legacy) → needs_attention, NOT a false "connected". Nothing at all → not_connected.
-        const state = row?.status ? toState(row.status) : hasFormToken ? 'needs_attention' : 'not_connected';
+        const c = conn(p.platformKey);
         return {
           platformKey: p.platformKey,
           displayName: p.displayName,
-          state,
-          expiresAt: row?.expiresAt ? row.expiresAt.toISOString() : null,
-          lastCheckedAt: row?.lastCheckedAt ? row.lastCheckedAt.toISOString() : null,
+          state: c.state,
+          expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
+          lastCheckedAt: c.lastCheckedAt ? c.lastCheckedAt.toISOString() : null,
           capabilities: p.capabilities,
           connectUrl: connectStartPath(p.platformKey),
           oauthConfigured: await isOAuthConfigured(p.platformKey, req.userId!),

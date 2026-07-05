@@ -8,6 +8,7 @@ import { api, type WorkflowRunDto } from '../api/client';
 import { useRunEvents } from '../hooks/use-run-events';
 import { RunDagView } from './run-dag-view';
 import { ConnectionRequired } from './connection-required';
+import { PublishReview } from './publish-review';
 import { formatArtifact } from '../flow/artifact-format';
 
 interface Props {
@@ -131,6 +132,15 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   const statusHint = run.status === 'needs_approval' && gateNode?.agentId === 'video'
     ? 'Paused before video generation (the costly step) — review the storyboard, then approve.'
     : STATUS_HINT[run.status] ?? run.status;
+  // The post backing this run (post.runId = run.id). Prefer the run's createdPostId; fall
+  // back to any artifact that carries a postId (concept_writer stamps it). Drives the
+  // publish review at the approval gate.
+  const runPostId =
+    run.createdPostId ??
+    (run.artifacts.find((a) => (a.data as { postId?: string } | undefined)?.postId)?.data as
+      | { postId?: string }
+      | undefined)?.postId ??
+    null;
   const publishArtifact = run.artifacts.find((a) => a.type === 'publish_result');
   const publishUrls = (publishArtifact?.data as { postUrls?: Record<string, string> | null } | undefined)?.postUrls ?? null;
   const requiredActions = run.requiredActions ?? [];
@@ -200,7 +210,10 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
               </>
             ) : (
               <>
-                <p className="muted small">Paused before <strong>{gateNode.agentId.replace(/_/g, ' ')}</strong> — an external action. Approve to proceed.</p>
+                <p className="muted small">Paused before <strong>{gateNode.agentId.replace(/_/g, ' ')}</strong> — an external action. Review where it can post, then approve.</p>
+                {gateNode.agentId === 'publisher' && runPostId && (
+                  <PublishReview postId={runPostId} onOpenConnections={onOpenConnections} />
+                )}
                 <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId)}>
                   {busy ? 'Publishing…' : `Approve ${gateNode.agentId.replace(/_/g, ' ')}`}
                 </button>

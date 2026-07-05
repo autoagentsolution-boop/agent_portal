@@ -55,6 +55,23 @@ export type RequiredActionDto = NonNullable<WorkflowRunDto['requiredActions']>[n
 // Connections (M2-lite) — read-only social connection status.
 export type ConnectionDto = Dto['ConnectionDto'];
 
+// Publish review (item 3) — per-platform readiness for a post's assetType.
+// Not yet in the generated openapi schema; typed here at the call boundary.
+export interface PostabilityRowDto {
+  platform: string;
+  assetSupported: boolean;
+  supportedAssetTypes: string[];
+  connectionState: 'connected' | 'needs_attention' | 'not_connected';
+  willPublish: boolean;
+  reason: string | null;
+}
+export interface PostabilityDto {
+  assetType: string;
+  platforms: PostabilityRowDto[];
+  publishable: string[];
+  blocked: { platform: string; reason: string | null }[];
+}
+
 export interface ApiError {
   status: number;
   error: string;
@@ -133,6 +150,7 @@ export const api = {
   listPosts: (query?: { status?: string; campaignId?: string; limit?: number; cursor?: string }) =>
     request<PostDto[]>('/posts', { query }),
   getPost: (id: string) => request<PostDetailDto>(`/posts/${id}`),
+  getPostability: (id: string) => request<PostabilityDto>(`/posts/${id}/postability`),
   createPost: (body: Dto['CreatePostBody']) => request<PostDto>('/posts', { method: 'POST', body }),
   // Agent-authored create (item 3): the Master Agent extracts the brief from a free-text
   // description so the user never hand-fills the form. First call may return `questions`

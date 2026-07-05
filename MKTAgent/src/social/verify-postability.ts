@@ -24,9 +24,11 @@ check('every platform supports image', ['facebook', 'instagram', 'threads', 'lin
 
 // 2) checkPostability: reasons present only for unsupported rows.
 const rows = checkPostability(['facebook', 'instagram', 'x'], 'carousel');
-check('facebook carousel row supported, no reason', rows[0].supported && rows[0].reason === null, rows[0]);
-check('instagram carousel row unsupported, has reason', !rows[1].supported && /cannot post carousel/.test(rows[1].reason ?? ''), rows[1]);
-check('reason lists what IS supported', /image/.test(rows[1].reason ?? ''), rows[1]);
+const fb = rows.find((r) => r.platform === 'facebook')!;
+const ig = rows.find((r) => r.platform === 'instagram')!;
+check('facebook carousel row supported, no reason', fb.supported && fb.reason === null, fb);
+check('instagram carousel row unsupported, has reason', !ig.supported && /cannot post carousel/.test(ig.reason ?? ''), ig);
+check('reason lists what IS supported', /image/.test(ig.reason ?? ''), ig);
 
 // 3) partition: carousel → only FB published, others skipped with reason.
 const carousel = partitionByPostability(['facebook', 'instagram', 'threads', 'linkedin', 'x'], 'carousel');
