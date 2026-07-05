@@ -45,3 +45,36 @@ a per-campaign one-off.
 - Merge semantics when importing a second doc into an existing entry (append raw + re-summarize, or
   diff-merge?).
 - DOCX support (needs a text extractor — deferred today).
+
+---
+
+## Additional items added by user (2026-07-05, for tomorrow)
+
+### 1. Per-platform asset-type support (carousel NOT universal)
+Live publish error: `instagram does not support carousel | threads does not support
+social.post.carousel | linkedin ... | x ...`. Carousel is only valid on some platforms (FB, and
+per registry IG — but the runtime rejected IG too → RECHECK the connector registry's carousel
+capability vs reality). Needed:
+- Validate the post's assetType against EACH target platform's capabilities BEFORE publish; don't
+  send carousel to a platform that can't take it.
+- Ties directly into per-platform asset type (#4 from `260705-1846-...` plan): a post may need a
+  different asset per platform (carousel on FB, single image on LinkedIn/X/Threads).
+
+### 2. Publisher auto-runs by default — skip the Approve/Scheduler gate
+Today `publisher.requiresApproval=true` halts for manual approval. User wants it to **auto-run by
+default** (no Approve/schedule step). Options: flip the default (a per-flow/global "auto-publish"
+setting), keep the gate only when a platform/format needs attention. NOTE: this loosens the
+"nothing publishes until you approve" safety — confirm the demo-vs-safety intent. The pre-VIDEO
+cost gate stays (that's a separate, cost-driven halt).
+
+### 3. Publish step = a per-platform postability REVIEW
+Instead of a bare approve button, the publish step should show a **review**: for each target
+platform, can it post THIS format (assetType) given the user's setup/connection? Surface
+compatible vs incompatible platforms (and why) so the user sees exactly what will go where. This
+replaces the opaque gate with an informative pre-publish check (pairs with items 1 + 2).
+
+### 4. Copy-gen vs concept_writer — duplicated?
+`concept_writer` wraps `generateForPost` (copy-gen). Review whether they're redundant: is
+concept_writer just an orchestration adapter around copy-gen, or is there real duplication to
+consolidate? Decide: merge, or clearly document the boundary (concept_writer = DAG node seam,
+copy-gen = the reusable copy engine). Check for divergent prompt/behavior between the two paths.
