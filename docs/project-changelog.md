@@ -5,6 +5,48 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-05
 
+### Concept versions (3-5) + selection gate + reference-image upload
+concept_writer now offers **N=4 distinct copy versions** (one LLM call) for the user to pick from,
+then an optional reference image before media generation.
+- **Versions** — `buildVariantsBody`/`parseVariants` + `generateVariantsForPost`; `content_concept`
+  artifact carries `variants[]` + `chosen` (post.copy = the active version). `POST /posts/:id/select-variant`.
+- **Selection gate** — executor `SELECTION_GATE={concept_writer}` PAUSES right AFTER concept executes
+  (node `awaiting_approval`, run `needs_approval`); `approve-node(concept)` approves the post
+  (review→ready) + resumes. `conceptGate` opt (default true) on `/execute`; `false` = auto-pick v1.
+- **Reference image** (optional, non-blocking) — `Post.referenceImage` (migration); `POST/DELETE
+  /posts/:id/reference-image` (20mb parser via `post-media-router`). With a media step it conditions
+  infographic/storyboard gen (Gemini edit mode; storyboard anchors every frame on it); with NO media
+  step `asHero=true` writes it straight to the post media. `save-uploaded-image.ts`.
+- **UI** — `ConceptSelectionGate` (version cards + upload + Continue) in PostWorkflowView.
+- Verify: `verify-concept-gate.ts` 17 checks green. Commits `46e5cfa` / `a18a0c8` / `5804f97`.
+
+### Per-platform asset type (item 5) — different deliverable per platform
+- Migration: `Post.platformAssets` ({platform:assetType}) + `Post.assetMedia` ({assetType:refs}),
+  both nullable → legacy posts unchanged.
+- Publish fan-out (`tick.processPost`) resolves each target's own asset type + media, with a
+  carousel→first-frame degrade (FB carousel, single image elsewhere) and skips unsupported targets
+  with a reason. Executor generates each DISTINCT asset type once → `attachPostMedia` per type.
+- Brief-form per-platform asset picker (`platformAssetSupport` mirrors adapters).
+- Verify: `verify-per-platform-publish.ts` 18 checks green. Commits `e3c68c5` / `5ed92d9` / `0db79d8`.
+
+### Product Knowledge LIBRARY (item 6) — reusable per-user store
+- `ProductKnowledge` entity (migration) + nullable FKs `campaign.productKnowledgeId` /
+  `post.productKnowledgeId` (SetNull → content survives). Repo CRUD + merge + `resolveLinkedKnowledge`.
+- `/analyze` now optionally creates a new library entry (`saveToLibrary`) or merges into an existing
+  one; resolution chain for media grounding: post.pk → campaign.pk → brandContext → goal slot.
+- UI: save-to-library toggle on the upload panel + a library dropdown on the brief form.
+- Verify: `verify-library.ts` 14 checks green. Commits `11f937a` / `1de445f`.
+
+### Publish flow — per-platform validation, publish review, auto-publish (items 1-3)
+- **Item 1** (`5dc96ec`): `social/postability.ts` — adapter `supports` is the runtime truth (FB does
+  carousel/video; IG/Threads/LinkedIn/X image-only). Publish skips incompatible targets with a reason.
+- **Item 3** (`f1d5465`): `GET /posts/:id/postability` + `PublishReview` at the gate (asset support +
+  connection state). `api/connection-state.ts` extracted (connections list reuses it).
+- **Item 2** (`e3cd89c`): publisher gate WAIVED by default when the post is cleanly postable; halts for
+  the review only when a target can't take its asset. Pre-video cost gate untouched. `autoPublish` opt.
+- **Item 4** (`e723979`): concept_writer↔copy-gen boundary documented (not redundant); `finalizeConcept`
+  DRY'd. Report in `plans/reports/`.
+
 ### Product Knowledge — upload documents → Gemini analysis → grounds every prompt
 Thin product knowledge was the cause of generic copy/images/video. New capability: the user
 uploads documents/images about the product and Gemini's multimodal model reads them into a rich,
