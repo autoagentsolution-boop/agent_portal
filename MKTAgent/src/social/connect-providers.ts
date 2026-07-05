@@ -245,3 +245,19 @@ export const connectProviders: Record<SocialPlatform, ConnectProvider> = {
   linkedin,
   x,
 };
+
+// Is this platform's OAuth app configured (so the one-click Connect flow will work)?
+// Drives the adaptive Connections UI: configured → lead with Connect; not → guide the
+// owner to set the app up (or fall back to the paste-a-token path). Owner-aware because
+// X resolves creds from the per-user vault too.
+export const isOAuthConfigured = async (
+  platform: SocialPlatform,
+  ownerId: string,
+): Promise<boolean> => {
+  try {
+    await connectProviders[platform].assertConfigured(ownerId);
+    return true;
+  } catch {
+    return false;
+  }
+};

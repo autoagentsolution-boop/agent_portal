@@ -457,6 +457,7 @@ const ConnectionDto = registry.register(
     lastCheckedAt: z.string().nullable(),
     capabilities: z.array(z.string()),
     connectUrl: z.string(),
+    oauthConfigured: z.boolean(),
   }),
 );
 

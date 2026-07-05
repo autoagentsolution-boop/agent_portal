@@ -9,6 +9,7 @@
 import { env } from '../config/env.ts';
 import { withRetry } from '../lib/retry.ts';
 import { getActiveToken, getTokenMeta } from '../tokens/service.ts';
+import { getPublisherAppCred } from '../db/repos/agent-credential-repo.ts';
 import { assetStore } from '../assets/store.ts';
 import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
@@ -24,7 +25,8 @@ const fail = (msg: string): PublishResult => ({
 
 const pageId = async (ownerId: string): Promise<string> => {
   const meta = await getTokenMeta(ownerId, 'facebook');
-  const id = (meta?.pageId as string) || env.MKT_FB_PAGE_ID;
+  // OAuth token meta → paste-token vault field → env (DAIS default).
+  const id = (meta?.pageId as string) || (await getPublisherAppCred(ownerId, 'facebook_page_id')) || env.MKT_FB_PAGE_ID;
   if (!id) throw new Error('FB page id missing');
   return id;
 };

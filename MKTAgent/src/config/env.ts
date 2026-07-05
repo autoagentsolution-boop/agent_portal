@@ -79,8 +79,13 @@ const schema = z.object({
   // env-seeded long-lived tokens — these onboard REAL users via consent. Each is
   // optional; the connect endpoint for a platform fail-fasts (500) until its app
   // creds are set, gated the same way as Google login (external app-review bucket).
-  // Public base for building absolute connect callback URIs (dev = localhost).
-  PUBLIC_BASE_URL: z.string().default('http://localhost:7100'),
+  // Public base for building absolute connect callback URIs (dev = localhost). Empty
+  // string in .env would otherwise override the default and yield a RELATIVE redirect_uri
+  // that Google/Meta reject → coalesce blank back to the dev default.
+  PUBLIC_BASE_URL: z
+    .string()
+    .default('http://localhost:7100')
+    .transform((v) => v.trim() || 'http://localhost:7100'),
   // Meta (FB Pages + IG + Threads share one Meta app; Threads may use its own).
   META_APP_ID: z.string().default(''),
   META_APP_SECRET: z.string().default(''),

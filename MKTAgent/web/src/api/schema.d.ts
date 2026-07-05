@@ -2759,6 +2759,7 @@ export interface components {
             lastCheckedAt: string | null;
             capabilities: string[];
             connectUrl: string;
+            oauthConfigured: boolean;
         };
     };
     responses: never;

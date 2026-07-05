@@ -6,6 +6,7 @@
 import { env } from '../config/env.ts';
 import { withRetry } from '../lib/retry.ts';
 import { getActiveToken, getTokenMeta } from '../tokens/service.ts';
+import { getPublisherAppCred } from '../db/repos/agent-credential-repo.ts';
 import { assetStore } from '../assets/store.ts';
 import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
@@ -21,7 +22,8 @@ const fail = (msg: string): PublishResult => ({
 
 const igUserId = async (ownerId: string): Promise<string> => {
   const meta = await getTokenMeta(ownerId, 'instagram');
-  const id = (meta?.userId as string) || env.MKT_IG_USER_ID;
+  // OAuth token meta → paste-token vault field → env (DAIS default).
+  const id = (meta?.userId as string) || (await getPublisherAppCred(ownerId, 'instagram_business_account_id')) || env.MKT_IG_USER_ID;
   if (!id) throw new Error('IG user id missing');
   return id;
 };

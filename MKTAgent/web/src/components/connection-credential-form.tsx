@@ -1,8 +1,8 @@
-// OAuth-less connect form for one platform. Shown when the platform isn't connected
-// and the workspace wants to paste credentials directly (the /connect OAuth app isn't
-// configured server-side). Write-only: inputs are password-type and cleared after save;
-// values go encrypted into the vault via the publisher credential endpoint. On the
-// required token save it reports success so the parent can flip the card to connected.
+// Paste-a-token form for one platform (the ADVANCED fallback to one-click OAuth Connect).
+// Write-only: inputs are password-type and cleared after save; values go encrypted into the
+// vault via the publisher credential endpoint. Required fields (token + identity id) show
+// first; app/client creds hide under an "Advanced" disclosure so non-tech users aren't
+// overwhelmed. On save it reports success so the parent flips the card to connected.
 import { useState } from 'react';
 import { api } from '../api/client';
 import { publisherCredentialFields, type PublisherCredentialField } from '../flow/publisher-credential-fields';
@@ -15,14 +15,16 @@ interface Props {
 }
 
 export function ConnectionCredentialForm({ platformKey, displayName, notify, onSaved }: Props) {
-  const fields: PublisherCredentialField[] = publisherCredentialFields[platformKey] ?? [];
+  const config = publisherCredentialFields[platformKey] ?? { required: [], advanced: [] };
   const [values, setValues] = useState<Record<string, string>>({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const set = (key: string, v: string) => setValues((cur) => ({ ...cur, [key]: v }));
 
   const save = async () => {
-    const entries = fields
+    const all = [...config.required, ...config.advanced];
+    const entries = all
       .map((f) => ({ key: f.key, value: values[f.key]?.trim() ?? '' }))
       .filter((e) => e.value.length > 0);
     if (entries.length === 0) { notify('Enter at least the access token', 'err'); return; }
@@ -39,20 +41,33 @@ export function ConnectionCredentialForm({ platformKey, displayName, notify, onS
     } finally { setSaving(false); }
   };
 
+  const renderField = (f: PublisherCredentialField) => (
+    <label className="conn-cred-field" key={f.key}>
+      <span>{f.label}</span>
+      <input
+        type="password"
+        autoComplete="off"
+        placeholder="paste value"
+        value={values[f.key] ?? ''}
+        onChange={(e) => set(f.key, e.target.value)}
+      />
+      {f.hint && <small className="muted">{f.hint}</small>}
+    </label>
+  );
+
   return (
     <div className="conn-cred-form">
-      {fields.map((f) => (
-        <label className="conn-cred-field" key={f.key}>
-          <span>{f.label}{f.required && <em className="req"> *</em>}</span>
-          <input
-            type="password"
-            autoComplete="off"
-            placeholder={f.required ? 'Required — paste value' : 'Optional'}
-            value={values[f.key] ?? ''}
-            onChange={(e) => set(f.key, e.target.value)}
-          />
-        </label>
-      ))}
+      {config.required.map(renderField)}
+
+      {config.advanced.length > 0 && (
+        <>
+          <button type="button" className="conn-advanced-toggle" onClick={() => setShowAdvanced((v) => !v)}>
+            {showAdvanced ? '▾ Advanced' : '▸ Advanced (app credentials — usually not needed)'}
+          </button>
+          {showAdvanced && config.advanced.map(renderField)}
+        </>
+      )}
+
       <button className="btn primary small" disabled={saving} onClick={() => void save()}>
         {saving ? 'Saving…' : 'Save & connect'}
       </button>

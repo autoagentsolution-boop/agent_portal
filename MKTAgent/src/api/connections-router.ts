@@ -8,6 +8,7 @@ import { ok, asyncHandler } from './http.ts';
 import { listTokenStatusForOwner, type TokenStatusRow } from '../db/repos/token-repo.ts';
 import { listPublisherPlatformTokenKeys, platformTokenKey } from '../db/repos/agent-credential-repo.ts';
 import { hasDriveConnected } from '../assets/drive-client.ts';
+import { isOAuthConfigured } from '../social/connect-providers.ts';
 import { CONNECTORS, connectStartPath } from '../connectors/registry/connector-registry.ts';
 import type { SocialPlatform, TokenStatus } from '../../prisma/generated/prisma/client.ts';
 
@@ -31,6 +32,9 @@ interface ConnectionDto {
   lastCheckedAt: string | null;
   capabilities: string[];
   connectUrl: string;
+  // Is the OAuth app configured for one-click Connect? false → UI guides the owner to
+  // set the app up (or use the paste-a-token fallback).
+  oauthConfigured: boolean;
 }
 
 connectionsRouter.get(
@@ -41,20 +45,23 @@ connectionsRouter.get(
     // A form-entered access token (vault) also counts as connected, even without an
     // OAuthToken row — so the OAuth-less publish path shows the right state + passes preflight.
     const formKeys = await listPublisherPlatformTokenKeys(req.userId!);
-    const data: ConnectionDto[] = CONNECTORS.map((p) => {
-      const row = byPlatform.get(p.platformKey);
-      const hasFormToken = formKeys.has(platformTokenKey(p.platformKey));
-      const state = row?.status ? toState(row.status) : hasFormToken ? 'connected' : 'not_connected';
-      return {
-        platformKey: p.platformKey,
-        displayName: p.displayName,
-        state,
-        expiresAt: row?.expiresAt ? row.expiresAt.toISOString() : null,
-        lastCheckedAt: row?.lastCheckedAt ? row.lastCheckedAt.toISOString() : null,
-        capabilities: p.capabilities,
-        connectUrl: connectStartPath(p.platformKey),
-      };
-    });
+    const data: ConnectionDto[] = await Promise.all(
+      CONNECTORS.map(async (p) => {
+        const row = byPlatform.get(p.platformKey);
+        const hasFormToken = formKeys.has(platformTokenKey(p.platformKey));
+        const state = row?.status ? toState(row.status) : hasFormToken ? 'connected' : 'not_connected';
+        return {
+          platformKey: p.platformKey,
+          displayName: p.displayName,
+          state,
+          expiresAt: row?.expiresAt ? row.expiresAt.toISOString() : null,
+          lastCheckedAt: row?.lastCheckedAt ? row.lastCheckedAt.toISOString() : null,
+          capabilities: p.capabilities,
+          connectUrl: connectStartPath(p.platformKey),
+          oauthConfigured: await isOAuthConfigured(p.platformKey, req.userId!),
+        };
+      }),
+    );
     ok(res, data, { count: data.length, nextCursor: null });
   }),
 );

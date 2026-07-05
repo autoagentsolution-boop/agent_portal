@@ -1798,6 +1798,9 @@
           },
           "connectUrl": {
             "type": "string"
+          },
+          "oauthConfigured": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1807,7 +1810,8 @@
           "expiresAt",
           "lastCheckedAt",
           "capabilities",
-          "connectUrl"
+          "connectUrl",
+          "oauthConfigured"
         ]
       }
     },

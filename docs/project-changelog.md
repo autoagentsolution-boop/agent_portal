@@ -5,6 +5,29 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-05
 
+### Connections simplified — OAuth-first, non-tech friendly
+Reworked the Connections screen for non-technical multi-tenant users: lead with one-click
+**Connect**, hide field bloat, and make the paste-token fallback actually publish.
+
+- **Adaptive card** — `connections-router` now returns `oauthConfigured` per platform (new
+  `isOAuthConfigured` helper). UI leads with **Connect** when the owner has set up that
+  platform's app; otherwise shows a one-line owner hint + the paste-token fallback. Contract +
+  web types regenerated.
+- **Minimal fields** — `publisher-credential-fields` split into `required` (access token + the ONE
+  identity id) and `advanced` (app/client secrets, collapsed). Form renders required first with
+  an "Advanced ▸" disclosure.
+- **Fixed latent bug** — FB/IG/LinkedIn adapters now resolve their identity id token-meta →
+  **vault** (`getPublisherAppCred`) → env, so a pasted token + id actually publishes (previously
+  the id fields were saved but never read). LinkedIn accepts a bare member id or a full urn.
+- **Drive** — code was already correct; the "not working" was the one-time Google console setup
+  (register `/connect/drive/callback` + enable Drive API + `drive.file` scope). Added an in-UI
+  owner-setup hint (end users have ZERO console friction — inherent to OAuth) and hardened
+  `PUBLIC_BASE_URL` (blank env → dev default, was yielding a relative redirect).
+- Owner one-time setup documented in `docs/connections-owner-setup.md`.
+
+Deferred (flagged): Meta page/IG selection after OAuth (multi-tenant FB/IG uses the token-form id
+for now); video→IG/Threads. Plan: `plans/260705-1159-connections-simplify/plan.md`.
+
 ### Publish-enablement IMPLEMENTED — Drive media + X self-serve + auto-refresh
 Built all three pieces planned 2026-07-03. Verified against the rebuilt container
 (typecheck + web build clean; verify-vault / verify-api / verify-runtime green; token cron

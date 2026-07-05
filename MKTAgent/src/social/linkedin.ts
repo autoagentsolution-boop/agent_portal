@@ -6,6 +6,7 @@
 // not the body.
 import { withRetry } from '../lib/retry.ts';
 import { getActiveToken, getTokenMeta } from '../tokens/service.ts';
+import { getPublisherAppCred } from '../db/repos/agent-credential-repo.ts';
 import { env } from '../config/env.ts';
 import { assetStore } from '../assets/store.ts';
 import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
@@ -21,9 +22,11 @@ const fail = (msg: string): PublishResult => ({
 
 const ownerUrn = async (ownerId: string): Promise<string> => {
   const meta = await getTokenMeta(ownerId, 'linkedin');
-  const personId = (meta?.personId as string) || env.MKT_LINKEDIN_PERSON_ID;
-  if (!personId) throw new Error('LinkedIn person id missing');
-  return `urn:li:person:${personId}`;
+  // OAuth token meta → paste-token vault field → env (DAIS default).
+  const raw = (meta?.personId as string) || (await getPublisherAppCred(ownerId, 'linkedin_author_urn')) || env.MKT_LINKEDIN_PERSON_ID;
+  if (!raw) throw new Error('LinkedIn person id missing');
+  // Accept a full urn (urn:li:person:… entered on the form) or a bare member id.
+  return raw.startsWith('urn:') ? raw : `urn:li:person:${raw}`;
 };
 
 export const linkedinAdapter: SocialAdapter = {

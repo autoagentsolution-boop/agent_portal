@@ -75,19 +75,32 @@ export function ConnectionsPanel({ notify }: Props) {
                 ))}
               </div>
               <div className="conn-actions">
-                <a
-                  className={`btn ${c.state === 'connected' ? 'ghost' : 'primary'} small`}
-                  href={connectUrl(c.connectUrl)}
-                >
-                  {c.state === 'connected' ? 'Reconnect (OAuth)' : 'Connect (OAuth)'}
-                </a>
-                <button
-                  className="btn small"
-                  onClick={() => setFormOpen((cur) => (cur === c.platformKey ? null : c.platformKey))}
-                >
-                  {formOpen === c.platformKey ? 'Close' : c.state === 'connected' ? 'Update token' : 'Enter token'}
-                </button>
+                {c.oauthConfigured ? (
+                  <>
+                    <a className={`btn ${c.state === 'connected' ? 'ghost' : 'primary'} small`} href={connectUrl(c.connectUrl)}>
+                      {c.state === 'connected' ? 'Reconnect' : 'Connect'}
+                    </a>
+                    <button
+                      className="btn ghost small"
+                      onClick={() => setFormOpen((cur) => (cur === c.platformKey ? null : c.platformKey))}
+                    >
+                      {formOpen === c.platformKey ? 'Close' : c.state === 'connected' ? 'Update token' : 'Paste token instead'}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="btn primary small"
+                    onClick={() => setFormOpen((cur) => (cur === c.platformKey ? null : c.platformKey))}
+                  >
+                    {formOpen === c.platformKey ? 'Close' : c.state === 'connected' ? 'Update token' : 'Enter token'}
+                  </button>
+                )}
               </div>
+              {!c.oauthConfigured && c.state === 'not_connected' && (
+                <p className="conn-setup-hint muted small">
+                  One-click Connect turns on once the owner sets up the {c.displayName} app. For now, paste a token.
+                </p>
+              )}
               {formOpen === c.platformKey && (
                 <ConnectionCredentialForm
                   platformKey={c.platformKey}
@@ -156,6 +169,17 @@ function StorageSection() {
               {driveConnected ? 'Reconnect Google Drive' : 'Connect Google Drive'}
             </a>
           </div>
+          {!driveConnected && (
+            <details className="conn-owner-setup">
+              <summary>One-time owner setup</summary>
+              <p className="muted small">Users just click Connect &amp; authorize — no console needed. One-time, the workspace owner registers our app in Google Cloud:</p>
+              <ol className="muted small">
+                <li>Enable the <strong>Google Drive API</strong>.</li>
+                <li>Add redirect URI: <code>http://localhost:7100/connect/drive/callback</code></li>
+                <li>Add scope <code>drive.file</code> (non-sensitive — no review) &amp; publish the consent screen.</li>
+              </ol>
+            </details>
+          )}
         </div>
       </div>
     </>
