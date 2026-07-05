@@ -4,6 +4,7 @@ import { usePostEvents } from '../hooks/use-post-events';
 import { PostBriefForm } from './PostBriefForm';
 import { PostCard } from './PostCard';
 import { CreatePostModal } from './create-post-modal';
+import { ProductKnowledgeUpload } from './product-knowledge-upload';
 
 import type { DemoMode } from '../flow/demo-flow';
 
@@ -119,6 +120,8 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
           onClose={() => setPicking(false)}
         />
       )}
+
+      {campaignId && <ProductKnowledgeUpload campaignId={campaignId} notify={notify} />}
 
       {!campaignId && <p className="muted">Showing all posts. Select a campaign to create a full brief.</p>}
 

@@ -12,6 +12,16 @@ const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
 export type Dto = components['schemas'];
 export type CampaignDto = Dto['CampaignDto'];
+// Product-knowledge analysis result (hand-written — route not in openapi yet).
+export type ProductKnowledgeResult = {
+  productDetails: string;
+  profile: { productSummary: string; differentiators: string; targetAudience: string; proofPoints: string; brandVoice: string; language: string };
+  brandVoice: string | null;
+  language: string | null;
+  cost: { promptTokens: number; outputTokens: number; totalTokens: number; costUsd: number };
+  persistedToCampaign: boolean;
+};
+export type UploadedDocInput = { name: string; mimeType: string; dataB64: string };
 export type PostDto = Dto['PostDto'];
 export type PostDetailDto = Dto['PostDetailDto'];
 export type LeadDto = Dto['LeadDto'];
@@ -111,6 +121,8 @@ export const api = {
     request<AgentChatSessionDto>(`/agent/chats/${id}/messages`, { method: 'POST', body: { message, timezone } }),
   deleteAgentChat: (id: string) => request<void>(`/agent/chats/${id}`, { method: 'DELETE' }),
 
+  analyzeProductKnowledge: (files: UploadedDocInput[], opts?: { product?: string; campaignId?: string }) =>
+    request<ProductKnowledgeResult>('/product-knowledge/analyze', { method: 'POST', body: { files, ...(opts ?? {}) } }),
   listCampaigns: () => request<CampaignDto[]>('/campaigns'),
   createCampaign: (body: Dto['CreateCampaignBody']) =>
     request<CampaignDto>('/campaigns', { method: 'POST', body }),
