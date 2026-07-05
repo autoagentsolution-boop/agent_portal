@@ -205,6 +205,16 @@ model Post {
   // Asset reference (Drive-backed for now; AssetStore abstracts the source).
   driveFolderId String?        @map("drive_folder_id")
   heroFile      String?        @map("hero_file") // 1 filename (image/video) or CSV (carousel)
+  // Per-platform asset type (item 5): { "facebook": "carousel", "instagram": "image" }.
+  // Null / a platform missing from the map → that platform uses the default `assetType`.
+  // Lets one post publish a different deliverable per platform (carousel on FB, single
+  // image on LinkedIn/X). Values are AssetType strings; validated against platform support.
+  platformAssets Json?        @map("platform_assets")
+  // Per-asset-type media refs (item 5): { "carousel": "id1,id2", "video": "idV", "image": "idI" }.
+  // Null / a missing type → fall back to `heroFile` (with carousel→first-frame degrade for
+  // 'image'). The executor fills one key per DISTINCT asset type it generates; the publisher
+  // picks the right media per platform from this map.
+  assetMedia    Json?        @map("asset_media")
   // Targeting + scheduling.
   platforms   SocialPlatform[]
   scheduledAt DateTime?        @map("scheduled_at") @db.Timestamptz(6)

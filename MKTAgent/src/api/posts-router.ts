@@ -16,6 +16,7 @@ import {
 } from './schemas.ts';
 import { toPostDto, toPostDetailDto } from './mappers.ts';
 import { checkPostability } from '../social/postability.ts';
+import { platformAssetType } from '../scheduler/resolve-input.ts';
 import { resolveConnectionStates } from './connection-state.ts';
 import { publishPostStatus } from '../events/bus.ts';
 import { generateForPost, refineForPost } from '../copygen/service.ts';
@@ -152,29 +153,32 @@ postsRouter.get(
   }),
 );
 
-// Publish review (item 3): per-platform readiness for THIS post. For each target,
-// report whether the platform's adapter can post the post's assetType (adapter truth)
-// AND whether it's connected — so the publish step is an informed compatible-vs-blocked
-// check instead of an opaque approve button. Read-only, no network. A platform publishes
-// only when BOTH hold (asset supported + connection live). Pairs with items 1 (gate) + 2.
+// Publish review (item 3): per-platform readiness for THIS post. For each target, report
+// whether the platform's adapter can post ITS asset type — the per-platform assetType map
+// wins, else the post default (item 5) — AND whether it's connected. So the publish step is
+// an informed compatible-vs-blocked check instead of an opaque approve button. Read-only, no
+// network. A platform publishes only when BOTH hold (asset supported + connection live).
 postsRouter.get(
   '/:id/postability',
   asyncHandler(async (req, res) => {
     const post = await getPostForOwner(req.params.id, req.userId!);
     if (!post) return fail(res, 404, 'post_not_found');
     const conn = await resolveConnectionStates(req.userId!);
-    const platforms = checkPostability(post.platforms, post.assetType).map((r) => {
-      const c = conn(r.platform);
-      const willPublish = r.supported && c.state === 'connected';
-      const reason = !r.supported
-        ? r.reason
+    const platforms = post.platforms.map((platform) => {
+      const assetType = platformAssetType(post, platform);
+      const [r] = checkPostability([platform], assetType);
+      const c = conn(platform);
+      const willPublish = r!.supported && c.state === 'connected';
+      const reason = !r!.supported
+        ? r!.reason
         : c.state !== 'connected'
-          ? `${r.platform} connection ${c.state.replace('_', ' ')}`
+          ? `${platform} connection ${c.state.replace('_', ' ')}`
           : null;
       return {
-        platform: r.platform,
-        assetSupported: r.supported,
-        supportedAssetTypes: r.supportedAssetTypes,
+        platform,
+        assetType,
+        assetSupported: r!.supported,
+        supportedAssetTypes: r!.supportedAssetTypes,
         connectionState: c.state,
         willPublish,
         reason,

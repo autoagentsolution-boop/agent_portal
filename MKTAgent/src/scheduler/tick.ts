@@ -7,7 +7,7 @@
 // Both guards run: the advisory lock serializes ticks/instances, and the atomic
 // claimForPublish() updateMany guards the row even if the lock were ever bypassed.
 import { acquireSchedulerLock } from './lock.ts';
-import { resolvePublishInput, PostValidationError } from './resolve-input.ts';
+import { resolvePlatformInput, platformAssetType, PostValidationError } from './resolve-input.ts';
 import { aggregate, toWriteBack } from './aggregate.ts';
 import {
   findPublishDue,
@@ -17,15 +17,16 @@ import {
   updatePost,
 } from '../db/repos/post-repo.ts';
 import { publishTo } from '../social/index.ts';
-import { partitionByPostability } from '../social/postability.ts';
+import { platformSupportsAsset } from '../social/postability.ts';
 import { hasDriveConnected, resolveCampaignFolder } from '../assets/drive-client.ts';
 import { materializeForPublicUrl, NEEDS_PUBLIC_URL, slugify } from '../assets/materialize.ts';
 import { getCampaign } from '../db/repos/campaign-repo.ts';
 import { publishPostStatus } from '../events/bus.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
-import type { Post } from '../../prisma/generated/prisma/client.ts';
+import type { Post, SocialPlatform, AssetType } from '../../prisma/generated/prisma/client.ts';
 import type { PublishInput, PublishResult } from '../social/types.ts';
+import type { AssetRef } from '../assets/store.ts';
 
 // Injectable publish fn — defaults to the real registry. Tests pass a stub to
 // exercise the full tick (claim → aggregate → write-back) with NO real posts,
@@ -42,84 +43,89 @@ export interface TickResult {
   reason?: string;
 }
 
+// One publish target after per-platform resolution (item 5). Either has a built `input`
+// (publishable) or a `skipReason` (asset unsupported / media missing) — never both.
+interface PlatformTarget {
+  platform: SocialPlatform;
+  assetType: AssetType;
+  input?: PublishInput;
+  skipReason?: string;
+}
+
+// Terminal validation failure for a whole post: mark error, log, emit — no network.
+async function failPost(post: Post, reason: string): Promise<TickResult> {
+  await updatePost(post.id, { status: 'error', error: reason.slice(0, 500), postedAt: new Date() });
+  await logRun('warn', 'mkt_post', { id: post.id, status: 'error', reason }, post.ownerId);
+  publishPostStatus(post.ownerId, { postId: post.id, status: 'error', campaignId: post.campaignId, error: reason.slice(0, 500) });
+  return { picked: true, postId: post.id, status: 'error', reason };
+}
+
 // Core: resolve → fan-out → aggregate → write-back for ONE already-claimed post
 // (status=posting). Shared by the cron tick and the manual publish-now trigger.
 export async function processPost(post: Post, publish: PublishFn): Promise<TickResult> {
-  // Validation failure → mark error, no network call (n8n "Build error write-back").
-  let input: PublishInput;
-  try {
-    input = resolvePublishInput(post);
-  } catch (e) {
-    if (e instanceof PostValidationError) {
-      await updatePost(post.id, { status: 'error', error: e.message.slice(0, 500), postedAt: new Date() });
-      await logRun('warn', 'mkt_post', { id: post.id, status: 'error', reason: e.message }, post.ownerId);
-      publishPostStatus(post.ownerId, {
-        postId: post.id,
-        status: 'error',
-        campaignId: post.campaignId,
-        error: e.message.slice(0, 500),
-      });
-      return { picked: true, postId: post.id, status: 'error', reason: e.message };
-    }
-    throw e;
+  // Empty targets → clean validation error, no network (n8n "Build error write-back").
+  if (!post.platforms || post.platforms.length === 0) {
+    return failPost(post, 'no target platforms');
   }
 
-  // Materialize local: images → public Drive fileIds ONCE for platforms that fetch a
-  // public URL server-side (IG/Threads). FB/LinkedIn/X keep local: (they upload bytes off
-  // disk). Images only — lh3 serves a thumbnail for video fileIds. Best-effort: if Drive
-  // isn't connected or the upload fails, IG/Threads fall through to their adapter's clear
-  // public-URL error while the disk-upload platforms still publish (partial success holds).
-  let publicInput = input;
-  const needsPublic = input.assetType !== 'video' && post.platforms.some((p) => NEEDS_PUBLIC_URL.has(p));
+  // Per-platform resolution (items 1 + 5): each target may publish a DIFFERENT asset type
+  // (platformAssets) with its own media. For each platform: pick its asset type, check the
+  // adapter supports it (item 1), then build that platform's input (degraded media). A
+  // platform whose asset is unsupported or whose media is missing is recorded as a SKIP —
+  // an explicit ok:false row, never a doomed network call.
+  const targets: PlatformTarget[] = post.platforms.map((platform) => {
+    const assetType = platformAssetType(post, platform);
+    if (!platformSupportsAsset(platform, assetType)) {
+      return { platform, assetType, skipReason: `${platform} cannot post ${assetType}` };
+    }
+    try {
+      return { platform, assetType, input: resolvePlatformInput(post, platform) };
+    } catch (e) {
+      if (e instanceof PostValidationError) return { platform, assetType, skipReason: e.message };
+      throw e;
+    }
+  });
+  const publishable = targets.filter((t): t is PlatformTarget & { input: PublishInput } => Boolean(t.input));
+  const skipped = targets.filter((t) => !t.input);
+  if (publishable.length === 0) {
+    return failPost(post, `no target platform can publish this post: ${skipped.map((s) => `${s.platform} (${s.skipReason})`).join('; ')}`);
+  }
+
+  // Materialize local images → public Drive fileIds for platforms that fetch a public URL
+  // server-side (IG/Threads). Cache by asset type so two public platforms sharing an asset
+  // upload once. Video is skipped (lh3 serves a thumbnail). Best-effort: on failure the
+  // platform falls through to its adapter's clear public-URL error; disk-upload platforms
+  // (FB/LinkedIn/X) still publish (partial success holds).
+  const publicByAsset = new Map<AssetType, AssetRef[]>();
+  const needsPublic = publishable.some((t) => NEEDS_PUBLIC_URL.has(t.platform) && t.assetType !== 'video');
   if (needsPublic && (await hasDriveConnected(post.ownerId))) {
     try {
-      // Upload into MKTAgent/<campaign>/ with index-ordered filenames. Order comes from the
-      // assets[] array, not generation-completion time (see materialize.ts).
       const campaign = await getCampaign(post.campaignId, post.ownerId);
       const name = campaign?.product ?? 'Uncategorized';
       const folderId = await resolveCampaignFolder(post.ownerId, name);
-      publicInput = {
-        ...input,
-        assets: await materializeForPublicUrl(post.ownerId, input.assets, { folderId, slug: slugify(name) }),
-      };
+      for (const t of publishable) {
+        if (!NEEDS_PUBLIC_URL.has(t.platform) || t.assetType === 'video' || publicByAsset.has(t.assetType)) continue;
+        publicByAsset.set(t.assetType, await materializeForPublicUrl(post.ownerId, t.input.assets, { folderId, slug: slugify(name) }));
+      }
     } catch (e) {
       logger.warn('drive_materialize_failed', { postId: post.id, error: String(e).slice(0, 200) });
     }
   }
 
-  // Per-platform postability gate (item 1): a post's single assetType may not be
-  // publishable on every target (e.g. carousel → FB only; IG/Threads/LinkedIn/X are
-  // image-only in the adapter layer). Split targets so we never fire a doomed publish
-  // and the incompatible ones surface as an explicit, non-alarming "skipped" result
-  // rather than a raw adapter "does not support" error. Item 5 (per-platform asset)
-  // removes the skip by giving each platform an asset it can take.
-  const { supported, skipped } = partitionByPostability(post.platforms, input.assetType);
-  if (supported.length === 0) {
-    const reason = `no target platform can post ${input.assetType}: ${skipped
-      .map((s) => s.platform)
-      .join(', ')}`;
-    await updatePost(post.id, { status: 'error', error: reason.slice(0, 500), postedAt: new Date() });
-    await logRun('warn', 'mkt_post', { id: post.id, status: 'error', reason }, post.ownerId);
-    publishPostStatus(post.ownerId, {
-      postId: post.id,
-      status: 'error',
-      campaignId: post.campaignId,
-      error: reason.slice(0, 500),
-    });
-    return { picked: true, postId: post.id, status: 'error', reason };
-  }
-
   // publishTo never throws → Promise.all is safe; one slow platform doesn't block.
   const published = await Promise.all(
-    supported.map((p) => publish(p, NEEDS_PUBLIC_URL.has(p) ? publicInput : input)),
+    publishable.map((t) => {
+      const publicAssets = NEEDS_PUBLIC_URL.has(t.platform) ? publicByAsset.get(t.assetType) : undefined;
+      return publish(t.platform, publicAssets ? { ...t.input, assets: publicAssets } : t.input);
+    }),
   );
-  // Skipped targets become explicit ok:false rows so the outcome records exactly what
-  // did NOT go out and why (drives status=partial when some platforms succeed).
+  // Skipped targets → explicit ok:false rows so the outcome records exactly what did NOT go
+  // out and why (drives status=partial when some platforms succeed).
   const skippedResults: PublishResult[] = skipped.map((s) => ({
     platform: s.platform,
     ok: false,
     url: null,
-    error: `skipped: ${s.reason}`,
+    error: `skipped: ${s.skipReason}`,
   }));
   const results = [...published, ...skippedResults];
   const outcome = aggregate(results);

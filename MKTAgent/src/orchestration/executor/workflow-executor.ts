@@ -20,7 +20,8 @@ import {
   setNodeStatus,
 } from '../../db/repos/workflow-run-repo.ts';
 import { getPostByRunId } from '../../db/repos/post-repo.ts';
-import { partitionByPostability } from '../../social/postability.ts';
+import { platformSupportsAsset } from '../../social/postability.ts';
+import { platformAssetType } from '../../scheduler/resolve-input.ts';
 import { publishNodeStatus } from '../../events/bus.ts';
 import { logRun } from '../../db/client.ts';
 import type { NodeExecResult } from './agent-executor.ts';
@@ -175,9 +176,11 @@ export const runWorkflow = async (
     const autoPublish = opts.autoPublish ?? true;
     let requiresApproval = gated;
     if (gated && planNode.agentId === 'publisher' && autoPublish) {
-      const targets = attachedPost?.platforms ?? [];
+      // Per-platform (item 5): each target may publish its own asset type — auto-run only
+      // when EVERY target's adapter supports ITS asset type; otherwise gate for the review.
       const cleanlyPostable =
-        !!postAssetType && targets.length > 0 && partitionByPostability(targets, postAssetType).skipped.length === 0;
+        !!attachedPost && attachedPost.platforms.length > 0 &&
+        attachedPost.platforms.every((p) => platformSupportsAsset(p, platformAssetType(attachedPost, p)));
       requiresApproval = !cleanlyPostable; // clean → auto-run; any skip/unknown → gate for review
     }
     if (requiresApproval && opts.approveNodeId !== planNodeId) {
