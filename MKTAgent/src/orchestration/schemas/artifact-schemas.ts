@@ -63,16 +63,25 @@ export const infographicBrief = z.object({
   imageRef: z.string().nullable().default(null),
 });
 
-// storyboard_agent → storyboard (stub in M1).
+// storyboard_agent → storyboard: a set of REAL generated frame images introducing the
+// product. imageRef is an AssetStore ref (local:<path>), served at /media/images.
 export const storyboard = z.object({
-  scenes: z.array(z.object({ index: z.number().int(), instruction: z.string() })),
-  videoScript: z.string(),
+  frames: z.array(
+    z.object({
+      index: z.number().int(),
+      imageRef: z.string(),
+      caption: z.string().default(''),
+      imagePrompt: z.string().default(''),
+    }),
+  ),
 });
 
-// video_agent → video_prompt (stub in M1).
+// video_agent → video_prompt: the REAL rendered video (Veo i2v of the storyboard frames,
+// stitched). videoRef is an AssetStore ref (local:<path>), served at /media/videos.
 export const videoPrompt = z.object({
-  prompt: z.string(),
+  videoRef: z.string(),
   durationSec: z.number().int().positive().default(8),
+  clipCount: z.number().int().nonnegative().default(1),
 });
 
 // publisher_agent → publish_result. Mirrors the scheduler's per-platform outcome.

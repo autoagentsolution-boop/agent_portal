@@ -38,6 +38,7 @@ export interface ExecuteOptions {
   publishFn?: RunnerContext['publishFn'];
   llmJsonFn?: RunnerContext['llmJsonFn'];
   imageFn?: RunnerContext['imageFn'];
+  videoFn?: RunnerContext['videoFn'];
   // When true, the executor RUNS the gated node instead of halting (post-approval).
   approveNodeId?: string;
   // Single-node re-execute: run ONLY this node (its upstream artifacts are seeded from
@@ -98,7 +99,7 @@ export const runWorkflow = async (
       await setRunStatus(runId, 'failed');
       return { status: 'failed', nodeId: opts.rerunOnly, error: 'node_not_found' };
     }
-    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn };
+    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn };
     await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
     publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'running' });
     try {
@@ -137,7 +138,7 @@ export const runWorkflow = async (
     }
 
     const def = getAgent(planNode.agentId);
-    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn };
+    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn };
 
     await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
     publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'running' });

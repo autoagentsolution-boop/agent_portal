@@ -3,6 +3,10 @@ FROM node:20-bullseye-slim
 
 WORKDIR /app
 
+# ffmpeg: the video agent stitches Veo i2v clips into one mp4 (src/video/stitch.ts).
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
 # Install deps first for layer caching.
 COPY package.json ./
 RUN npm install --no-audit --no-fund

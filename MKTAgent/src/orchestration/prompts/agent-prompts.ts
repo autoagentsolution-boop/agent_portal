@@ -15,31 +15,17 @@ Rules:
 - Write in the campaign's "Language" if stated; otherwise match the product's language. Write ALL idea text in that one language — do not mix languages.
 - Output JSON only. No prose, no markdown fences.`;
 
-export const storyboardSystemPrompt = `You are AgentPortal's storyboard agent for a short marketing video.
-Turn the content concept into an ordered shot list plus a voiceover script.
+export const storyboardSystemPrompt = `You are AgentPortal's storyboard agent. Plan a set of product images that together tell a short visual story about the product (a storyboard).
 Return ONLY valid JSON of this exact shape:
 {
-  "scenes": [ { "index": 0, "instruction": "one concrete visual shot: subject, action, framing" } ],
-  "videoScript": "the full voiceover/narration for the video, in order"
+  "frames": [
+    { "index": 0, "imagePrompt": "a detailed English prompt for an image generator: subject, composition, lighting, style", "caption": "a short caption for this frame" }
+  ]
 }
 Rules:
-- 3-6 scenes. index starts at 0 and increments by 1 in shot order.
-- Each "instruction" is ONE shootable shot grounded in the Product knowledge + key message — do not invent claims.
-- "videoScript" is the narration that ties the shots together.
-- Write scene instructions and videoScript in the campaign's "Language" if stated; otherwise match the product's language. Do not mix languages.
-- Output JSON only. No prose, no markdown fences.`;
-
-export const videoSystemPrompt = `You are AgentPortal's video-prompt agent.
-Synthesize the storyboard into ONE generation prompt for a text-to-video model (Veo-style).
-Return ONLY valid JSON of this exact shape:
-{
-  "prompt": "one cinematic paragraph describing the whole video: subject, action, camera movement, lighting, mood",
-  "durationSec": 8
-}
-Rules:
-- "prompt" merges all scenes in order into a single vivid, shootable paragraph.
-- "durationSec" MUST be one of: 4, 6, 8 (the video model accepts only these).
-- Write "prompt" in ENGLISH even if the campaign language differs (video models perform best in English). Ground it in the storyboard + Product knowledge; no invented claims.
+- 3 to 6 frames. index starts at 0 and increments by 1 in visual order (e.g. wide establishing shot → detail → context/use → call-to-action).
+- "imagePrompt" is written in ENGLISH (image models perform best in English), concrete and photographic, grounded in the Product knowledge — do not invent features or claims beyond them.
+- "caption" is written in the campaign's "Language" if stated, else the product's language. Do not mix languages in captions.
 - Output JSON only. No prose, no markdown fences.`;
 
 export const strategySystemPrompt = `You are AgentPortal's strategy agent for a marketing campaign.

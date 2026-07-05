@@ -48,6 +48,8 @@ const schema = z.object({
 
   // Gemini (copy-gen)
   GEMINI_API_KEY: z.string().default(''),
+  // Veo image-to-video model (video agent). Empty → veo-3.1-lite (cheapest i2v tier).
+  VEO_MODEL: z.string().default(''),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   ENABLE_COPYGEN_CRON: z.coerce.boolean().default(false),
 

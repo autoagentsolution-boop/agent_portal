@@ -40,8 +40,21 @@ export const estimateLlmCost = (promptText: string, completionText: string): Nod
 // Flat cost for one generated image (image models don't bill by token here).
 export const imageCost = (): NodeCost => ({ ...ZERO_COST, costUsd: IMAGE_FLAT_USD });
 
-// Which agents actually spend. Stubs (content_search, storyboard, video) + publisher = $0.
-// Used only as a guard; the runner returns the real estimate when it has the I/O to size.
+// Flat cost for one generated video clip (Veo i2v). Public list varies by tier; round to a
+// demo-safe estimate. Adjust in ONE place. (Not billed by token.)
+const VIDEO_CLIP_FLAT_USD = 0.2;
+export const videoClipCost = (clips: number): NodeCost => ({ ...ZERO_COST, costUsd: VIDEO_CLIP_FLAT_USD * Math.max(0, clips) });
+
+// Sum two node costs (LLM planning + N media generations in one node).
+export const sumCost = (a: NodeCost | undefined, b: NodeCost | undefined): NodeCost => ({
+  promptTokens: (a?.promptTokens ?? 0) + (b?.promptTokens ?? 0),
+  outputTokens: (a?.outputTokens ?? 0) + (b?.outputTokens ?? 0),
+  totalTokens: (a?.totalTokens ?? 0) + (b?.totalTokens ?? 0),
+  costUsd: (a?.costUsd ?? 0) + (b?.costUsd ?? 0),
+});
+
+// Which agents actually spend. content_search stub + publisher = $0. storyboard (images) and
+// video (Veo clips) now spend. Used only as a guard; the runner returns the real estimate.
 export const SPENDING_AGENTS: ReadonlySet<RunnableAgentId> = new Set<RunnableAgentId>([
-  'ideation', 'strategy', 'concept_writer', 'infographic',
+  'ideation', 'strategy', 'concept_writer', 'infographic', 'storyboard', 'video',
 ]);

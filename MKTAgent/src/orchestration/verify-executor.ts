@@ -32,10 +32,11 @@ const stubPublish: PublishFn = async (platform) => ({ platform, ok: true, url: `
 // Stub the generic JSON LLM (ideation/strategy) — schema-valid output, no spend.
 const stubLlmJson: LlmJsonFn = async (systemPrompt) => {
   if (/ideation/i.test(systemPrompt)) return { ideas: ['Stub idea A', 'Stub idea B'], chosen: 'Stub idea A' };
-  if (/storyboard/i.test(systemPrompt)) return { scenes: [{ index: 0, instruction: 'Stub scene' }], videoScript: 'Stub script' };
-  if (/video/i.test(systemPrompt)) return { prompt: 'Stub video prompt', durationSec: 8 };
+  if (/storyboard/i.test(systemPrompt)) return { frames: [{ index: 0, imagePrompt: 'Stub frame prompt', caption: 'Stub caption' }] };
   return { positioning: 'Stub positioning', audience: 'Stub audience', pillars: ['p1', 'p2'], funnelStage: 'awareness' };
 };
+// Stub Veo i2v — return a fake mp4 path WITHOUT rendering a real (slow, paid) video.
+const stubVideo = async () => ({ outputFile: '/tmp/stub-video.mp4', cached: false, durationMs: 0 });
 
 // Stub image gen — return a fake local path WITHOUT generating a real image / file.
 // The publish path is per-platform stubbed so fetchBinary is never called.
@@ -60,7 +61,7 @@ async function main(): Promise<void> {
     await createNodes(run.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
 
     // First pass — should run concept_writer + infographic, then HALT at publisher.
-    const r1 = await runWorkflow(run.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage });
+    const r1 = await runWorkflow(run.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo });
     check('first pass halts needs_approval', r1.status === 'needs_approval', r1);
     if (r1.status === 'needs_approval') {
       const pub = planned.plan.nodes.find((n) => n.agentId === 'publisher')!;

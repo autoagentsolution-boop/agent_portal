@@ -41,10 +41,10 @@ const stubGemini: GeminiFn = async () => ({
 const stubPublish: PublishFn = async (platform) => ({ platform, ok: true, url: `https://dry-run/${platform}`, error: null });
 const stubLlmJson: LlmJsonFn = async (systemPrompt) => {
   if (/ideation/i.test(systemPrompt)) return { ideas: ['Stub idea A', 'Stub idea B'], chosen: 'Stub idea A' };
-  if (/storyboard/i.test(systemPrompt)) return { scenes: [{ index: 0, instruction: 'Stub scene' }], videoScript: 'Stub script' };
-  if (/video/i.test(systemPrompt)) return { prompt: 'Stub video prompt', durationSec: 8 };
+  if (/storyboard/i.test(systemPrompt)) return { frames: [{ index: 0, imagePrompt: 'Stub frame prompt', caption: 'Stub caption' }] };
   return { positioning: 'Stub positioning', audience: 'Stub audience', pillars: ['p1', 'p2'], funnelStage: 'awareness' };
 };
+const stubVideo = async () => ({ outputFile: '/tmp/stub-video.mp4', cached: false, durationMs: 0 });
 const stubImage = async (): Promise<{ imagePath: string; outputFile: string; cached: boolean; durationMs: number }> => ({
   imagePath: '/files/images/stub.png', outputFile: '/tmp/stub-image.png', cached: false, durationMs: 0,
 });
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
 
     const instGoal = analyzeDeterministic('Build a full branding campaign for our AI automation product on facebook with an infographic');
     const instPlan = workflowPlan.parse(instance!.plan);
-    const r1 = await runWorkflow(instance!.id, user.id, instGoal, instPlan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage });
+    const r1 = await runWorkflow(instance!.id, user.id, instGoal, instPlan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo });
     check('instance run halts at publisher gate', r1.status === 'needs_approval', r1);
 
     const campaignsAfter = await prisma.campaign.count({ where: { ownerId: user.id } });

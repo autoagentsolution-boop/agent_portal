@@ -18,11 +18,24 @@ export const imageUrlFromRef = (ref: unknown): string | null => {
   return null;
 };
 
+// videoRef `local:<abspath>/<hash>.mp4` → /media/videos/<basename> (served static).
+export const videoUrlFromRef = (ref: unknown): string | null => {
+  if (typeof ref !== 'string' || !ref) return null;
+  if (ref.startsWith('local:')) {
+    const file = ref.slice('local:'.length).replace(/\\/g, '/').split('/').pop();
+    return file ? `${API_BASE}/media/videos/${file}` : null;
+  }
+  if (/^https?:\/\//.test(ref)) return ref;
+  return null;
+};
+
 export interface ArtifactField { label: string; value: string }
 export interface ArtifactView {
   title: string;
   fields: ArtifactField[];
   imageUrl?: string | null;
+  imageUrls?: string[]; // storyboard gallery
+  videoUrl?: string | null; // rendered video
 }
 
 const ARTIFACT_TITLES: Record<string, string> = {
@@ -32,7 +45,7 @@ const ARTIFACT_TITLES: Record<string, string> = {
   content_concept: 'Content & copy',
   infographic_brief: 'Infographic',
   storyboard: 'Storyboard',
-  video_prompt: 'Video prompt',
+  video_prompt: 'Video',
   publish_result: 'Publish result',
 };
 
@@ -81,17 +94,24 @@ export const formatArtifact = (type: string, data: unknown): ArtifactView => {
         ].filter((f) => f.value.trim()),
       };
     case 'storyboard': {
-      const scenes = Array.isArray(d.scenes) ? d.scenes as Array<Record<string, unknown>> : [];
-      return { title, fields: [
-        { label: 'Script', value: str(d.videoScript) },
-        { label: 'Scenes', value: scenes.map((s) => `• ${str(s.instruction)}`).join('\n') },
-      ].filter((f) => f.value.trim()) };
+      const frames = Array.isArray(d.frames) ? (d.frames as Array<Record<string, unknown>>) : [];
+      const imageUrls = frames.map((f) => imageUrlFromRef(f.imageRef)).filter((u): u is string => Boolean(u));
+      const captions = frames.map((f, i) => `${i + 1}. ${str(f.caption)}`).filter((c) => c.trim().length > 3);
+      return {
+        title,
+        imageUrls,
+        fields: captions.length ? [{ label: 'Frames', value: captions.join('\n') }] : [],
+      };
     }
     case 'video_prompt':
-      return { title, fields: [
-        { label: 'Prompt', value: str(d.prompt) },
-        { label: 'Duration', value: d.durationSec ? `${str(d.durationSec)}s` : '' },
-      ].filter((f) => f.value.trim()) };
+      return {
+        title,
+        videoUrl: videoUrlFromRef(d.videoRef),
+        fields: [
+          { label: 'Duration', value: d.durationSec ? `${str(d.durationSec)}s` : '' },
+          { label: 'Clips', value: d.clipCount ? `${str(d.clipCount)}` : '' },
+        ].filter((f) => f.value.trim()),
+      };
     case 'publish_result': {
       const urls = (d.postUrls ?? null) as Record<string, string> | null;
       const urlLines = urls ? Object.entries(urls).map(([p, u]) => `• ${p}: ${u}`).join('\n') : '';

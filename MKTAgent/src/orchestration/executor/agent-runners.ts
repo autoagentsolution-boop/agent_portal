@@ -12,10 +12,13 @@ import { createPost, getPostForOwner, approveReview, setPostHeroFile, setStatus 
 import { generateForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
-import { ideationSystemPrompt, strategySystemPrompt, storyboardSystemPrompt, videoSystemPrompt } from '../prompts/agent-prompts.ts';
+import { ideationSystemPrompt, strategySystemPrompt, storyboardSystemPrompt } from '../prompts/agent-prompts.ts';
 import { generate as generateImage, type ImageResult } from '../../imagegen/nano-banana.ts';
+import { generate as generateVideo, type VideoRequest, type VideoResult } from '../../video/veo.ts';
+import { stitchClips } from '../../video/stitch.ts';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
-import { estimateLlmCost, imageCost, type NodeCost } from './node-cost.ts';
+import { logger } from '../../lib/logger.ts';
+import { estimateLlmCost, imageCost, videoClipCost, sumCost, type NodeCost } from './node-cost.ts';
 
 // Per-run mutable context threaded through node executions. Artifacts already
 // produced upstream are addressable by type (the executor passes them in).
@@ -32,9 +35,12 @@ export interface RunnerContext {
   // Generic text→JSON LLM seam for ideation/strategy (distinct from geminiFn, which
   // is copy-gen-body shaped). Stubbed in DRY-RUN verification.
   llmJsonFn?: LlmJsonFn;
-  // Image generation seam (infographic agent). Stubbed in DRY-RUN verification so
-  // no real image is generated / no API spend.
+  // Image generation seam (infographic + storyboard agents). Stubbed in DRY-RUN
+  // verification so no real image is generated / no API spend.
   imageFn?: (prompt: string) => Promise<ImageResult>;
+  // Video generation seam (video agent — Veo i2v). Stubbed in DRY-RUN verification so
+  // no real (slow, paid) video is rendered.
+  videoFn?: (req: VideoRequest) => Promise<VideoResult>;
   // The Post row id materialized by concept_writer, reused by publisher.
   postId?: string;
 }
@@ -281,8 +287,8 @@ const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   return { type: 'infographic_brief', data: { visualBrief, imagePrompt, imageRef: ref }, cost: image.cached ? undefined : imageCost() };
 };
 
-// storyboard (LIVE): turn the content concept into an ordered shot list + voiceover script.
-// Reads content_concept upstream (falls back to goal context if the concept node was skipped).
+// storyboard (LIVE): plan 3-6 frames (LLM) then GENERATE a real image per frame. The artifact
+// carries the frame images so the review UI shows a gallery, not a script. Order = plan order.
 const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
   const concept = ctx.upstream.content_concept as
@@ -291,39 +297,74 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const parts = [goalContext(ctx)];
   if (concept?.keyMessage) parts.push(`Key message: ${concept.keyMessage}`);
   if (concept?.mainAngle) parts.push(`Main angle: ${concept.mainAngle}`);
-  if (concept?.copy?.body) parts.push(`Post copy: ${concept.copy.body}`);
-  const prompt = parts.join('\n');
-  const raw = await call(storyboardSystemPrompt, prompt);
-  const parsed = storyboard.safeParse(raw);
+  const planPrompt = parts.join('\n');
+  const raw = (await call(storyboardSystemPrompt, planPrompt)) as {
+    frames?: Array<{ index?: number; imagePrompt?: string; caption?: string }>;
+  };
+  const plan = Array.isArray(raw?.frames) ? raw.frames : [];
+  if (plan.length === 0) throw new Error('storyboard: LLM returned no frames');
+
+  const gen = ctx.imageFn ?? ((p: string) => generateImage({ prompt: p, mode: 'text-to-image' }));
+  let cost: NodeCost = estimateLlmCost(storyboardSystemPrompt + planPrompt, JSON.stringify(raw));
+  const frames: Array<{ index: number; imageRef: string; caption: string; imagePrompt: string }> = [];
+  for (const [i, f] of plan.entries()) {
+    const imagePrompt = (f.imagePrompt ?? '').trim() || `Product image, frame ${i + 1}`;
+    try {
+      const image = await gen(imagePrompt);
+      frames.push({ index: f.index ?? i, imageRef: `local:${image.outputFile}`, caption: f.caption ?? '', imagePrompt });
+      if (!image.cached) cost = sumCost(cost, imageCost());
+    } catch (e) {
+      // The image model is intermittently flaky (returns 200 with no image ~1/3). Skip a
+      // failed frame rather than fail the whole storyboard — keep the frames that rendered.
+      logger.warn('storyboard_frame_failed', { index: i, error: String(e).slice(0, 160) });
+    }
+  }
+  if (frames.length === 0) throw new Error('storyboard: no frames could be generated (image model returned nothing)');
+
+  const parsed = storyboard.safeParse({ frames });
   if (!parsed.success) throw new Error(`storyboard: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
-  return { type: 'storyboard', data: parsed.data, cost: estimateLlmCost(storyboardSystemPrompt + prompt, JSON.stringify(parsed.data)) };
+  return { type: 'storyboard', data: parsed.data, cost };
 };
 
-// video (LIVE): synthesize the storyboard into a single Veo-style generation prompt. Produces
-// the video_prompt artifact (a prompt, not a rendered mp4 — real render is a separate concern).
+// video (LIVE): animate each storyboard frame into a Veo clip, then ffmpeg-stitch them (in
+// frame order) into ONE mp4 — the real deliverable. Sets it as the Post hero so publish + review
+// use the video. Veo is slow/paid/rate-limited → clips are rendered serially.
 const VEO_DURATIONS = [4, 6, 8] as const;
-const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
-  const call = ctx.llmJsonFn ?? callGeminiJson;
-  const sb = ctx.upstream.storyboard as
-    | { scenes?: Array<{ index: number; instruction: string }>; videoScript?: string }
-    | undefined;
-  const parts = [goalContext(ctx)];
-  if (sb?.videoScript) parts.push(`Video script: ${sb.videoScript}`);
-  if (sb?.scenes?.length) parts.push('Scenes:\n' + sb.scenes.map((s) => `${s.index}. ${s.instruction}`).join('\n'));
-  const prompt = parts.join('\n');
-  const raw = await call(videoSystemPrompt, prompt);
-  const parsed = videoPrompt.safeParse(raw);
-  if (!parsed.success) throw new Error(`video: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
-  // The video model accepts only {4,6,8}s — snap the model's choice to the nearest allowed.
-  const d = parsed.data.durationSec;
-  const durationSec = VEO_DURATIONS.includes(d as (typeof VEO_DURATIONS)[number])
-    ? d
+const snapDuration = (d: number): (typeof VEO_DURATIONS)[number] =>
+  VEO_DURATIONS.includes(d as (typeof VEO_DURATIONS)[number])
+    ? (d as (typeof VEO_DURATIONS)[number])
     : VEO_DURATIONS.reduce((a, b) => (Math.abs(b - d) < Math.abs(a - d) ? b : a), 8);
-  return {
-    type: 'video_prompt',
-    data: { ...parsed.data, durationSec },
-    cost: estimateLlmCost(videoSystemPrompt + prompt, JSON.stringify(parsed.data)),
-  };
+
+const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const sb = ctx.upstream.storyboard as
+    | { frames?: Array<{ index: number; imageRef: string; caption?: string; imagePrompt?: string }> }
+    | undefined;
+  const frames = (sb?.frames ?? []).slice().sort((a, b) => a.index - b.index);
+  if (frames.length === 0) throw new Error('video: no storyboard frames to animate (run storyboard first)');
+
+  const durationSec = snapDuration(8);
+  const gen = ctx.videoFn ?? ((req: VideoRequest) => generateVideo(req));
+
+  const clipPaths: string[] = [];
+  let rendered = 0;
+  for (const f of frames) {
+    const localPath = f.imageRef.startsWith('local:') ? f.imageRef.slice('local:'.length) : f.imageRef;
+    const motionPrompt = (f.imagePrompt || f.caption || 'Subtle cinematic camera motion, gentle push-in').trim();
+    const clip = await gen({ referenceImagePath: localPath, prompt: motionPrompt, durationSec });
+    clipPaths.push(clip.outputFile);
+    if (!clip.cached) rendered++;
+  }
+
+  const stitched = await stitchClips(clipPaths);
+  const videoRef = `local:${stitched}`;
+  if (ctx.postId) {
+    const updated = await setPostHeroFile(ctx.postId, ctx.ownerId, videoRef);
+    if (!updated) throw new Error('video: could not attach video to post (locked or not found)');
+  }
+
+  const parsed = videoPrompt.safeParse({ videoRef, durationSec, clipCount: clipPaths.length });
+  if (!parsed.success) throw new Error(`video: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+  return { type: 'video_prompt', data: parsed.data, cost: videoClipCost(rendered) };
 };
 
 // Stubs — schema-valid placeholders so the DAG completes end-to-end in M1.

@@ -27,14 +27,14 @@ const stubGemini: GeminiFn = async () => {
 const stubPublish: PublishFn = async (platform) => ({ platform, ok: true, url: `https://dry-run/${platform}`, error: null });
 const stubLlmJson: LlmJsonFn = async (sys) => {
   if (/ideation/i.test(sys)) return { ideas: ['A', 'B'], chosen: 'A' };
-  if (/storyboard/i.test(sys)) return { scenes: [{ index: 0, instruction: 'Stub scene' }], videoScript: 'Stub script' };
-  if (/video/i.test(sys)) return { prompt: 'Stub video prompt', durationSec: 8 };
+  if (/storyboard/i.test(sys)) return { frames: [{ index: 0, imagePrompt: 'Stub frame', caption: 'Stub caption' }] };
   return { positioning: 'P', audience: 'Aud', pillars: ['p1'], funnelStage: 'awareness' };
 };
+const stubVideo = async () => ({ outputFile: '/tmp/stub-video.mp4', cached: false, durationMs: 0 });
 let imageRuns = 0;
 const stubImage = async () => { imageRuns++; return { imagePath: `/tmp/img${imageRuns}.png`, outputFile: `/tmp/img${imageRuns}.png`, cached: false, durationMs: 1 }; };
 
-const opts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage };
+const opts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo };
 
 async function main(): Promise<void> {
   const user = await prisma.user.create({ data: { email: `rr-${Date.now()}@test.local` } });

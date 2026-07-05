@@ -25,10 +25,10 @@ const stubGemini: GeminiFn = async () => ({
 const stubPublish: PublishFn = async (platform) => ({ platform, ok: true, url: `https://dry-run/${platform}`, error: null });
 const stubLlmJson: LlmJsonFn = async (systemPrompt) => {
   if (/ideation/i.test(systemPrompt)) return { ideas: ['Stub idea A', 'Stub idea B'], chosen: 'Stub idea A' };
-  if (/storyboard/i.test(systemPrompt)) return { scenes: [{ index: 0, instruction: 'Stub scene' }], videoScript: 'Stub script' };
-  if (/video/i.test(systemPrompt)) return { prompt: 'Stub video prompt', durationSec: 8 };
+  if (/storyboard/i.test(systemPrompt)) return { frames: [{ index: 0, imagePrompt: 'Stub frame prompt', caption: 'Stub caption' }] };
   return { positioning: 'Stub positioning', audience: 'Stub audience', pillars: ['p1', 'p2'], funnelStage: 'awareness' };
 };
+const stubVideo = async () => ({ outputFile: '/tmp/stub-video.mp4', cached: false, durationMs: 0 });
 const stubImage = async () => ({ imagePath: '/files/images/stub.png', outputFile: '/tmp/stub-image.png', cached: false, durationMs: 0 });
 
 const call = async (method: string, path: string, token: string): Promise<{ status: number; body: any }> => {
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
 
   const user = await prisma.user.create({ data: { email: `flowcost-${Date.now()}@test.local`, defaultLanguage: 'en' } });
   const token = signSession({ sub: user.id, email: user.email });
-  const runOpts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage };
+  const runOpts = { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo };
 
   try {
     // Seed a TEMPLATE (saved flow) with an infographic so nodes spend.

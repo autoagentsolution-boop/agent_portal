@@ -183,10 +183,20 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
                 {selectedView.imageUrl && (
                   <img className="artifact-image" src={selectedView.imageUrl} alt={selectedView.title} loading="lazy" />
                 )}
+                {selectedView.videoUrl && (
+                  <video className="artifact-video" src={selectedView.videoUrl} controls preload="metadata" />
+                )}
+                {selectedView.imageUrls && selectedView.imageUrls.length > 0 && (
+                  <div className="artifact-gallery">
+                    {selectedView.imageUrls.map((u, i) => (
+                      <img className="artifact-frame" src={u} alt={`${selectedView.title} frame ${i + 1}`} key={u} loading="lazy" />
+                    ))}
+                  </div>
+                )}
                 {selectedView.fields.map((f) => (
                   <div className="artifact-field" key={f.label}><strong>{f.label}</strong><p>{f.value}</p></div>
                 ))}
-                {selectedView.fields.length === 0 && !selectedView.imageUrl && <p className="muted small">No output yet for this step.</p>}
+                {selectedView.fields.length === 0 && !selectedView.imageUrl && !selectedView.videoUrl && (!selectedView.imageUrls || selectedView.imageUrls.length === 0) && <p className="muted small">No output yet for this step.</p>}
               </>
             ) : (
               <p className="muted small">This step hasn't produced output yet — run the flow to populate it.</p>

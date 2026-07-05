@@ -22,6 +22,7 @@ import { agentRouter } from './api/agent-router.ts';
 import { orchestrationRouter } from './api/orchestration-router.ts';
 import { connectionsRouter } from './api/connections-router.ts';
 import { IMAGE_OUTPUT_DIR } from './imagegen/nano-banana.ts';
+import { VIDEO_OUTPUT_DIR } from './video/veo.ts';
 
 const app = express();
 
@@ -46,6 +47,10 @@ app.get('/health', (_req, res) => {
 // Ensure the dir exists so static doesn't 500 on a fresh container (no images yet).
 mkdirSync(IMAGE_OUTPUT_DIR, { recursive: true });
 app.use('/media/images', express.static(IMAGE_OUTPUT_DIR, { fallthrough: false, maxAge: '1h' }));
+// Generated videos (Veo i2v, stitched). Same read-only static pattern → /media/videos/<hash>.mp4
+// (video_prompt.videoRef = local:<abspath>). express.static sends Accept-Ranges so <video> seeks.
+mkdirSync(VIDEO_OUTPUT_DIR, { recursive: true });
+app.use('/media/videos', express.static(VIDEO_OUTPUT_DIR, { fallthrough: false, maxAge: '1h' }));
 
 // Auth (Google login → JWT). Public start/callback; /auth/me self-guards.
 app.use('/auth', authRouter);
