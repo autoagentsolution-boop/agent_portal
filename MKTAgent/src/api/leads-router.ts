@@ -24,6 +24,8 @@ import { listLeads, getLead, updateLeadScore, type DecryptedLead } from '../db/r
 import { resolveOwnerByToken, createIntakeToken, listIntakeTokens, revokeIntakeToken } from '../db/repos/lead-intake-token-repo.ts';
 import { ruleScore } from '../leads/scoring/rule-score.ts';
 import { llmScoreAdjustment } from '../leads/scoring/llm-score.ts';
+import { pollCommentsForLeads } from '../leads/sources/comment-poller.ts';
+import { graphCommentFetcher } from '../leads/sources/comment-fetch-graph.ts';
 import { prisma } from '../db/client.ts';
 import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { logger } from '../lib/logger.ts';
@@ -130,6 +132,18 @@ leadsRouter.delete(
     const okDel = await revokeIntakeToken(req.params.id, req.userId!);
     if (!okDel) return fail(res, 404, 'intake_token_not_found');
     res.status(204).end();
+  }),
+);
+
+// ---- POST /leads/poll-comments — pull opt-in leads from this owner's published posts' comments ----
+// Manual trigger (the cron does this globally). Owner-scoped; uses the live Graph fetcher.
+leadsRouter.post(
+  '/poll-comments',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const summary = await pollCommentsForLeads(graphCommentFetcher, req.userId!);
+    logger.info('comment_poll_manual', { ownerId: req.userId, ...summary });
+    ok(res, summary);
   }),
 );
 

@@ -2704,6 +2704,7 @@ export interface components {
             /** Format: uuid */
             productKnowledgeId: string | null;
             referenceImage: string | null;
+            leadCaptureKeyword: string | null;
             scheduledAt: string | null;
             postUrls: {
                 [key: string]: string;
@@ -2752,6 +2753,7 @@ export interface components {
             /** Format: uuid */
             productKnowledgeId: string | null;
             referenceImage: string | null;
+            leadCaptureKeyword: string | null;
             scheduledAt: string | null;
             postUrls: {
                 [key: string]: string;
@@ -2895,6 +2897,7 @@ export interface components {
                 /** Format: uuid */
                 productKnowledgeId: string | null;
                 referenceImage: string | null;
+                leadCaptureKeyword: string | null;
                 scheduledAt: string | null;
                 postUrls: {
                     [key: string]: string;
@@ -2930,6 +2933,7 @@ export interface components {
             } | null;
             /** Format: uuid */
             productKnowledgeId?: string | null;
+            leadCaptureKeyword?: string | null;
             scheduledAt?: string | null;
         };
         /** @enum {string} */

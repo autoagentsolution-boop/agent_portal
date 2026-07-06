@@ -174,6 +174,7 @@ export const api = {
   // Lead Collector (§01)
   listLeads: () => request<LeadRow[]>('/leads'),
   rescoreLead: (id: string) => request<LeadRow>(`/leads/${id}/rescore`, { method: 'POST' }),
+  pollComments: () => request<{ postsPolled: number; commentsScanned: number; leadsCaptured: number; duplicates: number }>('/leads/poll-comments', { method: 'POST' }),
   listIntakeTokens: () => request<IntakeTokenRow[]>('/leads/intake-tokens'),
   createIntakeToken: (label?: string) => request<CreatedIntakeToken>('/leads/intake-tokens', { method: 'POST', body: label ? { label } : {} }),
   revokeIntakeToken: (id: string) => request<void>(`/leads/intake-tokens/${id}`, { method: 'DELETE' }),

@@ -54,6 +54,7 @@ enum LeadSource {
   webhook
   form
   calcom
+  comment
 }
 
 enum TokenStatus {
@@ -254,6 +255,12 @@ model Post {
   // Targeting + scheduling.
   platforms   SocialPlatform[]
   scheduledAt DateTime?        @map("scheduled_at") @db.Timestamptz(6)
+  // Lead capture from comments (§01.4/§01.6). leadCaptureKeyword configures, PER POST, the
+  // keyword a commenter uses to opt in (e.g. "Atria AI"); a comment matching it + an email →
+  // an opt-in lead. Null = disabled. commentSourceIds maps platform → published post id (set by
+  // the lead_collector node after publish) so the poller knows which post's comments to read.
+  leadCaptureKeyword String? @map("lead_capture_keyword")
+  commentSourceIds   Json?   @map("comment_source_ids") // { facebook: "<postId>", instagram: "<mediaId>" }
   // Outcome.
   postUrls    Json?            @map("post_urls") // { facebook: url, ... }
   error       String?

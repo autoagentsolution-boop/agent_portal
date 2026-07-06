@@ -60,6 +60,7 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
   const [form, setForm] = useState<PostBody>(() => initialState(post));
   const [platformAssets, setPlatformAssets] = useState<PlatformAssets>(() => (post?.platformAssets as PlatformAssets) ?? {});
   const [knowledgeId, setKnowledgeId] = useState<string>(post?.productKnowledgeId ?? '');
+  const [leadKeyword, setLeadKeyword] = useState<string>(post?.leadCaptureKeyword ?? '');
   const [library, setLibrary] = useState<ProductKnowledgeEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const mode = post ? 'edit' : 'create';
@@ -68,6 +69,7 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
     setForm(initialState(post));
     setPlatformAssets((post?.platformAssets as PlatformAssets) ?? {});
     setKnowledgeId(post?.productKnowledgeId ?? '');
+    setLeadKeyword(post?.leadCaptureKeyword ?? '');
   }, [post]);
 
   // Product Knowledge library (item 6): the user picks a reusable entry to ground this post.
@@ -97,8 +99,9 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
     const overrides = cleanPlatformAssets(platformAssets, selected, form.assetType ?? 'image');
     const platformAssetsPayload = Object.keys(overrides).length ? overrides : null;
     const knowledgePayload = knowledgeId || null;
+    const leadKeywordPayload = leadKeyword.trim() || null;
     if (post) {
-      const result = await api.updatePost(post.id, { ...body, platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload });
+      const result = await api.updatePost(post.id, { ...body, platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload, leadCaptureKeyword: leadKeywordPayload });
       setSaving(false);
       if (result.ok) { notify('Brief updated'); onSaved(result.data); }
       else notify(`Brief save failed: ${result.error.error}`, 'err');
@@ -109,8 +112,8 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
     const created = await api.createPost({ campaignId, ...body });
     if (!created.ok) { setSaving(false); notify(`Brief save failed: ${created.error.error}`, 'err'); return; }
     let saved = created.data;
-    if (platformAssetsPayload || knowledgePayload) {
-      const patched = await api.updatePost(saved.id, { platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload });
+    if (platformAssetsPayload || knowledgePayload || leadKeywordPayload) {
+      const patched = await api.updatePost(saved.id, { platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload, leadCaptureKeyword: leadKeywordPayload });
       if (patched.ok) saved = patched.data;
     }
     setSaving(false);
@@ -212,6 +215,12 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
           </div>
         </div>
       )}
+
+      <div className="field">
+        <label>Lead capture keyword (optional)</label>
+        <input value={leadKeyword} onChange={(e) => setLeadKeyword(e.target.value)} placeholder='e.g. "Atria AI" — a comment with this word + an email becomes an opt-in lead' />
+        <div className="help-text">When set, comments on this post's published Facebook/Instagram containing the keyword <strong>and an email</strong> are captured as opt-in leads (e.g. commenter writes <em>"{leadKeyword || 'Atria AI'} me@email.com"</em>). Poll from the 🎯 Leads page.</div>
+      </div>
 
       <div className="field">
         <label>Schedule target</label>

@@ -139,6 +139,9 @@ export const updatePostBody = z
     platformAssets: z.record(socialPlatform, assetType).nullish(),
     // Link/unlink a Product Knowledge library entry (item 6). null unlinks (→ inherit campaign).
     productKnowledgeId: z.string().uuid().nullish(),
+    // Lead Collector (§01.4): per-post comment-capture keyword (e.g. "Atria AI"). A comment on
+    // this post's published FB/IG containing the keyword + an email → an opt-in lead. null = off.
+    leadCaptureKeyword: z.string().max(80).nullish(),
     scheduledAt: z.coerce.date().nullish(),
   })
   .partial()
@@ -380,6 +383,8 @@ export const postDto = z.object({
   productKnowledgeId: z.string().uuid().nullable(),
   // User-uploaded reference image (local:<path>) captured at the concept gate; null → none.
   referenceImage: z.string().nullable(),
+  // Lead Collector (§01.4) — per-post comment-capture keyword; null → capture off.
+  leadCaptureKeyword: z.string().nullable(),
   scheduledAt: z.string().nullable(),
   postUrls: z.record(z.string()).nullable(),
   error: z.string().nullable(),

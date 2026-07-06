@@ -9,6 +9,7 @@
 import { acquireSchedulerLock } from './lock.ts';
 import { resolvePlatformInput, publishAssetType, PostValidationError } from './resolve-input.ts';
 import { aggregate, toWriteBack } from './aggregate.ts';
+import { recordCommentSources } from '../leads/sources/comment-watch.ts';
 import {
   findPublishDue,
   claimForPublish,
@@ -130,6 +131,10 @@ export async function processPost(post: Post, publish: PublishFn): Promise<TickR
   const results = [...published, ...skippedResults];
   const outcome = aggregate(results);
   await updatePost(post.id, toWriteBack(outcome));
+  // Lead Collector (§01.6): if this post opts into comment capture, record which published
+  // posts the poller should watch. Best-effort — never affects the publish outcome.
+  await recordCommentSources(post, outcome.postUrls).catch((e) =>
+    logger.warn('record_comment_sources_failed', { postId: post.id, error: String(e).slice(0, 120) }));
   await logRun(
     outcome.status === 'error' ? 'error' : 'info',
     'mkt_post',

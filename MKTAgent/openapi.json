@@ -363,6 +363,12 @@
               "null"
             ]
           },
+          "leadCaptureKeyword": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "scheduledAt": {
             "type": [
               "string",
@@ -415,6 +421,7 @@
           "platformAssets",
           "productKnowledgeId",
           "referenceImage",
+          "leadCaptureKeyword",
           "scheduledAt",
           "postUrls",
           "error",
@@ -600,6 +607,12 @@
               "null"
             ]
           },
+          "leadCaptureKeyword": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "scheduledAt": {
             "type": [
               "string",
@@ -758,6 +771,7 @@
           "platformAssets",
           "productKnowledgeId",
           "referenceImage",
+          "leadCaptureKeyword",
           "scheduledAt",
           "postUrls",
           "error",
@@ -1336,6 +1350,12 @@
                   "null"
                 ]
               },
+              "leadCaptureKeyword": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "scheduledAt": {
                 "type": [
                   "string",
@@ -1388,6 +1408,7 @@
               "platformAssets",
               "productKnowledgeId",
               "referenceImage",
+              "leadCaptureKeyword",
               "scheduledAt",
               "postUrls",
               "error",
@@ -1524,6 +1545,13 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "leadCaptureKeyword": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
           },
           "scheduledAt": {
             "type": [

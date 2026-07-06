@@ -39,6 +39,14 @@ export function LeadsPage({ notify }: Props) {
     if (!r.ok) { notify(`Revoke: ${r.error.error}`, 'err'); return; }
     notify('Revoked'); await load();
   };
+  const pollComments = async () => {
+    setBusy('poll');
+    const r = await api.pollComments();
+    setBusy(null);
+    if (!r.ok) { notify(`Poll: ${r.error.error}`, 'err'); return; }
+    notify(`Polled ${r.data.postsPolled} post(s): ${r.data.leadsCaptured} new lead(s), ${r.data.duplicates} dup(s)`);
+    if (r.data.leadsCaptured > 0) await load();
+  };
   const rescore = async (id: string) => {
     setBusy(id);
     const r = await api.rescoreLead(id);
@@ -58,7 +66,10 @@ export function LeadsPage({ notify }: Props) {
           <h2 style={{ margin: '2px 0 0', fontSize: 18 }}>🎯 Leads</h2>
           <p className="muted small" style={{ marginTop: 4 }}>Opt-in leads captured from your funnels, scored for intent. Leads are private to your workspace and stored encrypted.</p>
         </div>
-        <button className="btn" onClick={() => setSetupOpen((o) => !o)}>{setupOpen ? 'Hide setup' : '⚙ Intake setup'}</button>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn" disabled={busy === 'poll'} onClick={() => void pollComments()}>{busy === 'poll' ? 'Polling…' : '↻ Poll comments'}</button>
+          <button className="btn" onClick={() => setSetupOpen((o) => !o)}>{setupOpen ? 'Hide setup' : '⚙ Intake setup'}</button>
+        </div>
       </div>
 
       {setupOpen && (
