@@ -176,6 +176,12 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     : undefined;
   const conceptPostId = conceptData?.postId ?? null;
   const conceptCopy = conceptData?.copy ?? null;
+  // Show the version picker (review mode) when the concept step is selected and produced
+  // multiple versions, unless the live needs_approval gate is already rendering it.
+  const liveConceptGate = run.status === 'needs_approval' && gateNode?.agentId === 'concept_writer';
+  const showConceptReview = Boolean(
+    !liveConceptGate && selectedNodeRun?.agentId === 'concept_writer' && conceptVariants.length > 1 && runPostId,
+  );
   // The publisher runs via the approval gate, not re-run; only finished steps re-run.
   const canRerun = Boolean(
     selectedNodeRun &&
@@ -248,7 +254,21 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
           </div>
         )}
 
-        {selectedNode && (
+        {/* REVIEW versions on a completed concept step (e.g. after a re-run parked the run):
+            the picker vanishing made users think versions were lost — show them here so they
+            can review/re-pick. Suppressed while the live needs_approval gate is already showing. */}
+        {showConceptReview && (
+          <ConceptSelectionGate
+            postId={runPostId!}
+            variants={conceptVariants}
+            chosen={conceptChosen}
+            hasMediaStep={hasMediaStep}
+            busy={busy}
+            notify={notify}
+          />
+        )}
+
+        {selectedNode && !showConceptReview && (
           <div className="artifact-view">
             {selectedView ? (
               <>

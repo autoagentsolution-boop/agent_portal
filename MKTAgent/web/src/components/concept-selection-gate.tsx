@@ -14,7 +14,10 @@ interface Props {
   chosen: number;
   hasMediaStep: boolean;
   busy: boolean;
-  onContinue: () => void;
+  // Present = the run is PAUSED at the gate (pick + Continue). Absent = REVIEW mode: the run
+  // already ran past concept (e.g. after a re-run) — the user can still see + re-pick versions,
+  // but there's no Continue-to-approve here (the flow resumes from the main Execute button).
+  onContinue?: () => void;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
@@ -72,9 +75,14 @@ export function ConceptSelectionGate({ postId, variants, chosen, hasMediaStep, b
 
   const disabled = busy || selecting || uploading;
 
+  const reviewMode = !onContinue;
   return (
     <div className="gate-block concept-gate">
-      <p className="muted small">Concept ready — <strong>pick the version you like</strong>, optionally add a reference image, then Continue. Later steps (image/video, publish) use your choice.</p>
+      <p className="muted small">
+        {reviewMode
+          ? <>Concept versions — the writer produced these; the highlighted one is active. <strong>Click another to switch</strong> before publishing.</>
+          : <>Concept ready — <strong>pick the version you like</strong>, optionally add a reference image, then Continue. Later steps (image/video, publish) use your choice.</>}
+      </p>
 
       <div className="variant-list">
         {variants.map((v, i) => (
@@ -93,25 +101,31 @@ export function ConceptSelectionGate({ postId, variants, chosen, hasMediaStep, b
         ))}
       </div>
 
-      <div className="concept-ref">
-        <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn small" disabled={disabled} onClick={() => inputRef.current?.click()}>
-            {uploading ? 'Uploading…' : refName ? '↻ Replace image' : hasMediaStep ? '🖼 Upload reference image' : '🖼 Upload your image'}
-          </button>
-          {refName && <span className="muted small">{refName}</span>}
-          {refName && <button className="btn small" disabled={disabled} onClick={() => void removeRef()}>Remove</button>}
-          <input ref={inputRef} type="file" accept={ACCEPT} style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) void upload(e.target.files[0]); }} />
+      {!reviewMode && (
+        <div className="concept-ref">
+          <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn small" disabled={disabled} onClick={() => inputRef.current?.click()}>
+              {uploading ? 'Uploading…' : refName ? '↻ Replace image' : hasMediaStep ? '🖼 Upload reference image' : '🖼 Upload your image'}
+            </button>
+            {refName && <span className="muted small">{refName}</span>}
+            {refName && <button className="btn small" disabled={disabled} onClick={() => void removeRef()}>Remove</button>}
+            <input ref={inputRef} type="file" accept={ACCEPT} style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) void upload(e.target.files[0]); }} />
+          </div>
+          <div className="help-text">
+            {hasMediaStep
+              ? 'Optional — the image/video step will generate FROM this reference. No upload = generated from text.'
+              : 'Optional — use your own image as the post media instead of generating one.'}
+          </div>
         </div>
-        <div className="help-text">
-          {hasMediaStep
-            ? 'Optional — the image/video step will generate FROM this reference. No upload = generated from text.'
-            : 'Optional — use your own image as the post media instead of generating one.'}
-        </div>
-      </div>
+      )}
 
-      <button className="btn primary" disabled={disabled} onClick={onContinue}>
-        {busy ? 'Continuing…' : '▶ Continue with Version ' + (selected + 1)}
-      </button>
+      {reviewMode ? (
+        <p className="help-text">Active version: <strong>Version {selected + 1}</strong>. Switching updates the copy the later steps use (allowed until the post is published).</p>
+      ) : (
+        <button className="btn primary" disabled={disabled} onClick={onContinue}>
+          {busy ? 'Continuing…' : '▶ Continue with Version ' + (selected + 1)}
+        </button>
+      )}
     </div>
   );
 }
