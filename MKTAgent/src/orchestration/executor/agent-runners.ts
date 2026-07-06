@@ -310,7 +310,7 @@ const runStrategy = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   // brief's funnel stage + audience. Deterministic (no extra LLM cost); rides on the artifact so
   // the user can see/tune it. The rule scorer already accepts a LeadScoringCriteria override.
   const data = { ...parsed.data, leadScoringCriteria: proposeLeadScoringCriteria({ funnelStage: parsed.data.funnelStage, audience: parsed.data.audience }) };
-  return { type: 'strategy_brief', data, cost: estimateLlmCost(strategySystemPrompt + prompt, JSON.stringify(parsed.data)) };
+  return { type: 'strategy_brief', data, cost: estimateLlmCost(strategySystemPrompt + prompt, JSON.stringify(data)) };
 };
 
 // Build an image prompt from the concept/strategy upstream. Two deliberately distinct

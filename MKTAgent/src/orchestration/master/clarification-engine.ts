@@ -86,8 +86,9 @@ export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
   // productDetails ≥12 chars, but 12 chars ("skincare serum ABC") is a name, not knowledge the
   // agents can build specific copy/images from. When we have SOME substance but it's still brief
   // (12–40 chars), ask ONE more targeted round for the differentiator / audience-fit / proof.
-  // BOUNDED, so it cannot loop: a substantive answer accumulates productDetails past the 40-char
-  // bar and the probe stops. Kept SEPARATE from isThinProduct so the tuned accountType/audience/
+  // BOUNDED, so it cannot loop: mergeGoals ACCUMULATES productDetails (append, not fillIfEmpty), so
+  // each answer grows it past the 40-char bar and the probe stops. Kept SEPARATE from isThinProduct
+  // so the tuned accountType/audience/
   // angle required-ness (which keys off thinProduct) is unchanged — this only raises the product
   // substance bar, the one gap the tuned gates left open.
   const productDetailsLen = (goal.slots.productDetails ?? '').trim().length;

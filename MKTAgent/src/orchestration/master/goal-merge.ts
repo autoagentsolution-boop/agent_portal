@@ -11,6 +11,19 @@ import type { Removals } from './deterministic-analyzer.ts';
 const fillIfEmpty = (prior: string | null | undefined, delta: string | null | undefined): string | null | undefined =>
   (prior && prior.trim() ? prior : (delta && delta.trim() ? delta : prior));
 
+// productDetails is CUMULATIVE product knowledge, not a single-shot slot. A clarification /
+// refine turn that adds detail must APPEND to what we already know — fillIfEmpty would DROP it
+// (prior non-empty → keep prior), which made the product-depth probe re-ask forever because the
+// answer never landed. Append (deduped) so each answer grows the profile and the probe clears.
+const accumulate = (prior: string | null | undefined, delta: string | null | undefined): string | null | undefined => {
+  const p = (prior ?? '').trim();
+  const d = (delta ?? '').trim();
+  if (!d) return prior;
+  if (!p) return d;
+  if (p.includes(d)) return prior; // already captured — don't duplicate on repeated merges
+  return `${p} ${d}`;
+};
+
 export const mergeGoals = (prior: GoalSpec, delta: GoalSpec): GoalSpec => {
   const platforms = Array.from(new Set([...prior.platforms, ...delta.platforms])) as GoalSpec['platforms'];
   return goalSpec.parse({
@@ -31,7 +44,7 @@ export const mergeGoals = (prior: GoalSpec, delta: GoalSpec): GoalSpec => {
     platforms,
     slots: {
       product: fillIfEmpty(prior.slots.product, delta.slots.product),
-      productDetails: fillIfEmpty(prior.slots.productDetails, delta.slots.productDetails),
+      productDetails: accumulate(prior.slots.productDetails, delta.slots.productDetails),
       accountType: prior.slots.accountType ?? delta.slots.accountType,
       targetAudience: fillIfEmpty(prior.slots.targetAudience, delta.slots.targetAudience),
       angle: fillIfEmpty(prior.slots.angle, delta.slots.angle),

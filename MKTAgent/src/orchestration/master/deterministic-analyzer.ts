@@ -87,7 +87,10 @@ const inferOutputs = (t: string): GoalSpec['outputs'] => {
   return {
     needsIdeation: campaign,
     needsStrategy: campaign,
-    needsResearch: /\b(research|nghiên cứu|nghien cuu|competitor|đối thủ|market)\b/i.test(t),
+    // Researcher is now a LIVE, BILLED Gemini grounded call — narrow the trigger so a ubiquitous
+    // word doesn't fire a paid search. Bare "market" (go-to-market, target market, "market this")
+    // is far too common; require "market research" / competitor / explicit research intent instead.
+    needsResearch: /\b(research|nghiên cứu|nghien cuu|competitor|đối thủ|market research|nghiên cứu thị trường)\b/i.test(t),
     needsTextPost: true,
     needsInfographic: !carousel && (campaign || /\b(infographic|visual|hình ảnh thông tin|hình ảnh|hinh anh|image)\b/i.test(t)),
     // Storyboard is independent of video. A video request also implies storyboard (the

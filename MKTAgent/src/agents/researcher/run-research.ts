@@ -20,6 +20,7 @@ export interface ResearchOutput {
 }
 
 const MAX_SOURCE_NOTES = 8;
+const MAX_SUMMARY_CHARS = 4000;
 
 // Builds a focused query: competitor landscape + audience pain points + proof
 // points for the specific product/angle, so the grounded search returns market
@@ -55,9 +56,10 @@ export const runResearch = async (
   try {
     const grounded = await search(buildQuery(input));
     result = {
-      // Passed through as-is: translating grounding text into input.language is
-      // out of scope for MVP — the downstream writer/agent can localize further.
-      summary: grounded.text,
+      // Passed through as-is (translating grounding text into input.language is out of
+      // scope for MVP), but capped so a verbose grounding response can't bloat the stored
+      // artifact — the downstream writer only needs the insight, not a wall of text.
+      summary: grounded.text.trim().slice(0, MAX_SUMMARY_CHARS),
       sourceNotes: Array.from(new Set(grounded.citations)).slice(0, MAX_SOURCE_NOTES),
     };
   } catch (err) {
