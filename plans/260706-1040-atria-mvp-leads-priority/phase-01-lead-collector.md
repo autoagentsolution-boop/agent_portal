@@ -5,9 +5,11 @@
 - ✅ #2 PII encryption + blind-index dedupe + backfill — verify-leads-pii
 - ✅ #5 hybrid scoring (rule on capture + LLM rescore) — verify-leads-scoring
 - ✅ #3 Leads UI (🎯 page: intake setup + scored table + AI-score)
-- ⏳ #4 comment-keyword source — NOT done: needs a live FB/IG Graph-API spike on the user's
-  connected page (poll a published post's comments for the keyword) before building the poller.
-- ⏳ #6 wire as orchestration agent — deferred (low priority, thin wrapper).
+- ✅ #4 comment-keyword source — DONE + verified (140b40a). Per-post `leadCaptureKeyword`; poller
+  parses keyword+email → opt-in lead. Live FB/IG Graph fetch (`graphCommentFetcher`) is the one
+  LIVE-UNTESTED seam (needs a connected page + a real published post with comments).
+- ✅ #6 wiring — DONE via publish write-back (records `commentSourceIds`); config lives per-post
+  (keyword field in the brief). Full DAG-node representation deferred (not needed for the vertical).
 
 Original analysis below.
 
