@@ -3,6 +3,39 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-06
+
+### Lead Collector — Atria Phase 01 (per-tenant, encrypted, scored, comment-capture)
+Full Lead Collector vertical (plan `plans/260706-1040-atria-mvp-leads-priority/phase-01`). 4 additive
+migrations. Verified by 5 suites (verify-leads-{tenancy,pii,scoring,comments} + verify-api).
+- **Per-tenant intake tokens** (`c44b29b`) — `LeadIntakeToken` (sha256 hash, plaintext once); funnel
+  presents `x-intake-token`/`?t=` → lead lands on that owner (was hardcoded SYSTEM_OWNER). Legacy
+  global secret → system owner. mint/list/revoke routes.
+- **PII encryption** (`4e8fb08`) — name/email/phone/message AES-256-GCM in lead-repo; dedupe on
+  `email_bidx` (crypto.blindIndex, keyed HMAC); raw_payload no longer persisted. backfill script.
+- **Hybrid scoring** (`fa6f89e`) — rule layer (deterministic, on capture) + LLM `POST /leads/:id/rescore`.
+- **Leads UI** (`a0a53e8`, `527bd96`, `1abe71b`) — 🎯 Leads page: intake setup + scored table +
+  💬 Active lead collectors (posts watching comments).
+- **Comment-keyword capture** (`140b40a`) — per-post `Post.leadCaptureKeyword`; comment on published
+  FB/IG with keyword + email → opt-in lead. `commentSourceIds` recorded at publish write-back (§01.6
+  wiring). comment-parse/poller (injectable fetcher) + graphCommentFetcher (live FB/IG). `LeadSource
+  += comment`. Live-verified: post 75f70734 poll reached FB Graph API.
+
+### X publishing fixed + publisher/media/UX fixes
+- **X publish** — root cause was a token lacking write scopes; fixed via OAuth Connect (PKCE) after
+  `PUBLIC_BASE_URL=http://localhost:7100` (X allows localhost callback) + callback without trailing
+  slash. Refresh-token field on the X card (`30abf48`); X media-403 → text-only tweet (`3a70fad`).
+- **Publisher image auto-degrade** (`4c8f412`) — carousel/video post reuses an image (carousel frame /
+  infographic / hero / upload) for image-only platforms instead of skipping.
+- **Edit-brief 500** (`8d27726`), **campaign posts summary+drill-in** (`3b85803`), **product knowledge
+  visibility + import + library** (`d2959aa`, `527bd96`, `1abe71b`), **per-node runtime+tokens**
+  (`894559e`), **Veo 429 retry** (`34fc47d`), **concept versions review-mode** (`b9203c9`), **PK/Leads/
+  Flows peer sidebar** (`dc34dbd`, `527bd96`).
+
+### Atria v2 plan
+`plans/260706-1040-atria-mvp-leads-priority/` (5 phases): Lead Collector first (done), then agent
+layers, orchestration+credit, UI adaptation, and adopting the `agency-agents` agent-definition schema.
+
 ## 2026-07-05
 
 ### Concept versions (3-5) + selection gate + reference-image upload
