@@ -285,8 +285,11 @@ export function App() {
         <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>✎ New chat</button>
         <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('connections'); }}>🔌 Connections</button>
         <button className={`sidebar-item ${page === 'product-knowledge' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('product-knowledge'); }}>📚 Product Knowledge</button>
-        <button className={`sidebar-item ${page === 'leads' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('leads'); }}>🎯 Leads</button>
         <div className="flow-sidebar-tree">
+          {/* Leads and Flows are peer top-level workspaces — same tree-head level. */}
+          <div className="tree-section-head">
+            <button className={`tree-row level-1 tree-label flow-head ${page === 'leads' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('leads'); }}>🎯 Leads</button>
+          </div>
           <div className="tree-section-head">
             <button className={`tree-row level-1 tree-label flow-head ${page === 'flows' && !selectedRunId && !activeCampaign ? 'active' : ''}`} onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>▦ Flows</button>
             <button className="tree-row-add" aria-label="New flow" title="New flow — describe it to the Master Agent" onClick={(e) => { e.stopPropagation(); openOrchestrate(); }}>+</button>
