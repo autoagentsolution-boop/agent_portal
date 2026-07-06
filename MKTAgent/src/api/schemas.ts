@@ -270,6 +270,9 @@ export const costSummaryDto = z.object({
   outputTokens: z.number(),
   totalTokens: z.number(),
   costUsd: z.number(),
+  // Friendly credit number (Phase 03) — a display of the real tokens for non-tech users; raw
+  // tokens + USD stay for transparency. Optional so legacy/partial summaries stay valid.
+  credits: z.number().optional(),
   runs: z.number().optional(),
 });
 export type CostSummaryDto = z.infer<typeof costSummaryDto>;

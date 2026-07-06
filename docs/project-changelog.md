@@ -5,6 +5,24 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-06
 
+### Fix: concept_writer wiped user copy edits on re-run (edit-loss)
+Report `plans/reports/debug-260706-1703-concept-edit-loss.md`. Since copy-gen was merged into
+concept_writer, re-executing the concept node (flow continue / re-run) unconditionally regenerated
+copy — wiping the user's manual `/edit-copy`, version `/select-variant`, AND AI `/refine` (chosen→0).
+No edit-protection existed. Fix: new `post.copyEdited` flag (1 migration) set by all three user-edit
+paths + cleared on fresh generation; `runConceptWriterForExistingPost` now PRESERVES edited copy
+(emits it as the artifact, no LLM/cost) unless it's an explicit rework or the post is unedited.
+verify-edit-loss 7/7 green.
+
+### Phase 03: credit model + multi-tier plan cards
+- **Credit model** — `src/cost/credits.ts`: friendly `credits` = real tokens / a display divisor
+  (250; 15k tokens ≈ 60 credits) — transparent passthrough, no markup. `credits` now rides on the
+  run cost, flow rollup, and `GET /orchestration/usage`. verify-credits 9/9.
+- **Multi-tier plans** — `plan-tiers.ts` derives Economy/Balanced/Full goal variants, plans + dedupes
+  each, and estimates credits from REAL per-agent history (`agentCostAverages`, global fallback) via
+  `plan-estimate.ts`. `GET /orchestration/runs/:id/plan-tiers` returns the selectable cards.
+  verify-plan-tiers 11/11. (Flow "pick a tier to run" + web cards = follow-up.)
+
 ### Gemini cost accounting — real per-owner usage ledger (fixes ~100× undercount)
 Audit `plans/reports/audit-260706-1532-gemini-cost-accounting.md`. Symptom: 500K Google credit
 burned but tracking showed ~$5. Three compounding causes fixed:

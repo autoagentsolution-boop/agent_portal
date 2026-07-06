@@ -11,6 +11,7 @@
 import { Router } from 'express';
 import { ok, fail, parseOr422, asyncHandler } from './http.ts';
 import { usageTotals } from '../cost/llm-usage.ts';
+import { buildPlanTiers } from '../orchestration/master/plan-tiers.ts';
 import { createRunBody, clarifyRunBody, saveRunBody } from './schemas.ts';
 import { masterAgent } from '../orchestration/master/master-agent.ts';
 import { goalSpec, type GoalSpec } from '../orchestration/schemas/goal-spec.ts';
@@ -33,6 +34,7 @@ import {
   resetNodes,
   collectDownstream,
   getFlowCostRollup,
+  agentCostAverages,
 } from '../db/repos/workflow-run-repo.ts';
 import { deleteArtifactsByNodes } from '../orchestration/executor/artifact-store.ts';
 import { getAgent } from '../orchestration/registry/agent-registry.ts';
@@ -365,6 +367,17 @@ orchestrationRouter.get('/runs/:id', asyncHandler(async (req, res) => {
     ? await getFlowCostRollup(full.id, req.userId!)
     : undefined;
   ok(res, toRunDto(full, flowCost ? { flowCost } : {}));
+}));
+
+// Multi-tier plan options for a run's goal (Phase 03 checkpoint 2): Economy / Balanced / Full,
+// each with its agent list + a credit estimate from the owner's real history (global fallback for
+// a new owner). Read-only preview — selecting a tier to run stays in the existing execute flow.
+orchestrationRouter.get('/runs/:id/plan-tiers', asyncHandler(async (req, res) => {
+  const run = await getRunForOwner(req.params.id, req.userId!);
+  if (!run) return fail(res, 404, 'run_not_found');
+  const owned = await agentCostAverages(req.userId!);
+  const history = owned.length ? owned : await agentCostAverages();
+  ok(res, { tiers: buildPlanTiers(goalSpec.parse(run.goal), history) });
 }));
 
 // Per-owner LLM/media spend — the billing/analysis view. Total + per-surface breakdown

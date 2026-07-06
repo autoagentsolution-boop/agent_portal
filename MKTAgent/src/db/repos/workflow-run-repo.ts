@@ -5,6 +5,7 @@
 // post review gate so a stale UI can't double-advance a run.
 import { prisma } from '../client.ts';
 import { Prisma } from '../../../prisma/generated/prisma/client.ts';
+import { creditsFromTokens } from '../../cost/credits.ts';
 import type {
   WorkflowRun,
   WorkflowNodeRun,
@@ -153,8 +154,29 @@ export interface FlowCostRollup {
   outputTokens: number;
   totalTokens: number;
   costUsd: number;
+  credits: number;
   runs: number;
 }
+
+// Per-agent historical token/cost averages from completed node runs — the REAL data behind
+// the multi-tier plan estimates (Phase 03). Only rows that actually spent (totalTokens > 0) so
+// stubs/skips don't drag the average to zero. Optionally owner-scoped; global average is the
+// fallback when a specific owner has no history yet.
+export interface AgentCostAverage { agentId: string; avgTotalTokens: number; avgCostUsd: number; samples: number }
+export const agentCostAverages = async (ownerId?: string): Promise<AgentCostAverage[]> => {
+  const grouped = await prisma.workflowNodeRun.groupBy({
+    by: ['agentId'],
+    where: { totalTokens: { gt: 0 }, ...(ownerId ? { ownerId } : {}) },
+    _avg: { totalTokens: true, costUsd: true },
+    _count: true,
+  });
+  return grouped.map((g) => ({
+    agentId: g.agentId,
+    avgTotalTokens: Math.round(g._avg.totalTokens ?? 0),
+    avgCostUsd: g._avg.costUsd ?? 0,
+    samples: g._count,
+  }));
+};
 
 export const getFlowCostRollup = async (templateId: string, ownerId: string): Promise<FlowCostRollup> => {
   const instances = await prisma.workflowRun.findMany({
@@ -162,16 +184,18 @@ export const getFlowCostRollup = async (templateId: string, ownerId: string): Pr
     select: { id: true },
   });
   const runIds = instances.map((r) => r.id);
-  if (runIds.length === 0) return { promptTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0, runs: 0 };
+  if (runIds.length === 0) return { promptTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0, credits: 0, runs: 0 };
   const agg = await prisma.workflowNodeRun.aggregate({
     where: { ownerId, runId: { in: runIds } },
     _sum: { promptTokens: true, outputTokens: true, totalTokens: true, costUsd: true },
   });
+  const totalTokens = agg._sum.totalTokens ?? 0;
   return {
     promptTokens: agg._sum.promptTokens ?? 0,
     outputTokens: agg._sum.outputTokens ?? 0,
-    totalTokens: agg._sum.totalTokens ?? 0,
+    totalTokens,
     costUsd: agg._sum.costUsd ?? 0,
+    credits: creditsFromTokens(totalTokens),
     runs: runIds.length,
   };
 };

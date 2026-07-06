@@ -5,6 +5,7 @@
 import { prisma } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
 import { costFromUsage, costUsdFromUsage, type GeminiUsage } from '../orchestration/executor/node-cost.ts';
+import { creditsFromTokens } from './credits.ts';
 
 // Normalize a raw Gemini generateContent response envelope → GeminiUsage. Reads the REAL
 // usageMetadata (incl. thoughtsTokenCount + cachedContentTokenCount) rather than estimating.
@@ -88,6 +89,7 @@ export interface SurfaceTotal {
   surface: string;
   costUsd: number;
   totalTokens: number;
+  credits: number;
   calls: number;
 }
 export interface UsageTotals {
@@ -96,6 +98,7 @@ export interface UsageTotals {
   promptTokens: number;
   outputTokens: number;
   thoughtTokens: number;
+  credits: number;
   calls: number;
   bySurface: SurfaceTotal[];
 }
@@ -115,15 +118,17 @@ export const usageTotals = async (ownerId: string): Promise<UsageTotals> => {
       _count: true,
     }),
   ]);
+  const totalTokens = agg._sum.totalTokens ?? 0;
   return {
     costUsd: agg._sum.costUsd ?? 0,
-    totalTokens: agg._sum.totalTokens ?? 0,
+    totalTokens,
     promptTokens: agg._sum.promptTokens ?? 0,
     outputTokens: agg._sum.outputTokens ?? 0,
     thoughtTokens: agg._sum.thoughtTokens ?? 0,
+    credits: creditsFromTokens(totalTokens),
     calls: agg._count,
     bySurface: grouped
-      .map((g) => ({ surface: g.surface, costUsd: g._sum.costUsd ?? 0, totalTokens: g._sum.totalTokens ?? 0, calls: g._count }))
+      .map((g) => ({ surface: g.surface, costUsd: g._sum.costUsd ?? 0, totalTokens: g._sum.totalTokens ?? 0, credits: creditsFromTokens(g._sum.totalTokens ?? 0), calls: g._count }))
       .sort((a, b) => b.costUsd - a.costUsd),
   };
 };

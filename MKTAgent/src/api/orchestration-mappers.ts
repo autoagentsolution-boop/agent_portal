@@ -6,6 +6,7 @@ import { goalSpec, type GoalSpec } from '../orchestration/schemas/goal-spec.ts';
 import type { ClarificationQuestion } from '../orchestration/master/clarification-engine.ts';
 import { parseAccountType } from '../orchestration/master/deterministic-analyzer.ts';
 import type { WorkflowRunDto, RequiredActionDto, CostSummaryDto } from './schemas.ts';
+import { withCredits } from '../cost/credits.ts';
 
 export type ClarifyQuestions = ClarificationQuestion[];
 
@@ -22,16 +23,18 @@ export interface RunDtoExtras {
   flowCost?: CostSummaryDto;
 }
 
-// Sum a run's node token/cost into its own total (Phase 6).
+// Sum a run's node token/cost into its own total (Phase 6) + friendly credits (Phase 03).
 const runCost = (run: RunWithNodes): CostSummaryDto =>
-  run.nodes.reduce(
-    (acc, n) => ({
-      promptTokens: acc.promptTokens + (n.promptTokens ?? 0),
-      outputTokens: acc.outputTokens + (n.outputTokens ?? 0),
-      totalTokens: acc.totalTokens + (n.totalTokens ?? 0),
-      costUsd: acc.costUsd + (n.costUsd ?? 0),
-    }),
-    { promptTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 },
+  withCredits(
+    run.nodes.reduce(
+      (acc, n) => ({
+        promptTokens: acc.promptTokens + (n.promptTokens ?? 0),
+        outputTokens: acc.outputTokens + (n.outputTokens ?? 0),
+        totalTokens: acc.totalTokens + (n.totalTokens ?? 0),
+        costUsd: acc.costUsd + (n.costUsd ?? 0),
+      }),
+      { promptTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 },
+    ),
   );
 
 export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): WorkflowRunDto => ({
