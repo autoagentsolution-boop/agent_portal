@@ -19,6 +19,7 @@ import type { SocialPlatform } from '../../prisma/generated/prisma/client.ts';
 // Which publisher access-token keys should trigger a liveness verification on save, so the
 // Connections view reflects the TRUE status (not "connected" for an untested paste).
 const ACCESS_TOKEN_KEY = /^(facebook|instagram|threads|linkedin|x)_access_token$/;
+const REFRESH_TOKEN_KEY = /^(facebook|instagram|threads|linkedin|x)_refresh_token$/;
 
 export const agentRouter: Router = Router();
 const agentIntakeProvider = new GeminiAgentIntakeProvider();
@@ -163,9 +164,12 @@ agentRouter.put('/credentials/:agentId/:key', asyncHandler(async (req, res) => {
 
   // A pasted platform access token: verify liveness NOW and record the real connection
   // status so the Connections card doesn't claim "connected" for an untested/expired token.
+  // A pasted refresh token re-runs the same sync so it lands on the OAuthToken row immediately
+  // (no need to re-save the access token) — enabling auto-refresh for a form-connected platform.
   let verify: { alive: boolean; reason?: string; identity?: string } | undefined;
-  if (agentId === 'publisher' && ACCESS_TOKEN_KEY.test(key)) {
-    const platform = key.replace('_access_token', '') as SocialPlatform;
+  const syncKey = ACCESS_TOKEN_KEY.test(key) || REFRESH_TOKEN_KEY.test(key);
+  if (agentId === 'publisher' && syncKey) {
+    const platform = key.replace(/_(access|refresh)_token$/, '') as SocialPlatform;
     verify = await verifyAndRecordFormToken(req.userId!, platform);
   }
 

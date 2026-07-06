@@ -148,11 +148,15 @@ export const verifyAndRecordFormToken = async (
   } catch (e) {
     result = { alive: false, reason: String(e).slice(0, 120) };
   }
+  // A pasted refresh token (vault key <platform>_refresh_token) lets an OAuth2 platform
+  // (X, LinkedIn) auto-renew a form-connected token — without it a pasted access token dies
+  // at expiry with no way back (the "X can't refresh" report). Carry it onto the OAuthToken row.
+  const refreshToken = await getPublisherAppCred(ownerId, `${platform}_refresh_token`);
   await upsertToken({
     ownerId,
     platform,
     token,
-    refreshToken: null,
+    refreshToken: refreshToken ?? null,
     meta,
     status: result.alive ? 'active' : 'needs_attention',
   });

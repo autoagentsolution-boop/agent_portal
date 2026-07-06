@@ -58,6 +58,7 @@ export const publisherCredentialFields: Record<string, PublisherCredentialFields
   x: {
     required: [{ key: 'x_access_token', label: 'Access token' }],
     advanced: [
+      { key: 'x_refresh_token', label: 'Refresh token', hint: 'Paste this so the token auto-renews. Needs Client ID/secret set. Re-save the access token after adding it.' },
       { key: 'x_client_id', label: 'Client ID', hint: 'For the OAuth Connect flow + auto-refresh.' },
       { key: 'x_client_secret', label: 'Client secret' },
     ],
