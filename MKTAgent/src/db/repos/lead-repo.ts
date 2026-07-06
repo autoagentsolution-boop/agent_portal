@@ -4,7 +4,8 @@
 // email_bidx (keyed HMAC of the email) since equality on ciphertext is impossible.
 import { prisma } from '../client.ts';
 import { encryptToken, decryptToken, blindIndex } from '../../lib/crypto.ts';
-import type { Lead, LeadSource } from '../../../prisma/generated/prisma/client.ts';
+import type { Lead, LeadSource, Prisma } from '../../../prisma/generated/prisma/client.ts';
+import type { ScoreReason } from '../../leads/scoring/rule-score.ts';
 
 export interface CreateLeadInput {
   ownerId: string;
@@ -15,6 +16,8 @@ export interface CreateLeadInput {
   sourceProduct: string | null;
   source: LeadSource;
   calBookingUid: string | null;
+  score: number;
+  scoreReasons: ScoreReason[];
 }
 
 // A lead with PII decrypted back to plaintext — what read paths (list/DTO) work with.
@@ -28,10 +31,13 @@ export interface DecryptedLead {
   sourceProduct: string | null;
   source: LeadSource;
   calBookingUid: string | null;
+  score: number | null;
+  scoreReasons: ScoreReason[];
   receivedAt: Date;
 }
 
 const enc = (v: string | null): string | null => (v && v.trim() ? encryptToken(v) : null);
+const asReasons = (v: unknown): ScoreReason[] => (Array.isArray(v) ? (v as ScoreReason[]) : []);
 const dec = (v: string | null): string | null => {
   if (!v) return null;
   try { return decryptToken(v); } catch { return v; } // tolerate a legacy plaintext row until backfilled
@@ -47,6 +53,8 @@ export const decryptLead = (l: Lead): DecryptedLead => ({
   sourceProduct: l.sourceProduct,
   source: l.source,
   calBookingUid: l.calBookingUid,
+  score: l.score,
+  scoreReasons: asReasons(l.scoreReasons),
   receivedAt: l.receivedAt,
 });
 
@@ -62,6 +70,8 @@ export const createLead = async (input: CreateLeadInput): Promise<Lead> =>
       sourceProduct: input.sourceProduct,
       source: input.source,
       calBookingUid: input.calBookingUid,
+      score: input.score,
+      scoreReasons: input.scoreReasons as unknown as Prisma.InputJsonValue,
       // raw_payload intentionally NOT written (no-excess-storage §01.2).
     },
   });
@@ -87,4 +97,25 @@ export const isDuplicateByBookingUid = async (ownerId: string, uid: string): Pro
 export const listLeads = async (ownerId: string, limit = 100): Promise<DecryptedLead[]> => {
   const rows = await prisma.lead.findMany({ where: { ownerId }, orderBy: { receivedAt: 'desc' }, take: limit });
   return rows.map(decryptLead);
+};
+
+// Owner-scoped fetch (decrypted) — for the rescore route. Null on miss/wrong-tenant.
+export const getLead = async (id: string, ownerId: string): Promise<DecryptedLead | null> => {
+  const row = await prisma.lead.findFirst({ where: { id, ownerId } });
+  return row ? decryptLead(row) : null;
+};
+
+// Owner-scoped score write (rescore). Returns the updated decrypted lead, or null on miss.
+export const updateLeadScore = async (
+  id: string,
+  ownerId: string,
+  score: number,
+  reasons: ScoreReason[],
+): Promise<DecryptedLead | null> => {
+  const r = await prisma.lead.updateMany({
+    where: { id, ownerId },
+    data: { score, scoreReasons: reasons as unknown as Prisma.InputJsonValue },
+  });
+  if (r.count !== 1) return null;
+  return getLead(id, ownerId);
 };

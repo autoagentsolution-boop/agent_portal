@@ -315,6 +315,11 @@ model Lead {
   source         LeadSource
   calBookingUid  String?    @map("cal_booking_uid")
   rawPayload     Json?      @map("raw_payload")
+  // Lead score (§01.5 hybrid): a 0-100 quality/intent score. Rule layer sets it on capture;
+  // the optional LLM layer (POST /leads/:id/rescore) adjusts it. scoreReasons is the audit
+  // trail — [{ layer:'rule'|'llm', reason, delta }] — so a non-tech user sees WHY.
+  score          Int?
+  scoreReasons   Json?      @map("score_reasons")
   receivedAt     DateTime   @default(now()) @map("received_at") @db.Timestamptz(6)
 
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)

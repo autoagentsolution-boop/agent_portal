@@ -20,8 +20,11 @@ import { env } from '../config/env.ts';
 import { requireAuth } from './middleware-auth.ts';
 import { normalizeWebhook, normalizeForm, normalizeCalcom, type NormalizeResult } from '../leads/normalize.ts';
 import { captureLead } from '../leads/service.ts';
-import { listLeads, type DecryptedLead } from '../db/repos/lead-repo.ts';
+import { listLeads, getLead, updateLeadScore, type DecryptedLead } from '../db/repos/lead-repo.ts';
 import { resolveOwnerByToken, createIntakeToken, listIntakeTokens, revokeIntakeToken } from '../db/repos/lead-intake-token-repo.ts';
+import { ruleScore } from '../leads/scoring/rule-score.ts';
+import { llmScoreAdjustment } from '../leads/scoring/llm-score.ts';
+import { prisma } from '../db/client.ts';
 import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { logger } from '../lib/logger.ts';
 
@@ -140,8 +143,33 @@ const toLeadDto = (l: DecryptedLead): Record<string, unknown> => ({
   sourceProduct: l.sourceProduct,
   source: l.source,
   calBookingUid: l.calBookingUid,
+  score: l.score,
+  scoreReasons: l.scoreReasons,
   receivedAt: l.receivedAt.toISOString(),
 });
+
+// ---- POST /leads/:id/rescore — run the hybrid scorer (rule base + LLM adjustment) ----
+// User-triggered so the LLM call is credit-aware (not every inbound lead). Recomputes the
+// deterministic rule score from scratch, then applies one Gemini intent adjustment.
+leadsRouter.post(
+  '/:id/rescore',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const lead = await getLead(req.params.id, req.userId!);
+    if (!lead) return fail(res, 404, 'lead_not_found');
+    const base = ruleScore({ source: lead.source, hasPhone: Boolean(lead.phone), message: lead.message });
+    const owner = await prisma.user.findUnique({ where: { id: req.userId! }, select: { brandContext: true } });
+    const adj = await llmScoreAdjustment({
+      ruleScore: base.score, email: lead.email, message: lead.message, source: lead.source, brandContext: owner?.brandContext,
+    });
+    const reasons = adj ? [...base.reasons, adj] : base.reasons;
+    const finalScore = Math.max(0, Math.min(100, base.score + (adj?.delta ?? 0)));
+    const updated = await updateLeadScore(req.params.id, req.userId!, finalScore, reasons);
+    if (!updated) return fail(res, 404, 'lead_not_found');
+    logger.info('lead_rescored', { ownerId: req.userId, id: req.params.id, score: finalScore, llm: Boolean(adj) });
+    ok(res, toLeadDto(updated));
+  }),
+);
 
 leadsRouter.get(
   '/',
