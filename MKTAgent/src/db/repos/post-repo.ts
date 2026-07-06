@@ -205,7 +205,7 @@ export const createPostForOwner = (args: CreatePostForOwnerArgs): Promise<Post> 
 export const updatePostFields = async (
   id: string,
   ownerId: string,
-  data: Prisma.PostUpdateInput,
+  data: Prisma.PostUncheckedUpdateInput,
 ): Promise<Post | null> => {
   const r = await prisma.post.updateMany({
     where: { id, ownerId, status: { in: EDITABLE } },
