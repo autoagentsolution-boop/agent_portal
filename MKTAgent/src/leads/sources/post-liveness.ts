@@ -1,13 +1,13 @@
 // Per-platform post liveness check (Leads: "does this published link still exist on the platform?").
-// A post can be published to several platforms; the user may delete it on one/all after testing. This
-// reuses the SAME "object gone" signal the comment poller uses (a fetch that throws PostGoneError =
-// deleted) so a link's liveness matches whether the collector can still read its comments. On-demand
-// only (a real API call per platform) — never run automatically. Also SELF-HEALS: a dead WATCHED
-// source is removed from commentSourceIds, and when none remain the collector is marked post_deleted.
+// A post can be published to several platforms; the user may delete it on one/all after testing.
+// Delegates to checkPlatformAlive (post-exists.ts) — a DEDICATED existence check that only asserts
+// alive:true on a confirmed object read (NOT "the comment fetch returned []", which false-positives
+// on LinkedIn 403 / X search-empty). On-demand only (a real API call per platform). Also SELF-HEALS:
+// a WATCHED source confirmed deleted is removed from commentSourceIds, and when none remain the
+// collector is marked post_deleted.
 import { prisma } from '../../db/client.ts';
 import { logger } from '../../lib/logger.ts';
-import { graphCommentFetcher } from './comment-fetch-graph.ts';
-import { PostGoneError } from './comment-poller.ts';
+import { checkPlatformAlive } from './post-exists.ts';
 import { extractPostId } from './comment-watch.ts';
 import type { Post, SocialPlatform } from '../../../prisma/generated/prisma/client.ts';
 
@@ -20,24 +20,19 @@ export interface LinkStatus { platform: string; url: string; alive: boolean | nu
 export const checkPostLinks = async (post: Post, ownerId: string): Promise<LinkStatus[]> => {
   const postUrls = (post.postUrls ?? {}) as Record<string, string>;
   const sources = (post.commentSourceIds ?? {}) as Record<string, string>;
+  const platformIds = (post.platformPostIds ?? {}) as Record<string, string>;
   const liveSources = { ...sources };
   const results: LinkStatus[] = [];
 
   for (const [platformKey, url] of Object.entries(postUrls)) {
     const platform = platformKey as SocialPlatform;
     if (!COMMENTABLE.has(platform)) { results.push({ platform, url, alive: null }); continue; }
-    // Prefer the id the collector already recorded; else derive it from the publish URL.
-    const id = sources[platform] ?? extractPostId(platform, url);
-    if (!id) { results.push({ platform, url, alive: null }); continue; }
-    let alive: boolean | null;
-    try {
-      await graphCommentFetcher(platform, id, ownerId); // [] or comments = reachable
-      alive = true;
-    } catch (e) {
-      alive = e instanceof PostGoneError ? false : null; // gone = deleted; else unknown, keep watching
-    }
+    // Prefer the canonical resolvable id captured at publish; then the watched collector source;
+    // finally parse the URL (legacy rows → a shortcode, which checkPlatformAlive treats as null).
+    const id = platformIds[platform] ?? sources[platform] ?? extractPostId(platform, url);
+    const alive = id ? await checkPlatformAlive(platform, id, ownerId) : null;
     results.push({ platform, url, alive });
-    if (alive === false) delete liveSources[platform]; // deleted → stop watching this platform
+    if (alive === false) delete liveSources[platform]; // confirmed deleted → stop watching this platform
   }
 
   // Persist self-heal only if a WATCHED source actually died.

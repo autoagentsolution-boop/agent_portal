@@ -11,6 +11,7 @@ import { withRetry } from '../../../lib/retry.ts';
 import { logger } from '../../../lib/logger.ts';
 import { PostGoneError, type FetchedComment } from '../comment-poller.ts';
 import { isMetaGraphPostGone } from './meta.ts';
+import { isNumericId } from '../comment-watch.ts';
 
 const THREADS_GRAPH = `https://graph.threads.net/${env.THREADS_VERSION || 'v1.0'}`;
 
@@ -24,7 +25,9 @@ export const fetchThreadsComments = async (
   const j = (await res.json()) as { data?: Array<Record<string, unknown>>; error?: any };
   if (!res.ok || j.error) {
     // Threads runs on the Graph API — same OAuthException envelope as FB/IG (code 100 / subcode 33 / 404).
-    if (isMetaGraphPostGone(res.status, j.error)) {
+    // GUARD (as IG): a shortcode never resolves → code 100 is NOT a confirmed delete. Only trust the
+    // gone signal when the stored id is the numeric media id.
+    if (isMetaGraphPostGone(res.status, j.error) && isNumericId(platformPostId)) {
       throw new PostGoneError('threads', platformPostId);
     }
     logger.warn('threads_comments_error', { status: res.status, error: JSON.stringify(j.error).slice(0, 160) });

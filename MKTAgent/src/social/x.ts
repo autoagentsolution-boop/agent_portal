@@ -12,7 +12,7 @@ import { logger } from '../lib/logger.ts';
 import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
 
-const ok = (url: string): PublishResult => ({ platform: 'x', ok: true, url, error: null });
+const ok = (url: string, platformPostId: string | null = null): PublishResult => ({ platform: 'x', ok: true, url, error: null, platformPostId });
 const fail = (msg: string): PublishResult => ({
   platform: 'x',
   ok: false,
@@ -83,7 +83,7 @@ export const xAdapter: SocialAdapter = {
       const tw = (await twRes.json()) as any;
       const tid = tw?.data?.id;
       if (!twRes.ok || !tid) return fail(`tweet failed: ${twRes.status} ${JSON.stringify(tw).slice(0, 120)}`);
-      return ok(`https://twitter.com/i/web/status/${tid}`);
+      return ok(`https://twitter.com/i/web/status/${tid}`, String(tid));
     } catch (e) {
       return fail(String(e instanceof Error ? e.message : e));
     }

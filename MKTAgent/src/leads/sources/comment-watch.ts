@@ -19,6 +19,11 @@ const COMMENTABLE = new Set<SocialPlatform>(['facebook', 'instagram', 'threads',
 //             (colons are valid, unencoded path characters; kept verbatim).
 //   X:        the segment after `status` (covers both x.com/<user>/status/<id> and our own
 //             twitter.com/i/web/status/<id> publish URL).
+// IG/Threads media ids the Graph comments/replies + liveness endpoints resolve are all-numeric;
+// a permalink shortcode (letters/dashes) never resolves. Used to decide whether a stored id is
+// trustworthy for those two platforms (FB {page}_{post} + LinkedIn urn are not gated by this).
+export const isNumericId = (id: string): boolean => /^\d+$/.test(id);
+
 export const extractPostId = (platform: SocialPlatform, url: string): string | null => {
   try {
     const u = new URL(url);
@@ -27,7 +32,9 @@ export const extractPostId = (platform: SocialPlatform, url: string): string | n
       const i = segs.indexOf(marker);
       return i >= 0 ? segs[i + 1] ?? null : null;
     };
-    if (platform === 'facebook') return segs[segs.length - 1] ?? null;
+    // A page-video permalink is facebook.com/watch/?v=<id> → the id is the `v` query param (the path's
+    // last segment is the literal "watch"). Feed/photo posts carry the id as the last path segment.
+    if (platform === 'facebook') return u.searchParams.get('v') ?? segs[segs.length - 1] ?? null;
     if (platform === 'instagram') return after('p') ?? segs[segs.length - 1] ?? null;
     if (platform === 'threads') return after('post') ?? after('t') ?? segs[segs.length - 1] ?? null;
     if (platform === 'linkedin') return after('update') ?? segs[segs.length - 1] ?? null;
@@ -40,13 +47,22 @@ export const extractPostId = (platform: SocialPlatform, url: string): string | n
 
 // Build + persist the platform→postId map the poller watches. No-op when the post has no
 // capture keyword or nothing published to a commentable platform.
-export const recordCommentSources = async (post: Post, postUrls: Record<string, string>): Promise<void> => {
+export const recordCommentSources = async (
+  post: Post,
+  postUrls: Record<string, string>,
+  platformIds?: Record<string, string>,
+): Promise<void> => {
   if (!post.leadCaptureKeyword) return;
+  // Prefer the canonical resolvable id captured at publish (fresh map from the tick, or persisted on
+  // the post for activate-from-Leads). Fall back to parsing the URL only when no captured id exists
+  // (legacy rows) — that fallback yields a shortcode for IG/Threads, which the poller then treats as
+  // unresolvable rather than a phantom delete (see meta/threads fetcher guards).
+  const ids = platformIds ?? ((post.platformPostIds ?? {}) as Record<string, string>);
   const sources: Record<string, string> = {};
   for (const [platformKey, url] of Object.entries(postUrls)) {
     const platform = platformKey as SocialPlatform;
     if (!COMMENTABLE.has(platform) || !url) continue;
-    const id = extractPostId(platform, url);
+    const id = ids[platform] ?? extractPostId(platform, url);
     if (id) sources[platform] = id;
     else logger.warn('comment_source_id_unparsed', { postId: post.id, platform, url: url.slice(0, 80) });
   }

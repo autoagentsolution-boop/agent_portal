@@ -12,7 +12,7 @@ import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
 
 const G = env.GRAPH_VERSION;
-const ok = (url: string): PublishResult => ({ platform: 'instagram', ok: true, url, error: null });
+const ok = (url: string, platformPostId: string | null = null): PublishResult => ({ platform: 'instagram', ok: true, url, error: null, platformPostId });
 const fail = (msg: string): PublishResult => ({
   platform: 'instagram',
   ok: false,
@@ -83,7 +83,8 @@ export const instagramAdapter: SocialAdapter = {
       const perma = await getJson(
         `https://graph.facebook.com/${G}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(token)}`,
       );
-      return ok(perma?.permalink ?? `https://www.instagram.com/p/${mediaId}/`);
+      // Store the NUMERIC mediaId (not the permalink shortcode) — Graph comments/liveness resolve it.
+      return ok(perma?.permalink ?? `https://www.instagram.com/p/${mediaId}/`, String(mediaId));
     } catch (e) {
       return fail(String(e instanceof Error ? e.message : e));
     }

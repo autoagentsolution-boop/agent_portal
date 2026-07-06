@@ -5,6 +5,30 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-06
 
+### Fix: trustworthy per-platform post-liveness / deleted-post detection (commit `e89aa2e`)
+Report `plans/reports/verify-260706-2007-lead-collector-gone-signal.md`. Live verification found the
+lead-collector "is this post still live?" check mis-reported deletion on 4 of 5 platforms: LinkedIn
+(403 on the consumer tier) and X (conversation-search returns empty for both deleted and no-reply
+tweets) were read as `alive:true` on **deleted** posts; IG/Threads matched only by accident because a
+permalink shortcode never resolves on Graph (code 100). Only Facebook was reliable. Fixes:
+- Capture the canonical resolvable `platformPostId` at publish (IG/Threads numeric media id was
+  fetched then discarded; FB `{page}_{post}`; X tweet id; LinkedIn urn) → persisted in a new additive
+  column `platform_post_ids`; `recordCommentSources` prefers it so activate-from-Leads no longer
+  falls back to an unresolvable shortcode.
+- New `post-exists.ts` `checkPlatformAlive` tri-state (`true`/`false`/`null`) — never asserts alive
+  unless positively confirmed. FB/IG/Threads query the comments/replies edge (clean `subcode 33` gone
+  signal vs the ambiguous `code 10` of a direct object GET); IG/Threads gated by `isNumericId`;
+  LinkedIn always `null` (unreadable on `w_member_social`); X `GET /2/tweets/{id}` parses
+  `errors[].resource-not-found` (returned at HTTP 200, not a 404).
+- Poller comment-fetchers only trust the gone signal on a resolvable id → a legacy shortcode can no
+  longer false-deactivate a live collector. `isMetaGraphPostGone` tightened to `404 || subcode 33`
+  (dropped bare `code 100`, the generic invalid-param bucket). `extractPostId` reads `?v=` for FB
+  watch/video URLs. Leads UI shows a per-link tooltip (🟢 live / 🔴 deleted / ⚪ can't-verify).
+
+Verified live vs 2 real posts → FB=false, X=false, IG/Threads/LinkedIn=null; tsc clean; 5 verify-leads
+suites green. Known limits: old shortcode-only posts stay ⚪ for IG/Threads (un-backfillable — IG
+oEmbed needs Facebook app review); LinkedIn liveness is ⚪ until a tier upgrade (`r_member_social`).
+
 ### Fix: concept_writer wiped user copy edits on re-run (edit-loss)
 Report `plans/reports/debug-260706-1703-concept-edit-loss.md`. Since copy-gen was merged into
 concept_writer, re-executing the concept node (flow continue / re-run) unconditionally regenerated

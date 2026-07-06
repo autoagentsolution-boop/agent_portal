@@ -10,7 +10,7 @@ import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
 
 const TV = env.THREADS_VERSION;
-const ok = (url: string): PublishResult => ({ platform: 'threads', ok: true, url, error: null });
+const ok = (url: string, platformPostId: string | null = null): PublishResult => ({ platform: 'threads', ok: true, url, error: null, platformPostId });
 const fail = (msg: string): PublishResult => ({
   platform: 'threads',
   ok: false,
@@ -78,7 +78,8 @@ export const threadsAdapter: SocialAdapter = {
       const perma = await getJson(
         `https://graph.threads.net/${TV}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(token)}`,
       );
-      return ok(perma?.permalink ?? `https://www.threads.net/t/${mediaId}`);
+      // Store the NUMERIC mediaId (not the permalink shortcode) — /{id}/replies + liveness resolve it.
+      return ok(perma?.permalink ?? `https://www.threads.net/t/${mediaId}`, String(mediaId));
     } catch (e) {
       return fail(String(e instanceof Error ? e.message : e));
     }

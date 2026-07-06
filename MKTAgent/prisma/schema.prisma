@@ -276,6 +276,11 @@ model Post {
   // the lead_collector node after publish) so the poller knows which post's comments to read.
   leadCaptureKeyword String? @map("lead_capture_keyword")
   commentSourceIds   Json?   @map("comment_source_ids") // { facebook: "<postId>", instagram: "<mediaId>" }
+  // Platform → canonical resolvable object id, captured at publish for EVERY post (not just
+  // collectors). Numeric media id for IG/Threads, {page}_{post} for FB, tweet id for X, share urn
+  // for LinkedIn. The permalink shortcode in postUrls does NOT resolve on Graph, so liveness +
+  // activate-from-Leads read ids from here. Populated going forward; older rows are null.
+  platformPostIds    Json?   @map("platform_post_ids") // { instagram: "<numeric media id>", ... }
   // Outcome.
   postUrls    Json?            @map("post_urls") // { facebook: url, ... }
   error       String?

@@ -13,6 +13,15 @@ type LinkEntry = { platform: string; url: string; alive: boolean | null | undefi
 const aliveMarker = (alive: boolean | null | undefined): string =>
   alive === true ? '🟢 ' : alive === false ? '🔴 ' : alive === null ? '⚪ ' : '';
 
+// Tooltip for each liveness state. ⚪ (null) is "couldn't verify" — deliberately distinct from 🔴
+// "deleted": some platforms can't confirm existence (LinkedIn on the consumer tier, or an older post
+// whose id isn't resolvable), so we show ⚪ rather than guess a red/green.
+const aliveTitle = (alive: boolean | null | undefined): string =>
+  alive === true ? 'Live on the platform'
+  : alive === false ? 'Deleted on the platform'
+  : alive === null ? "Couldn't verify — the platform can't confirm this post (access tier or unresolvable id)"
+  : 'Not checked yet — click “Check links”';
+
 // "expires in N day(s)" / "expired" from an ISO timestamp, or null if there's no expiry to show.
 const expiryText = (iso: string | null | undefined): { text: string; expired: boolean } | null => {
   if (!iso) return null;
@@ -191,7 +200,7 @@ export function LeadsPage({ notify }: Props) {
                     {linkEntries.length > 0 && (
                       <div className="small" style={{ marginTop: 2 }}>
                         {linkEntries.map((l) => (
-                          <a key={l.platform} href={l.url} target="_blank" rel="noreferrer" style={{ marginRight: 10 }}>
+                          <a key={l.platform} href={l.url} target="_blank" rel="noreferrer" title={aliveTitle(l.alive)} style={{ marginRight: 10 }}>
                             {aliveMarker(l.alive)}{l.platform} ↗
                           </a>
                         ))}

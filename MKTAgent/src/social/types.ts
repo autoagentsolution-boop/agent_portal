@@ -25,6 +25,12 @@ export interface PublishResult {
   ok: boolean;
   url: string | null;
   error: string | null;
+  // Platform's canonical object id for the published post (numeric media id for IG/Threads,
+  // {page}_{post} for FB, tweet id for X, share urn for LinkedIn). The lead collector + liveness
+  // check need an id the platform API RESOLVES — the public permalink shortcode does NOT resolve on
+  // Graph (a shortcode always yields code 100, indistinguishable from a genuine delete). Captured
+  // here at publish so we never fall back to parsing the shortcode. null when publish failed.
+  platformPostId?: string | null;
 }
 
 export interface SocialAdapter {

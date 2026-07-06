@@ -15,7 +15,7 @@ import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
 
 const G = env.GRAPH_VERSION;
-const ok = (url: string): PublishResult => ({ platform: 'facebook', ok: true, url, error: null });
+const ok = (url: string, platformPostId: string | null = null): PublishResult => ({ platform: 'facebook', ok: true, url, error: null, platformPostId });
 const fail = (msg: string): PublishResult => ({
   platform: 'facebook',
   ok: false,
@@ -53,7 +53,7 @@ async function publishImage(input: PublishInput, token: string, page: string): P
   form.append('source', new Blob([new Uint8Array(bytes)], { type: contentType }), 'image');
   const j = await postForm(`https://graph.facebook.com/${G}/${page}/photos`, form);
   const pid = j?.post_id || j?.id;
-  if (pid && !j?.error) return ok(`https://facebook.com/${pid}`);
+  if (pid && !j?.error) return ok(`https://facebook.com/${pid}`, String(pid));
   return fail(errMsg(j, 'photo publish failed'));
 }
 
@@ -83,7 +83,7 @@ async function publishCarousel(input: PublishInput, token: string, page: string)
   form.append('attached_media', JSON.stringify(fbids.map((id) => ({ media_fbid: id }))));
   const j = await postForm(`https://graph.facebook.com/${G}/${page}/feed`, form);
   const pid = j?.id || j?.post_id;
-  if (pid && !j?.error) return ok(`https://facebook.com/${pid}`);
+  if (pid && !j?.error) return ok(`https://facebook.com/${pid}`, String(pid));
   return fail(errMsg(j, 'carousel feed post failed'));
 }
 
@@ -97,7 +97,7 @@ async function publishVideo(input: PublishInput, token: string, page: string): P
   form.append('source', new Blob([new Uint8Array(bytes)], { type: contentType }), 'video.mp4');
   const j = await postForm(`https://graph.facebook.com/${G}/${page}/videos`, form);
   const vid = j?.id;
-  if (vid && !j?.error) return ok(`https://www.facebook.com/watch/?v=${vid}`);
+  if (vid && !j?.error) return ok(`https://www.facebook.com/watch/?v=${vid}`, String(vid));
   return fail(errMsg(j, 'video publish failed'));
 }
 

@@ -12,7 +12,7 @@ import { assetStore } from '../assets/store.ts';
 import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
 
-const ok = (url: string): PublishResult => ({ platform: 'linkedin', ok: true, url, error: null });
+const ok = (url: string, platformPostId: string | null = null): PublishResult => ({ platform: 'linkedin', ok: true, url, error: null, platformPostId });
 const fail = (msg: string): PublishResult => ({
   platform: 'linkedin',
   ok: false,
@@ -103,7 +103,7 @@ export const linkedinAdapter: SocialAdapter = {
         const body = await postRes.text();
         return fail(`ugcPost failed: ${postRes.status} ${body.slice(0, 120)}`);
       }
-      return ok(`https://www.linkedin.com/feed/update/${urn}`);
+      return ok(`https://www.linkedin.com/feed/update/${urn}`, urn);
     } catch (e) {
       return fail(String(e instanceof Error ? e.message : e));
     }
