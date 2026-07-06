@@ -55,6 +55,15 @@ const fileExists = async (p: string): Promise<boolean> => {
 // (e.g. veo-3.1-lite) REJECT the param with a 400 rather than ignoring it. So we try with
 // the param, and if that specific 400 fires, retry once without it (a silent model has no
 // native audio to suppress anyway). Returns the operation name.
+// Veo Tier-1 allows only ~2 RPM, so a pipeline that renders several clips can trip a
+// transient 429 (RESOURCE_EXHAUSTED) even with plenty of daily quota (RPD) left — the burst,
+// not the day, is the limit. A 429/503 here clears once the rolling-minute window rolls over,
+// so we back off and retry rather than failing the whole video node. Waits span >60s total to
+// outlast the window. (A true daily-quota exhaustion just retries a few times then surfaces.)
+const RETRYABLE_START = new Set([429, 503]);
+const MAX_START_RETRIES = 4;
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
 const startVeoOp = async (req: VideoRequest, imgB64: string, apiKey: string): Promise<string> => {
   const startUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:predictLongRunning?key=${apiKey}`;
   const build = (withAudio: boolean) => ({
@@ -72,20 +81,31 @@ const startVeoOp = async (req: VideoRequest, imgB64: string, apiKey: string): Pr
     body: JSON.stringify(body),
   });
 
-  let r = await post(build(true));
-  if (r.status === 400) {
-    const text = await r.text();
-    if (/generateAudio/i.test(text)) {
-      logger.info('veo_retry_without_generate_audio', { model: MODEL });
-      r = await post(build(false));
-    } else {
+  let withAudio = true;
+  for (let attempt = 0; ; attempt++) {
+    const r = await post(build(withAudio));
+    // silent-only tiers (veo-3.1-lite) reject generateAudio with a 400 → drop it and retry now.
+    if (r.status === 400) {
+      const text = await r.text();
+      if (withAudio && /generateAudio/i.test(text)) {
+        logger.info('veo_retry_without_generate_audio', { model: MODEL });
+        withAudio = false;
+        continue;
+      }
       throw new Error(`veo_start_400: ${text.slice(0, 400)}`);
     }
+    if (RETRYABLE_START.has(r.status) && attempt < MAX_START_RETRIES) {
+      const text = await r.text();
+      const waitMs = Math.min(75_000, 25_000 * (attempt + 1)); // 25s, 50s, 75s, 75s — outlasts the 1-min RPM window
+      logger.warn('veo_start_rate_limited_retry', { status: r.status, attempt, waitMs, detail: text.slice(0, 160) });
+      await sleep(waitMs);
+      continue;
+    }
+    if (!r.ok) throw new Error(`veo_start_${r.status}: ${(await r.text()).slice(0, 400)}`);
+    const op = (await r.json()) as { name?: string };
+    if (!op.name) throw new Error('veo_no_operation');
+    return op.name;
   }
-  if (!r.ok) throw new Error(`veo_start_${r.status}: ${(await r.text()).slice(0, 400)}`);
-  const op = (await r.json()) as { name?: string };
-  if (!op.name) throw new Error('veo_no_operation');
-  return op.name;
 };
 
 // Kick off the long-running op, poll until done, return the mp4 bytes.
