@@ -1,11 +1,25 @@
 // Leads page (Lead Collector §01.3). Two parts: an intake-token setup panel (mint the token
 // a funnel presents so leads land on THIS tenant) and the leads table with the hybrid score.
 import { useEffect, useState } from 'react';
-import { api, type LeadRow, type IntakeTokenRow, type PostDto } from '../api/client';
+import { api, type LeadRow, type IntakeTokenRow, type PostDto, type LinkStatusEntry } from '../api/client';
 
 interface Props { notify: (msg: string, kind?: 'ok' | 'err') => void }
 
 const scoreClass = (s: number | null): string => (s == null ? 'muted' : s >= 70 ? 'score-hot' : s >= 40 ? 'score-warm' : 'score-cold');
+
+// A platform link, optionally carrying an on-demand liveness marker (undefined = not checked yet).
+type LinkEntry = { platform: string; url: string; alive: boolean | null | undefined };
+
+const aliveMarker = (alive: boolean | null | undefined): string =>
+  alive === true ? '🟢 ' : alive === false ? '🔴 ' : alive === null ? '⚪ ' : '';
+
+// "expires in N day(s)" / "expired" from an ISO timestamp, or null if there's no expiry to show.
+const expiryText = (iso: string | null | undefined): { text: string; expired: boolean } | null => {
+  if (!iso) return null;
+  const days = Math.ceil((new Date(iso).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (days <= 0) return { text: '⏳ expired', expired: true };
+  return { text: `expires in ${days} day${days === 1 ? '' : 's'}`, expired: false };
+};
 
 export function LeadsPage({ notify }: Props) {
   const [leads, setLeads] = useState<LeadRow[]>([]);
@@ -19,6 +33,8 @@ export function LeadsPage({ notify }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [collectorBusy, setCollectorBusy] = useState<string | null>(null);
   const [keywordInputs, setKeywordInputs] = useState<Record<string, string>>({});
+  const [checkBusy, setCheckBusy] = useState<string | null>(null);
+  const [linkStatus, setLinkStatus] = useState<Record<string, LinkStatusEntry[]>>({});
 
   const load = async () => {
     setLoading(true);
@@ -83,6 +99,27 @@ export function LeadsPage({ notify }: Props) {
     notify('Collector stopped');
     await load();
   };
+  // Re-sets the same keyword — the backend refreshes the 30-day expiry window without
+  // touching the keyword or watched sources.
+  const extendCollector = async (postId: string, keyword: string) => {
+    setCollectorBusy(postId);
+    const r = await api.setCollector(postId, keyword);
+    setCollectorBusy(null);
+    if (!r.ok) { notify(`Extend: ${r.error.error}`, 'err'); return; }
+    notify('Collector extended 30 days');
+    await load();
+  };
+  // On-demand per-platform liveness check (real API calls — slow). Reload after so a
+  // self-healed post_deleted (all links dead) drops out of the list.
+  const checkLinks = async (postId: string) => {
+    setCheckBusy(postId);
+    const r = await api.checkLinks(postId);
+    if (!r.ok) { setCheckBusy(null); notify(`Check links: ${r.error.error}`, 'err'); return; }
+    setLinkStatus((prev) => ({ ...prev, [postId]: r.data.links }));
+    setCheckBusy(null);
+    notify(`Checked ${r.data.links.length} link(s)`);
+    await load();
+  };
 
   const base = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
@@ -139,20 +176,37 @@ export function LeadsPage({ notify }: Props) {
               const watchedPlatforms = p.commentSourceIds ? Object.keys(p.commentSourceIds) : [];
               const pending = collecting && watchedPlatforms.length === 0;
               const rowBusy = collectorBusy === p.id;
-              const viewUrl = p.postUrls ? Object.values(p.postUrls)[0] : null;
+              const rowChecking = checkBusy === p.id;
+              const checked = linkStatus[p.id];
+              const linkEntries: LinkEntry[] =
+                checked ?? (p.postUrls ? Object.entries(p.postUrls).map(([platform, url]) => ({ platform, url, alive: undefined })) : []);
+              const expiry = collecting ? expiryText(p.leadCollectorExpiresAt) : null;
               return (
-                <div key={p.id} className="spread" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', gap: 8 }}>
+                <div key={p.id} className="spread" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', gap: 8, flexWrap: 'wrap' }}>
                   <div>
                     <div className="small">
                       <strong>{p.platforms.join(', ') || 'no platforms'}</strong>{' '}
                       <span className="muted">· {p.id.slice(0, 8)} · {p.status}</span>
-                      {viewUrl && <> · <a href={viewUrl} target="_blank" rel="noreferrer">view post ↗</a></>}
                     </div>
+                    {linkEntries.length > 0 && (
+                      <div className="small" style={{ marginTop: 2 }}>
+                        {linkEntries.map((l) => (
+                          <a key={l.platform} href={l.url} target="_blank" rel="noreferrer" style={{ marginRight: 10 }}>
+                            {aliveMarker(l.alive)}{l.platform} ↗
+                          </a>
+                        ))}
+                      </div>
+                    )}
                     <div style={{ marginTop: 2 }}>
                       {collecting ? (
                         <span className="small">
                           {pending ? '🟡 collecting (pending sources)' : '🟢 collecting'} — keyword: <strong>{p.leadCaptureKeyword}</strong>
                           {watchedPlatforms.length > 0 && <span className="muted"> · watching {watchedPlatforms.join(', ')}</span>}
+                          {expiry && (
+                            <span className={expiry.expired ? '' : 'muted'} style={expiry.expired ? { color: 'var(--amber)', marginLeft: 6, fontWeight: 600 } : { marginLeft: 6 }}>
+                              {' '}· {expiry.text}
+                            </span>
+                          )}
                         </span>
                       ) : (
                         <span className="muted small">⏸ not collecting</span>
@@ -160,8 +214,20 @@ export function LeadsPage({ notify }: Props) {
                     </div>
                   </div>
                   <div className="row" style={{ gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                    <button className="btn small" disabled={rowBusy || rowChecking} onClick={() => void checkLinks(p.id)}>
+                      {rowChecking ? '⏳ Checking…' : '🔗 Check links'}
+                    </button>
                     {collecting ? (
-                      <button className="btn small danger" disabled={rowBusy} onClick={() => void stopCollector(p.id)}>{rowBusy ? '…' : 'Stop'}</button>
+                      <>
+                        <button
+                          className={`btn small ${expiry?.expired ? 'primary' : ''}`}
+                          disabled={rowBusy || rowChecking}
+                          onClick={() => void extendCollector(p.id, p.leadCaptureKeyword as string)}
+                        >
+                          {rowBusy ? '…' : 'Extend'}
+                        </button>
+                        <button className="btn small danger" disabled={rowBusy || rowChecking} onClick={() => void stopCollector(p.id)}>{rowBusy ? '…' : 'Stop'}</button>
+                      </>
                     ) : (
                       <>
                         <input
@@ -169,9 +235,9 @@ export function LeadsPage({ notify }: Props) {
                           onChange={(e) => setKeywordInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
                           placeholder="keyword"
                           style={{ width: 110 }}
-                          disabled={rowBusy}
+                          disabled={rowBusy || rowChecking}
                         />
-                        <button className="btn small primary" disabled={rowBusy} onClick={() => void startCollector(p.id)}>{rowBusy ? '…' : 'Start'}</button>
+                        <button className="btn small primary" disabled={rowBusy || rowChecking} onClick={() => void startCollector(p.id)}>{rowBusy ? '…' : 'Start'}</button>
                       </>
                     )}
                   </div>

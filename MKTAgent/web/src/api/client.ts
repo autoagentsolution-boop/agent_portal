@@ -38,11 +38,16 @@ export type ProductKnowledgeEntry = {
 // versionCount / leadCollectorStatus / commentSourceIds — Lead Collector Phase 02/03 fields,
 // live on the API but not yet in openapi.json/schema.d.ts (hand-typed at the boundary until regenerated).
 // Optional so casts from narrower generated shapes (e.g. PostFromAgentDto['post']) stay valid.
+// leadCollectorExpiresAt — Lead Collector Phase 04 field (set to now+30d on activate, refreshed
+// by re-calling setCollector with the same keyword); not yet in openapi.json/schema.d.ts.
 export type PostDto = Dto['PostDto'] & {
   versionCount?: number | null;
   leadCollectorStatus?: string | null;
   commentSourceIds?: Record<string, string> | null;
+  leadCollectorExpiresAt?: string | null;
 };
+// Per-platform on-demand liveness check (§01.4 "Check links") — route not in openapi yet.
+export type LinkStatusEntry = { platform: string; url: string; alive: boolean | null };
 export type PostDetailDto = Dto['PostDetailDto'];
 export type LeadDto = Dto['LeadDto'];
 // Lead Collector (§01) — routes not in openapi yet, hand-typed.
@@ -238,6 +243,10 @@ export const api = {
   // keyword also backfills its comment watch sources so it starts collecting immediately.
   setCollector: (id: string, keyword: string | null) =>
     request<PostDto>(`/posts/${id}/collector`, { method: 'POST', body: { keyword } }),
+  // On-demand per-platform liveness check for a post's published links (real API calls — slow,
+  // call from a button not on load). Backend self-heals: a dead watched source is dropped, and
+  // an all-dead post flips to post_deleted (already filtered out of the collectors list).
+  checkLinks: (id: string) => request<{ links: LinkStatusEntry[] }>(`/posts/${id}/link-status`),
   createIntakeToken: (label?: string) => request<CreatedIntakeToken>('/leads/intake-tokens', { method: 'POST', body: label ? { label } : {} }),
   revokeIntakeToken: (id: string) => request<void>(`/leads/intake-tokens/${id}`, { method: 'DELETE' }),
   createCampaign: (body: Dto['CreateCampaignBody']) =>
