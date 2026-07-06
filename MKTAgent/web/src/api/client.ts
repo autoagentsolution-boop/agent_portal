@@ -35,10 +35,14 @@ export type ProductKnowledgeEntry = {
   createdAt: string;
   updatedAt: string;
 };
-// versionCount / leadCollectorStatus — Lead Collector Phase 02 fields, live on the API but
-// not yet in openapi.json/schema.d.ts (hand-typed at the boundary until regenerated).
+// versionCount / leadCollectorStatus / commentSourceIds — Lead Collector Phase 02/03 fields,
+// live on the API but not yet in openapi.json/schema.d.ts (hand-typed at the boundary until regenerated).
 // Optional so casts from narrower generated shapes (e.g. PostFromAgentDto['post']) stay valid.
-export type PostDto = Dto['PostDto'] & { versionCount?: number | null; leadCollectorStatus?: string | null };
+export type PostDto = Dto['PostDto'] & {
+  versionCount?: number | null;
+  leadCollectorStatus?: string | null;
+  commentSourceIds?: Record<string, string> | null;
+};
 export type PostDetailDto = Dto['PostDetailDto'];
 export type LeadDto = Dto['LeadDto'];
 // Lead Collector (§01) — routes not in openapi yet, hand-typed.
@@ -230,6 +234,10 @@ export const api = {
   rescoreLead: (id: string) => request<LeadRow>(`/leads/${id}/rescore`, { method: 'POST' }),
   pollComments: () => request<{ postsPolled: number; commentsScanned: number; leadsCaptured: number; duplicates: number }>('/leads/poll-comments', { method: 'POST' }),
   listIntakeTokens: () => request<IntakeTokenRow[]>('/leads/intake-tokens'),
+  // Start/stop a post's comment-keyword lead collector. On an already-published post, setting a
+  // keyword also backfills its comment watch sources so it starts collecting immediately.
+  setCollector: (id: string, keyword: string | null) =>
+    request<PostDto>(`/posts/${id}/collector`, { method: 'POST', body: { keyword } }),
   createIntakeToken: (label?: string) => request<CreatedIntakeToken>('/leads/intake-tokens', { method: 'POST', body: label ? { label } : {} }),
   revokeIntakeToken: (id: string) => request<void>(`/leads/intake-tokens/${id}`, { method: 'DELETE' }),
   createCampaign: (body: Dto['CreateCampaignBody']) =>

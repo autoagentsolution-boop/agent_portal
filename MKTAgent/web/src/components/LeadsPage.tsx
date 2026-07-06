@@ -10,19 +10,23 @@ const scoreClass = (s: number | null): string => (s == null ? 'muted' : s >= 70 
 export function LeadsPage({ notify }: Props) {
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [tokens, setTokens] = useState<IntakeTokenRow[]>([]);
+  // Published posts (posted/partial) — candidates for a comment-keyword lead collector,
+  // whether or not one is active yet.
   const [collectors, setCollectors] = useState<PostDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [setupOpen, setSetupOpen] = useState(false);
   const [freshToken, setFreshToken] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [collectorBusy, setCollectorBusy] = useState<string | null>(null);
+  const [keywordInputs, setKeywordInputs] = useState<Record<string, string>>({});
 
   const load = async () => {
     setLoading(true);
     const [l, t, p] = await Promise.all([api.listLeads(), api.listIntakeTokens(), api.listPosts({ limit: 100 })]);
     if (l.ok) setLeads(l.data); else notify(`Leads: ${l.error.error}`, 'err');
     if (t.ok) setTokens(t.data);
-    // Posts with an active lead collector (a comment-capture keyword set) — the Leads Agent's watch list.
-    if (p.ok) setCollectors(p.data.filter((post) => Boolean(post.leadCaptureKeyword)));
+    // Published posts can have comments — show them all as potential/active lead collectors.
+    if (p.ok) setCollectors(p.data.filter((post) => post.status === 'posted' || post.status === 'partial'));
     setLoading(false);
   };
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -57,6 +61,25 @@ export function LeadsPage({ notify }: Props) {
     if (!r.ok) { notify(`Rescore: ${r.error.error}`, 'err'); return; }
     setLeads((prev) => prev.map((l) => (l.id === id ? r.data : l)));
     notify(`AI re-scored: ${r.data.score}`);
+  };
+  const startCollector = async (postId: string) => {
+    const keyword = (keywordInputs[postId] ?? '').trim();
+    if (!keyword) { notify('Enter a keyword first', 'err'); return; }
+    setCollectorBusy(postId);
+    const r = await api.setCollector(postId, keyword);
+    setCollectorBusy(null);
+    if (!r.ok) { notify(`Collector: ${r.error.error}`, 'err'); return; }
+    notify(`Collecting on keyword "${keyword}"`);
+    setKeywordInputs((prev) => ({ ...prev, [postId]: '' }));
+    await load();
+  };
+  const stopCollector = async (postId: string) => {
+    setCollectorBusy(postId);
+    const r = await api.setCollector(postId, null);
+    setCollectorBusy(null);
+    if (!r.ok) { notify(`Collector: ${r.error.error}`, 'err'); return; }
+    notify('Collector stopped');
+    await load();
   };
 
   const base = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
@@ -103,22 +126,56 @@ export function LeadsPage({ notify }: Props) {
         </div>
       )}
 
-      {/* Lead Collector agent's watch list — posts actively collecting leads from comments. */}
+      {/* Published posts can watch comments for a keyword — start/stop the collector inline. */}
       {collectors.length > 0 && (
         <div className="card" style={{ marginBottom: 14 }}>
-          <div className="spread"><strong style={{ fontSize: 14 }}>💬 Active lead collectors</strong><span className="muted small">{collectors.length} post(s) watching comments</span></div>
-          <p className="muted small" style={{ marginTop: 4 }}>These published posts capture opt-in leads from comments matching their keyword. Use <strong>↻ Poll comments</strong> to pull new ones.</p>
+          <div className="spread"><strong style={{ fontSize: 14 }}>💬 Lead collectors</strong><span className="muted small">{collectors.length} published post(s)</span></div>
+          <p className="muted small" style={{ marginTop: 4 }}>Set a keyword on a published post to capture opt-in leads from its comments. Use <strong>↻ Poll comments</strong> to pull new ones.</p>
           <div className="post-summary-list" style={{ marginTop: 8 }}>
             {collectors.map((p) => {
               const stopped = p.leadCollectorStatus === 'post_deleted';
+              const collecting = Boolean(p.leadCaptureKeyword);
+              const watchedPlatforms = p.commentSourceIds ? Object.keys(p.commentSourceIds) : [];
+              const pending = collecting && watchedPlatforms.length === 0;
+              const rowBusy = collectorBusy === p.id;
+              const viewUrl = p.postUrls ? Object.values(p.postUrls)[0] : null;
               return (
-                <div key={p.id} className="spread" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                  <span className="small">🔑 <strong>{p.leadCaptureKeyword}</strong> · <span className="muted">{p.platforms.join(', ') || 'no platforms'} · {p.status}</span></span>
-                  {stopped ? (
-                    <span className="badge error" title="The watched post was deleted on the platform — comment polling stopped for it">⏹ stopped — post deleted</span>
-                  ) : (
-                    <span className="muted small">{p.postUrls?.facebook ? <a href={p.postUrls.facebook} target="_blank" rel="noreferrer">view post ↗</a> : 'not published'}</span>
-                  )}
+                <div key={p.id} className="spread" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', gap: 8 }}>
+                  <div>
+                    <div className="small">
+                      <strong>{p.platforms.join(', ') || 'no platforms'}</strong>{' '}
+                      <span className="muted">· {p.id.slice(0, 8)} · {p.status}</span>
+                      {viewUrl && <> · <a href={viewUrl} target="_blank" rel="noreferrer">view post ↗</a></>}
+                    </div>
+                    <div style={{ marginTop: 2 }}>
+                      {stopped ? (
+                        <span className="badge error" title="The watched post was deleted on the platform — comment polling stopped for it">⏹ stopped — post deleted</span>
+                      ) : collecting ? (
+                        <span className="small">
+                          {pending ? '🟡 collecting (pending sources)' : '🟢 collecting'} — keyword: <strong>{p.leadCaptureKeyword}</strong>
+                          {watchedPlatforms.length > 0 && <span className="muted"> · watching {watchedPlatforms.join(', ')}</span>}
+                        </span>
+                      ) : (
+                        <span className="muted small">⏸ not collecting</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="row" style={{ gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                    {stopped ? null : collecting ? (
+                      <button className="btn small danger" disabled={rowBusy} onClick={() => void stopCollector(p.id)}>{rowBusy ? '…' : 'Stop'}</button>
+                    ) : (
+                      <>
+                        <input
+                          value={keywordInputs[p.id] ?? ''}
+                          onChange={(e) => setKeywordInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                          placeholder="keyword"
+                          style={{ width: 110 }}
+                          disabled={rowBusy}
+                        />
+                        <button className="btn small primary" disabled={rowBusy} onClick={() => void startCollector(p.id)}>{rowBusy ? '…' : 'Start'}</button>
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })}
