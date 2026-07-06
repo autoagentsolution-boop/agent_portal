@@ -3,7 +3,7 @@
 // widget (ProductKnowledgeUpload) creates these; here they are managed centrally. All routes
 // are owner-scoped (GET/PATCH/DELETE /product-knowledge). No file storage — profiles are text.
 import { useEffect, useRef, useState } from 'react';
-import { api, type ProductKnowledgeEntry, type UploadedDocInput } from '../api/client';
+import { api, type ProductKnowledgeEntry, type UploadedDocInput, type CampaignDto } from '../api/client';
 
 interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
@@ -45,11 +45,16 @@ export function ProductKnowledgeLibrary({ notify }: Props) {
     } finally { setImporting(false); if (importRef.current) importRef.current.value = ''; }
   };
 
+  const [campaignProducts, setCampaignProducts] = useState<CampaignDto[]>([]);
+
   const load = async () => {
     setLoading(true);
-    const r = await api.listProductKnowledge();
+    const [r, c] = await Promise.all([api.listProductKnowledge(), api.listCampaigns()]);
     if (r.ok) setEntries(r.data);
     else notify(`Load failed: ${r.error.error}`, 'err');
+    // Product knowledge added at a campaign lives on campaign.brandContext (not the reusable
+    // library). Surface those too so a user sees what they already added for their posts.
+    if (c.ok) setCampaignProducts(c.data.filter((cp) => Boolean(cp.brandContext)));
     setLoading(false);
   };
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -100,8 +105,8 @@ export function ProductKnowledgeLibrary({ notify }: Props) {
 
       {loading ? (
         <div className="muted">Loading…</div>
-      ) : entries.length === 0 ? (
-        <p className="muted">No saved product knowledge yet. Open a campaign, expand <strong>📚 Product Knowledge</strong>, upload docs and keep “Save as reusable library entry” ticked.</p>
+      ) : entries.length === 0 && campaignProducts.length === 0 ? (
+        <p className="muted">No product knowledge yet. Click <strong>+ Import product</strong> above (upload docs), or add it on a campaign.</p>
       ) : (
         <div className="post-summary-list">
           {entries.map((e) => (
@@ -154,6 +159,23 @@ export function ProductKnowledgeLibrary({ notify }: Props) {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Product knowledge added at a campaign (brandContext) — what grounds that campaign's
+          posts. Read-only here; to make it a reusable, editable entry, import it to the library. */}
+      {!loading && campaignProducts.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div className="eyebrow">From your campaigns</div>
+          <p className="muted small" style={{ margin: '2px 0 8px' }}>Knowledge you added on a campaign — it already grounds that campaign's posts. It is not a reusable library entry until imported.</p>
+          <div className="post-summary-list">
+            {campaignProducts.map((c) => (
+              <div key={c.id} className="card" style={{ padding: 14 }}>
+                <div><strong>{c.product}</strong> <span className="muted small">· campaign{c.language ? ` · ${c.language}` : ''}</span></div>
+                {c.brandContext && <div className="muted small pk-summary">{c.brandContext}</div>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

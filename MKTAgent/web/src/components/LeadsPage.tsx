@@ -18,7 +18,7 @@ export function LeadsPage({ notify }: Props) {
 
   const load = async () => {
     setLoading(true);
-    const [l, t, p] = await Promise.all([api.listLeads(), api.listIntakeTokens(), api.listPosts({ limit: 200 })]);
+    const [l, t, p] = await Promise.all([api.listLeads(), api.listIntakeTokens(), api.listPosts({ limit: 100 })]);
     if (l.ok) setLeads(l.data); else notify(`Leads: ${l.error.error}`, 'err');
     if (t.ok) setTokens(t.data);
     // Posts with an active lead collector (a comment-capture keyword set) — the Leads Agent's watch list.
