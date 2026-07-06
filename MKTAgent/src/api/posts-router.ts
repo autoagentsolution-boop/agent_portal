@@ -18,7 +18,7 @@ import {
 import { toPostDto, toPostDetailDto } from './mappers.ts';
 import { listArtifacts, updateArtifactData } from '../orchestration/executor/artifact-store.ts';
 import { checkPostability } from '../social/postability.ts';
-import { platformAssetType } from '../scheduler/resolve-input.ts';
+import { publishAssetType } from '../scheduler/resolve-input.ts';
 import { resolveConnectionStates } from './connection-state.ts';
 import { publishPostStatus } from '../events/bus.ts';
 import { generateForPost, refineForPost } from '../copygen/service.ts';
@@ -168,7 +168,7 @@ postsRouter.get(
     if (!post) return fail(res, 404, 'post_not_found');
     const conn = await resolveConnectionStates(req.userId!);
     const platforms = post.platforms.map((platform) => {
-      const assetType = platformAssetType(post, platform);
+      const assetType = publishAssetType(post, platform);
       const [r] = checkPostability([platform], assetType);
       const c = conn(platform);
       const willPublish = r!.supported && c.state === 'connected';

@@ -24,8 +24,9 @@ async function main(): Promise<void> {
     const campaign = await prisma.campaign.create({ data: { ownerId: user.id, product: 'Filter', platforms: ['facebook'] } });
 
     // 1) Mixed per-platform assets from ONE carousel hero: FB=carousel (all frames),
-    //    IG=image (degraded first frame), LinkedIn=image, X=image. threads omitted from the
-    //    map → default assetType 'carousel' → threads is image-only → SKIPPED.
+    //    IG/LinkedIn/X=image (degraded first frame). threads is omitted from the map, so its
+    //    intended type is the carousel default it can't post — but an image IS derivable from
+    //    the carousel frames, so it AUTO-DEGRADES to image (item #6) instead of being skipped.
     const rec1: Record<string, PublishInput> = {};
     const p1 = await prisma.post.create({
       data: {
@@ -37,14 +38,30 @@ async function main(): Promise<void> {
       },
     });
     const r1 = await processPost(p1, recorderFor(rec1));
-    check('mixed post → partial (threads skipped)', r1.status === 'partial', r1);
+    check('mixed post → all posted (threads auto-degraded, not skipped)', r1.status === 'posted', r1);
     check('facebook → carousel, 3 assets', rec1.facebook?.assetType === 'carousel' && rec1.facebook?.assets.length === 3, rec1.facebook);
     check('instagram → image, 1 asset (degraded first frame)', rec1.instagram?.assetType === 'image' && rec1.instagram?.assets.length === 1 && rec1.instagram?.assets[0]?.id === 'a', rec1.instagram);
     check('linkedin → image, 1 asset', rec1.linkedin?.assetType === 'image' && rec1.linkedin?.assets.length === 1, rec1.linkedin);
     check('x → image, 1 asset', rec1.x?.assetType === 'image' && rec1.x?.assets.length === 1, rec1.x);
-    check('threads NOT published (skipped: default carousel unsupported)', rec1.threads === undefined, Object.keys(rec1));
-    const w1 = await prisma.post.findUnique({ where: { id: p1.id } });
-    check('write-back records threads skip in error', /threads/.test(w1?.error ?? ''), w1?.error);
+    check('threads → image auto-degraded (reuses first carousel frame)', rec1.threads?.assetType === 'image' && rec1.threads?.assets.length === 1 && rec1.threads?.assets[0]?.id === 'a', rec1.threads);
+
+    // 1b) A GENUINE skip: a video-only post (heroFile is a video ref, no image media, no
+    //     reference upload) → threads has no derivable image → stays video → SKIPPED, and the
+    //     write-back records why. Proves auto-degrade never fabricates an image from a video.
+    const rec1b: Record<string, PublishInput> = {};
+    const p1b = await prisma.post.create({
+      data: {
+        campaignId: campaign.id, ownerId: user.id, status: 'posting',
+        assetType: 'video', heroFile: 'vidref', copy: { body: 'hi', threads: 'hi', x: 'hi' },
+        platformAssets: { facebook: 'video' },
+        platforms: ['facebook', 'threads'],
+      },
+    });
+    const r1b = await processPost(p1b, recorderFor(rec1b));
+    check('video post → partial (threads has no image to degrade to)', r1b.status === 'partial', r1b);
+    check('threads NOT published (no derivable image)', rec1b.threads === undefined, Object.keys(rec1b));
+    const w1b = await prisma.post.findUnique({ where: { id: p1b.id } });
+    check('write-back records threads skip in error', /threads/.test(w1b?.error ?? ''), w1b?.error);
 
     // 2) No per-platform map → legacy single-asset behavior (image to all connected-capable).
     const rec2: Record<string, PublishInput> = {};

@@ -7,7 +7,7 @@
 // Both guards run: the advisory lock serializes ticks/instances, and the atomic
 // claimForPublish() updateMany guards the row even if the lock were ever bypassed.
 import { acquireSchedulerLock } from './lock.ts';
-import { resolvePlatformInput, platformAssetType, PostValidationError } from './resolve-input.ts';
+import { resolvePlatformInput, publishAssetType, PostValidationError } from './resolve-input.ts';
 import { aggregate, toWriteBack } from './aggregate.ts';
 import {
   findPublishDue,
@@ -74,7 +74,7 @@ export async function processPost(post: Post, publish: PublishFn): Promise<TickR
   // platform whose asset is unsupported or whose media is missing is recorded as a SKIP —
   // an explicit ok:false row, never a doomed network call.
   const targets: PlatformTarget[] = post.platforms.map((platform) => {
-    const assetType = platformAssetType(post, platform);
+    const assetType = publishAssetType(post, platform);
     if (!platformSupportsAsset(platform, assetType)) {
       return { platform, assetType, skipReason: `${platform} cannot post ${assetType}` };
     }

@@ -9,15 +9,38 @@ import type { Post, SocialPlatform, AssetType } from '../../prisma/generated/pri
 import type { PublishInput } from '../social/types.ts';
 import type { AssetRef } from '../assets/store.ts';
 import type { CopyVariants } from '../copygen/parse.ts';
+import { platformSupportsAsset } from '../social/postability.ts';
 
 export class PostValidationError extends Error {}
 
 // Per-platform asset type (item 5): the platformAssets map wins, else the post default.
 // e.g. { facebook: 'carousel', instagram: 'image' } → FB posts a carousel, IG a single image.
+// This is the GENERATION intent (drives distinctAssetTypes — what media to produce). It does
+// NOT adapter-degrade: we never generate an extra image just because a platform can't do the
+// default. Publish-time degradation lives in publishAssetType.
 export const platformAssetType = (post: Post, platform: SocialPlatform): AssetType => {
   const map = (post.platformAssets ?? null) as Record<string, AssetType> | null;
   return map?.[platform] ?? post.assetType;
 };
+
+// PUBLISH-time asset type for a platform — like platformAssetType but adapter-aware. When the
+// platform can't post the intended type (e.g. a carousel/video post targeting image-only
+// Threads/IG) it AUTO-DEGRADES to 'image' — reusing an already-produced image (a carousel
+// frame, the infographic, or the user's upload) instead of skipping the platform entirely.
+// An EXPLICIT per-platform override always wins (even if it results in a skip — user's call).
+// Never generates media; degrades only when an image is actually derivable from what exists.
+export const publishAssetType = (post: Post, platform: SocialPlatform): AssetType => {
+  const map = (post.platformAssets ?? null) as Record<string, AssetType> | null;
+  if (map?.[platform]) return map[platform];
+  const intended = post.assetType;
+  if (platformSupportsAsset(platform, intended)) return intended;
+  if (platformSupportsAsset(platform, 'image') && hasDerivableImage(post)) return 'image';
+  return intended; // unsupported + nothing to degrade to → caller records a skip
+};
+
+// True when a single publishable image can be sourced from the post's existing media —
+// explicit image media, a carousel frame, the hero, or the user's reference upload.
+export const hasDerivableImage = (post: Post): boolean => imageRefs(post).length > 0;
 
 // The DISTINCT asset types a post must produce across all its targets (item 5). The executor
 // generates each once. Falls back to [post.assetType] when no per-platform map is set.
@@ -28,15 +51,26 @@ export const distinctAssetTypes = (post: Post): AssetType[] => {
   return [...set];
 };
 
-// Media refs for one asset type: explicit per-type media (assetMedia) wins; else fall back
-// to the single heroFile, degrading a carousel hero to its first frame when a platform wants
-// a single 'image' (the common "carousel on FB, image elsewhere" case, no re-generation).
-const refsForAsset = (post: Post, assetType: AssetType): AssetRef[] => {
+// Every image the post can publish, best source first: explicit image media (infographic),
+// a carousel frame, the hero, then the user's reference upload. Degrading any multi-asset
+// source to its FIRST ref — one image. Used to reuse an image for image-only platforms on a
+// carousel/video post (publishAssetType's auto-degrade) with zero re-generation.
+const imageRefs = (post: Post): AssetRef[] => {
   const media = (post.assetMedia ?? null) as Record<string, string> | null;
-  const explicit = media?.[assetType];
-  let refs = parseAssetRefs(explicit ?? post.heroFile);
-  if (!explicit && assetType === 'image' && refs.length > 1) refs = refs.slice(0, 1);
-  return refs;
+  // heroFile is an image ONLY when the post's own asset type is image/carousel — for a video
+  // post heroFile is a video ref and must never be mistaken for a still (would publish an mp4
+  // as a photo). Order: infographic image → carousel frame → hero (if image) → user upload.
+  const heroImage = post.assetType === 'image' || post.assetType === 'carousel' ? post.heroFile : null;
+  const source = media?.['image'] ?? media?.['carousel'] ?? heroImage ?? post.referenceImage;
+  return parseAssetRefs(source).slice(0, 1);
+};
+
+// Media refs for one asset type: 'image' resolves through every derivable source (imageRefs);
+// otherwise explicit per-type media (assetMedia) wins, else the single heroFile.
+const refsForAsset = (post: Post, assetType: AssetType): AssetRef[] => {
+  if (assetType === 'image') return imageRefs(post);
+  const media = (post.assetMedia ?? null) as Record<string, string> | null;
+  return parseAssetRefs(media?.[assetType] ?? post.heroFile);
 };
 
 // Post.copy is JSON — narrow it to the variant bag, tolerating partial/null.
@@ -70,7 +104,7 @@ export function resolvePublishInput(post: Post): PublishInput {
 // media (with degradation). Throws PostValidationError when that platform's media is missing
 // or mismatched — the caller records it as a skip rather than crashing the whole fan-out.
 export function resolvePlatformInput(post: Post, platform: SocialPlatform): PublishInput {
-  const assetType = platformAssetType(post, platform);
+  const assetType = publishAssetType(post, platform);
   return buildInput(post, assetType, refsForAsset(post, assetType), platform);
 }
 
