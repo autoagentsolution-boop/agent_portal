@@ -1,6 +1,15 @@
 # Phase 01 — Lead Collector (PRIORITY, make-or-break)
 
-**Priority:** P0. **Status:** backbone T6 exists; the decisive gaps are architectural, not volume.
+**Priority:** P0. **Status (2026-07-06):** CORE DONE + verified + pushed (a0a53e8).
+- ✅ #1 per-tenant attribution (intake tokens, isolation) — commit + verify-leads-tenancy
+- ✅ #2 PII encryption + blind-index dedupe + backfill — verify-leads-pii
+- ✅ #5 hybrid scoring (rule on capture + LLM rescore) — verify-leads-scoring
+- ✅ #3 Leads UI (🎯 page: intake setup + scored table + AI-score)
+- ⏳ #4 comment-keyword source — NOT done: needs a live FB/IG Graph-API spike on the user's
+  connected page (poll a published post's comments for the keyword) before building the poller.
+- ⏳ #6 wire as orchestration agent — deferred (low priority, thin wrapper).
+
+Original analysis below.
 
 ## Context / current seams (read before designing)
 - `MKTAgent/src/api/leads-router.ts` — 3 public intakes (`/leads/webhook`, `/leads/form`,
