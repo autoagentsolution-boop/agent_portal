@@ -536,6 +536,7 @@ a { color: var(--accent); }
 .back-to-posts { margin-bottom: 12px; }
 .pk-lib-head { background: none; border: none; text-align: left; cursor: pointer; color: var(--text); padding: 0; flex: 1; min-width: 0; }
 .pk-lib-head:hover strong { color: var(--accent); }
+.pk-summary { margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* Leads table */
 .lead-table { display: flex; flex-direction: column; gap: 8px; }
 .lead-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; }

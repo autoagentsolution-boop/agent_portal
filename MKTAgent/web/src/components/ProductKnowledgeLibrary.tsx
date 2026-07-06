@@ -2,12 +2,20 @@
 // the user has saved, confirm it persisted, edit it, or delete it. The per-campaign upload
 // widget (ProductKnowledgeUpload) creates these; here they are managed centrally. All routes
 // are owner-scoped (GET/PATCH/DELETE /product-knowledge). No file storage — profiles are text.
-import { useEffect, useState } from 'react';
-import { api, type ProductKnowledgeEntry } from '../api/client';
+import { useEffect, useRef, useState } from 'react';
+import { api, type ProductKnowledgeEntry, type UploadedDocInput } from '../api/client';
 
 interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
 }
+
+const MAX_BYTES = 6 * 1024 * 1024;
+const toB64 = (f: File): Promise<string> =>
+  new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).replace(/^data:[^;]*;base64,/, '')); r.onerror = () => rej(new Error('read failed')); r.readAsDataURL(f); });
+const summaryOf = (p: unknown): string => {
+  const s = (p as { productSummary?: string } | null)?.productSummary;
+  return typeof s === 'string' && s.trim() ? s.trim() : '';
+};
 
 export function ProductKnowledgeLibrary({ notify }: Props) {
   const [entries, setEntries] = useState<ProductKnowledgeEntry[]>([]);
@@ -16,6 +24,26 @@ export function ProductKnowledgeLibrary({ notify }: Props) {
   const [editId, setEditId] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ name: string; productDetails: string; brandVoice: string }>({ name: '', productDetails: '', brandVoice: '' });
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importName, setImportName] = useState('');
+  const importRef = useRef<HTMLInputElement>(null);
+
+  // Import a NEW product from documents (Gemini analysis → a reusable library entry). Campaign-less
+  // (saveToLibrary with no campaignId), so this page is a standalone place to build the library.
+  const importDocs = async (fileList: FileList) => {
+    const files = Array.from(fileList).slice(0, 6);
+    const tooBig = files.find((f) => f.size > MAX_BYTES);
+    if (tooBig) { notify(`"${tooBig.name}" is over 6MB`, 'err'); return; }
+    setImporting(true);
+    try {
+      const docs: UploadedDocInput[] = await Promise.all(files.map(async (f) => ({ name: f.name, mimeType: f.type || 'application/pdf', dataB64: await toB64(f) })));
+      const r = await api.analyzeProductKnowledge(docs, { saveToLibrary: true, ...(importName.trim() ? { libraryName: importName.trim() } : {}) });
+      if (!r.ok) { notify(`Import: ${r.error.error}`, 'err'); return; }
+      notify(`Imported (${r.data.cost.totalTokens} tokens · $${r.data.cost.costUsd.toFixed(4)})`);
+      setImportName('');
+      await load();
+    } finally { setImporting(false); if (importRef.current) importRef.current.value = ''; }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -61,7 +89,12 @@ export function ProductKnowledgeLibrary({ notify }: Props) {
         <div>
           <div className="eyebrow">Library</div>
           <h2 style={{ margin: '2px 0 0', fontSize: 18 }}>📚 Product Knowledge</h2>
-          <p className="muted small" style={{ marginTop: 4 }}>Reusable product profiles that ground copy, image and video prompts. Upload docs at a campaign (with “Save as reusable library entry”) to add one here. Profiles are text — the original files are not stored.</p>
+          <p className="muted small" style={{ marginTop: 4 }}>Your products — each profile grounds copy, image and video prompts. Import docs to add one, edit inline, or delete. Profiles are text — the original files are not stored.</p>
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          <input value={importName} disabled={importing} onChange={(e) => setImportName(e.target.value)} placeholder="Product name (optional)" style={{ width: 160 }} />
+          <button className="btn primary small" disabled={importing} onClick={() => importRef.current?.click()}>{importing ? 'Analyzing…' : '+ Import product'}</button>
+          <input ref={importRef} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.length) void importDocs(e.target.files); }} />
         </div>
       </div>
 
@@ -75,10 +108,15 @@ export function ProductKnowledgeLibrary({ notify }: Props) {
             <div key={e.id} className="card" style={{ padding: 14 }}>
               <div className="spread">
                 <button className="pk-lib-head" onClick={() => setOpenId((id) => (id === e.id ? null : e.id))}>
-                  <strong>{e.name}</strong>
-                  <span className="muted small" style={{ marginLeft: 8 }}>
-                    {e.language ?? 'no language'}{e.sourceDocs.length ? ` · ${e.sourceDocs.length} doc(s)` : ''} · updated {new Date(e.updatedAt).toLocaleDateString()}
-                  </span>
+                  <div><strong>{e.name}</strong>
+                    <span className="muted small" style={{ marginLeft: 8 }}>
+                      {e.language ?? 'no language'}{e.sourceDocs.length ? ` · ${e.sourceDocs.length} doc(s)` : ''} · updated {new Date(e.updatedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  {/* Short summary so the user scans their products at a glance without expanding. */}
+                  {(summaryOf(e.profile) || e.productDetails) && (
+                    <div className="muted small pk-summary">{summaryOf(e.profile) || e.productDetails}</div>
+                  )}
                 </button>
                 <div className="row" style={{ gap: 6 }}>
                   <button className="btn small" onClick={() => startEdit(e)}>Edit</button>

@@ -1,7 +1,7 @@
 // Leads page (Lead Collector §01.3). Two parts: an intake-token setup panel (mint the token
 // a funnel presents so leads land on THIS tenant) and the leads table with the hybrid score.
 import { useEffect, useState } from 'react';
-import { api, type LeadRow, type IntakeTokenRow } from '../api/client';
+import { api, type LeadRow, type IntakeTokenRow, type PostDto } from '../api/client';
 
 interface Props { notify: (msg: string, kind?: 'ok' | 'err') => void }
 
@@ -10,6 +10,7 @@ const scoreClass = (s: number | null): string => (s == null ? 'muted' : s >= 70 
 export function LeadsPage({ notify }: Props) {
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [tokens, setTokens] = useState<IntakeTokenRow[]>([]);
+  const [collectors, setCollectors] = useState<PostDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [setupOpen, setSetupOpen] = useState(false);
   const [freshToken, setFreshToken] = useState<string | null>(null);
@@ -17,9 +18,11 @@ export function LeadsPage({ notify }: Props) {
 
   const load = async () => {
     setLoading(true);
-    const [l, t] = await Promise.all([api.listLeads(), api.listIntakeTokens()]);
+    const [l, t, p] = await Promise.all([api.listLeads(), api.listIntakeTokens(), api.listPosts({ limit: 200 })]);
     if (l.ok) setLeads(l.data); else notify(`Leads: ${l.error.error}`, 'err');
     if (t.ok) setTokens(t.data);
+    // Posts with an active lead collector (a comment-capture keyword set) — the Leads Agent's watch list.
+    if (p.ok) setCollectors(p.data.filter((post) => Boolean(post.leadCaptureKeyword)));
     setLoading(false);
   };
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -100,8 +103,24 @@ export function LeadsPage({ notify }: Props) {
         </div>
       )}
 
+      {/* Lead Collector agent's watch list — posts actively collecting leads from comments. */}
+      {collectors.length > 0 && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div className="spread"><strong style={{ fontSize: 14 }}>💬 Active lead collectors</strong><span className="muted small">{collectors.length} post(s) watching comments</span></div>
+          <p className="muted small" style={{ marginTop: 4 }}>These published posts capture opt-in leads from comments matching their keyword. Use <strong>↻ Poll comments</strong> to pull new ones.</p>
+          <div className="post-summary-list" style={{ marginTop: 8 }}>
+            {collectors.map((p) => (
+              <div key={p.id} className="spread" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                <span className="small">🔑 <strong>{p.leadCaptureKeyword}</strong> · <span className="muted">{p.platforms.join(', ') || 'no platforms'} · {p.status}</span></span>
+                <span className="muted small">{p.postUrls?.facebook ? <a href={p.postUrls.facebook} target="_blank" rel="noreferrer">view post ↗</a> : 'not published'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? <div className="muted">Loading…</div> : leads.length === 0 ? (
-        <p className="muted">No leads yet. Open <strong>Intake setup</strong>, mint a token, and wire it into your form/Cal.com/webhook.</p>
+        <p className="muted">No leads yet. {collectors.length > 0 ? 'Your posts are watching comments — Poll to pull opt-ins, or wire an intake token into a form/Cal.com/webhook.' : <>Open <strong>Intake setup</strong>, mint a token, and wire it into your form/Cal.com/webhook — or set a lead-capture keyword on a post.</>}</p>
       ) : (
         <div className="lead-table">
           {leads.map((l) => (

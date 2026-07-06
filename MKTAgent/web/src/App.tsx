@@ -284,9 +284,11 @@ export function App() {
         </div>
         <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>✎ New chat</button>
         <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('connections'); }}>🔌 Connections</button>
-        <button className={`sidebar-item ${page === 'product-knowledge' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('product-knowledge'); }}>📚 Product Knowledge</button>
         <div className="flow-sidebar-tree">
-          {/* Leads and Flows are peer top-level workspaces — same tree-head level. */}
+          {/* Product Knowledge, Leads and Flows are peer top-level workspaces — same head level. */}
+          <div className="tree-section-head">
+            <button className={`tree-row level-1 tree-label flow-head ${page === 'product-knowledge' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('product-knowledge'); }}>📚 Product Knowledge</button>
+          </div>
           <div className="tree-section-head">
             <button className={`tree-row level-1 tree-label flow-head ${page === 'leads' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('leads'); }}>🎯 Leads</button>
           </div>
