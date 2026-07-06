@@ -26,20 +26,18 @@ Repo https://github.com/autoagentsolution-boop/agent_portal (private).
 See `docs/project-changelog.md` for detail; memory `project_fixes_and_collector_expansion`,
 `project_atria_phase03_credit_safety`, `project_llm_cost_accounting`, `project_atria_phase02_agent_layers`.
 
-## OPEN — Lead collector needs a KEYWORD per post (the "LinkedIn post not in Leads" finding)
-- The Leads page "💬 Active lead collectors" lists posts with a `leadCaptureKeyword` set. A post only
-  becomes a collector when a keyword is set (the opt-in trigger: `keyword + email` in a comment → lead).
-- DB check 2026-07-06 PM: 13 posts, **only 1 has a keyword** (`75f70734` "Atria AI", FB-only). Every
-  LinkedIn/multi-platform test post has NO keyword → correctly not shown. NOT a bug.
-- **UX gap:** posts created via the Master-Agent flow / published without ever setting a keyword never
-  become collectors. Options to consider next session:
-  1. Surface the keyword field IN the flow (Master-Agent capture or the post-create step), not only the
-     brief form, so the user sets it before publish.
-  2. Optional per-campaign default keyword auto-applied to new posts.
-  3. Show published posts in a "not collecting (no keyword)" state on the Leads page with a quick
-     "start collecting" action that sets a keyword + records comment sources.
-- Also: `commentSourceIds` for the one keyworded post is FB-only (published before multi-platform
-  support). Re-publish (or a poll) after setting keywords would record linkedin/threads/x ids now.
+## RESOLVED — "LinkedIn post not in Leads" (keyword gap) → activate-from-Leads
+- Root cause: a post only becomes a collector when a `leadCaptureKeyword` is set (the opt-in trigger).
+  DB check: 13 posts, only 1 had a keyword → LinkedIn/multi-platform test posts correctly weren't shown.
+- FIX (pushed `493ee84` + `c733db1` + `39cdb2e`): **`POST /posts/:id/collector { keyword }`** sets the
+  keyword and, on an already-published post, BACKFILLS comment watch sources from the live postUrls
+  (recordCommentSources) so it starts collecting across every platform at once. `keyword:null` stops it.
+  Leads page now lists every PUBLISHED post (posted/partial) with live state (🟢 collecting / 🟡 pending
+  / ⏸ not collecting) + inline keyword input + Start/Stop. Deleted posts (leadCollectorStatus=post_deleted)
+  are HIDDEN from the list; the leads they already captured PERSIST (mkt_lead cascades only with the
+  owner, never the post). Verified the posted LinkedIn post's URLs parse for all 5 platforms.
+- Still worth considering: capture the keyword IN the Master-Agent flow so new posts collect from
+  publish time (option 2) — deferred; the activate-from-Leads path covers the immediate need.
 
 ## Other deferred / next
 - Threads/LinkedIn/X comment fetchers are **LIVE-UNTESTED** (no creds); LinkedIn `/v2` vs `/rest` +
