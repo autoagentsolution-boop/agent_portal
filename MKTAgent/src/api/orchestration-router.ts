@@ -12,7 +12,9 @@ import { Router } from 'express';
 import { ok, fail, parseOr422, asyncHandler } from './http.ts';
 import { usageTotals } from '../cost/llm-usage.ts';
 import { buildPlanTiers } from '../orchestration/master/plan-tiers.ts';
-import { createRunBody, clarifyRunBody, saveRunBody } from './schemas.ts';
+import { createRunBody, clarifyRunBody, saveRunBody, applyTierBody, killSwitchBody } from './schemas.ts';
+import { getKillSwitch, setExternalActionsPaused } from '../system/kill-switch.ts';
+import { recordExternalAction } from '../connectors/audit/external-action-audit-log.ts';
 import { masterAgent } from '../orchestration/master/master-agent.ts';
 import { goalSpec, type GoalSpec } from '../orchestration/schemas/goal-spec.ts';
 import { workflowPlan, type WorkflowPlan } from '../orchestration/schemas/workflow-plan.ts';
@@ -367,6 +369,51 @@ orchestrationRouter.get('/runs/:id', asyncHandler(async (req, res) => {
     ? await getFlowCostRollup(full.id, req.userId!)
     : undefined;
   ok(res, toRunDto(full, flowCost ? { flowCost } : {}));
+}));
+
+// Apply a chosen plan tier (Phase 03 checkpoint 2): rebuild the run's plan from the picked
+// Economy/Balanced/Full variant so a subsequent execute runs THAT DAG. Only before execution
+// (planned / awaiting_clarification) — a running/completed run can't be re-tiered.
+orchestrationRouter.post('/runs/:id/apply-tier', asyncHandler(async (req, res) => {
+  const body = parseOr422(res, applyTierBody, req.body ?? {});
+  if (!body) return;
+  const run = await getRunForOwner(req.params.id, req.userId!);
+  if (!run) return fail(res, 404, 'run_not_found');
+  if (run.status === 'running' || run.status === 'completed') return fail(res, 409, 'run_not_retierable', 'this run is already executing or finished');
+  const owned = await agentCostAverages(req.userId!);
+  const history = owned.length ? owned : await agentCostAverages();
+  const tier = buildPlanTiers(goalSpec.parse(run.goal), history).find((t) => t.id === body.tierId);
+  if (!tier) return fail(res, 422, 'tier_unavailable', `tier ${body.tierId} is not offered for this goal`);
+  await deleteNodes(run.id, req.userId!);
+  await replanRun(run.id, 'planned', run.goal as object, tier.plan);
+  await createNodes(run.id, req.userId!, tier.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
+  const full = await getRunWithNodes(run.id, req.userId!);
+  ok(res, toRunDto(full!));
+}));
+
+// Kill switch — run abort (Phase 03 safety): flip the run to 'aborted' so the detached executor
+// stops at the next node boundary. Idempotent; refused once the run is already terminal.
+orchestrationRouter.post('/runs/:id/abort', asyncHandler(async (req, res) => {
+  const run = await getRunForOwner(req.params.id, req.userId!);
+  if (!run) return fail(res, 404, 'run_not_found');
+  if (['completed', 'failed', 'aborted'].includes(run.status)) return fail(res, 409, 'run_terminal', `run already ${run.status}`);
+  await setRunStatus(run.id, 'aborted');
+  await recordExternalAction({ ownerId: req.userId!, runId: run.id, platform: 'system', actionKey: 'run.abort', status: 'ok', detail: { from: run.status } }).catch(() => {});
+  ok(res, { id: run.id, status: 'aborted' });
+}));
+
+// Kill switch — global external-actions pause (Phase 03 safety). GET reads state; POST toggles
+// (audited). When paused, the connector runtime refuses every external write platform-wide.
+orchestrationRouter.get('/killswitch', asyncHandler(async (req, res) => {
+  void req;
+  ok(res, await getKillSwitch());
+}));
+orchestrationRouter.post('/killswitch', asyncHandler(async (req, res) => {
+  const body = parseOr422(res, killSwitchBody, req.body ?? {});
+  if (!body) return;
+  const state = await setExternalActionsPaused(body.paused, req.userId!);
+  await recordExternalAction({ ownerId: req.userId!, platform: 'system', actionKey: 'kill_switch.toggle', status: 'ok', detail: { paused: body.paused } }).catch(() => {});
+  ok(res, state);
 }));
 
 // Multi-tier plan options for a run's goal (Phase 03 checkpoint 2): Economy / Balanced / Full,

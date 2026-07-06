@@ -14,6 +14,17 @@ paths + cleared on fresh generation; `runConceptWriterForExistingPost` now PRESE
 (emits it as the artifact, no LLM/cost) unless it's an explicit rework or the post is unedited.
 verify-edit-loss 7/7 green.
 
+### Phase 03: kill switch + tier-selection wiring (safety layers)
+- **Kill switch** — `src/system/kill-switch.ts` + `mkt_system_flag` table (migration). Global
+  external-actions pause checked FIRST at the connector-runtime chokepoint (`invokeAction`) — a
+  paused system refuses every outbound write platform-wide, audited. Run-level **abort**: `POST
+  /orchestration/runs/:id/abort` flips the run to `aborted`; the detached executor honors it at each
+  node boundary (new `getRunStatusById` + between-node check). `GET|POST /orchestration/killswitch`
+  toggles the global pause (audited). verify-kill-switch green.
+- **Tier-selection wiring** — `POST /orchestration/runs/:id/apply-tier {tierId}` rebuilds the run's
+  plan from the chosen Economy/Balanced/Full variant (deleteNodes + replanRun + createNodes) so a
+  subsequent execute runs that DAG. Guarded to pre-execution state.
+
 ### Phase 03: credit model + multi-tier plan cards
 - **Credit model** — `src/cost/credits.ts`: friendly `credits` = real tokens / a display divisor
   (250; 15k tokens ≈ 60 credits) — transparent passthrough, no markup. `credits` now rides on the

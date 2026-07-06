@@ -558,6 +558,18 @@ model LlmUsage {
   @@map("mkt_llm_usage")
 }
 
+// Runtime-toggleable system flags (Atria Phase 03 safety) — the kill switch lives here. Keyed
+// by a stable string (e.g. "external_actions_paused"); `enabled` is the toggle. A single row per
+// flag; toggling is audited (who/when). Env can't be flipped at runtime, hence a DB flag.
+model SystemFlag {
+  key       String   @id
+  enabled   Boolean  @default(false)
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("mkt_system_flag")
+}
+
 // External-action audit log (brief §11.13) — one row per outward-writing action the
 // Connector Runtime performs (publish to a platform, future email/CRM/upload). Records
 // who/what/where/outcome with REDACTED request/response (no token, no secret — the

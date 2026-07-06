@@ -19,6 +19,7 @@ import {
   getRunWithNodes,
   setRunStatus,
   setNodeStatus,
+  getRunStatusById,
 } from '../../db/repos/workflow-run-repo.ts';
 import { getPostByRunId, approveReview } from '../../db/repos/post-repo.ts';
 import { platformSupportsAsset } from '../../social/postability.ts';
@@ -83,6 +84,7 @@ export interface ExecuteOptions {
 export type ExecuteOutcome =
   | { status: 'needs_approval'; nodeId: string }
   | { status: 'completed' }
+  | { status: 'aborted'; nodeId: string }
   | { status: 'failed'; nodeId: string; error: string };
 
 // Run (or resume) a run's DAG. The run + nodes already exist in the DB (created at
@@ -167,6 +169,13 @@ export const runWorkflow = async (
     const planNode = nodeByPlanId.get(planNodeId)!;
     const nodeRow = nodeRowByPlanId.get(planNodeId)!;
     if (nodeRow.status === 'completed' || nodeRow.status === 'skipped') continue;
+
+    // Kill switch (run abort): POST /runs/:id/abort flips the run to 'aborted'. The detached
+    // executor honors it at each node boundary — stop cleanly BEFORE spending on the next node.
+    if ((await getRunStatusById(runId)) === 'aborted') {
+      publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'aborted' });
+      return { status: 'aborted', nodeId: planNodeId };
+    }
 
     // Concept selection gate — RESUME: the run parked here after concept produced its versions.
     // On approve-node(concept) the user has picked a version (+ optional reference image) → approve

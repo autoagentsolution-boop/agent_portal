@@ -12,6 +12,7 @@
 import { publishTo } from '../../social/index.ts';
 import { getConnector, getConnectorAction } from '../registry/connector-registry.ts';
 import { recordExternalAction } from '../audit/external-action-audit-log.ts';
+import { isExternalActionsPaused } from '../../system/kill-switch.ts';
 import { findPriorSuccess, publishIdempotencyKey } from './idempotency-manager.ts';
 import { acquireSlot } from './rate-limit-manager.ts';
 import { withRetry } from '../../lib/retry.ts';
@@ -60,6 +61,15 @@ export const invokeAction = async (args: InvokeActionArgs): Promise<InvokeResult
   const action = getConnectorAction(platform, actionKey);
   if (!action) {
     return { ok: false, platform, actionKey, externalId: null, error: `${platform} does not support ${actionKey}` };
+  }
+
+  // Kill switch (Phase 03 safety): a GLOBAL pause blocks EVERY external action platform-wide —
+  // checked FIRST (before input validation) so a paused system refuses everything, and audited so
+  // ops sees exactly what was held. A DRY-RUN publish never reaches here (it bypasses the runtime).
+  if (await isExternalActionsPaused()) {
+    await recordExternalAction({ ownerId, platform, actionKey, status: 'error', error: 'external_actions_paused', detail: { killSwitch: true } }).catch(() => {});
+    logger.warn('connector_paused_by_kill_switch', { ownerId, platform, actionKey });
+    return { ok: false, platform, actionKey, externalId: null, error: 'external_actions_paused' };
   }
   // Validate required inputs are present before spending a network call (§11.4).
   const missing = action.requiredInputs.filter((k) => {

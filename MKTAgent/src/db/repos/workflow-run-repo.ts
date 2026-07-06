@@ -127,6 +127,11 @@ export const getRunForOwner = (id: string, ownerId: string): Promise<WorkflowRun
 
 // Scoped delete (cascades to child nodes + artifacts via FK onDelete: Cascade).
 // Refuses a run that is mid-execution (running) so a detached executor can't write to
+// Cheap run-status read for the detached executor's between-node abort check (§kill switch).
+// No owner scope — the executor is trusted and holds the runId. null = run gone.
+export const getRunStatusById = async (id: string): Promise<string | null> =>
+  (await prisma.workflowRun.findUnique({ where: { id }, select: { status: true } }))?.status ?? null;
+
 // a deleted run. Returns: 'deleted' | 'not_found' (wrong tenant / id) | 'in_flight'.
 export const deleteRun = async (
   id: string,

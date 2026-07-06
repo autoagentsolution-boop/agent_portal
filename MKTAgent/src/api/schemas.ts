@@ -48,6 +48,14 @@ export const refinePostBody = z.object({
 // Manual copy edit — the user hand-edits the generated copy (no LLM, no token spend).
 // All three lenses supplied together (the editor shows them together). Lands the post
 // back at `review` so it is re-approved before publishing.
+// Apply a plan tier (Phase 03 checkpoint 2): pick Economy/Balanced/Full → run that variant.
+export const applyTierBody = z.object({ tierId: z.enum(['economy', 'balanced', 'full']) });
+export type ApplyTierBody = z.infer<typeof applyTierBody>;
+
+// Toggle the global external-actions kill switch (Phase 03 safety).
+export const killSwitchBody = z.object({ paused: z.boolean() });
+export type KillSwitchBody = z.infer<typeof killSwitchBody>;
+
 export const editCopyBody = z.object({
   body: z.string().max(8000),
   threads: z.string().max(8000),
