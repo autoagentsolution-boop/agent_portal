@@ -38,6 +38,15 @@ export type ProductKnowledgeEntry = {
 export type PostDto = Dto['PostDto'];
 export type PostDetailDto = Dto['PostDetailDto'];
 export type LeadDto = Dto['LeadDto'];
+// Lead Collector (§01) — routes not in openapi yet, hand-typed.
+export type LeadScoreReason = { layer: 'rule' | 'llm'; reason: string; delta: number };
+export type LeadRow = {
+  id: string; name: string | null; email: string; phone: string | null; message: string | null;
+  sourceProduct: string | null; source: 'webhook' | 'form' | 'calcom' | 'comment';
+  calBookingUid: string | null; score: number | null; scoreReasons: LeadScoreReason[]; receivedAt: string;
+};
+export type IntakeTokenRow = { id: string; label: string | null; active: boolean; createdAt: string; lastUsedAt: string | null };
+export type CreatedIntakeToken = { id: string; token: string; label: string | null; createdAt: string };
 export type AgentIntakeDraft = {
   selectedTemplateId: 'branding-video-post';
   selectedTemplateTitle: 'Branding / Social Video Post Flow';
@@ -162,6 +171,12 @@ export const api = {
   deleteProductKnowledge: (id: string) => request<void>(`/product-knowledge/${id}`, { method: 'DELETE' }),
   listCampaigns: () => request<CampaignDto[]>('/campaigns'),
   getCampaign: (id: string) => request<CampaignDto>(`/campaigns/${id}`),
+  // Lead Collector (§01)
+  listLeads: () => request<LeadRow[]>('/leads'),
+  rescoreLead: (id: string) => request<LeadRow>(`/leads/${id}/rescore`, { method: 'POST' }),
+  listIntakeTokens: () => request<IntakeTokenRow[]>('/leads/intake-tokens'),
+  createIntakeToken: (label?: string) => request<CreatedIntakeToken>('/leads/intake-tokens', { method: 'POST', body: label ? { label } : {} }),
+  revokeIntakeToken: (id: string) => request<void>(`/leads/intake-tokens/${id}`, { method: 'DELETE' }),
   createCampaign: (body: Dto['CreateCampaignBody']) =>
     request<CampaignDto>('/campaigns', { method: 'POST', body }),
   updateCampaign: (id: string, body: Dto['UpdateCampaignBody']) =>
@@ -200,8 +215,6 @@ export const api = {
   reject: (id: string, feedback: string) =>
     request<PostDto>(`/posts/${id}/reject`, { method: 'POST', body: { feedback } }),
   publishNow: (id: string) => request<PostDto>(`/posts/${id}/publish-now`, { method: 'POST' }),
-
-  listLeads: () => request<LeadDto[]>('/leads'),
 
   // ---- Orchestration (M1 goal-based agent workflows) ----
   createRun: (message: string, chatSessionId?: string) =>

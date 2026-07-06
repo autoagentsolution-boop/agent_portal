@@ -536,6 +536,16 @@ a { color: var(--accent); }
 .back-to-posts { margin-bottom: 12px; }
 .pk-lib-head { background: none; border: none; text-align: left; cursor: pointer; color: var(--text); padding: 0; flex: 1; min-width: 0; }
 .pk-lib-head:hover strong { color: var(--accent); }
+/* Leads table */
+.lead-table { display: flex; flex-direction: column; gap: 8px; }
+.lead-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; }
+.lead-main { flex: 1; min-width: 0; }
+.lead-head { display: flex; align-items: baseline; gap: 8px; }
+.lead-score { width: 44px; height: 44px; flex-shrink: 0; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; cursor: help; }
+.lead-score.score-hot { background: color-mix(in srgb, var(--green) 22%, transparent); color: var(--green); }
+.lead-score.score-warm { background: color-mix(in srgb, var(--amber) 22%, transparent); color: var(--amber); }
+.lead-score.score-cold { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); }
+.lead-score.muted { background: var(--panel2); }
 .plan-platforms { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
 .platform-chip { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); font-size: 11px; font-weight: 500; }
 .gate-block { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--radius); border: 1px solid var(--amber); background: rgba(210,153,34,0.06); }

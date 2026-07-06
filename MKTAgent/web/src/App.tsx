@@ -6,9 +6,10 @@ import { ActiveFlowsPage } from './components/ActiveFlowsPage';
 import { OrchestratePanel, type OrchestrateRestore } from './components/OrchestratePanel';
 import { ConnectionsPanel } from './components/ConnectionsPanel';
 import { ProductKnowledgeLibrary } from './components/ProductKnowledgeLibrary';
+import { LeadsPage } from './components/LeadsPage';
 import type { DemoMode } from './flow/demo-flow';
 
-type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge';
+type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads';
 type Theme = 'light' | 'dark';
 
 const postTitle = (post: PostDto, index: number): string => {
@@ -284,6 +285,7 @@ export function App() {
         <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>✎ New chat</button>
         <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('connections'); }}>🔌 Connections</button>
         <button className={`sidebar-item ${page === 'product-knowledge' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('product-knowledge'); }}>📚 Product Knowledge</button>
+        <button className={`sidebar-item ${page === 'leads' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('leads'); }}>🎯 Leads</button>
         <div className="flow-sidebar-tree">
           <div className="tree-section-head">
             <button className={`tree-row level-1 tree-label flow-head ${page === 'flows' && !selectedRunId && !activeCampaign ? 'active' : ''}`} onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>▦ Flows</button>
@@ -349,6 +351,10 @@ export function App() {
         ) : page === 'product-knowledge' ? (
           <div className="master-home">
             <ProductKnowledgeLibrary notify={show} />
+          </div>
+        ) : page === 'leads' ? (
+          <div className="master-home">
+            <LeadsPage notify={show} />
           </div>
         ) : (
           <ActiveFlowsPage
