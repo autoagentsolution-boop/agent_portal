@@ -224,7 +224,9 @@ export const editPostCopy = async (
 ): Promise<Post | null> => {
   const r = await prisma.post.updateMany({
     where: { id, ownerId, status: { in: ['review', 'ready'] } },
-    data: { copy: copy as unknown as Prisma.InputJsonValue, status: 'review' },
+    // copyEdited=true protects this user edit (manual /edit-copy or /select-variant) from being
+    // regenerated over when concept_writer re-runs on a flow continue (the edit-loss fix).
+    data: { copy: copy as unknown as Prisma.InputJsonValue, status: 'review', copyEdited: true },
   });
   return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
 };

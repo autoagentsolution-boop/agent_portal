@@ -223,6 +223,10 @@ model Post {
   // All variants are in the post's resolved `language` (T3 — one language per post).
   // JSON (not fixed columns) so any language scales without a schema change.
   copy        Json?            @map("copy")
+  // True once the USER has modified the copy (manual /edit-copy, /select-variant, or AI /refine).
+  // Protects that work: concept_writer must NOT regenerate over user-modified copy on a flow re-run
+  // (the edit-loss bug). A fresh generation (rework / regenerate) clears it back to false.
+  copyEdited  Boolean          @default(false) @map("copy_edited")
   // Free-form language override (null → inherit campaign.language → user.defaultLanguage).
   language    String?          @map("language")
   lengthSpec  String?          @map("length_spec") // short|medium|long|<wordcount>

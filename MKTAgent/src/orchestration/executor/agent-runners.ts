@@ -22,6 +22,7 @@ import { generate as generateVideo, type VideoRequest, type VideoResult } from '
 import { generate as generateTts, type TtsRequest } from '../../video/tts.ts';
 import { stitchClips, muxAudio } from '../../video/stitch.ts';
 import { access } from 'node:fs/promises';
+import { listArtifacts } from './artifact-store.ts';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
 import { logger } from '../../lib/logger.ts';
 import { estimateLlmCost, imageCost, videoClipCost, ttsCost, sumCost, costFromUsage, type NodeCost, type GeminiUsage } from './node-cost.ts';
@@ -127,9 +128,40 @@ const finalizeConcept = async (ctx: RunnerContext, postId: string): Promise<Runn
 // post.runId = this run) and its Campaign already carries the merged strategy. We only
 // run copy-gen on it + approve review→ready — we do NOT create a new campaign/post. This
 // is the flow-as-template path: one template → many posts, each its own instance run.
+// Preserve user-modified copy on a flow re-run (edit-loss fix): emit a content_concept artifact
+// built from the CURRENT post.copy — the user's manual edit / version selection / AI refine — WITHOUT
+// calling copy-gen. No LLM, no cost. Reuses the prior artifact's variant list when still present so
+// the version picker keeps all options; post.copy is the authoritative active copy either way.
+const conceptFromExistingCopy = async (ctx: RunnerContext, post: { id: string; copy: unknown }): Promise<RunnerOutput> => {
+  const copy = post.copy as { body?: string } | null;
+  const existing = (await listArtifacts(ctx.runId)).find((a) => a.type === 'content_concept')?.data as
+    | { mainAngle?: string; variants?: unknown[]; chosen?: number }
+    | undefined;
+  return {
+    type: 'content_concept',
+    postId: post.id,
+    data: {
+      mainAngle: existing?.mainAngle ?? ctx.goal.slots.angle ?? ctx.goal.slots.product ?? 'marketing concept',
+      keyMessage: (copy?.body ?? '').slice(0, 200),
+      copy,
+      variants: existing?.variants ?? (copy ? [copy] : []),
+      chosen: existing?.chosen ?? 0,
+      postId: post.id,
+    },
+  };
+};
+
 const runConceptWriterForExistingPost = async (ctx: RunnerContext, postId: string): Promise<RunnerOutput> => {
   const post = await getPostForOwner(postId, ctx.ownerId);
   if (!post) throw new Error('concept_writer: attached post not found');
+
+  // EDIT-LOSS FIX: if the user has modified the copy (copyEdited — manual edit / version select / AI
+  // refine) and this isn't an explicit rework, a flow re-run must PRESERVE that work — emit the
+  // existing copy instead of regenerating over it. Only a rework (user asked for new copy) or an
+  // unedited post regenerates.
+  if (post.copyEdited && post.copy && post.status !== 'rework') {
+    return conceptFromExistingCopy(ctx, post);
+  }
 
   // Reset to `brief` so copy-gen runs whether this is the first execution (already brief)
   // or a re-run of a post that reached review/ready/posted (would otherwise be refused as

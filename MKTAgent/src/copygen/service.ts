@@ -83,6 +83,7 @@ async function processCopyGen(
     language: cfg.language,
     status: 'review',
     error: null,
+    copyEdited: false, // fresh generation → not a user edit; concept_writer may regenerate freely
   });
   await logRun(
     'info',
@@ -155,7 +156,7 @@ export async function refineForPost(
       return { picked: true, postId, status: 'retry', error: result.error };
     }
     const cfg = resolveCopyConfig(post);
-    await updatePost(post.id, { copy: result.copy as unknown as object, language: cfg.language, status: 'review', error: null });
+    await updatePost(post.id, { copy: result.copy as unknown as object, language: cfg.language, status: 'review', error: null, copyEdited: true });
     await logRun('info', 'mkt_copygen_refine', { id: post.id, instruction: instruction.slice(0, 120) }, post.ownerId);
     publishPostStatus(post.ownerId, { postId: post.id, status: 'review', campaignId: post.campaignId });
     return { picked: true, postId: post.id, status: 'review' };
@@ -198,7 +199,7 @@ export async function generateVariantsForPost(
       return { picked: true, postId, status: 'retry', error: result.error };
     }
     const cfg = resolveCopyConfig(post);
-    await updatePost(post.id, { copy: result.variants[0] as unknown as object, language: cfg.language, status: 'review', error: null });
+    await updatePost(post.id, { copy: result.variants[0] as unknown as object, language: cfg.language, status: 'review', error: null, copyEdited: false });
     await logRun('info', 'mkt_copygen', { id: post.id, status: 'review', variants: result.variants.length, language: cfg.language }, post.ownerId);
     publishPostStatus(post.ownerId, { postId: post.id, status: 'review', campaignId: post.campaignId });
     return { picked: true, postId: post.id, status: 'review', variants: result.variants };
