@@ -82,6 +82,23 @@ export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
     });
   }
 
+  // Product Expert (Atria Phase 02) — "ask-until-enough" depth probe. isThinProduct clears at
+  // productDetails ≥12 chars, but 12 chars ("skincare serum ABC") is a name, not knowledge the
+  // agents can build specific copy/images from. When we have SOME substance but it's still brief
+  // (12–40 chars), ask ONE more targeted round for the differentiator / audience-fit / proof.
+  // BOUNDED, so it cannot loop: a substantive answer accumulates productDetails past the 40-char
+  // bar and the probe stops. Kept SEPARATE from isThinProduct so the tuned accountType/audience/
+  // angle required-ness (which keys off thinProduct) is unchanged — this only raises the product
+  // substance bar, the one gap the tuned gates left open.
+  const productDetailsLen = (goal.slots.productDetails ?? '').trim().length;
+  if (!thinProduct && !personalTopic && Boolean(goal.slots.product) && productDetailsLen > 0 && productDetailsLen < 40) {
+    q.push({
+      slot: 'productDetails',
+      question: 'Tell me a bit more so the content is specific: what makes it different, who is it for, and any proof or results?',
+      required: true,
+    });
+  }
+
   // No output requirement at all → the request is too vague to plan; offer the
   // brief's §4 output_format menu as a required multiple-choice.
   const anyOutput =

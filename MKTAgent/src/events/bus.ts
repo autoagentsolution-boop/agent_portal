@@ -26,6 +26,10 @@ export interface NodeStatusEvent {
   agentId: string;
   status: string;
   error?: string | null;
+  // Optimal-time publishing suggestion (Phase 02) — set on the publisher node's
+  // `awaiting_approval` event so the approval UI can show the recommended window
+  // BEFORE the user approves. Absent on every other event.
+  timingSuggestion?: string | null;
   at: string; // ISO 8601
 }
 
@@ -94,6 +98,7 @@ export const publishNodeStatus = (
     agentId: event.agentId,
     status: event.status,
     error: event.error ?? null,
+    timingSuggestion: event.timingSuggestion ?? null,
   };
   for (const fn of set) {
     try {

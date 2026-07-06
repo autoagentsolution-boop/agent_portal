@@ -5,6 +5,30 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-06
 
+### Atria Phase 02 (agent layers) + Phase 05-A (agent schema) — NOT committed
+Plan `plans/260706-1040-atria-mvp-leads-priority/` (phases 02 + 05). No migration (all additive Zod
+artifact-schema fields, no Prisma change). Verified: verify-researcher, verify-publish-timing,
+verify-leads-criteria, verify-memory + the existing suites (executor/planner/api/leads) all green;
+`tsc` clean; container rebuilt.
+- **05-A agent schema** — `AgentDefinition` += additive persona fields (emoji/group/vibe/successMetrics/
+  decisionFramework/promptSections); new `agent-groups.ts` (Intelligence/Action/Assistant division
+  taxonomy); all 8 registry agents authored with persona + group. Existing DAG wiring untouched.
+- **Researcher (net-new, `content_search` stub→live)** — `src/agents/researcher/`: Gemini
+  `google_search` grounding (no new provider) → `research_summary` with citations. `runResearch`
+  never throws (missing grounding tier → knowledge-only fallback). New `researchFn` DRY-RUN seam.
+- **Memory facade** — `src/memory/profile-facade.ts`: `getProfile`/`getProduct`/`remember` over the
+  ProductKnowledge library + user defaults (owner-scoped, no new table). Consumed by Phase 04 UI.
+- **Product Expert** — clarification-engine bounded product-depth probe: a 12–40 char productDetails
+  ("skincare serum") gets one more required round for differentiator/proof/fit (loop-safe — a
+  substantive answer clears it). Raises the thin-product substance bar without touching the tuned gates.
+- **Strategist ↔ Lead Collector bridge** — `leads/scoring/criteria.ts`: weights are now data
+  (`LeadScoringCriteria`); `ruleScore(input, criteria?)` (defaults reproduce old scores exactly); the
+  Strategist proposes criteria from funnel stage/audience onto the `strategy_brief` artifact.
+- **Publisher optimal-time** — `src/agents/publish-timing/`: pure heuristic best-window suggestion,
+  surfaced at the publisher approval halt (SSE `timingSuggestion`) + recorded on `publish_result`.
+- **Known pre-existing red (NOT this diff):** verify-master 2 checks fail on the empty-plan guard for
+  a storyboard-only goal — confirmed present on baseline `1abe71b`.
+
 ### Lead Collector — Atria Phase 01 (per-tenant, encrypted, scored, comment-capture)
 Full Lead Collector vertical (plan `plans/260706-1040-atria-mvp-leads-priority/phase-01`). 4 additive
 migrations. Verified by 5 suites (verify-leads-{tenancy,pii,scoring,comments} + verify-api).

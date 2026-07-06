@@ -35,6 +35,21 @@ export const strategyBrief = z.object({
   audience: z.string(),
   pillars: z.array(z.string()).default([]),
   funnelStage: z.string(),
+  // Lead-scoring criteria the Strategist PROPOSES from the funnel stage/audience (Phase 02
+  // Strategist ↔ Lead Collector bridge). Optional so legacy briefs + the LLM output (which
+  // doesn't emit it) stay valid; the runner attaches it. Loosely shaped — the source of truth
+  // is LeadScoringCriteria in leads/scoring/criteria.ts.
+  leadScoringCriteria: z
+    .object({
+      sourceWeights: z.record(z.number()).optional(),
+      unknownSourceWeight: z.number().optional(),
+      baseWeight: z.number().optional(),
+      phoneWeight: z.number().optional(),
+      detailedMessageWeight: z.number().optional(),
+      shortMessageWeight: z.number().optional(),
+      detailedMessageMinLen: z.number().optional(),
+    })
+    .optional(),
 });
 
 // content_search → research_summary (stub in M1).
@@ -95,6 +110,9 @@ export const publishResult = z.object({
   status: z.enum(['posted', 'partial', 'error', 'dry_run', 'awaiting_approval']),
   postUrls: z.record(z.string()).nullable().default(null),
   error: z.string().nullable().default(null),
+  // Optimal-time suggestion recorded at the publish approval gate (Phase 02). Optional
+  // so legacy artifacts + the DRY stub stay valid; a human-readable multi-line string.
+  timingSuggestion: z.string().optional(),
 });
 
 // Lookup: artifactType → its payload schema. The executor uses this to validate

@@ -25,6 +25,10 @@ import { access } from 'node:fs/promises';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
 import { logger } from '../../lib/logger.ts';
 import { estimateLlmCost, imageCost, videoClipCost, ttsCost, sumCost, type NodeCost } from './node-cost.ts';
+import { runResearch } from '../../agents/researcher/run-research.ts';
+import type { GroundedSearchFn } from '../../agents/researcher/grounded-search.ts';
+import { suggestPublishTimes, summarizeTiming } from '../../agents/publish-timing/suggest-time.ts';
+import { proposeLeadScoringCriteria } from '../../leads/scoring/criteria.ts';
 
 // Per-run mutable context threaded through node executions. Artifacts already
 // produced upstream are addressable by type (the executor passes them in).
@@ -50,6 +54,11 @@ export interface RunnerContext {
   videoFn?: (req: VideoRequest) => Promise<VideoResult>;
   // Voiceover (TTS) seam (video agent). Stubbed in DRY-RUN verification.
   ttsFn?: (req: TtsRequest) => Promise<{ outputFile: string; cached: boolean }>;
+  // Web-search seam (researcher agent — Gemini Google-Search grounding). Stubbed in
+  // DRY-RUN verification so content_search spends nothing / hits no network. When unset
+  // the researcher falls back to its own default grounded call (real API) then to a
+  // knowledge-only summary if that call is unavailable.
+  researchFn?: GroundedSearchFn;
   // The Post row id materialized by concept_writer, reused by publisher.
   postId?: string;
 }
@@ -166,6 +175,31 @@ const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   return finalizeConcept(ctx, post.id);
 };
 
+// content_search / researcher (LIVE — Phase 02): market/competitor/pain-point research via
+// Gemini Google-Search grounding (no new provider). Grounds later agents (ideation/concept)
+// through the research_summary artifact they already consume as an optional input. runResearch
+// NEVER throws — a missing search tier degrades to a knowledge-only summary — so this node
+// can't hard-fail the DAG on an unavailable grounding tier.
+const runResearcher = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const knowledge = await resolveProductKnowledge(ctx);
+  const language = await resolveRunLanguage(ctx);
+  const data = await runResearch(
+    {
+      product: ctx.goal.slots.product ?? 'the product',
+      productKnowledge: knowledge,
+      audience: ctx.goal.slots.targetAudience ?? null,
+      language,
+      angle: ctx.goal.slots.angle ?? null,
+    },
+    ctx.researchFn,
+  );
+  return {
+    type: 'research_summary',
+    data,
+    cost: estimateLlmCost(`${ctx.goal.slots.product ?? ''}\n${knowledge ?? ''}`, `${data.summary}\n${data.sourceNotes.join('\n')}`),
+  };
+};
+
 // publisher (LIVE): publish the Post materialized by concept_writer. Gated by the
 // executor's approval halt BEFORE this runs; here we just invoke the publish path.
 // A stub publishFn (DRY-RUN) returns ok results without hitting any platform.
@@ -184,6 +218,16 @@ const runPublisher = async (ctx: RunnerContext): Promise<RunnerOutput> => {
       status: out.status === 'posted' || out.status === 'partial' || out.status === 'error' ? out.status : 'awaiting_approval',
       postUrls: (post?.postUrls as Record<string, string> | null) ?? null,
       error: post?.error ?? null,
+      // Optimal-time suggestion (Phase 02) persisted on the artifact as a record of what
+      // was recommended at the approval gate. The live pre-approval surface is the SSE
+      // event emitted at the halt (workflow-executor); this keeps it visible on reload.
+      timingSuggestion: summarizeTiming(
+        suggestPublishTimes({
+          platforms: post?.platforms ?? ctx.goal.platforms,
+          audience: ctx.goal.slots.targetAudience ?? null,
+          language: await resolveRunLanguage(ctx),
+        }),
+      ),
     },
   };
 };
@@ -262,7 +306,11 @@ const runStrategy = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const raw = await call(strategySystemPrompt, prompt);
   const parsed = strategyBrief.safeParse(raw);
   if (!parsed.success) throw new Error(`strategy: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
-  return { type: 'strategy_brief', data: parsed.data, cost: estimateLlmCost(strategySystemPrompt + prompt, JSON.stringify(parsed.data)) };
+  // Strategist ↔ Lead Collector bridge (Phase 02): propose lead-scoring weights tuned to the
+  // brief's funnel stage + audience. Deterministic (no extra LLM cost); rides on the artifact so
+  // the user can see/tune it. The rule scorer already accepts a LeadScoringCriteria override.
+  const data = { ...parsed.data, leadScoringCriteria: proposeLeadScoringCriteria({ funnelStage: parsed.data.funnelStage, audience: parsed.data.audience }) };
+  return { type: 'strategy_brief', data, cost: estimateLlmCost(strategySystemPrompt + prompt, JSON.stringify(parsed.data)) };
 };
 
 // Build an image prompt from the concept/strategy upstream. Two deliberately distinct
@@ -492,13 +540,10 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   return { type: 'video_prompt', data: parsed.data, cost: sumCost(videoClipCost(rendered), ttsRendered ? ttsCost() : undefined) };
 };
 
-// Stubs — schema-valid placeholders so the DAG completes end-to-end in M1.
-const stub = (type: ArtifactType, data: unknown) => async (): Promise<RunnerOutput> => ({ type, data });
-
 const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOutput>> = {
   ideation: runIdeation,
   strategy: runStrategy,
-  content_search: stub('research_summary', { summary: 'Placeholder research summary (stub agent).', sourceNotes: [] }),
+  content_search: runResearcher,
   concept_writer: runConceptWriter,
   infographic: runInfographic,
   storyboard: runStoryboard,

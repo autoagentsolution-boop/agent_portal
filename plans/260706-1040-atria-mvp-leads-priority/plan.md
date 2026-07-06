@@ -1,5 +1,13 @@
 # Atria MVP — merge plan (Lead Collector first)
 
+> **Status (2026-07-06):** Phase 01 DONE+pushed (thru `1abe71b`). **Phase 02 + 05-A DONE, NOT
+> committed** — agent schema/personas, Researcher (content_search→live grounding), Memory facade,
+> Product Expert depth probe, Strategist↔lead-scoring bridge, Publisher optimal-time. No migration;
+> tsc + 11 verify suites green; container rebuilt. Remaining: **Phase 03** (multi-tier plans + credit
+> + 5 safety layers), **Phase 04** (command-center UI adaptation — consumes agent-groups + Memory
+> facade + timingSuggestion + strategy leadScoringCriteria), **Phase 05-B/C** (mine agency-agents
+> prompts; wire divisions into the grouped UI). Pre-existing red: verify-master empty-plan guard (2).
+
 Compare of `RefactorIdea/Atria-MVP-Plan.md` + `atria-command-center-v2.html` against the
 current `MKTAgent/` backbone, with a build order that puts **Lead Collector** first (the
 make-or-break the user flagged). **Planning only — no code in this pass.**

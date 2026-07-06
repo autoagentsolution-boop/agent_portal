@@ -24,6 +24,7 @@ import { getPostByRunId, approveReview } from '../../db/repos/post-repo.ts';
 import { platformSupportsAsset } from '../../social/postability.ts';
 import { publishAssetType, distinctAssetTypes } from '../../scheduler/resolve-input.ts';
 import { publishNodeStatus } from '../../events/bus.ts';
+import { suggestPublishTimes, summarizeTiming } from '../../agents/publish-timing/suggest-time.ts';
 import { logRun } from '../../db/client.ts';
 import type { NodeExecResult } from './agent-executor.ts';
 
@@ -59,6 +60,7 @@ export interface ExecuteOptions {
   imageFn?: RunnerContext['imageFn'];
   videoFn?: RunnerContext['videoFn'];
   ttsFn?: RunnerContext['ttsFn'];
+  researchFn?: RunnerContext['researchFn'];
   // When true, the executor RUNS the gated node instead of halting (post-approval).
   approveNodeId?: string;
   // Auto-publish (item 2): when true (DEFAULT), the publisher external-write gate is
@@ -136,7 +138,7 @@ export const runWorkflow = async (
       await setRunStatus(runId, 'failed');
       return { status: 'failed', nodeId: opts.rerunOnly, error: 'node_not_found' };
     }
-    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn };
+    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn, researchFn: opts.researchFn };
     await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
     publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'running' });
     try {
@@ -215,12 +217,25 @@ export const runWorkflow = async (
     if (requiresApproval && opts.approveNodeId !== planNodeId) {
       await setNodeStatus(nodeRow.id, 'awaiting_approval');
       await setRunStatus(runId, 'needs_approval');
-      publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval' });
+      // Publisher gate (Phase 02): surface the optimal-time suggestion on the halt event so
+      // the approval UI shows the recommended window BEFORE the user approves. Pure heuristic
+      // (no spend); other gated nodes (the video cost gate) carry no suggestion.
+      const timingSuggestion =
+        planNode.agentId === 'publisher'
+          ? summarizeTiming(
+              suggestPublishTimes({
+                platforms: attachedPost?.platforms ?? goal.platforms,
+                audience: goal.slots.targetAudience ?? null,
+                language: attachedPost?.language ?? goal.slots.language ?? null,
+              }),
+            )
+          : undefined;
+      publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval', timingSuggestion });
       return { status: 'needs_approval', nodeId: planNodeId };
     }
 
     const def = getAgent(planNode.agentId);
-    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn };
+    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn, researchFn: opts.researchFn };
 
     await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
     publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'running' });
