@@ -8,6 +8,7 @@
 import { withRetry } from '../lib/retry.ts';
 import { getActiveToken } from '../tokens/service.ts';
 import { assetStore } from '../assets/store.ts';
+import { logger } from '../lib/logger.ts';
 import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
 
@@ -39,26 +40,43 @@ export const xAdapter: SocialAdapter = {
       const ref = input.assets[0];
       if (!ref) return fail('no asset for image post');
 
-      // 1) upload media (multipart binary)
-      const { bytes, contentType } = await assetStore.fetchBinary(ref);
-      const form = new FormData();
-      form.append('media_category', 'tweet_image');
-      form.append('media', new Blob([new Uint8Array(bytes)], { type: contentType }), 'image');
-      const upRes = await withRetry(
-        () => fetch('https://api.twitter.com/2/media/upload', { method: 'POST', headers: auth, body: form }),
-        { label: 'x_media' },
-      );
-      const up = (await upRes.json()) as any;
-      const mediaId = up?.media_id_string || up?.data?.id || up?.media_id;
-      if (!upRes.ok || !mediaId) return fail(`media upload failed: ${upRes.status} ${JSON.stringify(up).slice(0, 120)}`);
+      // 1) upload media (multipart binary). v2 /2/media/upload needs media.write scope AND a
+      // paid access tier — free/limited apps get a 403 Forbidden here. Rather than fail the whole
+      // X post, DEGRADE to a text-only tweet (X is text-first; copyX already carries the message).
+      let mediaId: string | null = null;
+      try {
+        const { bytes, contentType } = await assetStore.fetchBinary(ref);
+        const form = new FormData();
+        form.append('media_category', 'tweet_image');
+        form.append('media', new Blob([new Uint8Array(bytes)], { type: contentType }), 'image');
+        const upRes = await withRetry(
+          () => fetch('https://api.twitter.com/2/media/upload', { method: 'POST', headers: auth, body: form }),
+          { label: 'x_media' },
+        );
+        const up = (await upRes.json()) as any;
+        mediaId = up?.media_id_string || up?.data?.id || up?.media_id || null;
+        if (!upRes.ok || !mediaId) {
+          // 403 = app lacks media.write / paid tier for media upload → text-only fallback.
+          // Any other non-ok also degrades to text rather than dropping the post entirely.
+          logger.warn('x_media_upload_degraded_to_text', {
+            ownerId: input.ownerId, status: upRes.status, detail: JSON.stringify(up).slice(0, 160),
+          });
+          mediaId = null;
+        }
+      } catch (e) {
+        logger.warn('x_media_upload_error_degraded_to_text', { ownerId: input.ownerId, error: String(e).slice(0, 160) });
+        mediaId = null;
+      }
 
-      // 2) create tweet
+      // 2) create tweet (with media when the upload succeeded, else text-only)
+      const text = tweetText(input);
+      if (!text && !mediaId) return fail('nothing to post (no text and media upload unavailable)');
       const twRes = await withRetry(
         () =>
           fetch('https://api.twitter.com/2/tweets', {
             method: 'POST',
             headers: { ...auth, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: tweetText(input), media: { media_ids: [String(mediaId)] } }),
+            body: JSON.stringify(mediaId ? { text, media: { media_ids: [String(mediaId)] } } : { text }),
           }),
         { label: 'x_tweet' },
       );
