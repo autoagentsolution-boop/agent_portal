@@ -1,25 +1,37 @@
 // After a post with a lead-capture keyword publishes, record WHICH platform post the poller
 // should read comments from (§01.6 — the lead_collector wiring). Derives the platform post id
-// from the publish URL: FB `facebook.com/{postId}`, IG `.../p/{mediaId}/`. Only FB/IG are
-// commentable today; a URL we can't parse an id from is skipped (logged), not guessed.
+// from the publish URL for every commentable platform (FB, IG, Threads, LinkedIn, X); a URL we
+// can't parse an id from is skipped (logged), not guessed.
 import { prisma } from '../../db/client.ts';
 import { logger } from '../../lib/logger.ts';
 import type { Post, SocialPlatform } from '../../../prisma/generated/prisma/client.ts';
 
-const COMMENTABLE = new Set<SocialPlatform>(['facebook', 'instagram']);
+const COMMENTABLE = new Set<SocialPlatform>(['facebook', 'instagram', 'threads', 'linkedin', 'x']);
 
-// Pull the platform post id from a publish URL. FB: last path segment of facebook.com/<id>.
-// IG: the /p/<id>/ segment (a media id when we fell back to it; a shortcode otherwise — the
-// live IG fetch is best-effort, see comment-fetch-graph).
+// Pull the platform post id from a publish URL.
+//   FB:       last path segment of facebook.com/<id>
+//   IG:       the /p/<id>/ segment (a media id when we fell back to it; a shortcode otherwise —
+//             the live IG fetch is best-effort, see comment-fetch-graph).
+//   Threads:  the segment after `post` (real permalink `@user/post/{code}`) or after `t`
+//             (our own `/t/{mediaId}` fallback link) — same best-effort caveat as IG: this may
+//             be a shortcode rather than the numeric media id the replies endpoint expects.
+//   LinkedIn: the last segment of linkedin.com/feed/update/<urn> — the FULL urn:li:... string
+//             (colons are valid, unencoded path characters; kept verbatim).
+//   X:        the segment after `status` (covers both x.com/<user>/status/<id> and our own
+//             twitter.com/i/web/status/<id> publish URL).
 export const extractPostId = (platform: SocialPlatform, url: string): string | null => {
   try {
     const u = new URL(url);
     const segs = u.pathname.split('/').filter(Boolean);
+    const after = (marker: string): string | null => {
+      const i = segs.indexOf(marker);
+      return i >= 0 ? segs[i + 1] ?? null : null;
+    };
     if (platform === 'facebook') return segs[segs.length - 1] ?? null;
-    if (platform === 'instagram') {
-      const i = segs.indexOf('p');
-      return i >= 0 ? segs[i + 1] ?? null : segs[segs.length - 1] ?? null;
-    }
+    if (platform === 'instagram') return after('p') ?? segs[segs.length - 1] ?? null;
+    if (platform === 'threads') return after('post') ?? after('t') ?? segs[segs.length - 1] ?? null;
+    if (platform === 'linkedin') return after('update') ?? segs[segs.length - 1] ?? null;
+    if (platform === 'x') return after('status') ?? segs[segs.length - 1] ?? null;
     return null;
   } catch {
     return null;

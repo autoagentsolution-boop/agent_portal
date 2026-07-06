@@ -22,8 +22,9 @@ export class PostGoneError extends Error {
   }
 }
 
-// Platforms whose comments we can read today (FB primary; IG best-effort). Others are skipped.
-const COMMENTABLE: SocialPlatform[] = ['facebook', 'instagram'];
+// Platforms whose comments we can read today (FB/IG live-verified; Threads/LinkedIn/X best-effort
+// or tier-gated — see comment-fetch-graph.ts for per-platform caveats).
+const COMMENTABLE: SocialPlatform[] = ['facebook', 'instagram', 'threads', 'linkedin', 'x'];
 
 export interface PollSummary { postsPolled: number; commentsScanned: number; leadsCaptured: number; duplicates: number }
 

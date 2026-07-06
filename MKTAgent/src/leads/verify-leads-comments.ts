@@ -22,6 +22,12 @@ async function main() {
   // --- extractPostId ---
   ck('FB post id from url', extractPostId('facebook', 'https://facebook.com/12345_67890') === '12345_67890');
   ck('IG media id from /p/ url', extractPostId('instagram', 'https://www.instagram.com/p/ABC123/') === 'ABC123');
+  ck('Threads code from @user/post/ url', extractPostId('threads', 'https://www.threads.net/@brand/post/Cabc123XYZ') === 'Cabc123XYZ');
+  ck('Threads media id from our /t/ fallback url', extractPostId('threads', 'https://www.threads.net/t/17999999999999999') === '17999999999999999');
+  ck('LinkedIn urn from feed/update url', extractPostId('linkedin', 'https://www.linkedin.com/feed/update/urn:li:ugcPost:12345') === 'urn:li:ugcPost:12345');
+  ck('X tweet id from x.com/{user}/status url', extractPostId('x', 'https://x.com/brand/status/1234567890') === '1234567890');
+  ck('X tweet id from our twitter.com/i/web/status url', extractPostId('x', 'https://twitter.com/i/web/status/1234567890') === '1234567890');
+  ck('unparseable url → null (not guessed)', extractPostId('facebook', 'not-a-url') === null);
 
   // --- Poller with a fake fetcher ---
   const owner = await prisma.user.create({ data: { email: `cmt-${Date.now()}@t.local` } });
