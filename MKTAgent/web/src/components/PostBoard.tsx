@@ -19,9 +19,27 @@ interface Props {
   autoCreate?: boolean;
   onCreateConsumed?: () => void;
   onOpenConnections?: () => void;
+  // Drill-in navigation: a summary row (campaign level) opens a single post; the detail
+  // view's back control returns to the summary list. Both route through App's selectedPostId.
+  onSelectPost?: (id: string) => void;
+  onBack?: () => void;
 }
 
-export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visiblePostId, onPostsChange, autoCreate, onCreateConsumed, onOpenConnections }: Props) {
+const summaryStage = (status: PostDto['status']): string => {
+  switch (status) {
+    case 'brief': return 'Draft brief';
+    case 'rework': return 'Reworking';
+    case 'review': return 'Copy ready — needs approval';
+    case 'ready': return 'Approved — awaiting publish';
+    case 'posting': return 'Publishing…';
+    case 'posted': return 'Published';
+    case 'partial': return 'Partly published';
+    case 'error': return 'Publish failed';
+    default: return status;
+  }
+};
+
+export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visiblePostId, onPostsChange, autoCreate, onCreateConsumed, onOpenConnections, onSelectPost, onBack }: Props) {
   const [posts, setPosts] = useState<PostDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -74,18 +92,22 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
     );
   });
 
-  const saved = async () => {
+  // Manual brief saved — reload, then DRILL INTO the new/edited post so the user lands on it
+  // instead of being stranded on the board with the form mixed into the list.
+  const saved = async (post: PostDto) => {
     setCreating(false);
     setEditing(null);
     await load();
+    onSelectPost?.(post.id);
   };
 
   // Master-Agent path created a post under this campaign — close the picker, reload the
-  // board, and mark it selected so the effect scrolls it into view.
+  // board, and drill into it (same landing as the manual path).
   const agentCreated = async (post: PostDto) => {
     setPicking(false);
     setLocalSelectedId(post.id);
     await load();
+    onSelectPost?.(post.id);
   };
 
   const onPatched = (p: PostDto | null, id: string) => {
@@ -128,7 +150,7 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
       {campaignId && creating && (
         <PostBriefForm
           campaignId={campaignId}
-          onSaved={() => void saved()}
+          onSaved={(post) => void saved(post)}
           onCancel={() => setCreating(false)}
           notify={notify}
         />
@@ -138,7 +160,7 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
         <PostBriefForm
           campaignId={campaignId}
           post={editing}
-          onSaved={() => void saved()}
+          onSaved={(post) => void saved(post)}
           onCancel={() => setEditing(null)}
           notify={notify}
         />
@@ -148,19 +170,42 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
         <div className="muted">Loading…</div>
       ) : posts.length === 0 ? (
         <p className="muted">No posts yet. {campaignId ? 'Create a full brief to start.' : ''}</p>
+      ) : visiblePostId ? (
+        // DETAIL: one post's full workflow card, with a back control to the summary list.
+        <>
+          <button className="btn small back-to-posts" onClick={() => onBack?.()}>← All posts</button>
+          {posts.filter((p) => p.id === visiblePostId).map((p) => (
+            <PostCard
+              key={p.id}
+              post={p}
+              demoMode={demoMode}
+              notify={notify}
+              selected
+              onEdit={(post) => { setCreating(false); setEditing(post); }}
+              onPatched={onPatched}
+              onOpenConnections={onOpenConnections}
+            />
+          ))}
+        </>
       ) : (
-        posts.filter((p) => !visiblePostId || p.id === visiblePostId).map((p) => (
-          <PostCard
-            key={p.id}
-            post={p}
-            demoMode={demoMode}
-            notify={notify}
-            selected={selectedPostId === p.id || localSelectedId === p.id}
-            onEdit={(post) => { setCreating(false); setEditing(post); }}
-            onPatched={onPatched}
-            onOpenConnections={onOpenConnections}
-          />
-        ))
+        // SUMMARY: compact rows only — click drills into the post's detail (no wall of cards).
+        <div className="post-summary-list">
+          {posts.map((p) => (
+            <button
+              key={p.id}
+              id={`post-${p.id}`}
+              className={`post-summary-row ${localSelectedId === p.id ? 'selected' : ''}`}
+              onClick={() => onSelectPost?.(p.id)}
+            >
+              <span className={`badge ${p.status}`}>{p.status}</span>
+              <span className="post-summary-main">
+                <span className="post-summary-stage">{summaryStage(p.status)}</span>
+                <span className="post-summary-meta">{p.assetType} · {p.platforms.join(', ') || 'no platforms'}</span>
+              </span>
+              <span className="post-summary-id muted">{p.id.slice(0, 8)} ›</span>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

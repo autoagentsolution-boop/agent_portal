@@ -25,6 +25,8 @@ interface Props {
   onNewFlow: () => void;
   onOpenConnections: () => void;
   onCreateCampaign: (flowId: string) => void;
+  onSelectPost: (id: string) => void;
+  onBack: () => void;
   flowLabel?: string | null;
   campaignLabel?: string | null;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
@@ -80,6 +82,8 @@ export function ActiveFlowsPage(props: Props) {
             autoCreate={props.autoCreateForCampaign === props.activeCampaign}
             onCreateConsumed={props.onCreateConsumed}
             onOpenConnections={props.onOpenConnections}
+            onSelectPost={props.onSelectPost}
+            onBack={props.onBack}
           />
         </section>
       </div>

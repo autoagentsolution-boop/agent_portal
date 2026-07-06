@@ -359,6 +359,8 @@ export function App() {
             onNewFlow={openOrchestrate}
             onOpenConnections={() => { setSelectedRunId(null); setPage('connections'); }}
             onCreateCampaign={(flowId) => void createCampaignForFlow(flowId)}
+            onSelectPost={(id) => setSelectedPostId(id)}
+            onBack={() => setSelectedPostId(null)}
             flowLabel={activeCampaignCrumb.flow}
             campaignLabel={activeCampaignCrumb.campaign}
             notify={show}

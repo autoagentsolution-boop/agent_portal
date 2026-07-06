@@ -520,6 +520,20 @@ a { color: var(--accent); }
 .dag-stats { margin-left: auto; display: inline-flex; gap: 10px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .dag-stat-time { color: var(--muted); font-weight: 500; }
 .dag-stat-tok { color: var(--muted); }
+
+/* Post summary list (campaign level) — compact rows that drill into a post's detail,
+   replacing the old wall of fully-expanded PostCards. */
+.post-summary-list { display: flex; flex-direction: column; gap: 8px; }
+.post-summary-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); color: var(--text); cursor: pointer; }
+.post-summary-row:hover { border-color: var(--accent); }
+.post-summary-row.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.post-summary-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.post-summary-stage { font-weight: 500; font-size: 13px; }
+.post-summary-meta { font-size: 12px; color: var(--muted); }
+.post-summary-id { font-size: 11px; white-space: nowrap; }
+.back-to-posts { margin-bottom: 12px; }
 .plan-platforms { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
 .platform-chip { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); font-size: 11px; font-weight: 500; }
 .gate-block { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--radius); border: 1px solid var(--amber); background: rgba(210,153,34,0.06); }
@@ -544,7 +558,7 @@ a { color: var(--accent); }
 .variant-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .variant-radio { color: var(--accent); font-size: 12px; }
 .variant-title { font-weight: 600; font-size: 13px; }
-.variant-body { font-size: 13px; color: var(--muted); white-space: pre-wrap; max-height: 5.4em; overflow: hidden; line-height: 1.35; }
+.variant-body { font-size: 13px; color: var(--muted); white-space: pre-wrap; max-height: 22em; overflow-y: auto; line-height: 1.45; }
 .variant-card.selected .variant-body { color: var(--text); }
 .concept-ref { display: flex; flex-direction: column; gap: 4px; }
 .artifacts-block { font-size: 13px; }
