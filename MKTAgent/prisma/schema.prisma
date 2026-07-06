@@ -521,6 +521,39 @@ model MktRunLog {
   @@map("mkt_run_log")
 }
 
+// Universal per-owner LLM/media usage ledger — the SINGLE source of truth for how much a
+// tenant has spent on public model calls, across EVERY surface (chat, intake, copy-gen,
+// research, lead rescore, product analysis, and the orchestration DAG). Real usageMetadata
+// (incl. thinking tokens) is recorded here so a customer's true spend can be totalled + broken
+// down by surface for billing + business analysis. Nullable owner + no FK: some calls (cron,
+// system) have no tenant, and a usage row must survive user deletion. Best-effort insert —
+// recording must NEVER block or fail the call it measures. wf_node_run keeps its own cost
+// columns for the per-node DAG view; this ledger is the cross-surface total.
+model LlmUsage {
+  id           BigInt   @id @default(autoincrement())
+  ownerId      String?  @map("owner_id") @db.Uuid
+  // Where the spend happened: chat | intake | copygen | research | lead_rescore |
+  // product_analysis | orchestration (+ agentId for DAG nodes). Free-form for future surfaces.
+  surface      String
+  model        String
+  // Real token counts from the provider (0 for pure media calls). thoughtTokens = Gemini 2.5
+  // internal reasoning (billed at the OUTPUT rate) — the biggest previously-missed cost.
+  promptTokens Int      @default(0) @map("prompt_tokens")
+  outputTokens Int      @default(0) @map("output_tokens")
+  thoughtTokens Int     @default(0) @map("thought_tokens")
+  cachedTokens Int      @default(0) @map("cached_tokens")
+  totalTokens  Int      @default(0) @map("total_tokens")
+  costUsd      Float    @default(0) @map("cost_usd")
+  // Optional back-references for drill-down (no FK — best-effort ledger, must not cascade/block).
+  runId        String?  @map("run_id") @db.Uuid
+  refId        String?  @map("ref_id") // post/campaign/lead/knowledge id, surface-dependent
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([ownerId, createdAt(sort: Desc)], name: "ix_llm_usage_owner")
+  @@index([ownerId, surface], name: "ix_llm_usage_surface")
+  @@map("mkt_llm_usage")
+}
+
 // External-action audit log (brief §11.13) — one row per outward-writing action the
 // Connector Runtime performs (publish to a platform, future email/CRM/upload). Records
 // who/what/where/outcome with REDACTED request/response (no token, no secret — the

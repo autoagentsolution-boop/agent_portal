@@ -4,6 +4,8 @@
 // with a short human reason. Injectable llmFn for DRY-RUN verification.
 import { callGeminiJson, type LlmJsonFn } from '../../orchestration/master/llm-json.ts';
 import type { ScoreReason } from './rule-score.ts';
+import { env } from '../../config/env.ts';
+import { recordLlmUsage } from '../../cost/llm-usage.ts';
 
 export interface LlmScoreInput {
   ruleScore: number;
@@ -18,8 +20,16 @@ context, return STRICT JSON: {"delta": <integer -30..30>, "reason": "<max 12 wor
 delta ADJUSTS an existing rule score: positive = stronger intent/fit, negative = spam/low-fit.
 Be conservative; default delta 0 when the signal is weak. No prose, JSON only.`;
 
-// Returns a single llm-layer ScoreReason (the adjustment) or null if the model is unusable.
-export const llmScoreAdjustment = async (input: LlmScoreInput, llmFn: LlmJsonFn = callGeminiJson): Promise<ScoreReason | null> => {
+// ownerId/leadId (optional): the requesting tenant + the lead being scored, so a REAL Gemini
+// call (via the default callGeminiJson) bills the usage ledger (surface 'lead_rescore', refId
+// = leadId). The injected `llmFn` a test/DRY-RUN passes ignores the onUsage sink entirely, so
+// nothing is recorded for a stubbed call — only the real path spends + records.
+export const llmScoreAdjustment = async (
+  input: LlmScoreInput,
+  llmFn: LlmJsonFn = callGeminiJson,
+  ownerId?: string | null,
+  leadId?: string | null,
+): Promise<ScoreReason | null> => {
   const user = [
     `Source: ${input.source}`,
     `Message: ${input.message?.trim() || '(none)'}`,
@@ -27,7 +37,9 @@ export const llmScoreAdjustment = async (input: LlmScoreInput, llmFn: LlmJsonFn 
     `Current rule score: ${input.ruleScore}/100`,
   ].filter(Boolean).join('\n');
   try {
-    const out = (await llmFn(SYSTEM, user)) as { delta?: unknown; reason?: unknown };
+    const out = (await llmFn(SYSTEM, user, (usage) => {
+      void recordLlmUsage({ ownerId: ownerId ?? null, surface: 'lead_rescore', model: env.GEMINI_MODEL, usage, refId: leadId ?? null });
+    })) as { delta?: unknown; reason?: unknown };
     const delta = Math.max(-30, Math.min(30, Math.round(Number(out?.delta ?? 0)) || 0));
     const reason = typeof out?.reason === 'string' && out.reason.trim() ? out.reason.trim().slice(0, 80) : 'AI intent review';
     return { layer: 'llm', reason, delta };

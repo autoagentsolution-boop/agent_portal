@@ -70,7 +70,10 @@ productKnowledgeRouter.post(
 
     let result;
     try {
-      result = await analyzeDocuments(body.files as UploadedDoc[], body.product);
+      // refId prefers the existing library entry being merged into, else the campaign it will
+      // ground — whichever the caller supplied for this analyze call.
+      const refId = body.productKnowledgeId ?? body.campaignId ?? null;
+      result = await analyzeDocuments(body.files as UploadedDoc[], body.product, req.userId!, refId);
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e);
       logger.warn('product_knowledge_analyze_failed', { error: msg.slice(0, 200) });

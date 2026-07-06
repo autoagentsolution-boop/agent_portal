@@ -10,6 +10,7 @@ import { env } from '../config/env.ts';
 import { logger } from '../lib/logger.ts';
 import { productKnowledgeSystemPrompt } from './analysis-prompt.ts';
 import { estimateLlmCost, type NodeCost } from '../orchestration/executor/node-cost.ts';
+import { recordGeminiCall } from '../cost/llm-usage.ts';
 
 // gemini-2.5-flash text pricing (mirror node-cost.ts constants — media tokens bill as input).
 const TEXT_INPUT_PER_M = 0.30;
@@ -98,7 +99,14 @@ const s = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 
 // Analyze uploaded documents into a product profile. Throws on a missing key or an unusable
 // model response (the router maps it to a 4xx/5xx) — callers must handle it.
-export const analyzeDocuments = async (docs: UploadedDoc[], product?: string): Promise<AnalysisResult> => {
+// ownerId/refId (optional): the authenticated tenant + a knowledge/campaign id to tag the
+// ledger row with, threaded from product-knowledge-router.ts (surface 'product_analysis').
+export const analyzeDocuments = async (
+  docs: UploadedDoc[],
+  product?: string,
+  ownerId?: string | null,
+  refId?: string | null,
+): Promise<AnalysisResult> => {
   if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY required for document analysis');
   if (docs.length === 0) throw new Error('no documents provided');
 
@@ -116,6 +124,9 @@ export const analyzeDocuments = async (docs: UploadedDoc[], product?: string): P
   if (!res.ok) throw new Error(`gemini_analyze_${res.status}: ${(await res.text()).slice(0, 300)}`);
 
   const raw = await res.json();
+  // Ledger the REAL physical call (product_analysis surface) — best-effort, never throws.
+  // Fires regardless of downstream parse success below (the call happened and billed either way).
+  await recordGeminiCall(raw, { ownerId: ownerId ?? null, surface: 'product_analysis', model: env.GEMINI_MODEL, refId: refId ?? null });
   const text = extractText(raw);
   let parsed: Record<string, unknown>;
   try {

@@ -44,6 +44,7 @@ export const recordTurn = async (
   sessionId: string,
   userMessage: string,
   outcome: MasterAgentOutcome,
+  ownerId?: string | null,
 ): Promise<string> => {
   await prisma.agentChatMessage.create({ data: { sessionId, role: 'user', content: userMessage } });
   const prior = await priorMessages(sessionId);
@@ -51,7 +52,8 @@ export const recordTurn = async (
   // plus a detected code hint when the script is unambiguous (an explicit
   // goal.slots.language still wins inside the author). Fixes wrong-language replies.
   const language = detectLanguage(userMessage);
-  const assistantMessage = await conversationAuthor.author(outcome, prior, { userMessage, language });
+  // ownerId threads through so a REAL Gemini call bills the usage ledger to this tenant.
+  const assistantMessage = await conversationAuthor.author(outcome, prior, { userMessage, language, ownerId });
   await prisma.agentChatMessage.create({ data: { sessionId, role: 'agent', content: assistantMessage } });
   // Touch the session so it sorts to the top of the sidebar (child message inserts
   // don't bump the parent's @updatedAt on their own).
@@ -67,10 +69,12 @@ export const recordSaveOffer = async (
   sessionId: string,
   flowName: string | null,
   goal: GoalSpec,
+  ownerId?: string | null,
 ): Promise<string> => {
   const product = goal.slots.product ?? null;
   const language = goal.slots.language ?? detectLanguage(flowName ?? product ?? '');
-  const message = await saveOfferAuthor.author({ flowName, product, language });
+  // ownerId threads through so a REAL Gemini call bills the usage ledger to this tenant.
+  const message = await saveOfferAuthor.author({ flowName, product, language, ownerId });
   await prisma.agentChatMessage.create({ data: { sessionId, role: 'agent', content: message } });
   await prisma.agentChatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
   return message;

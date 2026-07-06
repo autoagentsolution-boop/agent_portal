@@ -127,7 +127,7 @@ postsRouter.post(
     const campaign = await getCampaign(body.campaignId, req.userId!);
     if (!campaign) return fail(res, 404, 'campaign_not_found');
 
-    const goal = await requirementAnalyzer.analyze(body.message);
+    const goal = await requirementAnalyzer.analyze(body.message, req.userId!);
 
     // First call (no answers): gate on missing high-impact brief fields. If the agent
     // can't fill them from the message AND the campaign doesn't supply them, ASK — return

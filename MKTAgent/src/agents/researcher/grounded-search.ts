@@ -5,10 +5,15 @@
 // with the rest of the orchestration LLM seams.
 import { env } from '../../config/env.ts';
 import { withRetry } from '../../lib/retry.ts';
+import { extractGeminiUsage } from '../../cost/llm-usage.ts';
+import type { GeminiUsage } from '../../orchestration/executor/node-cost.ts';
 
 export interface GroundedResult {
   text: string;
   citations: string[];
+  // Real token usage for the ledger (cost-accounting fix). Optional so existing injected
+  // GroundedSearchFn stubs (verify scripts, DRY-RUN) that omit it keep compiling unchanged.
+  usage?: GeminiUsage;
 }
 
 export type GroundedSearchFn = (query: string) => Promise<GroundedResult>;
@@ -83,5 +88,5 @@ export const groundedSearch: GroundedSearchFn = async (query) => {
     throw new Error('grounded_search: empty text in response');
   }
 
-  return { text, citations: extractCitations(raw) };
+  return { text, citations: extractCitations(raw), usage: extractGeminiUsage(raw) };
 };

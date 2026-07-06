@@ -175,7 +175,7 @@ leadsRouter.post(
     const owner = await prisma.user.findUnique({ where: { id: req.userId! }, select: { brandContext: true } });
     const adj = await llmScoreAdjustment({
       ruleScore: base.score, email: lead.email, message: lead.message, source: lead.source, brandContext: owner?.brandContext,
-    });
+    }, undefined, req.userId!, req.params.id);
     const reasons = adj ? [...base.reasons, adj] : base.reasons;
     const finalScore = Math.max(0, Math.min(100, base.score + (adj?.delta ?? 0)));
     const updated = await updateLeadScore(req.params.id, req.userId!, finalScore, reasons);

@@ -24,11 +24,20 @@ import { stitchClips, muxAudio } from '../../video/stitch.ts';
 import { access } from 'node:fs/promises';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
 import { logger } from '../../lib/logger.ts';
-import { estimateLlmCost, imageCost, videoClipCost, ttsCost, sumCost, type NodeCost } from './node-cost.ts';
+import { estimateLlmCost, imageCost, videoClipCost, ttsCost, sumCost, costFromUsage, type NodeCost, type GeminiUsage } from './node-cost.ts';
 import { runResearch } from '../../agents/researcher/run-research.ts';
 import type { GroundedSearchFn } from '../../agents/researcher/grounded-search.ts';
 import { suggestPublishTimes, summarizeTiming } from '../../agents/publish-timing/suggest-time.ts';
 import { proposeLeadScoringCriteria } from '../../leads/scoring/criteria.ts';
+import { env } from '../../config/env.ts';
+// Ledger recording (Phase: cost-accounting fix). Best-effort, never throws — recorded ADDITIVELY
+// alongside the existing NodeCost (which still drives the wf_node_run display); the ledger is the
+// authoritative per-owner total. Record EXACTLY ONCE per physical provider call.
+import { recordLlmUsage, recordMediaCost } from '../../cost/llm-usage.ts';
+
+// Google's grounded-search billing is a flat surcharge on top of normal token cost
+// (≈$0.035/request after the free tier, 2026-07 public pricing) — see item 4 (researcher).
+const GROUNDING_SURCHARGE_USD = 0.035;
 
 // Per-run mutable context threaded through node executions. Artifacts already
 // produced upstream are addressable by type (the executor passes them in).
@@ -183,6 +192,10 @@ const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 const runResearcher = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const knowledge = await resolveProductKnowledge(ctx);
   const language = await resolveRunLanguage(ctx);
+  // onUsage fires ONLY when a real grounded call succeeds (runResearch's fallback path never
+  // calls it) — so `usage` doubles as "was a real provider call made" for both costing and
+  // the record-once-per-physical-call rule below.
+  let usage: GeminiUsage | null = null;
   const data = await runResearch(
     {
       product: ctx.goal.slots.product ?? 'the product',
@@ -192,12 +205,28 @@ const runResearcher = async (ctx: RunnerContext): Promise<RunnerOutput> => {
       angle: ctx.goal.slots.angle ?? null,
     },
     ctx.researchFn,
+    (u) => { usage = u; },
   );
-  return {
-    type: 'research_summary',
-    data,
-    cost: estimateLlmCost(`${ctx.goal.slots.product ?? ''}\n${knowledge ?? ''}`, `${data.summary}\n${data.sourceNotes.join('\n')}`),
-  };
+  if (usage) {
+    // Grounding is billed as a surcharge on top of normal token cost.
+    await recordLlmUsage({
+      ownerId: ctx.ownerId,
+      surface: 'research',
+      model: env.GEMINI_MODEL,
+      usage,
+      extraCostUsd: GROUNDING_SURCHARGE_USD,
+      runId: ctx.runId,
+      refId: ctx.postId ?? null,
+    });
+  }
+  let cost: NodeCost;
+  if (usage) {
+    const tokenCost = costFromUsage(usage, env.GEMINI_MODEL);
+    cost = { ...tokenCost, costUsd: tokenCost.costUsd + GROUNDING_SURCHARGE_USD };
+  } else {
+    cost = estimateLlmCost(`${ctx.goal.slots.product ?? ''}\n${knowledge ?? ''}`, `${data.summary}\n${data.sourceNotes.join('\n')}`);
+  }
+  return { type: 'research_summary', data, cost };
 };
 
 // publisher (LIVE): publish the Post materialized by concept_writer. Gated by the
@@ -293,24 +322,38 @@ const goalContext = (ctx: RunnerContext, resolvedLang?: string, knowledge?: stri
 const runIdeation = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
   const prompt = goalContext(ctx, await resolveRunLanguage(ctx), await resolveProductKnowledge(ctx));
-  const raw = await call(ideationSystemPrompt, prompt);
+  // onUsage reports REAL token usage from the live call; injected DRY-RUN stubs ignore the
+  // sink, so `usage` stays null there — doubles as "was this a real call" for the ledger guard.
+  let usage: GeminiUsage | null = null;
+  const raw = await call(ideationSystemPrompt, prompt, (u) => { usage = u; });
   const parsed = campaignIdeas.safeParse(raw);
   if (!parsed.success) throw new Error(`ideation: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
-  return { type: 'campaign_ideas', data: parsed.data, cost: estimateLlmCost(ideationSystemPrompt + prompt, JSON.stringify(parsed.data)) };
+  if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'orchestration', model: env.GEMINI_MODEL, usage, runId: ctx.runId, refId: ctx.postId ?? null });
+  return {
+    type: 'campaign_ideas',
+    data: parsed.data,
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(ideationSystemPrompt + prompt, JSON.stringify(parsed.data)),
+  };
 };
 
 // strategy (LIVE): turn the chosen idea into a positioning/audience/pillars brief.
 const runStrategy = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
   const prompt = goalContext(ctx, await resolveRunLanguage(ctx), await resolveProductKnowledge(ctx));
-  const raw = await call(strategySystemPrompt, prompt);
+  let usage: GeminiUsage | null = null;
+  const raw = await call(strategySystemPrompt, prompt, (u) => { usage = u; });
   const parsed = strategyBrief.safeParse(raw);
   if (!parsed.success) throw new Error(`strategy: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+  if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'orchestration', model: env.GEMINI_MODEL, usage, runId: ctx.runId, refId: ctx.postId ?? null });
   // Strategist ↔ Lead Collector bridge (Phase 02): propose lead-scoring weights tuned to the
   // brief's funnel stage + audience. Deterministic (no extra LLM cost); rides on the artifact so
   // the user can see/tune it. The rule scorer already accepts a LeadScoringCriteria override.
   const data = { ...parsed.data, leadScoringCriteria: proposeLeadScoringCriteria({ funnelStage: parsed.data.funnelStage, audience: parsed.data.audience }) };
-  return { type: 'strategy_brief', data, cost: estimateLlmCost(strategySystemPrompt + prompt, JSON.stringify(data)) };
+  return {
+    type: 'strategy_brief',
+    data,
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(strategySystemPrompt + prompt, JSON.stringify(data)),
+  };
 };
 
 // Build an image prompt from the concept/strategy upstream. Two deliberately distinct
@@ -389,7 +432,11 @@ const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     const updated = await attachPostMedia(ctx.postId, ctx.ownerId, 'image', ref);
     if (!updated) throw new Error('infographic: could not attach image to post (locked or not found)');
   }
-  // A cached image cost nothing to regenerate; a fresh one is the flat per-image price.
+  // A cached image cost nothing to regenerate; a fresh one is the flat per-image price. Ledger
+  // record fires ONLY for a real (non-cached) generation — one row per physical image call.
+  if (!image.cached) {
+    await recordMediaCost({ ownerId: ctx.ownerId, surface: 'orchestration', model: 'gemini-2.5-flash-image', costUsd: imageCost().costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+  }
   return { type: 'infographic_brief', data: { visualBrief, imagePrompt, imageRef: ref }, cost: image.cached ? undefined : imageCost() };
 };
 
@@ -423,14 +470,16 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const planPrompt = parts.join('\n');
   // Carousel → business-explainer slides; video → cinematic keyframes.
   const sbPrompt = isCarousel ? storyboardCarouselSystemPrompt : storyboardSystemPrompt;
-  const raw = (await call(sbPrompt, planPrompt)) as {
+  let planUsage: GeminiUsage | null = null;
+  const raw = (await call(sbPrompt, planPrompt, (u) => { planUsage = u; })) as {
     frames?: Array<{ index?: number; imagePrompt?: string; caption?: string }>;
   };
   const plan = Array.isArray(raw?.frames) ? raw.frames : [];
   if (plan.length === 0) throw new Error('storyboard: LLM returned no frames');
+  if (planUsage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'orchestration', model: env.GEMINI_MODEL, usage: planUsage, runId: ctx.runId, refId: ctx.postId ?? null });
 
   const gen = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
-  let cost: NodeCost = estimateLlmCost(sbPrompt + planPrompt, JSON.stringify(raw));
+  let cost: NodeCost = planUsage ? costFromUsage(planUsage, env.GEMINI_MODEL) : estimateLlmCost(sbPrompt + planPrompt, JSON.stringify(raw));
   const frames: Array<{ index: number; imageRef: string; caption: string; imagePrompt: string }> = [];
   // Visual consistency: the FIRST successful frame becomes a style/product anchor; every later
   // frame is generated in 'edit' mode conditioned on it, so the product + look stay coherent
@@ -446,7 +495,11 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
       const image = await gen(req);
       if (!anchor) anchor = image.outputFile;
       frames.push({ index: f.index ?? i, imageRef: `local:${image.outputFile}`, caption: f.caption ?? '', imagePrompt });
-      if (!image.cached) cost = sumCost(cost, imageCost());
+      if (!image.cached) {
+        cost = sumCost(cost, imageCost());
+        // One ledger row per real generated frame (cached frames made no provider call).
+        await recordMediaCost({ ownerId: ctx.ownerId, surface: 'orchestration', model: 'gemini-2.5-flash-image', costUsd: imageCost().costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+      }
     } catch (e) {
       // The image model is intermittently flaky (returns 200 with no image ~1/3). Skip a
       // failed frame rather than fail the whole storyboard — keep the frames that rendered.
@@ -504,7 +557,11 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     const motionPrompt = (f.imagePrompt || f.caption || 'Subtle cinematic camera motion, gentle push-in').trim();
     const clip = await gen({ referenceImagePath: localPath, prompt: motionPrompt, durationSec });
     clipPaths.push(clip.outputFile);
-    if (!clip.cached) rendered++;
+    if (!clip.cached) {
+      rendered++;
+      // One ledger row per real rendered clip (Veo is priced per-second, not flat).
+      await recordMediaCost({ ownerId: ctx.ownerId, surface: 'orchestration', model: 'veo-3.1-lite', costUsd: videoClipCost(1, durationSec).costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+    }
   }
 
   let finalVideo = await stitchClips(clipPaths);
@@ -518,7 +575,11 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     try {
       const tts = ctx.ttsFn ?? ((req: TtsRequest) => generateTts(req));
       const audio = await tts({ text: narration });
-      if (!audio.cached) ttsRendered = true;
+      if (!audio.cached) {
+        ttsRendered = true;
+        // One ledger row per real TTS render (cached voiceover made no provider call).
+        await recordMediaCost({ ownerId: ctx.ownerId, surface: 'orchestration', model: 'gemini-2.5-flash-tts', costUsd: ttsCost().costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+      }
       finalVideo = await muxAudio(finalVideo, audio.outputFile);
     } catch (e) {
       logger.warn('video_voiceover_failed', { error: String(e).slice(0, 160) });

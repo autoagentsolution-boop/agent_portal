@@ -10,6 +10,7 @@
 // external-write control (brief §11.12).
 import { Router } from 'express';
 import { ok, fail, parseOr422, asyncHandler } from './http.ts';
+import { usageTotals } from '../cost/llm-usage.ts';
 import { createRunBody, clarifyRunBody, saveRunBody } from './schemas.ts';
 import { masterAgent } from '../orchestration/master/master-agent.ts';
 import { goalSpec, type GoalSpec } from '../orchestration/schemas/goal-spec.ts';
@@ -156,9 +157,9 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   const refine = existing && existing.kind !== 'template' && PRE_EXEC.has(existing.status);
 
   const outcome = refine
-    ? await masterAgent.refine(goalSpec.parse(existing!.goal), body.message)
-    : await masterAgent.handle(body.message);
-  const assistantMessage = await recordTurn(sessionId, body.message, outcome);
+    ? await masterAgent.refine(goalSpec.parse(existing!.goal), body.message, req.userId!)
+    : await masterAgent.handle(body.message, req.userId!);
+  const assistantMessage = await recordTurn(sessionId, body.message, outcome, req.userId!);
 
   if (refine) {
     const { questions } = await applyOutcomeToRun(existing!.id, req.userId!, outcome.goal, outcome);
@@ -184,7 +185,7 @@ orchestrationRouter.post('/runs/:id/clarify', asyncHandler(async (req, res) => {
   // Record the clarification turn (user's answers → authored assistant reply) on the
   // same chat session the run belongs to, when present.
   const assistantMessage = run.chatSessionId
-    ? await recordTurn(run.chatSessionId, summarizeAnswers(body.answers), outcome)
+    ? await recordTurn(run.chatSessionId, summarizeAnswers(body.answers), outcome, req.userId!)
     : undefined;
   const { questions } = await applyOutcomeToRun(run.id, req.userId!, merged, outcome);
   return respondRun(res, run.id, req.userId!, { questions, assistantMessage });
@@ -207,7 +208,7 @@ orchestrationRouter.post('/runs/:id/save', asyncHandler(async (req, res) => {
   let assistantMessage: string | undefined;
   if (run.chatSessionId) {
     try {
-      assistantMessage = await recordSaveOffer(run.chatSessionId, body.name.trim(), goalSpec.parse(run.goal));
+      assistantMessage = await recordSaveOffer(run.chatSessionId, body.name.trim(), goalSpec.parse(run.goal), req.userId!);
     } catch (e) {
       logger.warn('save_offer_record_failed', { runId: run.id, error: String(e instanceof Error ? e.message : e) });
     }
@@ -364,6 +365,13 @@ orchestrationRouter.get('/runs/:id', asyncHandler(async (req, res) => {
     ? await getFlowCostRollup(full.id, req.userId!)
     : undefined;
   ok(res, toRunDto(full, flowCost ? { flowCost } : {}));
+}));
+
+// Per-owner LLM/media spend — the billing/analysis view. Total + per-surface breakdown
+// (chat, intake, copygen, research, lead_rescore, product_analysis, orchestration) from the
+// mkt_llm_usage ledger (the authoritative cross-surface total, incl. real thinking tokens).
+orchestrationRouter.get('/usage', asyncHandler(async (req, res) => {
+  ok(res, await usageTotals(req.userId!));
 }));
 
 // Delete a run (Saved Flow). Cascades to its nodes + artifacts. A run mid-execution

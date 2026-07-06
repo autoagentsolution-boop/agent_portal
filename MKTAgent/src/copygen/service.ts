@@ -21,6 +21,8 @@ import { parseGeminiResponse, parseVariants, type CopyVariants } from './parse.t
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
 import { publishPostStatus } from '../events/bus.ts';
+import { env } from '../config/env.ts';
+import { recordGeminiCall } from '../cost/llm-usage.ts';
 
 const LOCK_KEY = 'mkt-copy-gen';
 
@@ -59,6 +61,11 @@ async function processCopyGen(
   }
 
   const raw = await callFn(body);
+  // Record the REAL provider call HERE, not in gemini.ts (which has no ownerId in scope).
+  // processCopyGen is the shared tail for the cron tick AND the manual "Generate" trigger, so
+  // one record-site captures both. Gemini bills the call whether or not the JSON parses below,
+  // so record before the parse/ok check — best-effort, never throws, never blocks the flow.
+  await recordGeminiCall(raw, { ownerId: post.ownerId, surface: 'copygen', model: env.GEMINI_MODEL, refId: post.id });
   const result = parseGeminiResponse(raw);
 
   if (!result.ok) {
@@ -139,6 +146,9 @@ export async function refineForPost(
 
     const body = buildGeminiBody(post, { instruction, current });
     const raw = await callFn(body);
+    // Record once per physical refine call (distinct call site from processCopyGen's — a
+    // refine is its own Gemini request, not a re-use of the original generation).
+    await recordGeminiCall(raw, { ownerId: post.ownerId, surface: 'copygen', model: env.GEMINI_MODEL, refId: post.id });
     const result = parseGeminiResponse(raw);
     if (!result.ok) {
       logger.warn('copygen_refine_failed', { postId, error: result.error.slice(0, 200) });
@@ -179,6 +189,9 @@ export async function generateVariantsForPost(
     if (!post) return { picked: false, reason: 'not_found' };
     if (post.status !== 'brief' && post.status !== 'rework') return { picked: false, postId, reason: 'not_generatable' };
     const raw = await callFn(buildVariantsBody(post, n));
+    // Record once per physical variants call — this is the concept_writer DAG node's ONLY
+    // Gemini call (N variants generated in one request), so one ledger row per node run.
+    await recordGeminiCall(raw, { ownerId: post.ownerId, surface: 'copygen', model: env.GEMINI_MODEL, refId: post.id });
     const result = parseVariants(raw);
     if (!result.ok) {
       logger.warn('copygen_variants_failed', { postId, error: result.error.slice(0, 200) });

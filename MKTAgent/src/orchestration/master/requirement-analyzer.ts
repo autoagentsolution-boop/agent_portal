@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { goalSpec, type GoalSpec } from '../schemas/goal-spec.ts';
 import { analyzeDeterministic, parseRemovals, parsePlatforms, type Removals } from './deterministic-analyzer.ts';
 import { requirementSystemPrompt } from '../prompts/requirement-prompt.ts';
+import { recordGeminiCall } from '../../cost/llm-usage.ts';
 
 // Optional removal delta the LLM may emit on a refinement turn (subtractive intent).
 const removalsSchema = z.object({
@@ -31,13 +32,15 @@ export interface AnalysisWithRemovals {
 }
 
 export interface RequirementAnalyzer {
-  analyze(message: string): Promise<GoalSpec>;
+  // ownerId (optional): the authenticated tenant, threaded so a REAL Gemini call bills the
+  // usage ledger to the right owner (surface 'intake'). Missing/null records a system row.
+  analyze(message: string, ownerId?: string | null): Promise<GoalSpec>;
   // Refinement variant: also surfaces removal intent (subtractive edits) so the
   // refine path can un-set outputs/platforms. `handle` (fresh goal) ignores removals.
   // `prior` (the goal gathered so far) gives the model conversation context so a short
   // reply ("đi làm với đồng nghiệp", "for everyone") maps to the RIGHT slot instead of
   // extracting nothing — the fix for the never-ending clarification loop.
-  analyzeWithRemovals(message: string, prior?: GoalSpec): Promise<AnalysisWithRemovals>;
+  analyzeWithRemovals(message: string, prior?: GoalSpec, ownerId?: string | null): Promise<AnalysisWithRemovals>;
 }
 
 // Compact prior goal for the context prompt — only the fields the analyzer fills.
@@ -54,11 +57,11 @@ const priorContext = (g: GoalSpec): unknown => ({
 });
 
 export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
-  async analyze(message: string): Promise<GoalSpec> {
-    return (await this.analyzeWithRemovals(message)).goal;
+  async analyze(message: string, ownerId?: string | null): Promise<GoalSpec> {
+    return (await this.analyzeWithRemovals(message, undefined, ownerId)).goal;
   }
 
-  async analyzeWithRemovals(message: string, prior?: GoalSpec): Promise<AnalysisWithRemovals> {
+  async analyzeWithRemovals(message: string, prior?: GoalSpec, ownerId?: string | null): Promise<AnalysisWithRemovals> {
     const fallback = (): AnalysisWithRemovals => ({
       // Even the deterministic fallback keeps prior context: merge is additive downstream,
       // but seed the message's platforms so nothing is lost when the LLM is unavailable.
@@ -83,7 +86,11 @@ export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
         signal: AbortSignal.timeout(60_000),
       });
       if (!res.ok) return fallback();
-      const raw = extractJson(await res.json());
+      const rawJson = await res.json();
+      // Ledger the REAL physical call (intake surface) before parsing — the call happened
+      // (and billed) regardless of whether the JSON turns out parseable. Best-effort, never throws.
+      await recordGeminiCall(rawJson, { ownerId: ownerId ?? null, surface: 'intake', model: env.GEMINI_MODEL });
+      const raw = extractJson(rawJson);
       const parsed = goalSpec.safeParse(raw);
       if (!parsed.success) return fallback();
       // Removals are optional in the LLM output; fall back to the regex parser when the

@@ -75,8 +75,8 @@ const toChatDto = (session: any) => ({
   })),
 });
 
-const parseDraft = async (message: string, timezone: string): Promise<AgentIntakeDraft> =>
-  agentIntakeProvider.parse({ message, timezone });
+const parseDraft = async (message: string, timezone: string, ownerId?: string | null): Promise<AgentIntakeDraft> =>
+  agentIntakeProvider.parse({ message, timezone }, ownerId);
 
 const appendAssistant = async (sessionId: string, draft: AgentIntakeDraft): Promise<void> => {
   const content = draft.assistantMessage ?? draft.nextQuestion ?? 'I updated the setup draft.';
@@ -87,7 +87,7 @@ const appendAssistant = async (sessionId: string, draft: AgentIntakeDraft): Prom
 agentRouter.post('/intake', asyncHandler(async (req, res) => {
   const body = parseOr422(res, agentIntakeBody, req.body ?? {});
   if (!body) return;
-  ok(res, await parseDraft(body.message, body.timezone));
+  ok(res, await parseDraft(body.message, body.timezone, req.userId!));
 }));
 
 agentRouter.get('/chats', asyncHandler(async (req, res) => {
@@ -108,7 +108,7 @@ agentRouter.post('/chats', asyncHandler(async (req, res) => {
   const session = await prisma.agentChatSession.create({ data: { ownerId, title: body.title } });
   if (body.message) {
     await prisma.agentChatMessage.create({ data: { sessionId: session.id, role: 'user', content: body.message } });
-    await appendAssistant(session.id, await parseDraft(body.message, body.timezone));
+    await appendAssistant(session.id, await parseDraft(body.message, body.timezone, ownerId));
   }
   const full = await prisma.agentChatSession.findFirst({
     where: { id: session.id, ownerId },
@@ -132,7 +132,7 @@ agentRouter.post('/chats/:id/messages', asyncHandler(async (req, res) => {
   const session = await prisma.agentChatSession.findFirst({ where: { id: req.params.id, ownerId: req.userId! } });
   if (!session) { fail(res, 404, 'chat_not_found'); return; }
   await prisma.agentChatMessage.create({ data: { sessionId: session.id, role: 'user', content: body.message } });
-  await appendAssistant(session.id, await parseDraft(body.message, body.timezone));
+  await appendAssistant(session.id, await parseDraft(body.message, body.timezone, req.userId!));
   const full = await prisma.agentChatSession.findFirst({
     where: { id: session.id, ownerId: req.userId! },
     include: { messages: { orderBy: { createdAt: 'asc' } } },

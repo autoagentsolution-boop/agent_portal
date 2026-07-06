@@ -5,6 +5,13 @@
 import { researchSummary } from '../../orchestration/schemas/artifact-schemas.ts';
 import { groundedSearch, type GroundedSearchFn } from './grounded-search.ts';
 import { logger } from '../../lib/logger.ts';
+import type { GeminiUsage } from '../../orchestration/executor/node-cost.ts';
+
+// Optional usage sink (mirrors llm-json.ts's UsageSink): fires ONLY on the real grounded-search
+// path with real usageMetadata, never on the knowledge-only fallback (no provider call was made
+// there, so nothing to bill/record). Lets the caller (runResearcher) record to the ledger + cost
+// the node from real usage without changing runResearch's validated ResearchOutput return shape.
+export type ResearchUsageSink = (usage: GeminiUsage) => void;
 
 export interface ResearchInput {
   product: string;
@@ -50,11 +57,15 @@ const fallbackSummary = (input: ResearchInput): ResearchOutput => {
 export const runResearch = async (
   input: ResearchInput,
   search: GroundedSearchFn = groundedSearch,
+  onUsage?: ResearchUsageSink,
 ): Promise<ResearchOutput> => {
   let result: ResearchOutput;
 
   try {
     const grounded = await search(buildQuery(input));
+    // Report usage ONLY when the real call returned it (a real grounded call always does;
+    // injected test stubs that omit `usage` simply don't trigger a record — no behavior change).
+    if (onUsage && grounded.usage) onUsage(grounded.usage);
     result = {
       // Passed through as-is (translating grounding text into input.language is out of
       // scope for MVP), but capped so a verbose grounding response can't bloat the stored

@@ -5,7 +5,33 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-06
 
-### Atria Phase 02 (agent layers) + Phase 05-A (agent schema) — NOT committed
+### Gemini cost accounting — real per-owner usage ledger (fixes ~100× undercount)
+Audit `plans/reports/audit-260706-1532-gemini-cost-accounting.md`. Symptom: 500K Google credit
+burned but tracking showed ~$5. Three compounding causes fixed:
+- **Real usageMetadata incl. thinking tokens.** `node-cost.ts` now costs from actual
+  `promptTokenCount` + `candidatesTokenCount` + **`thoughtsTokenCount`** (Gemini 2.5 internal
+  reasoning, billed at output rate — the biggest miss) + `cachedContentTokenCount` at the cached
+  rate. Per-model `PRICING` (flash/flash-lite/pro/gemini-3) so a pro call isn't priced as flash.
+  char/4 `estimateLlmCost` kept only as a fallback. Veo now priced per-second ($0.05/s → $0.40 for
+  an 8s clip, was a $0.20 flat).
+- **Universal ledger.** New `mkt_llm_usage` table (1 migration) — EVERY public model call records
+  `{ownerId, surface, model, promptTokens, outputTokens, thoughtTokens, cachedTokens, costUsd}`.
+  Wired at every surface that was previously **invisible**: chat (conversation/requirement/save-offer),
+  intake (gemini-intake-provider + agent-router), copy-gen (service.ts — covers DAG + standalone +
+  cron), lead rescore, product analysis, and the DAG runners + media (image/video/tts). Grounded
+  research adds a $0.035/request surcharge. Record-once per physical call; stubs/cached record nothing.
+- **Analysis surface.** `GET /orchestration/usage` → per-owner total + per-surface breakdown (the
+  billing/business-strategy view). `src/cost/llm-usage.ts` (`recordGeminiCall`/`recordMediaCost`/
+  `usageTotals`). verify-llm-usage 16/16 (incl. DB round-trip) green.
+
+### Fix: media-only goals were unplannable (empty-plan guard / verify-master)
+`concept_writer` (sole producer of `content_concept`) was planned only for `needsTextPost`, so any
+infographic/storyboard/video-only goal had an unsatisfiable dependency → `plan_error`. Now the planner
+adds `concept_writer` for ANY content-bearing output, and the empty-plan guard treats `storyboard` as
+intermediate (not a standalone deliverable) → a storyboard-only goal falls back to a text post.
+verify-master now fully green (was 2 pre-existing failures).
+
+### Atria Phase 02 (agent layers) + Phase 05-A (agent schema) — committed ef255bb, 1e54cd9
 Plan `plans/260706-1040-atria-mvp-leads-priority/` (phases 02 + 05). No migration (all additive Zod
 artifact-schema fields, no Prisma change). Verified: verify-researcher, verify-publish-timing,
 verify-leads-criteria, verify-memory + the existing suites (executor/planner/api/leads) all green;

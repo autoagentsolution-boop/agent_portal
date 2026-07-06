@@ -1,6 +1,7 @@
 import { env } from '../config/env.ts';
 import type { AgentIntakeBody, AgentIntakeDraft } from '../api/schemas.ts';
 import { DeterministicAgentIntakeProvider, type AgentIntakeProvider } from './intake-provider.ts';
+import { recordGeminiCall } from '../cost/llm-usage.ts';
 
 const endpoint = (model: string): string =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
@@ -48,7 +49,9 @@ const parseJson = (raw: unknown): AgentIntakeDraft | null => {
 export class GeminiAgentIntakeProvider implements AgentIntakeProvider {
   constructor(private fallback = new DeterministicAgentIntakeProvider()) {}
 
-  async parse(input: AgentIntakeBody): Promise<AgentIntakeDraft> {
+  // ownerId (optional): the authenticated tenant, threaded from agent-router.ts so a REAL
+  // Gemini call bills the usage ledger (surface 'intake'). No key / no fetch → no record.
+  async parse(input: AgentIntakeBody, ownerId?: string | null): Promise<AgentIntakeDraft> {
     if (!env.GEMINI_API_KEY) return this.fallback.parse(input);
     try {
       const res = await fetch(endpoint(env.GEMINI_MODEL), {
@@ -61,7 +64,11 @@ export class GeminiAgentIntakeProvider implements AgentIntakeProvider {
         }),
       });
       if (!res.ok) return this.fallback.parse(input);
-      const draft = parseJson(await res.json());
+      const raw = await res.json();
+      // Ledger the REAL physical call — best-effort, never throws, regardless of whether the
+      // JSON parses into a usable draft below (the call happened and billed either way).
+      await recordGeminiCall(raw, { ownerId: ownerId ?? null, surface: 'intake', model: env.GEMINI_MODEL });
+      const draft = parseJson(raw);
       if (!draft?.campaign || !draft?.post) return this.fallback.parse(input);
       return { ...draft, provider: `gemini:${env.GEMINI_MODEL}` };
     } catch {

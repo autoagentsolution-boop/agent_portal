@@ -6,7 +6,14 @@
 import { env } from '../../config/env.ts';
 import { withRetry } from '../../lib/retry.ts';
 
-export type LlmJsonFn = (systemPrompt: string, userText: string) => Promise<unknown>;
+import type { GeminiUsage } from '../executor/node-cost.ts';
+import { extractGeminiUsage } from '../../cost/llm-usage.ts';
+
+// Optional usage sink: the real call reports REAL token usage (incl. thinking tokens) so the
+// caller can record it to the ledger + cost from it. Injected stubs (DRY-RUN) simply ignore it,
+// so verification records nothing (no spend) — kept optional to preserve the seam contract.
+export type UsageSink = (usage: GeminiUsage) => void;
+export type LlmJsonFn = (systemPrompt: string, userText: string, onUsage?: UsageSink) => Promise<unknown>;
 
 const endpoint = (model: string): string =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
@@ -24,7 +31,7 @@ const extractJson = (raw: unknown): unknown => {
   return JSON.parse(cleaned);
 };
 
-export const callGeminiJson: LlmJsonFn = async (systemPrompt, userText) => {
+export const callGeminiJson: LlmJsonFn = async (systemPrompt, userText, onUsage) => {
   if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured');
   const res = await withRetry(
     () =>
@@ -40,5 +47,7 @@ export const callGeminiJson: LlmJsonFn = async (systemPrompt, userText) => {
       }),
     { label: 'gemini_orchestration_json' },
   );
-  return extractJson(await res.json());
+  const raw = await res.json();
+  if (onUsage) onUsage(extractGeminiUsage(raw)); // report REAL usage before parsing
+  return extractJson(raw);
 };

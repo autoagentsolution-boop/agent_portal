@@ -8,6 +8,7 @@ import { env } from '../../config/env.ts';
 import { conversationSystemPrompt } from '../prompts/conversation-prompt.ts';
 import { languageName } from './detect-language.ts';
 import type { MasterAgentOutcome } from './master-agent.ts';
+import { recordGeminiCall } from '../../cost/llm-usage.ts';
 
 export interface PriorMessage {
   role: 'user' | 'agent';
@@ -23,6 +24,10 @@ export interface PriorMessage {
 export interface AuthorOptions {
   userMessage?: string | null;
   language?: string | null;
+  // The authenticated tenant for this turn, so the real Gemini call can be billed to the
+  // right owner in the usage ledger. Optional — a missing value records a system-owned row
+  // (recordGeminiCall/recordLlmUsage accept null) rather than skipping the record.
+  ownerId?: string | null;
 }
 
 const endpoint = (model: string): string =>
@@ -126,7 +131,11 @@ export class GeminiConversationAuthor implements ConversationAuthor {
         signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) return fallback;
-      const text = extractText(await res.json());
+      const raw = await res.json();
+      // Ledger the REAL physical call (chat surface) — best-effort, never throws, so a
+      // recording hiccup can't degrade the authored reply.
+      await recordGeminiCall(raw, { ownerId: opts.ownerId ?? null, surface: 'chat', model: env.GEMINI_MODEL });
+      const text = extractText(raw);
       return text.length >= 2 ? text : fallback;
     } catch {
       return fallback;

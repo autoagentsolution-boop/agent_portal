@@ -7,6 +7,7 @@
 // that precedes them, in the user's language.
 import { env } from '../../config/env.ts';
 import { languageName } from './detect-language.ts';
+import { recordGeminiCall } from '../../cost/llm-usage.ts';
 
 const SYSTEM_PROMPT = `You are AgentPortal's Master Agent — a marketing orchestration assistant.
 The user just SAVED a marketing workflow (a "flow"). Your job now is to guide them into
@@ -27,6 +28,9 @@ interface OfferContext {
   flowName: string | null;
   product: string | null;
   language: string | null;
+  // Authenticated tenant for this turn — threaded through so the real Gemini call can be
+  // billed to the right owner in the usage ledger (optional; recordGeminiCall accepts null).
+  ownerId?: string | null;
 }
 
 const endpoint = (model: string): string =>
@@ -67,14 +71,18 @@ export class GeminiSaveOfferAuthor implements SaveOfferAuthor {
           systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
           contents: [{
             role: 'user',
-            parts: [{ text: `${langLine}\n\nContext:\n${JSON.stringify({ ...ctx, replyLanguage: replyLanguage ?? undefined })}` }],
+            // ownerId is routing metadata, not prompt content — excluded from what the model sees.
+            parts: [{ text: `${langLine}\n\nContext:\n${JSON.stringify({ flowName: ctx.flowName, product: ctx.product, language: ctx.language, replyLanguage: replyLanguage ?? undefined })}` }],
           }],
           generationConfig: { temperature: 0.5 },
         }),
         signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) return fallback;
-      const text = extractText(await res.json());
+      const raw = await res.json();
+      // Ledger the REAL physical call (chat surface) — best-effort, never throws.
+      await recordGeminiCall(raw, { ownerId: ctx.ownerId ?? null, surface: 'chat', model: env.GEMINI_MODEL });
+      const text = extractText(raw);
       return text.length >= 2 ? text : fallback;
     } catch {
       return fallback;
