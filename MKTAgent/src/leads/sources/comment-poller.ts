@@ -31,8 +31,15 @@ export interface PollSummary { postsPolled: number; commentsScanned: number; lea
 // ownerId scopes the poll to one tenant (the manual UI trigger); omit for the global cron.
 export const pollCommentsForLeads = async (fetcher: CommentFetcher, ownerId?: string): Promise<PollSummary> => {
   const summary: PollSummary = { postsPolled: 0, commentsScanned: 0, leadsCaptured: 0, duplicates: 0 };
+  // Skip EXPIRED collectors (leadCollectorExpiresAt in the past) — a post isn't polled forever;
+  // this bounds the overhead. null expiry = legacy/always-on. Re-activating from Leads extends it.
+  const now = new Date();
   const posts = await prisma.post.findMany({
-    where: { leadCaptureKeyword: { not: null }, ...(ownerId ? { ownerId } : {}) },
+    where: {
+      leadCaptureKeyword: { not: null },
+      OR: [{ leadCollectorExpiresAt: null }, { leadCollectorExpiresAt: { gt: now } }],
+      ...(ownerId ? { ownerId } : {}),
+    },
     include: { campaign: { select: { product: true } } },
   });
 

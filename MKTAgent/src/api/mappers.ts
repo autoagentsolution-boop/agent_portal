@@ -45,6 +45,7 @@ export const toPostDto = (p: Post): PostDto => ({
   referenceImage: p.referenceImage,
   leadCaptureKeyword: p.leadCaptureKeyword,
   leadCollectorStatus: p.leadCollectorStatus,
+  leadCollectorExpiresAt: iso(p.leadCollectorExpiresAt),
   versionCount: p.versionCount,
   scheduledAt: iso(p.scheduledAt),
   postUrls: (p.postUrls as Record<string, string> | null) ?? null,

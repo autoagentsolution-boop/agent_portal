@@ -234,6 +234,10 @@ model Post {
   // = the published post was removed on the platform, so the collector is stopped (the Graph API
   // returns "object does not exist"). Lets the UI show "stopped — post deleted" instead of a zombie.
   leadCollectorStatus String? @map("lead_collector_status")
+  // When the lead collector stops watching this post (set on activation → now + TTL). A post isn't
+  // polled forever — after this the poller skips it (bounds overhead). null = never activated / no
+  // expiry. Re-activating ("extend") pushes it out again.
+  leadCollectorExpiresAt DateTime? @map("lead_collector_expires_at") @db.Timestamptz(6)
   // Free-form language override (null → inherit campaign.language → user.defaultLanguage).
   language    String?          @map("language")
   lengthSpec  String?          @map("length_spec") // short|medium|long|<wordcount>

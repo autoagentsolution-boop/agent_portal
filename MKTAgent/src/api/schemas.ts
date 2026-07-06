@@ -404,6 +404,7 @@ export const postDto = z.object({
   // Lead Collector (§01.4) — per-post comment-capture keyword; null → capture off.
   leadCaptureKeyword: z.string().nullable(),
   leadCollectorStatus: z.string().nullable(),
+  leadCollectorExpiresAt: z.string().nullable(),
   versionCount: z.number().nullable(),
   scheduledAt: z.string().nullable(),
   postUrls: z.record(z.string()).nullable(),

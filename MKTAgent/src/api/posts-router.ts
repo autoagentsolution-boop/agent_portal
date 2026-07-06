@@ -17,6 +17,10 @@ import {
   type CreatePostBody,
 } from './schemas.ts';
 import { recordCommentSources } from '../leads/sources/comment-watch.ts';
+import { checkPostLinks } from '../leads/sources/post-liveness.ts';
+
+// How long a lead collector watches a post before it expires (bounds polling overhead).
+const COLLECTOR_TTL_DAYS = 30;
 import { toPostDto, toPostDetailDto } from './mappers.ts';
 import { listArtifacts, updateArtifactData } from '../orchestration/executor/artifact-store.ts';
 import { checkPostability } from '../social/postability.ts';
@@ -295,16 +299,32 @@ postsRouter.post(
     const post = await getPostForOwner(req.params.id, req.userId!);
     if (!post) return fail(res, 404, 'post_not_found');
     if (body.keyword) {
-      await updatePostFields(post.id, req.userId!, { leadCaptureKeyword: body.keyword });
+      // Activate/extend: set (or refresh) the keyword + a fresh expiry so the collector isn't
+      // polled forever. Re-calling this "extends" the window. Clear any prior post_deleted status.
+      const expiresAt = new Date(Date.now() + COLLECTOR_TTL_DAYS * 24 * 60 * 60 * 1000);
+      await updatePostFields(post.id, req.userId!, { leadCaptureKeyword: body.keyword, leadCollectorExpiresAt: expiresAt, leadCollectorStatus: null });
       // Backfill watch sources from the already-published URLs (no-op if not yet published).
       const withKeyword = await getPostForOwner(post.id, req.userId!);
       if (withKeyword && post.postUrls) await recordCommentSources(withKeyword, post.postUrls as Record<string, string>);
     } else {
-      // Stop collecting: clear keyword + sources + any 'post_deleted' status.
-      await updatePostFields(post.id, req.userId!, { leadCaptureKeyword: null, commentSourceIds: Prisma.JsonNull, leadCollectorStatus: null });
+      // Stop collecting: clear keyword + sources + expiry + any 'post_deleted' status.
+      await updatePostFields(post.id, req.userId!, { leadCaptureKeyword: null, commentSourceIds: Prisma.JsonNull, leadCollectorStatus: null, leadCollectorExpiresAt: null });
     }
     const final = await getPostForOwner(post.id, req.userId!);
     ok(res, toPostDto(final!));
+  }),
+);
+
+// Check whether each of a published post's platform links still EXISTS on-platform (the user may
+// delete a post after testing). One post can have many platform links; this reports alive/dead per
+// platform and self-heals — a dead WATCHED source is dropped, and if none remain the collector is
+// marked post_deleted. On-demand (a real API call per platform); reuses the collector's gone signal.
+postsRouter.get(
+  '/:id/link-status',
+  asyncHandler(async (req, res) => {
+    const post = await getPostForOwner(req.params.id, req.userId!);
+    if (!post) return fail(res, 404, 'post_not_found');
+    ok(res, { links: await checkPostLinks(post, req.userId!) });
   }),
 );
 
