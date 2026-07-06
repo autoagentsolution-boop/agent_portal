@@ -3,7 +3,7 @@
 // knowledge was the cause of generic media). Files are sent as base64 (no multipart) to
 // POST /product-knowledge/analyze; when a campaignId is given the result persists to the
 // campaign so all its posts inherit the richer knowledge.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, type ProductKnowledgeResult, type UploadedDocInput } from '../api/client';
 
 interface Props {
@@ -34,8 +34,23 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
   const [result, setResult] = useState<ProductKnowledgeResult | null>(null);
   const [open, setOpen] = useState(false);
   // Save the analysis as a REUSABLE library entry (item 6) so other posts/campaigns can link it.
-  const [saveToLibrary, setSaveToLibrary] = useState(false);
+  // Default ON: without it an upload only lands on campaign.brandContext and never becomes
+  // visible/reusable — the "my product knowledge disappeared" report.
+  const [saveToLibrary, setSaveToLibrary] = useState(true);
   const [libraryName, setLibraryName] = useState(product ?? '');
+  // Existing product knowledge already stored on this campaign (brandContext). Fetched on
+  // mount so the user SEES their prior upload persisted instead of a blank panel after reload.
+  const [existing, setExisting] = useState<{ productDetails: string; brandVoice: string | null } | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void api.getCampaign(campaignId).then((r) => {
+      if (!live || !r.ok) return;
+      if (r.data.brandContext) setExisting({ productDetails: r.data.brandContext, brandVoice: r.data.brandVoice ?? null });
+      if (!product && r.data.product) setLibraryName((n) => n || r.data.product);
+    });
+    return () => { live = false; };
+  }, [campaignId, product]);
 
   const analyze = async (fileList: FileList) => {
     const files = Array.from(fileList).slice(0, MAX_FILES);
@@ -53,6 +68,7 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
       });
       if (!r.ok) { notify(`Analyze: ${r.error.error}`, 'err'); return; }
       setResult(r.data);
+      setExisting({ productDetails: r.data.productDetails, brandVoice: r.data.brandVoice });
       onAnalyzed?.(r.data);
       notify(`Product knowledge updated (${r.data.cost.totalTokens} tokens · $${r.data.cost.costUsd.toFixed(4)})`);
     } finally {
@@ -68,8 +84,17 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
           <strong style={{ fontSize: 14 }}>📚 Product Knowledge</strong>
           <span className="muted" style={{ fontSize: 12 }}>Upload docs/images so copy, images & video are grounded in real facts</span>
         </div>
-        <button className="btn small" onClick={() => setOpen((o) => !o)}>{open ? 'Hide' : 'Add documents'}</button>
+        <button className="btn small" onClick={() => setOpen((o) => !o)}>{open ? 'Hide' : existing ? 'View / add more' : 'Add documents'}</button>
       </div>
+
+      {/* Re-hydrate (A): the campaign's stored product knowledge, shown so a prior upload is
+          visibly persisted (it survives reloads/rebuilds — it grounds this campaign's copy). */}
+      {existing && !result && (
+        <div className="pk-result" style={{ marginTop: 10 }}>
+          <div className="copy-box"><div className="label">Current product knowledge (grounds this campaign)</div><div className="text">{existing.productDetails}</div></div>
+          {existing.brandVoice && <div className="row muted small" style={{ gap: 12, marginTop: 6 }}><span>Voice: {existing.brandVoice}</span></div>}
+        </div>
+      )}
 
       {open && (
         <div style={{ marginTop: 10 }}>

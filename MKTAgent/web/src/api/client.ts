@@ -161,6 +161,7 @@ export const api = {
     request<ProductKnowledgeEntry>(`/product-knowledge/${id}`, { method: 'PATCH', body }),
   deleteProductKnowledge: (id: string) => request<void>(`/product-knowledge/${id}`, { method: 'DELETE' }),
   listCampaigns: () => request<CampaignDto[]>('/campaigns'),
+  getCampaign: (id: string) => request<CampaignDto>(`/campaigns/${id}`),
   createCampaign: (body: Dto['CreateCampaignBody']) =>
     request<CampaignDto>('/campaigns', { method: 'POST', body }),
   updateCampaign: (id: string, body: Dto['UpdateCampaignBody']) =>
