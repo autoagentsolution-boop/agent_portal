@@ -1,24 +1,28 @@
-// Leads router (T6) — inbound capture + tenant-scoped read.
+// Leads router (T6 + Atria §01.1 per-tenant intake).
 //
-// INTAKE (public, secret-gated — external funnels have no JWT):
-//   POST /leads/webhook   header x-webhook-secret  → generic JSON lead
-//   POST /leads/form      header x-webhook-secret  → Google-Form-style row
-//   POST /leads/calcom    query  ?s=<secret>       → Cal.com BOOKING_CREATED
-// READ (JWT, tenant-scoped):
-//   GET  /leads                                    → this owner's leads
-//
-// Webhook auth is the ported n8n shared-secret model (constant-time), NOT the
-// x-api-key middleware: external tools set a header/query, not our api-key. Dedupe
-// + persistence + notify live in the service; the router only authenticates,
-// normalizes, and maps the outcome to HTTP.
+// INTAKE (public — external funnels have no JWT). The OWNER is resolved from a presented
+// PER-OWNER intake token (header `x-intake-token` or query `?t=`) → the lead lands on the
+// right tenant. The legacy global shared secret still works and maps to the SYSTEM owner
+// (back-compat for the DAIS funnels):
+//   POST /leads/webhook   x-intake-token | x-webhook-secret  → generic JSON lead
+//   POST /leads/form      x-intake-token | x-webhook-secret  → Google-Form-style row
+//   POST /leads/calcom    ?t=<intake> | ?s=<secret>          → Cal.com BOOKING_CREATED
+// MANAGE + READ (JWT, tenant-scoped):
+//   POST   /leads/intake-tokens     → mint a token (plaintext returned ONCE)
+//   GET    /leads/intake-tokens     → list this owner's tokens (metadata only)
+//   DELETE /leads/intake-tokens/:id → revoke
+//   GET    /leads                   → this owner's leads
 import { Router } from 'express';
-import { ok, fail, asyncHandler } from './http.ts';
+import { z } from 'zod';
+import { ok, fail, parseOr422, asyncHandler } from './http.ts';
 import { safeEqual } from '../lib/crypto.ts';
 import { env } from '../config/env.ts';
 import { requireAuth } from './middleware-auth.ts';
 import { normalizeWebhook, normalizeForm, normalizeCalcom, type NormalizeResult } from '../leads/normalize.ts';
 import { captureLead } from '../leads/service.ts';
 import { listLeads } from '../db/repos/lead-repo.ts';
+import { resolveOwnerByToken, createIntakeToken, listIntakeTokens, revokeIntakeToken } from '../db/repos/lead-intake-token-repo.ts';
+import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { logger } from '../lib/logger.ts';
 import type { Lead } from '../../prisma/generated/prisma/client.ts';
 
@@ -27,52 +31,103 @@ export const leadsRouter: Router = Router();
 const asRecord = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 
-// Persist a normalized result and map outcome → HTTP. Shared by all 3 intakes.
+// Resolve the owner for an inbound intake. Per-owner intake token wins (header or query);
+// else the legacy global secret → SYSTEM owner. Returns null → the caller 401s. NEVER logs
+// the token value. `legacySecret` is the matching global secret for that route (or null).
+const resolveIntakeOwner = async (
+  req: { header: (n: string) => string | undefined; query: Record<string, unknown> },
+  legacySecret: string | null,
+): Promise<string | null> => {
+  const presentedToken = req.header('x-intake-token') ?? (typeof req.query.t === 'string' ? req.query.t : '');
+  if (presentedToken) return resolveOwnerByToken(presentedToken);
+  // Legacy global-secret path (DAIS funnels) → system owner.
+  if (legacySecret) {
+    const presentedSecret = req.header('x-webhook-secret') ?? (typeof req.query.s === 'string' ? req.query.s : '');
+    if (presentedSecret && safeEqual(presentedSecret, legacySecret)) return SYSTEM_OWNER_ID;
+  }
+  return null;
+};
+
+// Persist a normalized result under `ownerId` and map outcome → HTTP. Shared by all 3 intakes.
 const handleNormalized = async (
   res: Parameters<typeof ok>[0],
   result: NormalizeResult,
+  ownerId: string,
 ): Promise<void> => {
   if (!result.ok) {
-    // 202 = intentionally ignored (e.g. non-booking Cal.com event), not an error.
     if (result.status === 202) return void ok(res, { status: 'ignored', reason: result.error });
     return void fail(res, result.status, result.error);
   }
-  const outcome = await captureLead(result.lead);
+  const outcome = await captureLead(result.lead, ownerId);
   ok(res, { status: outcome.status, leadId: outcome.leadId ?? null });
 };
 
-// ---- POST /leads/webhook — generic JSON, header secret ----
+// ---- POST /leads/webhook — generic JSON ----
 leadsRouter.post(
   '/webhook',
   asyncHandler(async (req, res) => {
-    if (!env.MKT_LEAD_WEBHOOK_SECRET) return fail(res, 503, 'webhook_secret_not_configured');
-    const presented = req.header('x-webhook-secret') ?? '';
-    if (!safeEqual(presented, env.MKT_LEAD_WEBHOOK_SECRET)) return fail(res, 401, 'unauthorized');
-    await handleNormalized(res, normalizeWebhook(asRecord(req.body)));
+    const ownerId = await resolveIntakeOwner(req, env.MKT_LEAD_WEBHOOK_SECRET ?? null);
+    if (!ownerId) return fail(res, 401, 'unauthorized');
+    await handleNormalized(res, normalizeWebhook(asRecord(req.body)), ownerId);
   }),
 );
 
-// ---- POST /leads/form — Google-Form-style row, header secret ----
+// ---- POST /leads/form — Google-Form-style row ----
 leadsRouter.post(
   '/form',
   asyncHandler(async (req, res) => {
-    if (!env.MKT_LEAD_WEBHOOK_SECRET) return fail(res, 503, 'webhook_secret_not_configured');
-    const presented = req.header('x-webhook-secret') ?? '';
-    if (!safeEqual(presented, env.MKT_LEAD_WEBHOOK_SECRET)) return fail(res, 401, 'unauthorized');
-    await handleNormalized(res, normalizeForm(asRecord(req.body)));
+    const ownerId = await resolveIntakeOwner(req, env.MKT_LEAD_WEBHOOK_SECRET ?? null);
+    if (!ownerId) return fail(res, 401, 'unauthorized');
+    await handleNormalized(res, normalizeForm(asRecord(req.body)), ownerId);
   }),
 );
 
-// ---- POST /leads/calcom — Cal.com webhook, query secret (?s=) ----
-// Cal.com signs with HMAC but lets you append query params to the webhook URL;
-// the shared-secret query is the portable equivalent (ported from n8n).
+// ---- POST /leads/calcom — Cal.com webhook (query token/secret) ----
 leadsRouter.post(
   '/calcom',
   asyncHandler(async (req, res) => {
-    if (!env.MKT_CALCOM_WEBHOOK_SECRET) return fail(res, 503, 'calcom_secret_not_configured');
-    const presented = typeof req.query.s === 'string' ? req.query.s : '';
-    if (!safeEqual(presented, env.MKT_CALCOM_WEBHOOK_SECRET)) return fail(res, 401, 'unauthorized');
-    await handleNormalized(res, normalizeCalcom(asRecord(req.body)));
+    const ownerId = await resolveIntakeOwner(req, env.MKT_CALCOM_WEBHOOK_SECRET ?? null);
+    if (!ownerId) return fail(res, 401, 'unauthorized');
+    await handleNormalized(res, normalizeCalcom(asRecord(req.body)), ownerId);
+  }),
+);
+
+// ---- Intake token management (JWT, owner-scoped) ----
+const createTokenBody = z.object({ label: z.string().max(120).optional() });
+
+leadsRouter.post(
+  '/intake-tokens',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const body = parseOr422(res, createTokenBody, req.body ?? {});
+    if (!body) return;
+    const created = await createIntakeToken(req.userId!, body.label ?? null);
+    logger.info('lead_intake_token_created', { ownerId: req.userId, id: created.id });
+    // The plaintext token is returned ONCE — the UI must surface it immediately.
+    res.status(201);
+    ok(res, { id: created.id, token: created.token, label: created.label, createdAt: created.createdAt.toISOString() });
+  }),
+);
+
+leadsRouter.get(
+  '/intake-tokens',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const rows = await listIntakeTokens(req.userId!);
+    ok(res, rows.map((t) => ({
+      id: t.id, label: t.label, active: t.active,
+      createdAt: t.createdAt.toISOString(), lastUsedAt: t.lastUsedAt ? t.lastUsedAt.toISOString() : null,
+    })), { count: rows.length });
+  }),
+);
+
+leadsRouter.delete(
+  '/intake-tokens/:id',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const okDel = await revokeIntakeToken(req.params.id, req.userId!);
+    if (!okDel) return fail(res, 404, 'intake_token_not_found');
+    res.status(204).end();
   }),
 );
 

@@ -1,29 +1,21 @@
 // Lead capture service — the chokepoint between intake routers and the DB. Owns
-// tenant resolution, per-owner dedupe, persistence, and best-effort notify.
+// per-owner dedupe, persistence, and best-effort notify.
 //
-// TENANCY (v1): inbound funnels (form services, Cal.com) can only present a shared
-// secret — they have no JWT. So a captured lead is attributed to the SYSTEM/DAIS
-// owner. `resolveLeadOwner()` is the single seam to extend later (per-owner intake
-// tokens / funnel→owner map) without touching the routers — same external-onboarding
-// gate as the social connect-flow.
+// TENANCY (§01.1): the OWNER is resolved by the router from the presented intake token
+// (per-owner) and passed in — so a captured lead lands on the right tenant, never a shared
+// bucket. The legacy global webhook secret maps to SYSTEM_OWNER_ID (back-compat) at the router.
 import { createLead, isDuplicateByEmail, isDuplicateByBookingUid } from '../db/repos/lead-repo.ts';
-import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
 import { notifySales } from './notify.ts';
 import type { NormalizedLead } from './normalize.ts';
-
-// v1: every funnel lead → system owner. Hook point for per-owner intake later.
-export const resolveLeadOwner = (): string => SYSTEM_OWNER_ID;
 
 export interface CaptureOutcome {
   status: 'created' | 'duplicate';
   leadId?: string;
 }
 
-export const captureLead = async (lead: NormalizedLead): Promise<CaptureOutcome> => {
-  const ownerId = resolveLeadOwner();
-
+export const captureLead = async (lead: NormalizedLead, ownerId: string): Promise<CaptureOutcome> => {
   // Dedupe: Cal.com by booking uid (survives webhook retries), else by email/30d.
   const dup =
     lead.source === 'calcom' && lead.calBookingUid
