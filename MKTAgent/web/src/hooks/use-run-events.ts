@@ -13,6 +13,11 @@ export interface NodeStatusEvent {
   agentId: string;
   status: string;
   error?: string | null;
+  // Optimal-time publish suggestion, set on the publisher node's awaiting_approval event.
+  timingSuggestion?: string | null;
+  // Informational hold notice (e.g. "Holding publish — N step(s) still in progress") —
+  // distinct from `error`, not a failure. Set on the same awaiting_approval event.
+  notice?: string | null;
 }
 
 // onEvent fires only for events matching the active runId. Subscription resets

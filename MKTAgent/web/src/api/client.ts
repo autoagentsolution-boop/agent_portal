@@ -35,7 +35,10 @@ export type ProductKnowledgeEntry = {
   createdAt: string;
   updatedAt: string;
 };
-export type PostDto = Dto['PostDto'];
+// versionCount / leadCollectorStatus — Lead Collector Phase 02 fields, live on the API but
+// not yet in openapi.json/schema.d.ts (hand-typed at the boundary until regenerated).
+// Optional so casts from narrower generated shapes (e.g. PostFromAgentDto['post']) stay valid.
+export type PostDto = Dto['PostDto'] & { versionCount?: number | null; leadCollectorStatus?: string | null };
 export type PostDetailDto = Dto['PostDetailDto'];
 export type LeadDto = Dto['LeadDto'];
 // Lead Collector (§01) — routes not in openapi yet, hand-typed.
@@ -246,7 +249,8 @@ export const api = {
   // (`post` + `filled` — the fields it captured).
   createPostFromAgent: (campaignId: string, message: string, answers?: Record<string, string | string[]>) =>
     request<Dto['PostFromAgentDto']>('/posts/from-agent', { method: 'POST', body: { campaignId, message, ...(answers ? { answers } : {}) } }),
-  updatePost: (id: string, body: Dto['UpdatePostBody']) =>
+  // versionCount not yet in the generated UpdatePostBody — hand-typed alongside it.
+  updatePost: (id: string, body: Dto['UpdatePostBody'] & { versionCount?: number }) =>
     request<PostDto>(`/posts/${id}`, { method: 'PATCH', body }),
   deletePost: (id: string) => request<void>(`/posts/${id}`, { method: 'DELETE' }),
 

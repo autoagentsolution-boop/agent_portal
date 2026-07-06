@@ -46,6 +46,9 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   const [run, setRun] = useState<WorkflowRunDto | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Live per-node hold notices (nodeId → text) from node.status SSE events — not persisted
+  // on the run DTO, so kept separately and reset whenever we switch/reload the run.
+  const [notices, setNotices] = useState<Record<string, string>>({});
   // Concept-copy editors (inline manual edit + LLM refine on the concept_writer artifact).
   const [editCopy, setEditCopy] = useState<Copy | null>(null);
   const [refineOpen, setRefineOpen] = useState(false);
@@ -56,13 +59,14 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     if (r.ok) setRun(r.data);
     else notify(`Load workflow: ${r.error.error}`, 'err');
   };
-  useEffect(() => { setRun(null); setSelectedNode(null); void load(); }, [runId]);
+  useEffect(() => { setRun(null); setSelectedNode(null); setNotices({}); void load(); }, [runId]);
 
   const liveId = run && (run.status === 'running' || run.status === 'needs_approval') ? run.id : null;
   useRunEvents(liveId, (ev) => {
     setRun((cur) => cur && cur.id === ev.runId
       ? { ...cur, nodes: cur.nodes.map((n) => n.nodeId === ev.nodeId ? { ...n, status: ev.status, error: ev.error ?? n.error } : n) }
       : cur);
+    if (ev.notice) setNotices((prev) => ({ ...prev, [ev.nodeId]: ev.notice! }));
     if (ev.status === 'completed' || ev.status === 'failed') void load();
   });
 
@@ -203,7 +207,7 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
       <p className="muted small">{isResume ? 'A step was re-run — later steps are stale. Click Continue to regenerate them, then approve to publish.' : statusHint}</p>
 
       <div className="post-workflow-body">
-        <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} />
+        <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} notices={notices} />
 
         {run.status === 'needs_connection' && requiredActions.length > 0 && (
           <ConnectionRequired actions={requiredActions} busy={busy} onContinue={() => void execute()} onOpenConnections={onOpenConnections} />

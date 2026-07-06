@@ -109,12 +109,19 @@ export function LeadsPage({ notify }: Props) {
           <div className="spread"><strong style={{ fontSize: 14 }}>💬 Active lead collectors</strong><span className="muted small">{collectors.length} post(s) watching comments</span></div>
           <p className="muted small" style={{ marginTop: 4 }}>These published posts capture opt-in leads from comments matching their keyword. Use <strong>↻ Poll comments</strong> to pull new ones.</p>
           <div className="post-summary-list" style={{ marginTop: 8 }}>
-            {collectors.map((p) => (
-              <div key={p.id} className="spread" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                <span className="small">🔑 <strong>{p.leadCaptureKeyword}</strong> · <span className="muted">{p.platforms.join(', ') || 'no platforms'} · {p.status}</span></span>
-                <span className="muted small">{p.postUrls?.facebook ? <a href={p.postUrls.facebook} target="_blank" rel="noreferrer">view post ↗</a> : 'not published'}</span>
-              </div>
-            ))}
+            {collectors.map((p) => {
+              const stopped = p.leadCollectorStatus === 'post_deleted';
+              return (
+                <div key={p.id} className="spread" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                  <span className="small">🔑 <strong>{p.leadCaptureKeyword}</strong> · <span className="muted">{p.platforms.join(', ') || 'no platforms'} · {p.status}</span></span>
+                  {stopped ? (
+                    <span className="badge error" title="The watched post was deleted on the platform — comment polling stopped for it">⏹ stopped — post deleted</span>
+                  ) : (
+                    <span className="muted small">{p.postUrls?.facebook ? <a href={p.postUrls.facebook} target="_blank" rel="noreferrer">view post ↗</a> : 'not published'}</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

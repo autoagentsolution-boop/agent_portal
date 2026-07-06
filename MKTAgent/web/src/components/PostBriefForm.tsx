@@ -61,6 +61,7 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
   const [platformAssets, setPlatformAssets] = useState<PlatformAssets>(() => (post?.platformAssets as PlatformAssets) ?? {});
   const [knowledgeId, setKnowledgeId] = useState<string>(post?.productKnowledgeId ?? '');
   const [leadKeyword, setLeadKeyword] = useState<string>(post?.leadCaptureKeyword ?? '');
+  const [versionCount, setVersionCount] = useState<number>(post?.versionCount ?? 1);
   const [library, setLibrary] = useState<ProductKnowledgeEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const mode = post ? 'edit' : 'create';
@@ -70,6 +71,7 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
     setPlatformAssets((post?.platformAssets as PlatformAssets) ?? {});
     setKnowledgeId(post?.productKnowledgeId ?? '');
     setLeadKeyword(post?.leadCaptureKeyword ?? '');
+    setVersionCount(post?.versionCount ?? 1);
   }, [post]);
 
   // Product Knowledge library (item 6): the user picks a reusable entry to ground this post.
@@ -101,19 +103,19 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
     const knowledgePayload = knowledgeId || null;
     const leadKeywordPayload = leadKeyword.trim() || null;
     if (post) {
-      const result = await api.updatePost(post.id, { ...body, platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload, leadCaptureKeyword: leadKeywordPayload });
+      const result = await api.updatePost(post.id, { ...body, platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload, leadCaptureKeyword: leadKeywordPayload, versionCount });
       setSaving(false);
       if (result.ok) { notify('Brief updated'); onSaved(result.data); }
       else notify(`Brief save failed: ${result.error.error}`, 'err');
       return;
     }
-    // Create then persist edit-only fields (platformAssets, library link) with a follow-up
-    // PATCH — CreatePostBody carries neither.
+    // Create then persist edit-only fields (platformAssets, library link, versionCount) with a
+    // follow-up PATCH — CreatePostBody carries none of them.
     const created = await api.createPost({ campaignId, ...body });
     if (!created.ok) { setSaving(false); notify(`Brief save failed: ${created.error.error}`, 'err'); return; }
     let saved = created.data;
-    if (platformAssetsPayload || knowledgePayload || leadKeywordPayload) {
-      const patched = await api.updatePost(saved.id, { platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload, leadCaptureKeyword: leadKeywordPayload });
+    if (platformAssetsPayload || knowledgePayload || leadKeywordPayload || versionCount !== 1) {
+      const patched = await api.updatePost(saved.id, { platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload, leadCaptureKeyword: leadKeywordPayload, versionCount });
       if (patched.ok) saved = patched.data;
     }
     setSaving(false);
@@ -215,6 +217,22 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
           </div>
         </div>
       )}
+
+      <div className="field">
+        <label>Number of versions</label>
+        <input
+          type="number"
+          min={1}
+          max={5}
+          value={versionCount}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            setVersionCount(Number.isFinite(n) ? Math.min(5, Math.max(1, Math.round(n))) : 1);
+          }}
+          style={{ maxWidth: 90 }}
+        />
+        <div className="help-text">How many copy versions to choose from (1 = a single version).</div>
+      </div>
 
       <div className="field">
         <label>Lead capture keyword (optional)</label>

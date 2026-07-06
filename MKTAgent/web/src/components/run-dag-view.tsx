@@ -73,9 +73,13 @@ interface Props {
   // When set, nodes are clickable (run detail → open that node's artifact).
   onSelectNode?: (nodeId: string) => void;
   selectedNodeId?: string | null;
+  // Informational hold notice per node (nodeId → text), e.g. the publisher node holding
+  // because other steps are still in progress. Comes from the live node.status SSE event —
+  // not persisted on the run, so the caller keeps it in its own state and passes it down.
+  notices?: Record<string, string>;
 }
 
-export function RunDagView({ nodes, publishUrls, platforms, onSelectNode, selectedNodeId }: Props) {
+export function RunDagView({ nodes, publishUrls, platforms, onSelectNode, selectedNodeId, notices }: Props) {
   const platformRows = Object.entries(publishUrls ?? {});
   const targetPlatforms = platforms ?? [];
   return (
@@ -94,6 +98,7 @@ export function RunDagView({ nodes, publishUrls, platforms, onSelectNode, select
             {n.status === 'running' && <RunningElapsed key={`${n.nodeId}-elapsed`} />}
             {n.status === 'completed' && <NodeStats node={n} />}
             {n.error && <span className="dag-err">{n.error}</span>}
+            {notices?.[n.nodeId] && <span className="dag-notice">{notices[n.nodeId]}</span>}
             {n.agentId === 'publisher' && platformRows.length > 0 && (
               <ul className="publish-subrows">
                 {platformRows.map(([platform, url]) => (

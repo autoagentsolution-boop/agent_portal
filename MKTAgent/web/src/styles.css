@@ -516,6 +516,7 @@ a { color: var(--accent); }
 .dag-agent { font-weight: 500; text-transform: capitalize; }
 .dag-dep { color: var(--muted); font-size: 12px; }
 .dag-err { color: var(--red); font-size: 12px; margin-left: auto; }
+.dag-notice { flex-basis: 100%; margin: 2px 0 0 26px; font-size: 12px; color: var(--amber); }
 .dag-targets { color: var(--accent, #2f9e6f); font-size: 12px; font-weight: 500; }
 .dag-stats { margin-left: auto; display: inline-flex; gap: 10px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .dag-stat-time { color: var(--muted); font-weight: 500; }

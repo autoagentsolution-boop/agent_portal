@@ -52,12 +52,15 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
   // [] = fetched but the goal can't be tiered → caller keeps the plain Execute button.
   const [tiers, setTiers] = useState<PlanTier[] | null>(null);
   const [tierBusy, setTierBusy] = useState<PlanTierId | null>(null);
+  // Live per-node hold notices (nodeId → text) from node.status SSE events — not persisted
+  // on the run DTO, so kept separately and reset whenever we switch/reload the run.
+  const [notices, setNotices] = useState<Record<string, string>>({});
 
   const load = async () => {
     const r = await api.getRun(runId);
     if (r.ok) setRun(r.data); else notify(`Load flow: ${r.error.error}`, 'err');
   };
-  useEffect(() => { setRun(null); setSelectedNode(null); setRenaming(false); setTiers(null); void load(); }, [runId]);
+  useEffect(() => { setRun(null); setSelectedNode(null); setRenaming(false); setTiers(null); setNotices({}); void load(); }, [runId]);
 
   // Fetch tiers once per run while it's `planned` — cleared again once execution starts (or
   // it fails/re-plans) so stale cards never linger past their moment.
@@ -86,6 +89,7 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
     setRun((cur) => cur && cur.id === ev.runId
       ? { ...cur, nodes: cur.nodes.map((n) => n.nodeId === ev.nodeId ? { ...n, status: ev.status, error: ev.error ?? n.error } : n) }
       : cur);
+    if (ev.notice) setNotices((prev) => ({ ...prev, [ev.nodeId]: ev.notice! }));
     if (ev.status === 'completed' || ev.status === 'failed') { void load(); onStatusChange(); }
   });
 
@@ -263,7 +267,7 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
       {run.cost && run.cost.totalTokens > 0 && <CostStrip cost={run.cost} />}
 
       <p className="muted small">Click a step to view its output. Publishing pauses for your approval (safe / dry-run by default).</p>
-      <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} />
+      <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} notices={notices} />
 
       {showTierCards && tiers && (
         <PlanTierCards tiers={tiers} busyTierId={tierBusy} onSelect={(id) => void selectTier(id)} />
