@@ -20,11 +20,10 @@ import { env } from '../config/env.ts';
 import { requireAuth } from './middleware-auth.ts';
 import { normalizeWebhook, normalizeForm, normalizeCalcom, type NormalizeResult } from '../leads/normalize.ts';
 import { captureLead } from '../leads/service.ts';
-import { listLeads } from '../db/repos/lead-repo.ts';
+import { listLeads, type DecryptedLead } from '../db/repos/lead-repo.ts';
 import { resolveOwnerByToken, createIntakeToken, listIntakeTokens, revokeIntakeToken } from '../db/repos/lead-intake-token-repo.ts';
 import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { logger } from '../lib/logger.ts';
-import type { Lead } from '../../prisma/generated/prisma/client.ts';
 
 export const leadsRouter: Router = Router();
 
@@ -132,7 +131,7 @@ leadsRouter.delete(
 );
 
 // ---- GET /leads — tenant-scoped read (JWT) ----
-const toLeadDto = (l: Lead): Record<string, unknown> => ({
+const toLeadDto = (l: DecryptedLead): Record<string, unknown> => ({
   id: l.id,
   name: l.name,
   email: l.email,

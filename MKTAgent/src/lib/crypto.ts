@@ -9,7 +9,7 @@
 //
 // Key comes from env TOKEN_ENC_KEY: 64 hex chars (32 bytes). Generate with:
 //   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:crypto';
 
 const ALGO = 'aes-256-gcm';
 const IV_BYTES = 12;
@@ -47,6 +47,18 @@ export const decryptToken = (payload: string): string => {
   const pt = Buffer.concat([decipher.update(Buffer.from(ctB64, 'base64')), decipher.final()]);
   return pt.toString('utf8');
 };
+
+// True when a value is already in our encrypted envelope (v1.<iv>.<tag>.<ct>). Lets a
+// backfill tell an already-encrypted column from a legacy plaintext one, idempotently.
+export const isEncrypted = (v: string | null | undefined): boolean =>
+  typeof v === 'string' && v.startsWith(`${VERSION}.`) && v.split('.').length === 4;
+
+// Deterministic keyed HMAC — a BLIND INDEX. Encrypting PII (email) makes an equality query
+// impossible (ciphertext differs per-row via the random IV), so we store HMAC(email) alongside
+// and dedupe on THAT. Keyed with TOKEN_ENC_KEY so the index is useless without the secret. Not
+// reversible (one-way), so it leaks nothing an attacker with the DB can turn back into an email.
+export const blindIndex = (value: string): string =>
+  createHmac('sha256', getKey()).update(value.trim().toLowerCase()).digest('hex');
 
 // Constant-time string compare for webhook secrets (no crypto.timingSafeEqual
 // length leak — pad-free, matches the pure-JS safeEq used in the n8n nodes).

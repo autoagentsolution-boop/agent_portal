@@ -303,8 +303,12 @@ model Lead {
   id             String     @id @default(uuid()) @db.Uuid
   // Leads aren't always campaign-bound, so tenancy is a direct column (plan §1).
   ownerId        String     @map("owner_id") @db.Uuid
+  // name/email/phone/message hold AES-256-GCM ciphertext at rest (§01.2 PII). email_bidx is a
+  // keyed HMAC of the lowercased email — the dedupe query runs on THAT (equality on ciphertext
+  // is impossible). raw_payload is no longer written (no-excess-storage); kept nullable for old rows.
   name           String?
   email          String
+  emailBidx      String?    @map("email_bidx")
   phone          String?
   message        String?
   sourceProduct  String?    @map("source_product")
@@ -315,7 +319,7 @@ model Lead {
 
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  @@index([email, receivedAt], name: "ix_lead_email_received")
+  @@index([emailBidx, receivedAt], name: "ix_lead_email_bidx")
   @@index([calBookingUid], name: "ix_lead_calcom_uid")
   @@index([ownerId], name: "ix_lead_owner")
   @@map("mkt_lead")

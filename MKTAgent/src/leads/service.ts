@@ -37,7 +37,6 @@ export const captureLead = async (lead: NormalizedLead, ownerId: string): Promis
     sourceProduct: lead.sourceProduct || null,
     source: lead.source,
     calBookingUid: lead.calBookingUid,
-    rawPayload: lead.rawPayload as object,
   });
 
   await logRun('info', 'mkt_lead', { status: 'created', id: row.id, source: lead.source }, ownerId);
