@@ -26,7 +26,9 @@ export function LeadsPage({ notify }: Props) {
     if (l.ok) setLeads(l.data); else notify(`Leads: ${l.error.error}`, 'err');
     if (t.ok) setTokens(t.data);
     // Published posts can have comments — show them all as potential/active lead collectors.
-    if (p.ok) setCollectors(p.data.filter((post) => post.status === 'posted' || post.status === 'partial'));
+    // Published posts only; a deleted post (collector stopped) is hidden — but any leads it already
+    // collected stay in the leads list above (leads are separate rows, not tied to the post).
+    if (p.ok) setCollectors(p.data.filter((post) => (post.status === 'posted' || post.status === 'partial') && post.leadCollectorStatus !== 'post_deleted'));
     setLoading(false);
   };
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -133,7 +135,6 @@ export function LeadsPage({ notify }: Props) {
           <p className="muted small" style={{ marginTop: 4 }}>Set a keyword on a published post to capture opt-in leads from its comments. Use <strong>↻ Poll comments</strong> to pull new ones.</p>
           <div className="post-summary-list" style={{ marginTop: 8 }}>
             {collectors.map((p) => {
-              const stopped = p.leadCollectorStatus === 'post_deleted';
               const collecting = Boolean(p.leadCaptureKeyword);
               const watchedPlatforms = p.commentSourceIds ? Object.keys(p.commentSourceIds) : [];
               const pending = collecting && watchedPlatforms.length === 0;
@@ -148,9 +149,7 @@ export function LeadsPage({ notify }: Props) {
                       {viewUrl && <> · <a href={viewUrl} target="_blank" rel="noreferrer">view post ↗</a></>}
                     </div>
                     <div style={{ marginTop: 2 }}>
-                      {stopped ? (
-                        <span className="badge error" title="The watched post was deleted on the platform — comment polling stopped for it">⏹ stopped — post deleted</span>
-                      ) : collecting ? (
+                      {collecting ? (
                         <span className="small">
                           {pending ? '🟡 collecting (pending sources)' : '🟢 collecting'} — keyword: <strong>{p.leadCaptureKeyword}</strong>
                           {watchedPlatforms.length > 0 && <span className="muted"> · watching {watchedPlatforms.join(', ')}</span>}
@@ -161,7 +160,7 @@ export function LeadsPage({ notify }: Props) {
                     </div>
                   </div>
                   <div className="row" style={{ gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                    {stopped ? null : collecting ? (
+                    {collecting ? (
                       <button className="btn small danger" disabled={rowBusy} onClick={() => void stopCollector(p.id)}>{rowBusy ? '…' : 'Stop'}</button>
                     ) : (
                       <>
