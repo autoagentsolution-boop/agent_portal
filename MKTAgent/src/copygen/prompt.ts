@@ -108,6 +108,10 @@ export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDire
       temperature: 0.95,
       topP: 0.95,
       maxOutputTokens: 8192,
+      // gemini-2.5 THINKING tokens count against maxOutputTokens — on a non-reasoning task like
+      // copy generation they waste budget (truncating the JSON mid-string → "Unterminated string")
+      // AND cost money. Disable thinking so the full budget goes to the visible output.
+      thinkingConfig: { thinkingBudget: 0 },
       responseMimeType: 'application/json',
       responseSchema: {
         type: 'OBJECT',
@@ -142,7 +146,12 @@ export function buildVariantsBody(post: PostWithCampaignOwner, n: number): Gemin
     generationConfig: {
       temperature: 1.0,
       topP: 0.95,
-      maxOutputTokens: 8192,
+      // N full variants need real output room; with thinking OFF (below) the whole budget is usable.
+      // Raised from 8192 so 4-5 long-body variants can't truncate the JSON.
+      maxOutputTokens: 16384,
+      // Disable gemini-2.5 thinking: it counts against maxOutputTokens and was starving the visible
+      // output (JSON truncated at ~8.7KB → "Unterminated string"). Copy gen needs no reasoning budget.
+      thinkingConfig: { thinkingBudget: 0 },
       responseMimeType: 'application/json',
       responseSchema: {
         type: 'OBJECT',

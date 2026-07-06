@@ -37,19 +37,64 @@ export type VariantsResult =
   | { ok: true; variants: CopyVariants[] }
   | { ok: false; error: string };
 
+const toVariant = (v: any): CopyVariants => ({
+  body: String(v?.body || '').trim(),
+  threads: cap(String(v?.threads || '').trim(), 480),
+  x: cap(String(v?.x || '').trim(), 280),
+});
+
+// Recover complete {body,threads,x} objects from a TRUNCATED variants JSON (output cut mid-string
+// → JSON.parse throws "Unterminated string"). Walks the text tracking string/escape state, collects
+// every balanced {…} block, and parses each independently — an incomplete trailing object is simply
+// dropped. Lets a partially-generated response still yield usable variants instead of failing the node.
+const salvageVariants = (text: string): CopyVariants[] => {
+  const out: CopyVariants[] = [];
+  const stack: number[] = [];
+  let inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{') stack.push(i);
+    else if (c === '}') {
+      const s = stack.pop();
+      if (s !== undefined) {
+        try {
+          const obj = JSON.parse(text.slice(s, i + 1));
+          if (obj && typeof obj.body === 'string') out.push(toVariant(obj));
+        } catch { /* skip a malformed block */ }
+      }
+    }
+  }
+  return out.filter((v) => v.body);
+};
+
 // Parse the multi-variant response { variants: [{body,threads,x}, …] }. Keeps the same
 // length safety-net per variant; drops any variant missing a body rather than failing all.
+// On a truncated response, salvages the complete variants instead of hard-failing.
 export function parseVariants(resp: any): VariantsResult {
+  let text: string;
   try {
-    const parsed = JSON.parse(geminiText(resp));
-    const arr: any[] = Array.isArray(parsed?.variants) ? parsed.variants : [];
-    const variants = arr
-      .map((v) => ({ body: String(v?.body || '').trim(), threads: cap(String(v?.threads || '').trim(), 480), x: cap(String(v?.x || '').trim(), 280) }))
-      .filter((v) => v.body);
-    if (variants.length === 0) throw new Error('no usable variants in model output');
-    return { ok: true, variants };
+    text = geminiText(resp); // may throw on an upstream/empty error — surface that faithfully
   } catch (e) {
     return { ok: false, error: 'copygen: ' + (e instanceof Error ? e.message : String(e)) };
+  }
+  try {
+    const parsed = JSON.parse(text);
+    const arr: any[] = Array.isArray(parsed?.variants) ? parsed.variants : [];
+    const variants = arr.map(toVariant).filter((v) => v.body);
+    if (variants.length === 0) throw new Error('no usable variants in model output');
+    return { ok: true, variants };
+  } catch {
+    // Truncated / malformed JSON → salvage the complete variant objects.
+    const salvaged = salvageVariants(text);
+    if (salvaged.length > 0) return { ok: true, variants: salvaged };
+    return { ok: false, error: 'copygen: could not parse or salvage any variant from model output' };
   }
 }
 
