@@ -46,6 +46,9 @@ while the surface is small, then the later agents feed a collector that already 
    safety layers (approval/rate-limit/preview/kill-switch/audit). → `phase-03-orchestration-credit.md`
 4. **Phase 04 — UI adaptation**: how the current web adapts to the command-center v2 look, what's
    reuse vs new, effort. → `phase-04-ui-adaptation.md`
+5. **Phase 05 — Adopt from `agency-agents`**: enrich the agent-definition schema, mine marketing
+   prompts, adopt the divisions taxonomy for grouping. It's an agent-CONTENT/definition upgrade, NOT
+   an orchestration engine (that repo has none; we keep ours). → `phase-05-agency-agents-adoption.md`
 
 ## Folder safety — why in-place, not a new folder
 - **Shared foundations** the Atria agents need already live in `MKTAgent/`: Prisma schema + tenant
