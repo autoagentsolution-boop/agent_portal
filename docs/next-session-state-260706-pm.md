@@ -38,6 +38,12 @@ See `docs/project-changelog.md` for detail; memory `project_fixes_and_collector_
   owner, never the post). Verified the posted LinkedIn post's URLs parse for all 5 platforms.
 - Still worth considering: capture the keyword IN the Master-Agent flow so new posts collect from
   publish time (option 2) — deferred; the activate-from-Leads path covers the immediate need.
+- **Link liveness + expiry (pushed `074aedc` + `e58c914`):** `GET /posts/:id/link-status` checks each
+  published platform link's existence (reuses PostGone signal) → 🟢/🔴/⚪ per platform, self-heals dead
+  watched sources (all-dead → post_deleted → hidden). Leads page shows ALL platform links + a Check
+  button. **Collector expiry:** `post.leadCollectorExpiresAt` (migration) = now+30d on activate; the
+  poller SKIPS expired collectors (no forever-polling); UI shows "expires in Nd"/"⏳ expired" + Extend.
+  verify-leads-expiry 3/3. `src/leads/sources/post-liveness.ts`; TTL const `COLLECTOR_TTL_DAYS=30` in posts-router.
 
 ## Other deferred / next
 - Threads/LinkedIn/X comment fetchers are **LIVE-UNTESTED** (no creds); LinkedIn `/v2` vs `/rest` +
