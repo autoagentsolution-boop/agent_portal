@@ -150,6 +150,8 @@ export const updatePostBody = z
     // Lead Collector (§01.4): per-post comment-capture keyword (e.g. "Atria AI"). A comment on
     // this post's published FB/IG containing the keyword + an email → an opt-in lead. null = off.
     leadCaptureKeyword: z.string().max(80).nullish(),
+    // How many copy versions concept_writer generates for the user to pick from. 1-5; null → 1.
+    versionCount: z.number().int().min(1).max(5).nullish(),
     scheduledAt: z.coerce.date().nullish(),
   })
   .partial()
@@ -396,6 +398,8 @@ export const postDto = z.object({
   referenceImage: z.string().nullable(),
   // Lead Collector (§01.4) — per-post comment-capture keyword; null → capture off.
   leadCaptureKeyword: z.string().nullable(),
+  leadCollectorStatus: z.string().nullable(),
+  versionCount: z.number().nullable(),
   scheduledAt: z.string().nullable(),
   postUrls: z.record(z.string()).nullable(),
   error: z.string().nullable(),

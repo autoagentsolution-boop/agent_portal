@@ -10,6 +10,7 @@ import { logger } from './lib/logger.ts';
 import { startSchedulerCron } from './scheduler/cron.ts';
 import { startCopyGenCron } from './copygen/cron.ts';
 import { startTokenCron } from './tokens/cron.ts';
+import { startLeadsCron } from './leads/sources/comment-cron.ts';
 import { requireAuth } from './api/middleware-auth.ts';
 import { postsRouter } from './api/posts-router.ts';
 import { postMediaRouter } from './api/post-media-router.ts';
@@ -128,6 +129,7 @@ const bootstrap = (): void => {
   if (env.ENABLE_SCHEDULER_CRON) startSchedulerCron();
   if (env.ENABLE_COPYGEN_CRON) startCopyGenCron();
   if (env.ENABLE_TOKEN_CRON) startTokenCron();
+  if (env.ENABLE_LEADS_CRON) startLeadsCron();
 };
 
 bootstrap();

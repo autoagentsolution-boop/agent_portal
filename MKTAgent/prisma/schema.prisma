@@ -227,6 +227,13 @@ model Post {
   // Protects that work: concept_writer must NOT regenerate over user-modified copy on a flow re-run
   // (the edit-loss bug). A fresh generation (rework / regenerate) clears it back to false.
   copyEdited  Boolean          @default(false) @map("copy_edited")
+  // How many copy VERSIONS concept_writer generates for the user to choose from (set at creation).
+  // null → 1 (a single version, no picking). Was hardcoded to 4 — now user-controlled per post.
+  versionCount Int?            @map("version_count")
+  // Lead-collector runtime status. null = active (watching, or not yet published). 'post_deleted'
+  // = the published post was removed on the platform, so the collector is stopped (the Graph API
+  // returns "object does not exist"). Lets the UI show "stopped — post deleted" instead of a zombie.
+  leadCollectorStatus String? @map("lead_collector_status")
   // Free-form language override (null → inherit campaign.language → user.defaultLanguage).
   language    String?          @map("language")
   lengthSpec  String?          @map("length_spec") // short|medium|long|<wordcount>

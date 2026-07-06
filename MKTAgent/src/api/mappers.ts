@@ -44,6 +44,8 @@ export const toPostDto = (p: Post): PostDto => ({
   productKnowledgeId: p.productKnowledgeId,
   referenceImage: p.referenceImage,
   leadCaptureKeyword: p.leadCaptureKeyword,
+  leadCollectorStatus: p.leadCollectorStatus,
+  versionCount: p.versionCount,
   scheduledAt: iso(p.scheduledAt),
   postUrls: (p.postUrls as Record<string, string> | null) ?? null,
   error: p.error,

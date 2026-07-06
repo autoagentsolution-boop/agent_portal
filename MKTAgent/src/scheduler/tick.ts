@@ -22,6 +22,7 @@ import { platformSupportsAsset } from '../social/postability.ts';
 import { hasDriveConnected, resolveCampaignFolder } from '../assets/drive-client.ts';
 import { materializeForPublicUrl, NEEDS_PUBLIC_URL, slugify } from '../assets/materialize.ts';
 import { getCampaign } from '../db/repos/campaign-repo.ts';
+import { hasActiveFlowNodes } from '../db/repos/workflow-run-repo.ts';
 import { publishPostStatus } from '../events/bus.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
@@ -188,6 +189,15 @@ export async function runSchedulerTick(publish: PublishFn = publishTo): Promise<
   try {
     const due = await findPublishDue(new Date());
     if (!due) return { picked: false, reason: 'no_due' };
+
+    // Flow-active guard: if this post's flow is still producing (a node running/pending — e.g. the
+    // video is still generating past the scheduled time), DELAY the publish. Leave the post due +
+    // unclaimed so the next tick retries once the flow finishes — never publish before the media is
+    // ready. (The 18:20-scheduled-but-video-slow case.)
+    if (due.runId && (await hasActiveFlowNodes(due.runId))) {
+      logger.info('scheduler_delayed_flow_active', { postId: due.id, runId: due.runId });
+      return { picked: false, postId: due.id, reason: 'flow_active' };
+    }
 
     // Atomic claim guards against a row picked by another path between read+claim.
     const claimed = await claimForPublish(due.id);

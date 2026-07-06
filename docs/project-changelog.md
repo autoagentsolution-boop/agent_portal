@@ -14,6 +14,26 @@ paths + cleared on fresh generation; `runConceptWriterForExistingPost` now PRESE
 (emits it as the artifact, no LLM/cost) unless it's an explicit rework or the post is unedited.
 verify-edit-loss 7/7 green.
 
+### Fixes: publish-before-video, version count, lead-collector robustness
+- **Scheduled publish waited for the flow** — the cron published a post at its scheduled time even
+  while its video was still generating. Now `hasActiveFlowNodes` gates the cron: a due post whose
+  run has running/pending nodes is DELAYED (left due, retried next tick) until the flow finishes.
+  Also: approving the video cost gate no longer auto-publishes (autoPublish suppressed when the plan
+  has a video node → separate publish approval), and the publish gate holds + notifies if any step
+  is still in progress (future-proofs parallel execution).
+- **Concept version count is user-controlled** — was hardcoded to 4; now `post.versionCount`
+  (migration), set at creation via the brief form, **default 1** (a single version, no forced picking).
+- **Lead collector — deleted-post detection** — the Graph fetcher swallowed a deleted-post error
+  (returned []), so the poller watched dead posts forever. Now it detects Meta "object gone" (code
+  100 / subcode 33 / HTTP 404) vs transient/auth, removes that platform's watch source, and marks
+  `post.leadCollectorStatus='post_deleted'` (migration) when none remain → UI shows "stopped — post
+  deleted". A re-publish reactivates it. Fixed a multi-platform accumulator bug (deletions now
+  accumulate, not last-write-win). verify-leads-post-deleted 7/7.
+- **Lead-collector cron** — `ENABLE_LEADS_CRON` runs the comment poll globally every 30 min (auto
+  pull leads), not just the manual trigger.
+- **Copy-gen JSON truncation** (`8763f7c`) — disabled gemini-2.5 thinking on copy-gen (was starving
+  the output budget → "Unterminated string") + variant-salvage on truncation.
+
 ### Phase 03: kill switch + tier-selection wiring (safety layers)
 - **Kill switch** — `src/system/kill-switch.ts` + `mkt_system_flag` table (migration). Global
   external-actions pause checked FIRST at the connector-runtime chokepoint (`invokeAction`) — a

@@ -30,6 +30,9 @@ export interface NodeStatusEvent {
   // `awaiting_approval` event so the approval UI can show the recommended window
   // BEFORE the user approves. Absent on every other event.
   timingSuggestion?: string | null;
+  // Human notice for the UI — e.g. the publish gate holding because other steps are still
+  // in progress. Distinct from `error` (a failure); this is an informational hold.
+  notice?: string | null;
   at: string; // ISO 8601
 }
 
@@ -99,6 +102,7 @@ export const publishNodeStatus = (
     status: event.status,
     error: event.error ?? null,
     timingSuggestion: event.timingSuggestion ?? null,
+    notice: event.notice ?? null,
   };
   for (const fn of set) {
     try {

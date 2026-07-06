@@ -132,6 +132,13 @@ export const getRunForOwner = (id: string, ownerId: string): Promise<WorkflowRun
 export const getRunStatusById = async (id: string): Promise<string | null> =>
   (await prisma.workflowRun.findUnique({ where: { id }, select: { status: true } }))?.status ?? null;
 
+// Is a post's flow still actively producing (a node running/pending — e.g. a video still
+// generating)? The scheduler uses this to DELAY a scheduled publish until the flow finishes, so a
+// post never goes out before its media is ready. Terminal (completed/skipped/failed) + parked
+// (awaiting_approval) states don't count as active — only work still in flight.
+export const hasActiveFlowNodes = async (runId: string): Promise<boolean> =>
+  (await prisma.workflowNodeRun.count({ where: { runId, status: { in: ['running', 'pending'] } } })) > 0;
+
 // a deleted run. Returns: 'deleted' | 'not_found' (wrong tenant / id) | 'in_flight'.
 export const deleteRun = async (
   id: string,

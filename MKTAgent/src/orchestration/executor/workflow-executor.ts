@@ -107,6 +107,10 @@ export const runWorkflow = async (
   if (!runRow) return { status: 'failed', nodeId: '-', error: 'run_not_found' };
   const nodeRowByPlanId = new Map(runRow.nodes.map((n) => [n.nodeId, n]));
   const nodeByPlanId = new Map(plan.nodes.map((n) => [n.nodeId, n]));
+  // A video deliverable is expensive + high-stakes: the user must review the GENERATED video and
+  // explicitly approve publishing — approving the video COST gate must not cascade into auto-publish.
+  // So when the plan has a video node, the publisher gate is never auto-waived (separate approvals).
+  const hasVideoNode = [...nodeByPlanId.values()].some((n) => n.agentId === 'video');
 
   // Seed context with artifacts already produced (resume case).
   const upstream: Partial<Record<ArtifactType, unknown>> = {};
@@ -202,6 +206,28 @@ export const runWorkflow = async (
       continue;
     }
 
+    // Publish-completeness gate (future-proofing): the publisher must NOT fire while any OTHER
+    // step is still in progress (e.g. a video still generating once the executor runs branches in
+    // parallel). If a non-publisher node isn't terminal, HOLD the run and notify the user which
+    // steps remain — never publish prematurely. In today's sequential executor upstream is already
+    // done by the time we reach the publisher, so this is normally a no-op; it guards the future.
+    if (planNode.agentId === 'publisher') {
+      const fresh = await getRunWithNodes(runId, ownerId);
+      const pending = (fresh?.nodes ?? []).filter(
+        (n) => n.nodeId !== planNodeId && !['completed', 'skipped', 'failed'].includes(n.status),
+      );
+      if (pending.length > 0) {
+        await setNodeStatus(nodeRow.id, 'awaiting_approval');
+        await setRunStatus(runId, 'needs_approval');
+        const remaining = pending.map((n) => n.agentId).join(', ');
+        publishNodeStatus(ownerId, {
+          runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval',
+          notice: `Holding publish — ${pending.length} step(s) still in progress: ${remaining}`,
+        });
+        return { status: 'needs_approval', nodeId: planNodeId };
+      }
+    }
+
     // Approval halt: a gated node stops the run UNLESS it's the one just approved. Read the
     // gating policy from the LIVE registry (not the frozen plan) so a policy change — e.g.
     // adding the pre-video cost gate — applies to already-planned templates/runs too.
@@ -213,7 +239,9 @@ export const runWorkflow = async (
     // KEEP the gate so the publish review (item 3) surfaces exactly what would be skipped
     // before anything goes out. The video cost gate (agentId 'video') is separate and always
     // holds. autoPublish=false restores the manual gate (verify scripts, opt-out).
-    const autoPublish = opts.autoPublish ?? true;
+    // Auto-publish is suppressed when the run produces a video: approving the video cost gate must
+    // NOT also publish. The user reviews the finished video, then approves the publisher separately.
+    const autoPublish = (opts.autoPublish ?? true) && !hasVideoNode;
     let requiresApproval = gated;
     if (gated && planNode.agentId === 'publisher' && autoPublish) {
       // Per-platform (item 5): each target may publish its own asset type — auto-run only

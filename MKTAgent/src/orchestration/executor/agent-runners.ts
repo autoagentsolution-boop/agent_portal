@@ -99,10 +99,12 @@ export interface RunnerOutput {
 // gate pauses here so the user picks a version (+ optional reference image) before media/publish
 // (the review→ready approval happens when the user Continues past the gate). Both concept_writer
 // paths funnel through here. copy == variants[chosen] (the active version).
-const CONCEPT_VARIANTS = 4;
-const finalizeConcept = async (ctx: RunnerContext, postId: string): Promise<RunnerOutput> => {
+// versionCount = how many copy versions to generate for the user to pick from (per-post, set at
+// creation; default 1 — a single version, no picking). Was hardcoded to 4.
+const finalizeConcept = async (ctx: RunnerContext, postId: string, versionCount: number): Promise<RunnerOutput> => {
   const { ownerId, goal } = ctx;
-  const result = await generateVariantsForPost(postId, ownerId, CONCEPT_VARIANTS, ctx.geminiFn);
+  const n = Math.max(1, Math.min(5, versionCount || 1));
+  const result = await generateVariantsForPost(postId, ownerId, n, ctx.geminiFn);
   if (result.status !== 'review' || !result.variants?.length) {
     throw new Error(`concept_writer: copy-gen did not reach review (${result.reason ?? result.error ?? result.status})`);
   }
@@ -169,7 +171,7 @@ const runConceptWriterForExistingPost = async (ctx: RunnerContext, postId: strin
   if (post.status !== 'brief' && post.status !== 'rework') {
     await setPostStatus(post.id, 'brief');
   }
-  return finalizeConcept(ctx, post.id);
+  return finalizeConcept(ctx, post.id, post.versionCount ?? 1);
 };
 
 // concept_writer (LIVE): create a real Campaign+Post from the goal, run copy-gen,
@@ -213,7 +215,7 @@ const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     assetType: assetTypeFromOutputs(goal.outputs),
   });
 
-  return finalizeConcept(ctx, post.id);
+  return finalizeConcept(ctx, post.id, post.versionCount ?? 1);
 };
 
 // content_search / researcher (LIVE — Phase 02): market/competitor/pain-point research via

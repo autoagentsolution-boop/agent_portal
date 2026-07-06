@@ -12,6 +12,16 @@ export interface FetchedComment { id: string; authorName: string | null; text: s
 // Read comments for one published post on one platform. ownerId lets the fetcher pick the token.
 export type CommentFetcher = (platform: SocialPlatform, platformPostId: string, ownerId: string) => Promise<FetchedComment[]>;
 
+// Thrown by a fetcher when the platform reports the post no longer exists (deleted). The poller
+// catches it and DEACTIVATES that collector — a deleted post can never capture again. Distinct
+// from a transient/auth error (which returns [] and retries).
+export class PostGoneError extends Error {
+  constructor(public platform: SocialPlatform, public platformPostId: string) {
+    super(`post gone on ${platform}: ${platformPostId}`);
+    this.name = 'PostGoneError';
+  }
+}
+
 // Platforms whose comments we can read today (FB primary; IG best-effort). Others are skipped.
 const COMMENTABLE: SocialPlatform[] = ['facebook', 'instagram'];
 
@@ -29,6 +39,9 @@ export const pollCommentsForLeads = async (fetcher: CommentFetcher, ownerId?: st
     const keyword = post.leadCaptureKeyword!;
     const sources = (post.commentSourceIds ?? {}) as Record<string, string>;
     if (!sources || Object.keys(sources).length === 0) continue; // not published to a commentable target yet
+    // Mutable accumulator: deletions across multiple gone platforms must accumulate here (not be
+    // recomputed from the stale `sources` snapshot each time, which would last-write-win).
+    const liveSources = { ...sources };
     for (const [platformKey, platformPostId] of Object.entries(sources)) {
       const platform = platformKey as SocialPlatform;
       if (!platformPostId || !COMMENTABLE.includes(platform)) continue;
@@ -36,6 +49,18 @@ export const pollCommentsForLeads = async (fetcher: CommentFetcher, ownerId?: st
       try {
         comments = await fetcher(platform, platformPostId, post.ownerId);
       } catch (e) {
+        if (e instanceof PostGoneError) {
+          // The published post was deleted → stop watching it. Remove this platform's source from the
+          // accumulator; if no sources remain, mark the collector 'post_deleted' (UI: "stopped — post deleted").
+          delete liveSources[platformKey];
+          const noneLeft = Object.keys(liveSources).length === 0;
+          await prisma.post.update({
+            where: { id: post.id },
+            data: { commentSourceIds: liveSources, ...(noneLeft ? { leadCollectorStatus: 'post_deleted' } : {}) },
+          });
+          logger.info('lead_collector_post_deleted', { postId: post.id, platform, stopped: noneLeft });
+          continue;
+        }
         logger.warn('comment_poll_fetch_failed', { postId: post.id, platform, error: String(e).slice(0, 160) });
         continue;
       }

@@ -9,10 +9,19 @@ import { env } from '../../config/env.ts';
 import { getActiveToken } from '../../tokens/service.ts';
 import { withRetry } from '../../lib/retry.ts';
 import { logger } from '../../lib/logger.ts';
-import type { CommentFetcher, FetchedComment } from './comment-poller.ts';
+import { PostGoneError, type CommentFetcher, type FetchedComment } from './comment-poller.ts';
 import type { SocialPlatform } from '../../../prisma/generated/prisma/client.ts';
 
 const GRAPH = `https://graph.facebook.com/${env.GRAPH_VERSION || 'v21.0'}`;
+
+// Meta signals a DELETED / non-existent object with OAuthException code 100 (subcode 33 =
+// "does not exist"), or an HTTP 404. Distinct from AUTH (code 190 — token expired) and RATE
+// (codes 4/17/32/613) which are transient — those must NOT deactivate the collector.
+const isPostGone = (status: number, error: any): boolean => {
+  const code = error?.code;
+  const subcode = error?.error_subcode;
+  return status === 404 || code === 100 || subcode === 33;
+};
 
 export const graphCommentFetcher: CommentFetcher = async (
   platform: SocialPlatform,
@@ -23,8 +32,13 @@ export const graphCommentFetcher: CommentFetcher = async (
   const fields = platform === 'instagram' ? 'id,username,text' : 'id,from,message';
   const url = `${GRAPH}/${encodeURIComponent(platformPostId)}/comments?fields=${fields}&limit=100&access_token=${encodeURIComponent(token)}`;
   const res = await withRetry(() => fetch(url), { label: `${platform}_comments` });
-  const j = (await res.json()) as { data?: Array<Record<string, unknown>>; error?: unknown };
+  const j = (await res.json()) as { data?: Array<Record<string, unknown>>; error?: any };
   if (!res.ok || j.error) {
+    // The post was deleted on the platform → tell the poller to STOP this collector (don't keep
+    // polling a dead post forever). Transient/auth errors just return [] and retry next cycle.
+    if (isPostGone(res.status, j.error)) {
+      throw new PostGoneError(platform, platformPostId);
+    }
     logger.warn('graph_comments_error', { platform, status: res.status, error: JSON.stringify(j.error).slice(0, 160) });
     return [];
   }

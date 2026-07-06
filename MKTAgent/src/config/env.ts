@@ -52,6 +52,8 @@ const schema = z.object({
   VEO_MODEL: z.string().default(''),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   ENABLE_COPYGEN_CRON: z.coerce.boolean().default(false),
+  // Auto-run the lead collector (comment-keyword poll) every 30 min across all tenants.
+  ENABLE_LEADS_CRON: z.coerce.boolean().default(false),
 
   // Lead capture
   MKT_LEAD_WEBHOOK_SECRET: z.string().default(''),

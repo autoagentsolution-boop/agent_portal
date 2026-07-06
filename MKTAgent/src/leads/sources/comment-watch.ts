@@ -39,6 +39,8 @@ export const recordCommentSources = async (post: Post, postUrls: Record<string, 
     else logger.warn('comment_source_id_unparsed', { postId: post.id, platform, url: url.slice(0, 80) });
   }
   if (Object.keys(sources).length === 0) return;
-  await prisma.post.update({ where: { id: post.id }, data: { commentSourceIds: sources } });
+  // Recording fresh sources = the post is (re)published and watchable → clear any prior
+  // 'post_deleted' stop so a re-published post reactivates its collector.
+  await prisma.post.update({ where: { id: post.id }, data: { commentSourceIds: sources, leadCollectorStatus: null } });
   logger.info('comment_sources_recorded', { postId: post.id, platforms: Object.keys(sources), keyword: post.leadCaptureKeyword });
 };
