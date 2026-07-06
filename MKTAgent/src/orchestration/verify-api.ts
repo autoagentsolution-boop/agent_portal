@@ -179,10 +179,15 @@ async function main(): Promise<void> {
     check('execute while in flight → 409', (await call('POST', `/orchestration/runs/${instRunId}/execute`, tokenA)).status === 409);
 
     // Poll for the detached executor to reach the publisher gate (needs_approval).
+    // Budget must cover live media-gen latency — a single storyboard node runs ~60-70s,
+    // so a 20s window times out before the DAG ever reaches the gate. 150s (300×500ms).
+    // needs_connection is a break condition too: if the gate ever fires here it means the
+    // seeded token didn't resolve — fail fast with that status instead of a blank timeout.
     let gated: any = null;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 300; i++) {
       const r = await call('GET', `/orchestration/runs/${instRunId}`, tokenA);
-      if (r.body?.data?.status === 'needs_approval' || r.body?.data?.status === 'failed') { gated = r.body.data; break; }
+      const st = r.body?.data?.status;
+      if (st === 'needs_approval' || st === 'failed' || st === 'needs_connection') { gated = r.body.data; break; }
       await new Promise((res) => setTimeout(res, 500));
     }
     check('execution reached needs_approval (gate)', gated?.status === 'needs_approval', gated?.status);
@@ -197,7 +202,7 @@ async function main(): Promise<void> {
       const resumed = await call('POST', `/orchestration/runs/${instRunId}/approve-node/${pub.nodeId}`, tokenA);
       check('approve-node → 200 running', resumed.status === 200, resumed.status);
       let done: any = null;
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < 120; i++) {
         const r = await call('GET', `/orchestration/runs/${instRunId}`, tokenA);
         if (r.body?.data?.status === 'completed' || r.body?.data?.status === 'failed') { done = r.body.data; break; }
         await new Promise((res) => setTimeout(res, 500));
@@ -228,11 +233,13 @@ async function main(): Promise<void> {
 
     if (viRunId && vi.body?.data?.status === 'planned') {
       await call('POST', `/orchestration/runs/${viRunId}/execute`, tokenA, { autoPublish: false, conceptGate: false });
+      // Same latency budget as the block above — infographic + image-gen stack up well
+      // past 60s. 180s (180×1000ms), break on needs_connection for clear diagnosis.
       let viGated: any = null;
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 180; i++) {
         const r = await call('GET', `/orchestration/runs/${viRunId}`, tokenA);
         const st = r.body?.data?.status;
-        if (st === 'needs_approval' || st === 'failed' || st === 'completed') { viGated = r.body.data; break; }
+        if (st === 'needs_approval' || st === 'failed' || st === 'completed' || st === 'needs_connection') { viGated = r.body.data; break; }
         await new Promise((res) => setTimeout(res, 1000));
       }
       check('vi run executed to gate (not failed)', viGated?.status === 'needs_approval', { st: viGated?.status, nodes: viGated?.nodes?.map((n: any) => ({ a: n.agentId, s: n.status, e: n.error })) });
