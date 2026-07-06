@@ -84,12 +84,14 @@ export const applyRemovals = (goal: GoalSpec, removals: Removals): GoalSpec => {
     next.platforms = next.platforms.filter((p) => !drop.has(p)) as GoalSpec['platforms'];
   }
 
-  // Empty-plan guard: a goal with no outputs at all can't plan. Fall back to a text
-  // post (the minimal marketing deliverable) so removal never yields a blank DAG.
+  // Empty-plan guard: a goal with no real deliverable can't plan. Fall back to a text post
+  // (the minimal marketing deliverable) so removal never yields a blank/unplannable DAG.
+  // storyboard is INTERMEDIATE (frames feeding a video/carousel), not a standalone deliverable —
+  // a storyboard-only goal has no terminal output AND its content_concept dep is unsatisfiable, so
+  // it must fall back to a text post too. Hence storyboard is excluded from the "has output" check.
   const anyOutput =
     next.outputs.needsIdeation || next.outputs.needsStrategy || next.outputs.needsResearch ||
-    next.outputs.needsTextPost || next.outputs.needsInfographic || next.outputs.needsStoryboard ||
-    next.outputs.needsVideo;
+    next.outputs.needsTextPost || next.outputs.needsInfographic || next.outputs.needsVideo;
   if (!anyOutput) next.outputs.needsTextPost = true;
 
   return next;

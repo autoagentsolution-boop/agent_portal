@@ -23,7 +23,13 @@ const selectAgents = (goal: GoalSpec): RunnableAgentId[] => {
   // strategy requires campaign_ideas → ideation is implied whenever strategy runs.
   if (outputs.needsIdeation || outputs.needsStrategy) ids.push('ideation');
   if (outputs.needsStrategy) ids.push('strategy');
-  if (outputs.needsTextPost) ids.push('concept_writer');
+  // concept_writer produces content_concept — the narrative spine required by a text post AND by
+  // every media agent (infographic/storyboard/video). Add it whenever ANY of those is requested,
+  // not just needsTextPost; otherwise a media-only goal has an unsatisfiable content_concept
+  // dependency and fails to plan (plan_error).
+  if (outputs.needsTextPost || outputs.needsInfographic || outputs.needsStoryboard || outputs.needsVideo) {
+    ids.push('concept_writer');
+  }
   if (outputs.needsInfographic) ids.push('infographic');
   // Storyboard is independent; video DEPENDS ON storyboard. So plan storyboard whenever
   // it's asked OR a video is (video implies storyboard), and video only when asked.
