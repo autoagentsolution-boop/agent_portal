@@ -680,3 +680,48 @@ a { color: var(--accent); }
   background: var(--bg); color: var(--text); border: 1px solid var(--border);
   border-radius: 6px; padding: 8px 10px; font: inherit; font-size: 13px; resize: vertical;
 }
+
+/* ---- Friendly credits (Phase 03) — the primary metric in CostStrip ---- */
+.flow-cost-credits { color: var(--accent); font-size: 19px; }
+
+/* ---- Plan-tier cards (Phase 03 checkpoint 2) ---- */
+.tier-cards { margin: 12px 0; }
+.tier-cards-hint { margin: 0 0 8px; }
+.tier-cards-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.tier-card {
+  display: flex; flex-direction: column; gap: 4px; text-align: left; cursor: pointer;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel2); color: var(--text);
+}
+.tier-card:hover:not(:disabled) { border-color: var(--accent); }
+.tier-card:disabled { opacity: 0.6; cursor: default; }
+.tier-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.tier-label { font-weight: 600; font-size: 14px; }
+.tier-agent-count { font-size: 11px; color: var(--muted); }
+.tier-desc { margin: 0; }
+.tier-credits { color: var(--accent); font-weight: 600; font-size: 16px; margin-top: 2px; }
+.tier-tokens { margin-top: -2px; }
+.tier-busy { color: var(--accent); }
+.tier-card.tier-balanced { border-color: var(--accent); }
+
+/* ---- Usage & credits dashboard (Phase 03) ---- */
+.usage-dashboard { max-width: 760px; margin: 0 auto; padding: 28px 20px; display: flex; flex-direction: column; gap: 18px; }
+.usage-surface-list { display: flex; flex-direction: column; gap: 12px; }
+.usage-surface-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.usage-surface-row:last-child { border-bottom: none; }
+.usage-surface-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.usage-surface-name { font-weight: 600; text-transform: capitalize; }
+.usage-surface-credits { color: var(--accent); font-weight: 600; font-size: 13px; }
+.usage-bar-track { height: 6px; border-radius: 999px; background: var(--panel2); overflow: hidden; }
+.usage-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.usage-surface-meta { margin-top: 5px; }
+
+/* ---- Global kill switch (Phase 03 safety) ---- */
+.kill-switch-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 14px; border-radius: var(--radius); background: var(--panel2); border: 1px solid var(--border);
+}
+.kill-switch-card.st-paused { border-color: var(--amber); }
+.kill-switch-state { font-weight: 600; }
+.kill-switch-card.st-paused .kill-switch-state { color: var(--amber); }
+.kill-switch-card:not(.st-paused) .kill-switch-state { color: var(--green); }

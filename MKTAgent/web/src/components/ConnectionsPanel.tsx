@@ -3,7 +3,7 @@
 // needs-attention / not-connected with a Connect button that links the existing
 // per-user OAuth flow (/connect/:platform/start). No token value is ever shown.
 import { useEffect, useState } from 'react';
-import { api, connectUrl, type ConnectionDto } from '../api/client';
+import { api, connectUrl, type ConnectionDto, type KillSwitchState } from '../api/client';
 import { ConnectionCredentialForm } from './connection-credential-form';
 
 interface Props {
@@ -115,6 +115,7 @@ export function ConnectionsPanel({ notify }: Props) {
       )}
 
       <StorageSection />
+      <KillSwitchSection notify={notify} />
     </section>
   );
 }
@@ -180,6 +181,56 @@ function StorageSection() {
             </details>
           )}
         </div>
+      </div>
+    </>
+  );
+}
+
+// Global kill switch (Phase 03 safety) — an emergency stop for EVERY external action
+// (publishes / outbound writes) across the whole workspace, independent of any single
+// run's abort. Lives here because Connections is the closest thing this app has to a
+// settings/ops surface today.
+function KillSwitchSection({ notify }: { notify: Props['notify'] }) {
+  const [state, setState] = useState<KillSwitchState | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void api.getKillSwitch().then((r) => { if (r.ok) setState(r.data); });
+  }, []);
+
+  const toggle = async () => {
+    if (!state) return;
+    setBusy(true);
+    try {
+      const r = await api.setKillSwitch(!state.paused);
+      if (!r.ok) { notify(`Kill switch: ${r.error.error}`, 'err'); return; }
+      setState(r.data);
+      notify(r.data.paused ? 'External actions paused' : 'External actions resumed');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <div className="orchestrate-head" style={{ marginTop: 22 }}>
+        <h2>System</h2>
+        <p className="muted small">Emergency stop for every external action (publishes, outbound writes) across the whole workspace.</p>
+      </div>
+      <div className={`kill-switch-card ${state?.paused ? 'st-paused' : ''}`}>
+        <div>
+          <span className="kill-switch-state">
+            {state?.paused ? '⏸ External actions paused' : '● External actions active'}
+          </span>
+          {state?.paused && state.updatedAt && (
+            <span className="muted small"> · since {new Date(state.updatedAt).toLocaleString()}</span>
+          )}
+        </div>
+        <button
+          className={`btn small ${state?.paused ? 'primary' : 'danger'}`}
+          disabled={busy || !state}
+          onClick={() => void toggle()}
+        >
+          {busy ? 'Updating…' : state?.paused ? 'Resume external actions' : 'Pause all external actions'}
+        </button>
       </div>
     </>
   );

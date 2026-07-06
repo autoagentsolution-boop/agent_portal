@@ -4,11 +4,13 @@
 // publisher gate (manual approve, DRY by default), and lets the user click a node to
 // view that node's output as CLEAN TEXT (+ the real generated image) — never raw JSON.
 import { useEffect, useState } from 'react';
-import { api, type WorkflowRunDto } from '../api/client';
+import { api, type PlanTier, type PlanTierId, type WorkflowRunDto } from '../api/client';
 import { useRunEvents } from '../hooks/use-run-events';
 import { RunDagView } from './run-dag-view';
 import { ConnectionRequired } from './connection-required';
 import { NodeSetupStatus } from './node-setup-status';
+import { CostStrip } from './cost-strip';
+import { PlanTierCards } from './plan-tier-cards';
 import { formatArtifact } from '../flow/artifact-format';
 
 interface Props {
@@ -23,6 +25,7 @@ const STATUS_LABEL: Record<string, string> = {
   planned: 'Ready to run', running: 'Running…', needs_approval: 'Paused — approve to publish',
   completed: 'Completed', failed: 'Failed', awaiting_clarification: 'Needs detail',
   needs_connection: 'Connect a platform to run', template: 'Approved blueprint',
+  aborted: 'Aborted',
 };
 
 // Short, human role for each agent so the blueprint reads as a "team" a non-tech user
@@ -44,12 +47,26 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
+  // Checkpoint 2 — Economy/Balanced/Full plan-tier cards, offered only while the run is
+  // freshly `planned` (before the first execute). null = not fetched yet / not applicable;
+  // [] = fetched but the goal can't be tiered → caller keeps the plain Execute button.
+  const [tiers, setTiers] = useState<PlanTier[] | null>(null);
+  const [tierBusy, setTierBusy] = useState<PlanTierId | null>(null);
 
   const load = async () => {
     const r = await api.getRun(runId);
     if (r.ok) setRun(r.data); else notify(`Load flow: ${r.error.error}`, 'err');
   };
-  useEffect(() => { setRun(null); setSelectedNode(null); setRenaming(false); void load(); }, [runId]);
+  useEffect(() => { setRun(null); setSelectedNode(null); setRenaming(false); setTiers(null); void load(); }, [runId]);
+
+  // Fetch tiers once per run while it's `planned` — cleared again once execution starts (or
+  // it fails/re-plans) so stale cards never linger past their moment.
+  useEffect(() => {
+    if (!run || run.status !== 'planned') { setTiers(null); return; }
+    let cancelled = false;
+    void api.getPlanTiers(run.id).then((r) => { if (!cancelled) setTiers(r.ok ? r.data.tiers : []); });
+    return () => { cancelled = true; };
+  }, [run?.id, run?.status]);
 
   const commitRename = async () => {
     if (!run) return;
@@ -79,6 +96,31 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
       const r = await api.executeRun(run.id);
       if (!r.ok) { notify(`Execute: ${r.error.error}`, 'err'); return; }
       setRun(r.data); onStatusChange(); notify('Flow executing…');
+    } finally { setBusy(false); }
+  };
+
+  // Checkpoint 2 — apply the picked tier's DAG, then continue into the SAME execute path
+  // the plain "Execute flow" button uses (no separate run path to keep in sync).
+  const selectTier = async (tierId: PlanTierId) => {
+    if (!run) return;
+    setTierBusy(tierId);
+    try {
+      const r = await api.applyTier(run.id, tierId);
+      if (!r.ok) { notify(`Plan: ${r.error.error}`, 'err'); return; }
+      setRun(r.data);
+      await execute();
+    } finally { setTierBusy(null); }
+  };
+
+  // Kill switch — stop this run at the next node boundary. Refused server-side once terminal.
+  const abort = async () => {
+    if (!run) return;
+    if (!confirm('Abort this flow? It stops at the next step boundary.')) return;
+    setBusy(true);
+    try {
+      const r = await api.abortRun(run.id);
+      if (!r.ok) { notify(`Abort: ${r.error.error}`, 'err'); return; }
+      await load(); onStatusChange(); notify('Flow aborted');
     } finally { setBusy(false); }
   };
 
@@ -135,20 +177,10 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
         </p>
 
         {run.flowCost && (
-          <div className="flow-cost-strip">
-            <div className="flow-cost-metric">
-              <span className="flow-cost-value">${run.flowCost.costUsd.toFixed(3)}</span>
-              <span className="flow-cost-label">total spend</span>
-            </div>
-            <div className="flow-cost-metric">
-              <span className="flow-cost-value">{run.flowCost.totalTokens.toLocaleString()}</span>
-              <span className="flow-cost-label">tokens</span>
-            </div>
-            <div className="flow-cost-metric">
-              <span className="flow-cost-value">{run.flowCost.runs ?? 0}</span>
-              <span className="flow-cost-label">{(run.flowCost.runs ?? 0) === 1 ? 'post run' : 'post runs'}</span>
-            </div>
-          </div>
+          <CostStrip
+            cost={run.flowCost}
+            secondaryMetric={{ value: run.flowCost.runs ?? 0, label: 'post run', pluralLabel: 'post runs' }}
+          />
         )}
 
         <ol className="blueprint-team">
@@ -178,6 +210,12 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
   const canExecute =
     run.status === 'planned' || run.status === 'failed' ||
     (run.status === 'needs_connection' && requiredActions.length === 0);
+  // Checkpoint 2 — a freshly planned run with real tier options shows the picker cards
+  // INSTEAD of the plain Execute button; everything else (failed re-run, needs_connection
+  // retry) keeps the button unchanged.
+  const showTierCards = run.status === 'planned' && (tiers?.length ?? 0) > 0;
+  // Kill switch — abort is only meaningful once the run is actually in flight.
+  const showAbort = run.status === 'running' || run.status === 'needs_approval';
   const selectedNodeRun = selectedNode ? run.nodes.find((n) => n.nodeId === selectedNode) : null;
   const selectedArtifact = selectedNode ? run.artifacts.find((a) => a.nodeId === selectedNode) : null;
   const selectedView = selectedArtifact ? formatArtifact(selectedArtifact.type, selectedArtifact.data) : null;
@@ -208,15 +246,28 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
           )}
           <span className={`flow-status st-${run.status}`}>{STATUS_LABEL[run.status] ?? run.status}</span>
         </div>
-        {canExecute && (
-          <button className="btn primary" disabled={busy} onClick={() => void execute()}>
-            {busy ? 'Starting…' : run.status === 'failed' ? 'Re-run flow' : run.status === 'needs_connection' ? 'Check connection & run' : 'Execute flow'}
-          </button>
-        )}
+        <div className="btn-row">
+          {showAbort && (
+            <button className="btn danger" disabled={busy} onClick={() => void abort()}>
+              {busy ? 'Aborting…' : '■ Abort'}
+            </button>
+          )}
+          {canExecute && !showTierCards && (
+            <button className="btn primary" disabled={busy} onClick={() => void execute()}>
+              {busy ? 'Starting…' : run.status === 'failed' ? 'Re-run flow' : run.status === 'needs_connection' ? 'Check connection & run' : 'Execute flow'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {run.cost && run.cost.totalTokens > 0 && <CostStrip cost={run.cost} />}
 
       <p className="muted small">Click a step to view its output. Publishing pauses for your approval (safe / dry-run by default).</p>
       <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} />
+
+      {showTierCards && tiers && (
+        <PlanTierCards tiers={tiers} busyTierId={tierBusy} onSelect={(id) => void selectTier(id)} />
+      )}
 
       {run.status === 'needs_connection' && requiredActions.length > 0 && (
         <ConnectionRequired actions={requiredActions} busy={busy} onContinue={() => void execute()} />

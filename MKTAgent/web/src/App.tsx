@@ -7,9 +7,10 @@ import { OrchestratePanel, type OrchestrateRestore } from './components/Orchestr
 import { ConnectionsPanel } from './components/ConnectionsPanel';
 import { ProductKnowledgeLibrary } from './components/ProductKnowledgeLibrary';
 import { LeadsPage } from './components/LeadsPage';
+import { UsageDashboard } from './components/UsageDashboard';
 import type { DemoMode } from './flow/demo-flow';
 
-type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads';
+type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads' | 'usage';
 type Theme = 'light' | 'dark';
 
 const postTitle = (post: PostDto, index: number): string => {
@@ -284,6 +285,7 @@ export function App() {
         </div>
         <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>✎ New chat</button>
         <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('connections'); }}>🔌 Connections</button>
+        <button className={`sidebar-item ${page === 'usage' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('usage'); }}>📊 Usage</button>
         <div className="flow-sidebar-tree">
           {/* Product Knowledge, Leads and Flows are peer top-level workspaces — same head level. */}
           <div className="tree-section-head">
@@ -352,6 +354,10 @@ export function App() {
         ) : page === 'connections' ? (
           <div className="master-home">
             <ConnectionsPanel notify={show} />
+          </div>
+        ) : page === 'usage' ? (
+          <div className="master-home">
+            <UsageDashboard notify={show} />
           </div>
         ) : page === 'product-knowledge' ? (
           <div className="master-home">

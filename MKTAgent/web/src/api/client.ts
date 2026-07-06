@@ -77,6 +77,57 @@ export type RequiredActionDto = NonNullable<WorkflowRunDto['requiredActions']>[n
 // Connections (M2-lite) — read-only social connection status.
 export type ConnectionDto = Dto['ConnectionDto'];
 
+// Phase 03 (safety/tiering/credits) — routes not in openapi yet, hand-typed at the boundary.
+// Token/cost summary widened with the friendly `credits` number the backend now attaches to
+// every run/flow/usage total (CostSummaryDto.credits). Structurally compatible with the
+// generated WorkflowRunDto['cost']/['flowCost'] shape, so those can be passed in directly.
+export interface CostSummary {
+  promptTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  credits?: number;
+  runs?: number;
+}
+export type PlanTierId = 'economy' | 'balanced' | 'full';
+export interface PlanTierEstimate {
+  totalTokens: number;
+  costUsd: number;
+  credits: number;
+  agentCount: number;
+}
+export interface PlanTier {
+  id: PlanTierId;
+  label: string;
+  description: string;
+  agentIds: string[];
+  estimate: PlanTierEstimate;
+  // Opaque server-side plan — the client never inspects it, only sends the tierId back.
+  plan: unknown;
+}
+export interface UsageSurfaceTotal {
+  surface: string;
+  costUsd: number;
+  totalTokens: number;
+  credits: number;
+  calls: number;
+}
+export interface UsageTotals {
+  costUsd: number;
+  totalTokens: number;
+  promptTokens: number;
+  outputTokens: number;
+  thoughtTokens: number;
+  credits: number;
+  calls: number;
+  bySurface: UsageSurfaceTotal[];
+}
+export interface KillSwitchState {
+  paused: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 // Publish review (item 3) — per-platform readiness for a post's assetType.
 // Not yet in the generated openapi schema; typed here at the call boundary.
 export interface PostabilityRowDto {
@@ -241,6 +292,23 @@ export const api = {
   // Saved Flows (named runs) for the sidebar + Active Flows surface.
   listSavedRuns: () => request<SavedRunDto[]>('/orchestration/runs/saved'),
   deleteRun: (id: string) => request<void>(`/orchestration/runs/${id}`, { method: 'DELETE' }),
+
+  // ---- Phase 03: plan tiers, kill switch, usage dashboard ----
+  // Checkpoint 2 — Economy/Balanced/Full variants for a `planned` run's goal (read-only
+  // preview; [] when the goal can't be tiered, caller keeps the single-plan flow).
+  getPlanTiers: (runId: string) => request<{ tiers: PlanTier[] }>(`/orchestration/runs/${runId}/plan-tiers`),
+  // Rebuild the run's plan from a chosen tier. 409 run_not_retierable once running/completed;
+  // 422 tier_unavailable if the tier isn't offered for this goal.
+  applyTier: (runId: string, tierId: PlanTierId) =>
+    request<WorkflowRunDto>(`/orchestration/runs/${runId}/apply-tier`, { method: 'POST', body: { tierId } }),
+  // Kill switch — stop a single run at the next node boundary. 409 run_terminal if already done.
+  abortRun: (runId: string) => request<{ id: string; status: string }>(`/orchestration/runs/${runId}/abort`, { method: 'POST' }),
+  // Kill switch — global pause on every external action (publishes/outbound writes), workspace-wide.
+  getKillSwitch: () => request<KillSwitchState>('/orchestration/killswitch'),
+  setKillSwitch: (paused: boolean) => request<KillSwitchState>('/orchestration/killswitch', { method: 'POST', body: { paused } }),
+  // Per-owner spend total + per-surface breakdown (chat/intake/copygen/research/... ) for the
+  // usage dashboard.
+  getUsage: () => request<UsageTotals>('/orchestration/usage'),
 
   // ---- Connections (M2-lite) ----
   listConnections: () => request<ConnectionDto[]>('/connections'),
