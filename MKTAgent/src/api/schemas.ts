@@ -56,6 +56,11 @@ export type ApplyTierBody = z.infer<typeof applyTierBody>;
 export const killSwitchBody = z.object({ paused: z.boolean() });
 export type KillSwitchBody = z.infer<typeof killSwitchBody>;
 
+// Activate/stop a post's lead collector: set (or clear, null) its comment-capture keyword. On an
+// already-published post this also backfills the comment watch sources from its live URLs.
+export const collectorBody = z.object({ keyword: z.string().max(80).nullable() });
+export type CollectorBody = z.infer<typeof collectorBody>;
+
 export const editCopyBody = z.object({
   body: z.string().max(8000),
   threads: z.string().max(8000),

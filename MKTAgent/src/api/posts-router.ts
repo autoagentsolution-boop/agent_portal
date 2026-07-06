@@ -13,8 +13,10 @@ import {
   createPostBody,
   createPostFromAgentBody,
   updatePostBody,
+  collectorBody,
   type CreatePostBody,
 } from './schemas.ts';
+import { recordCommentSources } from '../leads/sources/comment-watch.ts';
 import { toPostDto, toPostDetailDto } from './mappers.ts';
 import { listArtifacts, updateArtifactData } from '../orchestration/executor/artifact-store.ts';
 import { checkPostability } from '../social/postability.ts';
@@ -278,6 +280,31 @@ postsRouter.post(
     if (r.status !== 'review') return fail(res, 500, 'copygen_error');
     const post = await getPostForOwner(req.params.id, req.userId!);
     ok(res, post ? toPostDto(post) : { id: req.params.id, status: 'review' });
+  }),
+);
+
+// Activate / stop a post's lead collector (§01.4). Sets the comment-capture keyword; on an
+// ALREADY-PUBLISHED post it also backfills the comment watch sources from the live URLs so an
+// existing post starts collecting immediately (recordCommentSources normally runs at publish time,
+// but these posts were published before a keyword was set). keyword=null stops + clears the collector.
+postsRouter.post(
+  '/:id/collector',
+  asyncHandler(async (req, res) => {
+    const body = parseOr422(res, collectorBody, req.body ?? {});
+    if (!body) return;
+    const post = await getPostForOwner(req.params.id, req.userId!);
+    if (!post) return fail(res, 404, 'post_not_found');
+    if (body.keyword) {
+      await updatePostFields(post.id, req.userId!, { leadCaptureKeyword: body.keyword });
+      // Backfill watch sources from the already-published URLs (no-op if not yet published).
+      const withKeyword = await getPostForOwner(post.id, req.userId!);
+      if (withKeyword && post.postUrls) await recordCommentSources(withKeyword, post.postUrls as Record<string, string>);
+    } else {
+      // Stop collecting: clear keyword + sources + any 'post_deleted' status.
+      await updatePostFields(post.id, req.userId!, { leadCaptureKeyword: null, commentSourceIds: Prisma.JsonNull, leadCollectorStatus: null });
+    }
+    const final = await getPostForOwner(post.id, req.userId!);
+    ok(res, toPostDto(final!));
   }),
 );
 
