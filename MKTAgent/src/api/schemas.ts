@@ -250,8 +250,14 @@ export const workflowNodeDto = z.object({
   dependsOn: z.array(z.string()),
   error: z.string().nullable(),
   // Token/cost recorded when the node completed (Phase 6). 0 for stubs/publisher/pending.
+  promptTokens: z.number().optional(),
+  outputTokens: z.number().optional(),
   totalTokens: z.number().optional(),
   costUsd: z.number().optional(),
+  // Execution window — lets the UI show a node's total runtime after it finishes
+  // (the live ticker only covers the running window). ISO strings; null until set.
+  startedAt: z.string().nullable().optional(),
+  finishedAt: z.string().nullable().optional(),
 });
 
 // Token/cost totals. Per-run (this run's nodes) and, for a flow template, a rollup across

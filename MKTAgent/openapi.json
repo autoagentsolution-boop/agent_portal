@@ -1875,11 +1875,29 @@
                     "null"
                   ]
                 },
+                "promptTokens": {
+                  "type": "number"
+                },
+                "outputTokens": {
+                  "type": "number"
+                },
                 "totalTokens": {
                   "type": "number"
                 },
                 "costUsd": {
                   "type": "number"
+                },
+                "startedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "finishedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               },
               "required": [

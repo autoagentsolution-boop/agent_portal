@@ -25,9 +25,41 @@ function RunningElapsed() {
     return () => clearInterval(t);
   }, []);
   const s = Math.max(0, Math.floor((now - start.current) / 1000));
-  const mm = Math.floor(s / 60);
-  const ss = String(s % 60).padStart(2, '0');
-  return <span className="dag-elapsed">processing · {mm}:{ss}</span>;
+  return <span className="dag-elapsed">processing · {fmtDuration(s)}</span>;
+}
+
+// mm:ss (or Hh Mm for long runs). Used by both the live ticker and the persisted
+// per-node runtime shown once a node reaches a terminal state.
+function fmtDuration(totalSec: number): string {
+  const s = Math.max(0, Math.floor(totalSec));
+  if (s >= 3600) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+const fmtTokens = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
+// Persisted per-node stats shown after a node finishes: total runtime (from the
+// server's started/finished timestamps, so it survives remounts/reloads unlike the
+// live ticker) plus input/output token counts. Rendered only when data exists.
+function NodeStats({ node }: { node: Node }) {
+  const dur =
+    node.startedAt && node.finishedAt
+      ? (new Date(node.finishedAt).getTime() - new Date(node.startedAt).getTime()) / 1000
+      : null;
+  const inTok = node.promptTokens ?? 0;
+  const outTok = node.outputTokens ?? 0;
+  const hasTokens = inTok > 0 || outTok > 0;
+  if (dur === null && !hasTokens) return null;
+  return (
+    <span className="dag-stats">
+      {dur !== null && <span className="dag-stat dag-stat-time" title="total runtime">⏱ {fmtDuration(dur)}</span>}
+      {hasTokens && (
+        <span className="dag-stat dag-stat-tok" title="input / output tokens">
+          ↑{fmtTokens(inTok)} ↓{fmtTokens(outTok)}
+        </span>
+      )}
+    </span>
+  );
 }
 
 interface Props {
@@ -60,6 +92,7 @@ export function RunDagView({ nodes, publishUrls, platforms, onSelectNode, select
             <span className="dag-agent">{agentLabel(n.agentId)}</span>
             {n.dependsOn.length > 0 && <span className="dag-dep">after {n.dependsOn.join(', ')}</span>}
             {n.status === 'running' && <RunningElapsed key={`${n.nodeId}-elapsed`} />}
+            {n.status === 'completed' && <NodeStats node={n} />}
             {n.error && <span className="dag-err">{n.error}</span>}
             {n.agentId === 'publisher' && platformRows.length > 0 && (
               <ul className="publish-subrows">

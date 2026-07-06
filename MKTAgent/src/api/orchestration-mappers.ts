@@ -55,8 +55,12 @@ export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): Workflow
     status: n.status,
     dependsOn: n.dependsOn,
     error: n.error,
+    promptTokens: n.promptTokens ?? 0,
+    outputTokens: n.outputTokens ?? 0,
     totalTokens: n.totalTokens ?? 0,
     costUsd: n.costUsd ?? 0,
+    startedAt: n.startedAt ? n.startedAt.toISOString() : null,
+    finishedAt: n.finishedAt ? n.finishedAt.toISOString() : null,
   })),
   artifacts: run.artifacts.map((a) => ({
     id: a.id,

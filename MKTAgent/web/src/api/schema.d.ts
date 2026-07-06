@@ -3017,8 +3017,12 @@ export interface components {
                 status: string;
                 dependsOn: string[];
                 error: string | null;
+                promptTokens?: number;
+                outputTokens?: number;
                 totalTokens?: number;
                 costUsd?: number;
+                startedAt?: string | null;
+                finishedAt?: string | null;
             }[];
             artifacts: {
                 /** Format: uuid */
