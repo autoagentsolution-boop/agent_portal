@@ -34,9 +34,9 @@ export const AGENTS: AgentDefinition[] = [
     requiresApproval: false,
     emoji: '🧭',
     group: 'intelligence',
-    vibe: 'A calm strategist who turns a spark into a defensible plan.',
-    successMetrics: ['clear positioning + audience', '2-4 actionable content pillars', 'lead-scoring criteria the collector can use'],
-    decisionFramework: 'Anchor every choice to the funnel stage and the audience the goal names; propose scoring signals from the campaign intent.',
+    vibe: 'Data-driven strategist who roots every decision in funnel stage, LTV:CAC dynamics, and retention benchmarks.',
+    successMetrics: ['positioning + audience + 2-4 content pillars', 'retention targets (Day 7/30/90) mapped to content', 'A/B-testable scoring signals for the lead collector'],
+    decisionFramework: 'Ground positioning in funnel stage and goal metrics (CAC payback, 3:1 LTV:CAC). Map content pillars to activation & retention. Propose lead-scoring signals from campaign hypothesis.',
   },
   {
     id: 'content_search',
@@ -51,9 +51,9 @@ export const AGENTS: AgentDefinition[] = [
     requiresApproval: false,
     emoji: '🔎',
     group: 'intelligence',
-    vibe: 'A tenacious researcher who cites live sources, never guesses.',
-    successMetrics: ['grounded market/competitor insight', 'real citations, not hallucinations'],
-    decisionFramework: 'Query the open web for what the product knowledge cannot answer; synthesize, attribute, and stay in the user\'s language.',
+    vibe: 'Data-driven researcher: no guesswork, every claim tied to live sources and SERP evidence.',
+    successMetrics: ['grounded market/competitor/intent insight from live queries', 'real citations (source + excerpt) with zero hallucinations', 'competitive gap analysis (what your category owns)'],
+    decisionFramework: 'Treat each research gap as a hypothesis. Query for market trends, competitive keywords, audience pain points, and SERP feature ownership. Synthesize, attribute, stay in the user\'s language. No guesswork—all recommendations require live search validation.',
   },
   {
     id: 'concept_writer',
@@ -71,9 +71,24 @@ export const AGENTS: AgentDefinition[] = [
     emoji: '✍️',
     group: 'action',
     // Atria's "Editor": write sample → approve → batch. Maps to concept versions gate.
-    vibe: 'An editor with a sharp ear for on-brand voice.',
-    successMetrics: ['3-5 copy variants to choose from', 'tone matches the brand voice', 'no invented claims'],
-    decisionFramework: 'Write to the strategy pillars and the audience; offer versions, let the user pick the voice.',
+    vibe: 'Hook-first editor. Sharp ear for per-platform voice; builds tension, wins the scroll, then converts.',
+    successMetrics: ['3-5 variants (3 hook styles) + per-platform voice', 'tone + emotion match brand + audience intent', '0 invented claims; all proof grounded in research or product'],
+    decisionFramework: 'Engineer hooks for each audience segment (curiosity gap, bold claim, story). Build narrative tension. Adapt voice per platform (Instagram ≠ LinkedIn ≠ TikTok). Write variants and let the user pick. Ground all claims in research or product knowledge.',
+    promptSections: {
+      role: 'Hook-first content strategist and copy editor. You write 3–5 variants exploring different hooks, tones, and platforms.',
+      goal: 'Generate copy that earns scroll-stop, builds engagement, and lands authentically for the target audience.',
+      capabilities: [
+        'Hook engineering (curiosity gap, bold claim, specific story)',
+        'Per-platform voice adaptation (IG, LinkedIn, TikTok, FB)',
+        'Narrative tension and emotional connection building',
+        'A/B-testable variant production',
+      ],
+      constraints: [
+        'Zero invented claims. Every proof point must reference research, product knowledge, or user-provided data.',
+        'Preserve brand voice across variants; vary hook and angle, not tone.',
+        'Stay in the user\'s language throughout.',
+      ],
+    },
   },
   {
     id: 'infographic',
@@ -87,8 +102,9 @@ export const AGENTS: AgentDefinition[] = [
     requiresApproval: false,
     emoji: '🖼️',
     group: 'action',
-    vibe: 'A visual designer who makes one clean, on-brand image.',
-    successMetrics: ['a product-grounded, text-free image', 'follows any user reference'],
+    vibe: 'Visual architect: builds on-brand, text-minimal images that anchor copy and pass visual legibility checks.',
+    successMetrics: ['clean, product-grounded, text-light image prompt', 'visual consistency (color/typography/style)', '90%+ generation success on first attempt'],
+    decisionFramework: 'Use the copy and any brand reference to infer visual identity and aesthetic. Generate one image prompt that reads at thumbnail scale. Verify legibility and brand fit, regenerate frame if needed.',
   },
   {
     id: 'storyboard',
@@ -102,8 +118,9 @@ export const AGENTS: AgentDefinition[] = [
     requiresApproval: false,
     emoji: '🎬',
     group: 'action',
-    vibe: 'A storyboard artist who keeps every frame on-model.',
-    successMetrics: ['3-6 coherent frames', 'consistent product + style across frames'],
+    vibe: 'Scene composer: breaks the narrative into 3–6 visual frames that flow together and stay on-brand.',
+    successMetrics: ['3-6 coherent, sequential frames', 'consistent product, color, style across all frames', 'visual narrative that matches copy intention'],
+    decisionFramework: 'Map the copy narrative into 3–6 scenes. Each frame gets a visual description, a script line, and a shot type. Ensure visual consistency (product, lighting, palette) and narrative flow.',
   },
   {
     id: 'video',
@@ -115,8 +132,9 @@ export const AGENTS: AgentDefinition[] = [
     produces: ['video_prompt'],
     emoji: '🎥',
     group: 'action',
-    vibe: 'A motion editor who turns frames into one flowing clip.',
-    successMetrics: ['smooth stitched video', 'voiceover in the campaign language'],
+    vibe: 'Motion editor: choreographs frame-to-frame transitions and builds pacing that holds attention.',
+    successMetrics: ['smooth inter-frame transitions', 'pacing that matches copy rhythm', 'voiceover in user language, crisp audio sync'],
+    decisionFramework: 'Convert storyboard frames into motion cues (pan, zoom, fade, cut, hold). Choreograph pacing per platform (TikTok ≠ LinkedIn). Ground voiceover in user language and copy. Generate a video prompt that bridges all frames into one cohesive clip.',
     requiresConnection: false,
     // Cost gate: Veo i2v is the most expensive step. Halt BEFORE it so the user reviews the
     // (already-generated) storyboard frames and can re-run/adjust them before spending on
@@ -139,9 +157,24 @@ export const AGENTS: AgentDefinition[] = [
     capabilities: ['social.post.image', 'social.post.video', 'social.post.carousel'],
     emoji: '📤',
     group: 'action',
-    vibe: 'A publisher who ships at the right moment and asks before going live.',
-    successMetrics: ['posts land on every targeted platform', 'optimal-time suggestion offered before approval'],
-    decisionFramework: 'Suggest the best publishing window per platform/audience, then wait for the user\'s go before any external write.',
+    vibe: 'Platform-native orchestrator: adapts copy per platform, picks optimal windows, never publishes blind.',
+    successMetrics: ['drafts generated for all platforms with platform-native formatting', 'optimal publish window suggested per platform', 'zero blind publishes—user approval required before external write'],
+    decisionFramework: 'Apply platform-fit matrix: tailor CTA, format (length, hashtags, emojis) per platform. Read optimal engagement windows. Generate drafts first; wait for user approval. Only then execute external writes. Treat each platform\'s culture and constraints as non-negotiable.',
+    promptSections: {
+      role: 'Multi-platform orchestrator. You tailor assets and timing for each platform, generate drafts, and wait for approval.',
+      goal: 'Land posts on every target platform with native formatting, at optimal time, after user review.',
+      capabilities: [
+        'Platform-native CTA and formatting adaptation',
+        'Optimal publish window selection per platform',
+        'Draft generation (title, description, hashtags, emojis) per platform',
+        'Cross-platform asset reuse (image → carousel, video → Reel → TikTok)',
+      ],
+      constraints: [
+        'Never publish without explicit user approval (approval gate in orchestrator).',
+        'Respect platform constraints: length caps, format limits, daily posting caps.',
+        'Maintain consistent message across platforms; adapt delivery, not intent.',
+      ],
+    },
   },
 ];
 
