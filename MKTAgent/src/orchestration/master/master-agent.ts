@@ -19,9 +19,11 @@ export class MasterAgent {
   constructor(private analyzer: RequirementAnalyzer = requirementAnalyzer) {}
 
   // Plan from an already-extracted GoalSpec (used after clarification answers are
-  // merged in by the API layer — no re-analysis needed).
-  planFromGoal(goal: GoalSpec): MasterAgentOutcome {
-    const clarify = evaluateClarification(goal);
+  // merged in by the API layer — no re-analysis needed). `autonomous` (Atria granted path)
+  // relaxes the optional-ish required questions so a granted goal doesn't dead-end at
+  // clarification; only genuinely unplannable slots still block. Default false = unchanged.
+  planFromGoal(goal: GoalSpec, opts: { autonomous?: boolean } = {}): MasterAgentOutcome {
+    const clarify = evaluateClarification(goal, opts);
     if (clarify.status === 'needs_clarification') {
       return { status: 'awaiting_clarification', goal, questions: clarify.questions };
     }

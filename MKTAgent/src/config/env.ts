@@ -54,6 +54,10 @@ const schema = z.object({
   ENABLE_COPYGEN_CRON: z.coerce.boolean().default(false),
   // Auto-run the lead collector (comment-keyword poll) every 30 min across all tenants.
   ENABLE_LEADS_CRON: z.coerce.boolean().default(false),
+  // Atria autonomy (Phase 01): per-gate spend ceiling a GRANTED run may auto-waive at a cost
+  // gate (e.g. the Veo video step, ≈$0.40/8s). Above this, the run parks + notifies for a human
+  // OK. 0 → never auto-waive any cost gate (fail-closed). Default $2 allows one video autonomously.
+  ATRIA_AUTONOMY_COST_CEILING_USD: z.coerce.number().nonnegative().default(2),
 
   // Lead capture
   MKT_LEAD_WEBHOOK_SECRET: z.string().default(''),

@@ -285,6 +285,24 @@ export const getLatestRunWithNodesForChat = (
     include: { nodes: { orderBy: { nodeId: 'asc' } }, artifacts: { orderBy: { createdAt: 'asc' } } },
   });
 
+// Atria autonomy grant (Phase 01): flip a run into 'atria' approval mode after the user
+// double-confirmed it (the endpoint enforces the two-step handshake). Owner-scoped and
+// guarded to a run the user could still execute (planned/failed/needs_connection) so a
+// running/completed/template run can't be retro-granted. `scheduleConfirmed` is set true
+// when the user re-confirmed a finalized schedule (Phase 03 scheduler reads it). Returns
+// the updated row or null (wrong tenant / not in a grantable state).
+export const grantAutonomy = async (
+  id: string,
+  ownerId: string,
+  scheduleConfirmed = false,
+): Promise<WorkflowRun | null> => {
+  const r = await prisma.workflowRun.updateMany({
+    where: { id, ownerId, status: { in: ['planned', 'failed', 'needs_connection'] } },
+    data: { approvalMode: 'atria', scheduleConfirmed },
+  });
+  return r.count === 1 ? prisma.workflowRun.findFirst({ where: { id, ownerId } }) : null;
+};
+
 // ── Transitions ──────────────────────────────────────────────────────────────
 // Guarded status transition: only advance if currently in `from` AND owned by
 // the caller. Returns the row or null (stale/wrong-tenant) — route maps null→409.

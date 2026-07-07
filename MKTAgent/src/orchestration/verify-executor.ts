@@ -133,6 +133,46 @@ async function main(): Promise<void> {
       const pr2 = full2?.artifacts.find((a) => a.type === 'publish_result');
       check('no-media publish → result status error (faithful, not bypassed)', (pr2?.data as { status?: string })?.status === 'error', { outcome: r2b, pr: pr2?.data });
     }
+
+    // ── Atria autonomy grant (Phase 01): a GRANTED run clears its own gates with ZERO
+    // approve-node calls. IMPORTANT Phase-01/02 boundary: `buildGuardrailCtx` still reads the
+    // run-START post snapshot (getPostByRunId), which is NULL on a FRESH goal (the post is created
+    // mid-run by concept_writer — the C1 finding). So on a fresh goal the publish guardrail
+    // fail-CLOSES and the run HOLDS + notifies (never a silent publish). Phase 02 adds the
+    // publisher-boundary re-read that lets a fresh goal auto-publish in a single pass. Here we
+    // prove: (pass 1) concept auto-selects + publisher fail-closed holds + audited; (pass 2, on
+    // resume once the post IS resolvable) the grant publishes with 0 human approvals.
+    const run3 = await createRun({ ownerId: user.id, goal, plan: planned.plan, status: 'planned' });
+    await createNodes(run3.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
+    // Grant autonomy (what the endpoint does after the double-confirm handshake).
+    await prisma.workflowRun.update({ where: { id: run3.id }, data: { approvalMode: 'atria' } });
+    const r3a = await runWorkflow(run3.id, user.id, goal, planned.plan, {
+      geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts,
+      // NO approveNodeId — the grant is the authorization. conceptGate/autoPublish left at defaults.
+    });
+    check('atria pass1: fresh-goal publish fail-closed HOLDS (Phase 02 unlocks it)', r3a.status === 'needs_approval', r3a);
+    let full3 = await getRunWithNodes(run3.id, user.id);
+    check('atria: concept auto-selected (completed, not parked)', full3?.nodes.find((n) => n.agentId === 'concept_writer')?.status === 'completed', full3?.nodes.find((n) => n.agentId === 'concept_writer')?.status);
+    check('atria pass1: publisher HELD, nothing published', !(full3?.artifacts.some((a) => a.type === 'publish_result') ?? false));
+    // Forensic traceability: every atria gate decision left an audit row (selection approve + publish hold).
+    const auditRows = await prisma.mktRunLog.count({ where: { ownerId: user.id, step: 'atria_gate', detail: { path: ['runId'], equals: run3.id } } });
+    check('atria: gate decisions audited (≥2 rows: selection + publish)', auditRows >= 2, auditRows);
+
+    // Pass 2 — resume WITHOUT any approve-node (still 0 human approvals). The post now exists, so
+    // buildGuardrailCtx re-reads it non-null → publish guardrails hold → the grant publishes.
+    const r3b = await runWorkflow(run3.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage });
+    check('atria pass2: completes autonomously (0 human approvals)', r3b.status === 'completed', r3b);
+    full3 = await getRunWithNodes(run3.id, user.id);
+    check('atria: publisher completed autonomously', full3?.nodes.find((n) => n.agentId === 'publisher')?.status === 'completed');
+    const pr3 = full3?.artifacts.find((a) => a.type === 'publish_result');
+    check('atria: publish_result posted (dry)', (pr3?.data as { status?: string })?.status === 'posted', pr3?.data);
+
+    // Human-mode regression guard: an ungranted run STILL parks at the publisher (byte-identical
+    // to before this phase) — autonomy must never be the accidental default.
+    const run4 = await createRun({ ownerId: user.id, goal, plan: planned.plan, status: 'planned' });
+    await createNodes(run4.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
+    const r4 = await runWorkflow(run4.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, autoPublish: false, conceptGate: false });
+    check('human mode still parks needs_approval (no autonomy leak)', r4.status === 'needs_approval', r4);
   } finally {
     await prisma.user.delete({ where: { id: user.id } });
     console.log('cleanup: throwaway tenant removed');

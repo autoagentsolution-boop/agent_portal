@@ -37,7 +37,10 @@ import {
   collectDownstream,
   getFlowCostRollup,
   agentCostAverages,
+  grantAutonomy,
 } from '../db/repos/workflow-run-repo.ts';
+import { issueGrantToken, verifyGrantToken } from './autonomy-grant-token.ts';
+import { logRun } from '../db/client.ts';
 import { deleteArtifactsByNodes } from '../orchestration/executor/artifact-store.ts';
 import { getAgent } from '../orchestration/registry/agent-registry.ts';
 import { AGENTS } from '../orchestration/registry/agent-registry.ts';
@@ -287,6 +290,35 @@ orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
   // Claim into running before responding so a double-click can't spawn two executors.
   await setRunStatus(run.id, 'running');
   launchWorkflow(run.id, req.userId!, goal, plan, { autoPublish, conceptGate });
+  return respondRun(res, run.id, req.userId!);
+}));
+
+// Grant Atria autonomy on a run (autonomy-hardening Phase 01). BACKEND-ENFORCED double-confirm:
+// step 1 (no confirmationToken) issues one — the run is NOT yet granted; step 2 (echo the token)
+// flips approvalMode → 'atria'. A single stray call therefore can never auto-enable autonomy.
+// Once granted, the run executes its whole flow with no mid-flow approval gate (guardrails still
+// hold + notify on any gap — see the executor policy). `scheduleConfirmed=true` re-confirms a
+// finalized schedule so the Phase 03 scheduler may fire it. Every grant is audited.
+orchestrationRouter.post('/runs/:id/grant-autonomy', asyncHandler(async (req, res) => {
+  const run = await getRunForOwner(req.params.id, req.userId!);
+  if (!run) return fail(res, 404, 'run_not_found');
+  if (run.kind === 'template') return fail(res, 409, 'template_not_executable', 'this flow is a template — create a post to run it');
+  if (run.status !== 'planned' && run.status !== 'failed' && run.status !== 'needs_connection') {
+    return fail(res, 409, 'run_not_grantable', 'only a planned/executable run can be granted autonomy');
+  }
+  const body = (req.body ?? {}) as { confirmationToken?: unknown; scheduleConfirmed?: unknown };
+
+  // Step 1 — no valid token yet: issue one and return WITHOUT granting (the required 2nd confirm).
+  if (!verifyGrantToken(run.id, req.userId!, body.confirmationToken)) {
+    return ok(res, { runId: run.id, pendingConfirmation: true, confirmationToken: issueGrantToken(run.id, req.userId!) });
+  }
+
+  // Step 2 — token verified: activate the grant + audit.
+  const scheduleConfirmed = body.scheduleConfirmed === true;
+  const granted = await grantAutonomy(run.id, req.userId!, scheduleConfirmed);
+  if (!granted) return fail(res, 409, 'run_not_grantable');
+  await logRun('info', 'atria_grant', { runId: run.id, approvalMode: 'atria', scheduleConfirmed }, req.userId!);
+  logger.info('wf_autonomy_granted', { runId: run.id, scheduleConfirmed });
   return respondRun(res, run.id, req.userId!);
 }));
 

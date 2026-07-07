@@ -37,6 +37,18 @@ export interface AgentDefinition {
   // M1: only `publisher` requires a connection / external-write approval.
   requiresConnection: boolean;
   requiresApproval: boolean;
+  // Which action gate this agent presents (autonomy-hardening Phase 01) — the SINGLE
+  // source of truth a machine reads to know an agent pauses and WHY, replacing the
+  // executor's hardcoded SELECTION_GATE set + `hasVideoNode` special-casing:
+  //   'selection' — pauses AFTER executing so the user picks an output (concept versions).
+  //   'cost'      — pauses BEFORE executing (expensive step, e.g. video) for a spend OK.
+  //   'publish'   — pauses BEFORE the external write (publisher).
+  //   undefined   — no gate; runs straight through.
+  // Note this is orthogonal to `requiresApproval` (the executor's before-halt flag):
+  // concept_writer has gate='selection' but requiresApproval=false because its pause is a
+  // POST-execution park, not a pre-execution halt — that's what fixes the old display≠behavior
+  // (a UI roster reads `gate` to show "pauses", not the misleading requiresApproval=false).
+  gate?: 'selection' | 'cost' | 'publish';
   // Capability skills this agent provides (brief §11.5). The publisher declares
   // `social.post.*`; target platforms come from the GoalSpec and are resolved at
   // run time (capability-based planning), NOT modeled as separate DAG nodes.

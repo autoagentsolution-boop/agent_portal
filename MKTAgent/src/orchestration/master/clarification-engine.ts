@@ -55,7 +55,19 @@ const isThinProduct = (product?: string | null, productDetails?: string | null):
 // hit: a request with product + a platform jumping straight to a 2-node DAG with zero
 // questions ("it's dumb"). When high-impact context (audience / angle / platforms) is
 // thin, we promote those questions to required so the agent reasons before planning.
-export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
+// Slots a request genuinely CANNOT be planned without — the only ones that still block an
+// autonomous (granted) run. Everything else (audience, angle, accountType, platform richness)
+// is inferred/defaulted rather than dead-ending the flow at awaiting_clarification.
+const AUTONOMY_HARD_SLOTS = new Set(['product', 'productDetails', 'output_format']);
+
+// autonomous=true (Atria granted path): proceed on inferred slots instead of emitting the
+// optional-ish required questions a human would answer. Only AUTONOMY_HARD_SLOTS still block —
+// Atria can't invent a product or an output format. The inferred defaults are logged by the
+// caller for audit. Default false → human behavior is byte-identical.
+export const evaluateClarification = (
+  goal: GoalSpec,
+  opts: { autonomous?: boolean } = {},
+): ClarificationResult => {
   const q: ClarificationQuestion[] = [];
 
   // A PERSONAL post shares an experience/topic, not a product. When the account is personal
@@ -163,7 +175,13 @@ export const evaluateClarification = (goal: GoalSpec): ClarificationResult => {
     q.push({ slot: 'angle', question: 'Any specific angle or key message to emphasize?', required: thin });
   }
 
-  const trimmed = q.slice(0, MAX_QUESTIONS);
+  // Autonomy bypass: keep only the hard-blocking questions as required; the rest proceed on
+  // inferred defaults so a granted run doesn't dead-end on optional-ish gaps.
+  const effective = opts.autonomous
+    ? q.map((x) => (x.required && !AUTONOMY_HARD_SLOTS.has(x.slot) ? { ...x, required: false } : x))
+    : q;
+
+  const trimmed = effective.slice(0, MAX_QUESTIONS);
   // Proceed when nothing required is outstanding. Optional-only gaps don't block.
   const hasRequired = trimmed.some((x) => x.required);
   return hasRequired

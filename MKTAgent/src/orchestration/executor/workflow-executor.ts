@@ -7,8 +7,11 @@
 // Resumable: after a human approves the gated node, the API calls run() again; nodes
 // already `completed` are skipped and their artifacts re-loaded into the context.
 import { validatePlan } from '../master/workflow-validator.ts';
-import { getAgent } from '../registry/agent-registry.ts';
+import { getAgent, agentGate, hasGate } from '../registry/agent-registry.ts';
 import { executeNode } from './agent-executor.ts';
+import { atriaApprovalPolicy, guardrailHoldReason, type GuardrailContext, type GateKind } from './approval-policy.ts';
+import { videoClipCost } from './node-cost.ts';
+import { env } from '../../config/env.ts';
 import { listArtifacts } from './artifact-store.ts';
 import type { RunnerContext } from './agent-runners.ts';
 import type { GoalSpec } from '../schemas/goal-spec.ts';
@@ -49,10 +52,11 @@ const MEDIA_AGENT_ASSET: Record<string, ReadonlyArray<string>> = {
 };
 
 // Agents that PAUSE the run right AFTER they execute (produce-then-gate), for a user
-// decision on the just-produced output. concept_writer parks so the user picks one of its
+// decision on the just-produced output — concept_writer parks so the user picks one of its
 // 3-5 versions (+ optional reference image) before media/publish run. Distinct from the
-// requiresApproval BEFORE-gate (publisher/video), which halts before spending.
-const SELECTION_GATE = new Set<string>(['concept_writer']);
+// requiresApproval BEFORE-gate (publisher/video), which halts before spending. Derived from
+// the registry `gate: 'selection'` metadata (single source of truth, no hardcoded id set).
+const isSelectionGate = (agentId: string): boolean => agentGate(agentId) === 'selection';
 
 export interface ExecuteOptions {
   geminiFn?: RunnerContext['geminiFn'];
@@ -107,10 +111,17 @@ export const runWorkflow = async (
   if (!runRow) return { status: 'failed', nodeId: '-', error: 'run_not_found' };
   const nodeRowByPlanId = new Map(runRow.nodes.map((n) => [n.nodeId, n]));
   const nodeByPlanId = new Map(plan.nodes.map((n) => [n.nodeId, n]));
-  // A video deliverable is expensive + high-stakes: the user must review the GENERATED video and
-  // explicitly approve publishing — approving the video COST gate must not cascade into auto-publish.
-  // So when the plan has a video node, the publisher gate is never auto-waived (separate approvals).
-  const hasVideoNode = [...nodeByPlanId.values()].some((n) => n.agentId === 'video');
+  // A cost-gated deliverable (video) is expensive + high-stakes: the user must review the
+  // GENERATED output and explicitly approve publishing — approving the COST gate must not cascade
+  // into auto-publish. So (in human mode) when the plan has a cost gate the publisher is never
+  // auto-waived (separate approvals). Derived from registry `gate: 'cost'`, not a hardcoded id.
+  const hasCostGate = hasGate([...nodeByPlanId.values()].map((n) => n.agentId), 'cost');
+
+  // Atria autonomy grant (Phase 01): this run was pre-authorized by the user (double-confirmed
+  // via the grant endpoint), so it may clear its OWN action gates when guardrails hold. Human mode
+  // (default) is byte-identical to before — every branch below is guarded on `atriaMode`.
+  const atriaMode = runRow.approvalMode === 'atria';
+  const budgetCeiling = env.ATRIA_AUTONOMY_COST_CEILING_USD > 0 ? env.ATRIA_AUTONOMY_COST_CEILING_USD : null;
 
   // Seed context with artifacts already produced (resume case).
   const upstream: Partial<Record<ArtifactType, unknown>> = {};
@@ -139,6 +150,35 @@ export const runWorkflow = async (
   const approveScheduledAt = attachedPost?.scheduledAt ?? new Date();
   const isScheduledFuture = (): boolean =>
     !!attachedPost?.scheduledAt && attachedPost.scheduledAt.getTime() > Date.now();
+
+  // Guardrail snapshot for the atria policy at a given gate. Captures `postId` by reference so a
+  // fresh-goal run (post created mid-run) is judged on the current post, not the run-start null.
+  // ⚠ Phase 01 uses the run-start `attachedPost` for platform/asset checks (connected=true because
+  // /execute already passed the connection gate); Phase 02 tightens this to a real boundary re-read
+  // of the post (media presence + connection re-resolve). Fail-closed everywhere unproven.
+  const buildGuardrailCtx = (gate: GateKind): GuardrailContext => {
+    const cleanlyPostable =
+      !!attachedPost && attachedPost.platforms.length > 0 &&
+      attachedPost.platforms.every((p) => platformSupportsAsset(p, publishAssetType(attachedPost, p)));
+    return {
+      connected: true, // resolved at /execute; Phase 02 re-resolves at the publisher boundary
+      mediaReady: !!attachedPost, // Phase 02 re-reads the post for real media presence
+      cleanlyPostable,
+      estCostUsd: gate === 'cost' ? videoClipCost(1).costUsd : 0,
+      budgetUsd: budgetCeiling,
+      contentChecksPass: !!postId,
+    };
+  };
+  // Park a granted run at a gate its guardrails did NOT clear: needs a human. Same park mechanism
+  // as human mode (awaiting_approval + run needs_approval, resumable via approve-node) + an audit
+  // row + a notify notice. Never publishes, never fails the run.
+  const atriaHold = async (nodeRowId: string, planNodeId: string, agentId: string, gate: GateKind, reason: string): Promise<ExecuteOutcome> => {
+    await setNodeStatus(nodeRowId, 'awaiting_approval');
+    await setRunStatus(runId, 'needs_approval');
+    await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId, gate, decision: 'hold', reason }, ownerId);
+    publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId, status: 'awaiting_approval', notice: `Atria held for your review — ${reason}` });
+    return { status: 'needs_approval', nodeId: planNodeId };
+  };
 
   await setRunStatus(runId, 'running');
 
@@ -194,7 +234,7 @@ export const runWorkflow = async (
     // On approve-node(concept) the user has picked a version (+ optional reference image) → approve
     // the post (review→ready) so the publisher can claim it, mark the node completed, and continue
     // to media/publish. A re-execute that doesn't target this node keeps the run parked.
-    if (SELECTION_GATE.has(planNode.agentId) && nodeRow.status === 'awaiting_approval') {
+    if (isSelectionGate(planNode.agentId) && nodeRow.status === 'awaiting_approval') {
       if (opts.approveNodeId === planNodeId) {
         if (postId) await approveReview(postId, ownerId, approveScheduledAt);
         await setNodeStatus(nodeRow.id, 'completed');
@@ -250,9 +290,11 @@ export const runWorkflow = async (
     // holds. autoPublish=false restores the manual gate (verify scripts, opt-out).
     // Auto-publish is suppressed when the run produces a video: approving the video cost gate must
     // NOT also publish. The user reviews the finished video, then approves the publisher separately.
-    const autoPublish = (opts.autoPublish ?? true) && !hasVideoNode;
+    const autoPublish = (opts.autoPublish ?? true) && !hasCostGate;
     let requiresApproval = gated;
-    if (gated && planNode.agentId === 'publisher' && autoPublish) {
+    // Human auto-publish waiver (unchanged). In atria mode the grant policy is the sole authority
+    // for the publisher gate (see the atria override below), so skip this heuristic entirely.
+    if (!atriaMode && gated && planNode.agentId === 'publisher' && autoPublish) {
       // Per-platform (item 5): each target may publish its own asset type — auto-run only
       // when EVERY target's adapter supports ITS asset type; otherwise gate for the review.
       const cleanlyPostable =
@@ -266,7 +308,17 @@ export const runWorkflow = async (
     // chosen time (findPublishDue guards scheduledAt<=now). Manual /publish-now stays the only
     // immediate bypass. Without this, an approved cleanly-postable post fires runPublisher NOW.
     if (planNode.agentId === 'publisher' && isScheduledFuture()) {
-      if (opts.approveNodeId === planNodeId) {
+      // A granted run clears the schedule gate autonomously when publish guardrails hold — the
+      // post is parked `ready` with its schedule intact and the scheduler cron (Phase 03) fires it
+      // at the chosen time (only once scheduleConfirmed=true). A guardrail fail falls through to
+      // the atria hold below. Human mode still requires the explicit approve-node click.
+      const scheduleApproved =
+        opts.approveNodeId === planNodeId ||
+        (atriaMode && atriaApprovalPolicy('publish', buildGuardrailCtx('publish')) === 'approve');
+      if (scheduleApproved) {
+        if (atriaMode && opts.approveNodeId !== planNodeId) {
+          await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId: planNode.agentId, gate: 'publish', decision: 'approve', scheduled: true }, ownerId);
+        }
         if (postId) await approveReview(postId, ownerId, approveScheduledAt);
         await setNodeStatus(nodeRow.id, 'completed', { finishedAt: new Date() });
         publishNodeStatus(ownerId, {
@@ -277,6 +329,26 @@ export const runWorkflow = async (
       }
       requiresApproval = true;
     }
+
+    // Autonomous grant (Phase 01): for a granted run's cost/publish gate, the policy decides —
+    // approve (guardrails hold) → clear the gate and run the node; hold → park + notify + audit,
+    // never publish, never fail. The selection gate is handled at its post-execution park below.
+    // Scheduled-future publishers already resolved above (park `ready`), so this only runs the
+    // publisher inline for IMMEDIATE (non-scheduled) autonomous publishes.
+    if (atriaMode && requiresApproval && opts.approveNodeId !== planNodeId) {
+      const gateKind = agentGate(planNode.agentId);
+      if (gateKind === 'cost' || gateKind === 'publish') {
+        const gctx = buildGuardrailCtx(gateKind);
+        const decision = atriaApprovalPolicy(gateKind, gctx);
+        if (decision === 'approve') {
+          await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId: planNode.agentId, gate: gateKind, decision, estCostUsd: gctx.estCostUsd, budgetUsd: gctx.budgetUsd }, ownerId);
+          requiresApproval = false;
+        } else {
+          return atriaHold(nodeRow.id, planNodeId, planNode.agentId, gateKind, guardrailHoldReason(gateKind, gctx) ?? 'guardrail not met');
+        }
+      }
+    }
+
     if (requiresApproval && opts.approveNodeId !== planNodeId) {
       await setNodeStatus(nodeRow.id, 'awaiting_approval');
       await setRunStatus(runId, 'needs_approval');
@@ -318,8 +390,16 @@ export const runWorkflow = async (
       // Concept selection gate — PARK: pause right after concept produced its 3-5 versions so the
       // user picks one (+ optional reference image) before media/publish run. conceptGate=false
       // (verify scripts / headless) auto-selects version 1 and approves so the flow continues.
-      if (SELECTION_GATE.has(planNode.agentId)) {
-        if (opts.conceptGate ?? true) {
+      // Atria (granted): the policy decides — approve auto-selects version 1 (grant covers the
+      // pick); hold parks + notifies. Human mode keeps its conceptGate behavior untouched.
+      if (isSelectionGate(planNode.agentId)) {
+        if (atriaMode) {
+          const gctx = buildGuardrailCtx('selection');
+          if (atriaApprovalPolicy('selection', gctx) === 'hold') {
+            return atriaHold(nodeRow.id, planNodeId, planNode.agentId, 'selection', guardrailHoldReason('selection', gctx) ?? 'content not produced');
+          }
+          await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId: planNode.agentId, gate: 'selection', decision: 'approve' }, ownerId);
+        } else if (opts.conceptGate ?? true) {
           await setNodeStatus(nodeRow.id, 'awaiting_approval');
           await setRunStatus(runId, 'needs_approval');
           publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval' });

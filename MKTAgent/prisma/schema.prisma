@@ -460,6 +460,17 @@ model WorkflowRun {
   kind          String   @default("instance") // template | instance
   // A template is frozen once approved: the master agent may not re-plan/mutate it.
   locked        Boolean  @default(false)
+  // Atria autonomy grant (autonomy-hardening Phase 01). `human` (default) = every action
+  // gate halts for a UI click, exactly as before. `atria` = the user PRE-AUTHORIZED this
+  // specific run (double-confirm via POST /runs/:id/grant-autonomy) → the flow clears its
+  // OWN action gates when guardrails pass; a guardrail fail still parks + notifies. Set
+  // ONLY by the grant endpoint, never by /execute, so autonomy is never the accidental default.
+  approvalMode     String  @default("human") @map("approval_mode") // human | atria
+  // A scheduled autonomous run must be re-confirmed AFTER its schedule is set before the
+  // scheduler is allowed to fire it (the "xác nhận lại 1 lần nữa" step). false until the
+  // user confirms the finalized schedule; the scheduler tick (Phase 03) skips runs where
+  // this is false. Irrelevant for human-mode runs (they publish via the in-flow gate).
+  scheduleConfirmed Boolean @default(false) @map("schedule_confirmed")
   // For an instance: the template it was cloned from (reuse/audit). SetNull if the
   // template is deleted so instances/posts outlive their blueprint.
   templateId    String?  @map("template_id") @db.Uuid

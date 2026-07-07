@@ -68,6 +68,9 @@ export const AGENTS: AgentDefinition[] = [
     // executor halt — generating copy is internal/cheap, so the node just runs.
     // Only external-write nodes (publisher) halt the run BEFORE executing.
     requiresApproval: false,
+    // Post-execution selection pause: the run parks after concept produces its 3-5
+    // versions so the user picks one. `gate` (not requiresApproval) advertises this.
+    gate: 'selection',
     emoji: '✍️',
     group: 'action',
     // Atria's "Editor": write sample → approve → batch. Maps to concept versions gate.
@@ -140,6 +143,7 @@ export const AGENTS: AgentDefinition[] = [
     // (already-generated) storyboard frames and can re-run/adjust them before spending on
     // video. The executor's approval-halt supports this sequential gate (video, then publisher).
     requiresApproval: true,
+    gate: 'cost',
   },
   {
     id: 'publisher',
@@ -151,6 +155,7 @@ export const AGENTS: AgentDefinition[] = [
     produces: ['publish_result'],
     requiresConnection: true,
     requiresApproval: true, // external-write gate (brief §11.12)
+    gate: 'publish',
     // ONE publisher, many platforms: these capability skills are fanned out to the
     // GoalSpec's target platforms by the live publish path (publishTo), not split
     // into per-platform nodes. Per-platform outcomes surface as UI sub-rows.
@@ -181,3 +186,14 @@ export const AGENTS: AgentDefinition[] = [
 const byId = new Map<RunnableAgentId, AgentDefinition>(AGENTS.map((a) => [a.id, a]));
 
 export const getAgent = (id: RunnableAgentId): AgentDefinition | undefined => byId.get(id);
+
+// Gate lookup by agent id (autonomy-hardening Phase 01). Accepts the loose string the
+// executor holds (plan node agentId) so callers don't cast. undefined = unknown agent or
+// no gate. This is the ONE place the executor derives gate kind — no hardcoded id sets.
+export const agentGate = (id: string): AgentDefinition['gate'] =>
+  byId.get(id as RunnableAgentId)?.gate;
+
+// Does any planned agent present a given gate kind? Replaces the executor's `hasVideoNode`
+// special-case: `planAgentIds.some(...)` → `hasGate(ids, 'cost')`.
+export const hasGate = (agentIds: readonly string[], kind: NonNullable<AgentDefinition['gate']>): boolean =>
+  agentIds.some((id) => agentGate(id) === kind);
