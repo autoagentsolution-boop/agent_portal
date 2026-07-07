@@ -726,3 +726,96 @@ a { color: var(--accent); }
 .kill-switch-state { font-weight: 600; }
 .kill-switch-card.st-paused .kill-switch-state { color: var(--amber); }
 .kill-switch-card:not(.st-paused) .kill-switch-state { color: var(--green); }
+
+/* Atria Command Center (Phase 04) — page-scoped dark "Neural Network" surface.
+   All styles namespaced under .command-center so the dark theme never leaks into the
+   rest of the app. Node/legend/link colours come inline from the registry group data. */
+.command-center {
+  --cc-bg: #0a0b1e; --cc-bg2: #12142e; --cc-panel: rgba(20,22,48,0.6);
+  --cc-border: rgba(120,110,220,0.18); --cc-border-bright: rgba(150,130,255,0.4);
+  --cc-violet: #9d7bff; --cc-violet-glow: #b18bff; --cc-text: #e8e6ff;
+  --cc-text-dim: #8b88b8; --cc-text-faint: #5a5880;
+  min-height: 100vh; background: radial-gradient(ellipse at 50% 30%, #16183a 0%, var(--cc-bg) 60%);
+  color: var(--cc-text); font-family: inherit;
+}
+.command-center * { box-sizing: border-box; }
+.command-center button { font-family: inherit; cursor: pointer; }
+
+.cc-topbar { display: flex; align-items: center; gap: 14px; padding: 16px 28px;
+  border-bottom: 1px solid var(--cc-border); position: sticky; top: 0; z-index: 5;
+  background: rgba(10,11,30,0.85); backdrop-filter: blur(12px); }
+.cc-logo { width: 30px; height: 30px; border-radius: 9px;
+  background: conic-gradient(from 180deg, #4fd8e8, var(--cc-violet), #c084fc, #4fd8e8);
+  box-shadow: 0 0 18px rgba(157,123,255,0.5); }
+.cc-brand { font-weight: 700; font-size: 18px; letter-spacing: 0.5px; }
+.cc-tag { font-size: 10px; letter-spacing: 2px; color: var(--cc-text-dim);
+  border: 1px solid var(--cc-border); padding: 4px 10px; border-radius: 20px; text-transform: uppercase; }
+.cc-topbar-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.cc-credit { font-size: 12px; border: 1px solid var(--cc-border-bright); padding: 7px 14px;
+  border-radius: 20px; background: rgba(157,123,255,0.1); color: var(--cc-violet-glow); font-weight: 600; }
+.cc-exit { font-size: 12px; color: var(--cc-text-dim); border: 1px solid var(--cc-border);
+  padding: 7px 14px; border-radius: 20px; background: transparent; transition: .2s; }
+.cc-exit:hover { border-color: var(--cc-border-bright); color: var(--cc-text); }
+
+.cc-head { text-align: center; padding: 34px 20px 4px; }
+.cc-eyebrow { font-size: 11px; letter-spacing: 4px; color: #4fd8e8; text-transform: uppercase; font-weight: 600; }
+.cc-head h1 { font-size: 30px; font-weight: 700; margin: 10px 0 6px; letter-spacing: -0.5px; }
+.cc-head p { color: var(--cc-text-dim); font-size: 14px; }
+.cc-legend { display: flex; gap: 18px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+.cc-legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--cc-text-dim); }
+.cc-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+.cc-network { position: relative; width: 100%; max-width: 760px; height: 560px; margin: 0 auto; }
+.cc-links { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+.cc-core { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  width: 150px; height: 150px; border-radius: 50%; border: none; z-index: 3;
+  background: radial-gradient(circle at 50% 45%, var(--cc-violet-glow) 0%, #6d4fd6 40%, rgba(60,40,140,0.15) 75%);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff;
+  box-shadow: 0 0 55px rgba(157,123,255,0.6), inset 0 0 40px rgba(255,255,255,0.15);
+  animation: cc-pulse 4s ease-in-out infinite; transition: transform .2s; }
+.cc-core:hover { transform: translate(-50%,-50%) scale(1.06); }
+@keyframes cc-pulse { 0%,100% { box-shadow: 0 0 50px rgba(157,123,255,0.5), inset 0 0 40px rgba(255,255,255,0.12); }
+  50% { box-shadow: 0 0 80px rgba(157,123,255,0.8), inset 0 0 50px rgba(255,255,255,0.2); } }
+.cc-core-label { font-size: 9px; letter-spacing: 3px; color: rgba(255,255,255,0.6); text-transform: uppercase; }
+.cc-core-name { font-size: 23px; font-weight: 700; text-shadow: 0 0 20px rgba(255,255,255,0.5); }
+.cc-core-sub { font-size: 9px; color: rgba(255,255,255,0.7); margin-top: 2px; }
+
+.cc-node { position: absolute; transform: translate(-50%,-50%); background: none; border: none;
+  display: flex; flex-direction: column; align-items: center; gap: 7px; z-index: 4; transition: .25s; }
+.cc-node.is-stub { opacity: 0.68; }
+.cc-node.is-planned { opacity: 0.5; }
+.cc-node.is-planned .cc-node-circle { border-style: dashed; }
+.cc-node.is-planned:hover { opacity: 0.75; }
+.cc-node-soon { position: absolute; top: -6px; right: -10px; font-size: 8px; letter-spacing: 0.5px;
+  text-transform: uppercase; font-weight: 700; color: var(--cc-bg); background: var(--cc-violet-glow);
+  padding: 1px 5px; border-radius: 8px; }
+.cc-node-circle { position: relative; width: 56px; height: 56px; border-radius: 50%; background: var(--cc-bg2);
+  border: 1px solid var(--cc-border); display: flex; align-items: center; justify-content: center; transition: .25s; }
+.cc-node:hover .cc-node-circle { box-shadow: 0 0 24px rgba(157,123,255,0.5); transform: scale(1.12); }
+.cc-node-emoji { font-size: 22px; line-height: 1; }
+.cc-node-label { font-size: 10px; letter-spacing: 0.5px; color: var(--cc-text-dim);
+  text-transform: uppercase; font-weight: 600; transition: .2s; max-width: 84px; text-align: center; }
+.cc-node:hover .cc-node-label { color: var(--cc-text); }
+.cc-network-empty { position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; color: var(--cc-text-faint); font-size: 13px; }
+
+.cc-cmdbar-wrap { max-width: 700px; margin: 12px auto 60px; padding: 0 20px; }
+.cc-cmdbar { display: flex; align-items: center; gap: 12px; background: var(--cc-panel);
+  border: 1px solid var(--cc-border); border-radius: 16px; padding: 12px 16px; backdrop-filter: blur(10px); transition: .2s; }
+.cc-cmdbar:focus-within { border-color: var(--cc-border-bright); box-shadow: 0 0 30px rgba(157,123,255,0.25); }
+.cc-cmdbar input { flex: 1; background: transparent; border: none; outline: none; color: var(--cc-text); font-size: 15px; }
+.cc-cmdbar input::placeholder { color: var(--cc-text-faint); }
+.cc-send { width: 38px; height: 38px; border-radius: 50%; border: none; color: #fff; font-size: 15px;
+  background: linear-gradient(135deg, var(--cc-violet), #c084fc); box-shadow: 0 0 18px rgba(157,123,255,0.5); transition: .2s; }
+.cc-send:hover { transform: scale(1.08); }
+.cc-quick { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+.cc-quick-cmd { font-size: 12px; color: var(--cc-text-dim); border: 1px solid var(--cc-border);
+  padding: 8px 14px; border-radius: 20px; background: var(--cc-panel); transition: .2s; }
+.cc-quick-cmd:hover { border-color: var(--cc-border-bright); color: var(--cc-text); transform: translateY(-2px); }
+.cc-hint { text-align: center; font-size: 12px; color: var(--cc-text-faint); margin-top: 12px; }
+
+@media (max-width: 720px) {
+  .cc-network { height: 460px; transform: scale(0.82); }
+  .cc-head h1 { font-size: 23px; }
+}
+@media (prefers-reduced-motion: reduce) { .command-center .cc-core { animation: none; } }

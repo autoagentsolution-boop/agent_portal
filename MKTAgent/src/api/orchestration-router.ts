@@ -40,6 +40,9 @@ import {
 } from '../db/repos/workflow-run-repo.ts';
 import { deleteArtifactsByNodes } from '../orchestration/executor/artifact-store.ts';
 import { getAgent } from '../orchestration/registry/agent-registry.ts';
+import { AGENTS } from '../orchestration/registry/agent-registry.ts';
+import { AGENT_GROUPS } from '../orchestration/registry/agent-groups.ts';
+import { VISION_AGENTS } from '../orchestration/registry/vision-agents.ts';
 import { logger } from '../lib/logger.ts';
 import { mergeAnswers, toRunDto, type ClarifyQuestions } from './orchestration-mappers.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
@@ -432,6 +435,42 @@ orchestrationRouter.get('/runs/:id/plan-tiers', asyncHandler(async (req, res) =>
 // mkt_llm_usage ledger (the authoritative cross-surface total, incl. real thinking tokens).
 orchestrationRouter.get('/usage', asyncHandler(async (req, res) => {
   ok(res, await usageTotals(req.userId!));
+}));
+
+// Agent registry as display data — the "Neural Network" command-center view (Atria
+// Phase 04) renders real nodes from this, so no decorative/fake agents. Groups carry
+// their label/emoji/colour; agents carry persona metadata (emoji/group/vibe/status).
+// Registry is global (not tenant-scoped); still behind requireAuth like the rest.
+orchestrationRouter.get('/agents', asyncHandler(async (_req, res) => {
+  ok(res, {
+    groups: Object.values(AGENT_GROUPS),
+    agents: [
+      // Runnable agents (real DAG nodes) — live/stub from the registry.
+      ...AGENTS.map((a) => ({
+        id: a.id,
+        name: a.name,
+        description: a.description,
+        emoji: a.emoji ?? '🤖',
+        group: a.group ?? 'action',
+        vibe: a.vibe ?? null,
+        implStatus: a.implStatus as 'live' | 'stub' | 'planned',
+        requiresConnection: a.requiresConnection,
+        requiresApproval: a.requiresApproval,
+      })),
+      // Vision agents (roadmap) — display-only, flagged planned; not runnable.
+      ...VISION_AGENTS.map((a) => ({
+        id: a.id,
+        name: a.name,
+        description: a.description,
+        emoji: a.emoji,
+        group: a.group,
+        vibe: a.vibe,
+        implStatus: 'planned' as const,
+        requiresConnection: false,
+        requiresApproval: false,
+      })),
+    ],
+  });
 }));
 
 // Delete a run (Saved Flow). Cascades to its nodes + artifacts. A run mid-execution

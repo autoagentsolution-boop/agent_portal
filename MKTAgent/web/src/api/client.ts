@@ -140,6 +140,31 @@ export interface KillSwitchState {
   updatedBy: string | null;
 }
 
+// Agent registry as display data (command-center "Neural Network" view).
+export type AgentGroupId = 'intelligence' | 'action' | 'assistant';
+export interface AgentGroupDto {
+  id: AgentGroupId;
+  label: string;
+  emoji: string;
+  color: string;
+}
+export interface AgentNodeDto {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  group: AgentGroupId;
+  vibe: string | null;
+  // 'planned' = roadmap/vision agent, display-only (not runnable, not clickable).
+  implStatus: 'live' | 'stub' | 'planned';
+  requiresConnection: boolean;
+  requiresApproval: boolean;
+}
+export interface AgentCatalog {
+  groups: AgentGroupDto[];
+  agents: AgentNodeDto[];
+}
+
 // Publish review (item 3) — per-platform readiness for a post's assetType.
 // Not yet in the generated openapi schema; typed here at the call boundary.
 export interface PostabilityRowDto {
@@ -330,6 +355,9 @@ export const api = {
   // Per-owner spend total + per-surface breakdown (chat/intake/copygen/research/... ) for the
   // usage dashboard.
   getUsage: () => request<UsageTotals>('/orchestration/usage'),
+
+  // Agent registry (groups + nodes) for the command-center Neural Network view.
+  getAgents: () => request<AgentCatalog>('/orchestration/agents'),
 
   // ---- Connections (M2-lite) ----
   listConnections: () => request<ConnectionDto[]>('/connections'),

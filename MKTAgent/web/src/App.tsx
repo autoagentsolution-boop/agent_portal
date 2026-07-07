@@ -8,9 +8,10 @@ import { ConnectionsPanel } from './components/ConnectionsPanel';
 import { ProductKnowledgeLibrary } from './components/ProductKnowledgeLibrary';
 import { LeadsPage } from './components/LeadsPage';
 import { UsageDashboard } from './components/UsageDashboard';
+import { CommandCenterPage } from './components/command-center-page';
 import type { DemoMode } from './flow/demo-flow';
 
-type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads' | 'usage';
+type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads' | 'usage' | 'command-center';
 type Theme = 'light' | 'dark';
 
 const postTitle = (post: PostDto, index: number): string => {
@@ -35,6 +36,8 @@ export function App() {
   const [chatSessions, setChatSessions] = useState<AgentChatSessionDto[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [orchestrateRestore, setOrchestrateRestore] = useState<OrchestrateRestore | null>(null);
+  // Command typed on the Command Center, carried once into a fresh Orchestrate composer.
+  const [orchestratePrefill, setOrchestratePrefill] = useState<string | null>(null);
   // Sidebar "+" on a campaign requests the SAME create-post modal the board shows (Manual |
   // Master Agent), rather than silently creating an empty brief — unifies the two entry
   // points. Set the target campaign, navigate to its board, and let PostBoard auto-open the
@@ -74,7 +77,15 @@ export function App() {
     setPage('orchestrate');
   };
 
-  const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setPage('orchestrate'); };
+  const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setOrchestratePrefill(null); setPage('orchestrate'); };
+
+  // Command Center → jump into the live Orchestrate surface, optionally seeding the
+  // composer with the command the user typed on the neural-network landing.
+  const launchFromCommandCenter = (prefill?: string) => {
+    setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null);
+    setOrchestratePrefill(prefill ?? null);
+    setPage('orchestrate');
+  };
 
   const loadSavedRuns = async () => {
     const r = await api.listSavedRuns();
@@ -283,6 +294,7 @@ export function App() {
           <strong>AgentPortal</strong>
           <button className="icon-btn" aria-label="Toggle theme" onClick={() => setTheme((t) => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '◐' : '☼'}</button>
         </div>
+        <button className={`sidebar-item ${page === 'command-center' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('command-center'); }}>◈ Command Center</button>
         <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>✎ New chat</button>
         <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('connections'); }}>🔌 Connections</button>
         <button className={`sidebar-item ${page === 'usage' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('usage'); }}>📊 Usage</button>
@@ -337,11 +349,18 @@ export function App() {
       </aside>
 
       <main className="app-main">
-        {page === 'orchestrate' ? (
+        {page === 'command-center' ? (
+          <CommandCenterPage
+            onLaunch={launchFromCommandCenter}
+            onExit={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('flows'); }}
+            notify={show}
+          />
+        ) : page === 'orchestrate' ? (
           <div className="master-home">
             <OrchestratePanel
               key={orchestrateRestore?.sessionId ?? 'new'}
               restore={orchestrateRestore}
+              initialInput={orchestratePrefill ?? undefined}
               flowsWithoutStrategy={flowsWithoutStrategy}
               notify={show}
               onRunActivity={(sessionId) => { void loadChats(); if (!activeChatId) setActiveChatId(sessionId); bump(); }}

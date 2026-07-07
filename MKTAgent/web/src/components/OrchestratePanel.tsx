@@ -32,6 +32,9 @@ interface Props {
   // Item 2 (Option A): the backend created a campaign under the saved flow from a chat
   // message — navigate to its board (optionally selecting the created post).
   onCampaignCreated: (campaignId: string, postId?: string) => void;
+  // Seed the composer once (e.g. a command typed on the Command Center before it
+  // redirects here). Only applied on a fresh mount; ignored when restoring a chat.
+  initialInput?: string;
 }
 
 interface Msg { role: 'user' | 'agent'; content: string }
@@ -42,11 +45,11 @@ const starters = [
   'Write a short LinkedIn post about our new feature',
 ];
 
-export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated }: Props) {
+export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput }: Props) {
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   const [run, setRun] = useState<WorkflowRunDto | null>(restore?.run ?? null);
   const [sessionId, setSessionId] = useState<string | null>(restore?.sessionId ?? null);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(restore ? '' : (initialInput ?? ''));
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
 
