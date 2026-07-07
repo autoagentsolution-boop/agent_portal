@@ -36,6 +36,10 @@ const PRICING: Record<string, ModelPrice> = {
   'gemini-2.5-flash': { inPerM: 0.30, outPerM: 2.50, cachedPerM: 0.03 },
   'gemini-3-pro': { inPerM: 2.0, outPerM: 12.0, cachedPerM: 0.20 },
   'gemini-3-flash': { inPerM: 0.50, outPerM: 3.0, cachedPerM: 0.05 },
+  // Image gen (nano-banana) bills the generated image AS output tokens (~1290 tok/image @ $30/1M
+  // ≈ $0.039). Real usageMetadata → real token-based cost that lands near the old $0.04 flat, but
+  // now with visible token counts. Longer prefix than 'gemini-2.5-flash' so it wins the match.
+  'gemini-2.5-flash-image': { inPerM: 0.30, outPerM: 30.0, cachedPerM: 0.03 },
 };
 const DEFAULT_PRICE = PRICING['gemini-2.5-flash']!;
 const priceFor = (model?: string): ModelPrice => {

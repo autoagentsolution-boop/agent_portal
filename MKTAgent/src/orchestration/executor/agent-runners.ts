@@ -6,7 +6,7 @@
 // No copy-gen/scheduler logic is reimplemented — only their exported cores are used.
 import { assetTypeFromOutputs, type GoalSpec } from '../schemas/goal-spec.ts';
 import { distinctAssetTypes } from '../../scheduler/resolve-input.ts';
-import { resolveLinkedKnowledge } from '../../db/repos/product-knowledge-repo.ts';
+import { resolveLinkedKnowledge, resolveLinkedReferenceImage } from '../../db/repos/product-knowledge-repo.ts';
 import { campaignIdeas, strategyBrief, storyboard, videoPrompt, type ArtifactType } from '../schemas/artifact-schemas.ts';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
@@ -18,7 +18,7 @@ import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
 import { ideationSystemPrompt, strategySystemPrompt, storyboardSystemPrompt, storyboardCarouselSystemPrompt } from '../prompts/agent-prompts.ts';
 import { generate as generateImage, type ImageResult, type ImageRequest } from '../../imagegen/nano-banana.ts';
-import { generate as generateVideo, type VideoRequest, type VideoResult } from '../../video/veo.ts';
+import { generate as generateVideo, VEO_MODEL_ID, type VideoRequest, type VideoResult } from '../../video/veo.ts';
 import { generate as generateTts, type TtsRequest } from '../../video/tts.ts';
 import { stitchClips, muxAudio } from '../../video/stitch.ts';
 import { access } from 'node:fs/promises';
@@ -327,6 +327,20 @@ const resolveProductKnowledge = async (ctx: RunnerContext): Promise<string | nul
   return ctx.goal.slots.productDetails?.trim() || null;
 };
 
+// Visual reference for infographic/storyboard (feedback): the post's own uploaded reference wins
+// (concept gate / brief form); else a product image uploaded once at 📚 Product Knowledge, resolved
+// via the same post→campaign FK chain. Returns a bare filesystem path (local: stripped) or null.
+const resolveReferenceImage = async (ctx: RunnerContext): Promise<string | null> => {
+  const post = ctx.postId ? await getPostForCopyGen(ctx.postId, ctx.ownerId) : null;
+  if (post?.referenceImage) return localFilePath(post.referenceImage);
+  const linked = await resolveLinkedReferenceImage(
+    ctx.ownerId,
+    post?.productKnowledgeId ?? null,
+    post?.campaign.productKnowledgeId ?? null,
+  );
+  return localFilePath(linked);
+};
+
 // `resolvedLang` (the setup language) pins the CONTENT language when provided; without it
 // this falls back to the goal slot (cost-estimation callers that don't send an LLM prompt).
 // `knowledge` overrides the goal's productDetails when provided (campaign.brandContext fallback).
@@ -452,13 +466,19 @@ const buildImagePrompt = (ctx: RunnerContext, resolvedLang: string, knowledge?: 
 const localFilePath = (ref?: string | null): string | null =>
   ref ? (ref.startsWith('local:') ? ref.slice('local:'.length) : ref) : null;
 
+// NodeCost for one generated image: real token-based cost when the API returned usageMetadata (so
+// token counts are visible on the node + Usage), else the flat per-image estimate. Cached images
+// are free — the caller guards on !image.cached before charging.
+const imageNodeCost = (image: ImageResult): NodeCost =>
+  image.usage ? costFromUsage(image.usage, 'gemini-2.5-flash-image') : imageCost();
+
 const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const { visualBrief, imagePrompt } = buildImagePrompt(ctx, await resolveRunLanguage(ctx), await resolveProductKnowledge(ctx));
   const gen = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
-  // Reference image (concept gate): if the user uploaded one, generate FROM it (edit mode) so
-  // the infographic follows their reference; otherwise pure text-to-image (default).
-  const post = ctx.postId ? await getPostForOwner(ctx.postId, ctx.ownerId) : null;
-  const refPath = localFilePath(post?.referenceImage);
+  // Reference image: the post's own upload (concept gate / brief form) OR the selected product's
+  // library image — generate FROM it (edit mode) so the infographic follows the reference; else
+  // pure text-to-image (default).
+  const refPath = await resolveReferenceImage(ctx);
   const image = await gen(refPath ? { prompt: imagePrompt, mode: 'edit', referenceImagePath: refPath } : { prompt: imagePrompt, mode: 'text-to-image' });
   const ref = `local:${image.outputFile}`;
   if (ctx.postId) {
@@ -466,12 +486,15 @@ const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     const updated = await attachPostMedia(ctx.postId, ctx.ownerId, 'image', ref);
     if (!updated) throw new Error('infographic: could not attach image to post (locked or not found)');
   }
-  // A cached image cost nothing to regenerate; a fresh one is the flat per-image price. Ledger
+  // A cached image cost nothing to regenerate; a fresh one bills the real image tokens (visible on
+  // the node + Usage) when the API returned usageMetadata, else the flat per-image price. Ledger
   // record fires ONLY for a real (non-cached) generation — one row per physical image call.
+  const imgCost = imageNodeCost(image);
   if (!image.cached) {
-    await recordMediaCost({ ownerId: ctx.ownerId, surface: 'orchestration', model: 'gemini-2.5-flash-image', costUsd: imageCost().costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+    if (image.usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'infographic', model: 'gemini-2.5-flash-image', usage: image.usage, runId: ctx.runId, refId: ctx.postId ?? null });
+    else await recordMediaCost({ ownerId: ctx.ownerId, surface: 'infographic', model: 'gemini-2.5-flash-image', costUsd: imgCost.costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
   }
-  return { type: 'infographic_brief', data: { visualBrief, imagePrompt, imageRef: ref }, cost: image.cached ? undefined : imageCost() };
+  return { type: 'infographic_brief', data: { visualBrief, imagePrompt, imageRef: ref }, cost: image.cached ? undefined : imgCost };
 };
 
 // storyboard (LIVE): plan 3-6 frames (LLM) then GENERATE a real image per frame. The artifact
@@ -493,7 +516,9 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   // Carousel if ANY target needs a carousel (per-platform asset types, item 5) — carousel
   // slides are standalone images the video step can still animate if a video target coexists.
   const isCarousel = post ? distinctAssetTypes(post).includes('carousel') : false;
-  const knowledge = ctx.goal.slots.productDetails?.trim() || post?.campaign.brandContext?.trim() || null;
+  // Ground storyboard prompts on the SELECTED product (FK chain: post→campaign→brandContext→goal),
+  // same as infographic/video — a per-post product choice must reach the frames, not just the copy.
+  const knowledge = await resolveProductKnowledge(ctx);
   const parts = [goalContext(ctx, effectiveLang, knowledge)];
   parts.push(isCarousel
     ? 'DELIVERABLE = CAROUSEL: each frame is a STANDALONE slide the viewer swipes through; together they tell the product story start → finish. Make each a complete, self-contained marketing image, not a movie still.'
@@ -510,7 +535,7 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   };
   const plan = Array.isArray(raw?.frames) ? raw.frames : [];
   if (plan.length === 0) throw new Error('storyboard: LLM returned no frames');
-  if (planUsage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'orchestration', model: env.GEMINI_MODEL, usage: planUsage, runId: ctx.runId, refId: ctx.postId ?? null });
+  if (planUsage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'storyboard', model: env.GEMINI_MODEL, usage: planUsage, runId: ctx.runId, refId: ctx.postId ?? null });
 
   const gen = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
   let cost: NodeCost = planUsage ? costFromUsage(planUsage, env.GEMINI_MODEL) : estimateLlmCost(sbPrompt + planPrompt, JSON.stringify(raw));
@@ -519,7 +544,9 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   // frame is generated in 'edit' mode conditioned on it, so the product + look stay coherent
   // across the storyboard instead of drifting per independent gen. A user-uploaded reference
   // image (concept gate) seeds the anchor so EVERY frame — including the first — follows it.
-  let anchor: string | null = localFilePath(post?.referenceImage);
+  let anchor: string | null =
+    localFilePath(post?.referenceImage) ??
+    localFilePath(await resolveLinkedReferenceImage(ctx.ownerId, post?.productKnowledgeId ?? null, post?.campaign.productKnowledgeId ?? null));
   for (const [i, f] of plan.entries()) {
     const imagePrompt = (f.imagePrompt ?? '').trim() || `Product image, frame ${i + 1}`;
     try {
@@ -530,9 +557,12 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
       if (!anchor) anchor = image.outputFile;
       frames.push({ index: f.index ?? i, imageRef: `local:${image.outputFile}`, caption: f.caption ?? '', imagePrompt });
       if (!image.cached) {
-        cost = sumCost(cost, imageCost());
-        // One ledger row per real generated frame (cached frames made no provider call).
-        await recordMediaCost({ ownerId: ctx.ownerId, surface: 'orchestration', model: 'gemini-2.5-flash-image', costUsd: imageCost().costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+        const frameCost = imageNodeCost(image);
+        cost = sumCost(cost, frameCost);
+        // One ledger row per real generated frame (cached frames made no provider call). Real image
+        // tokens when the API reported them (visible on node + Usage), else the flat per-image price.
+        if (image.usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'storyboard', model: 'gemini-2.5-flash-image', usage: image.usage, runId: ctx.runId, refId: ctx.postId ?? null });
+        else await recordMediaCost({ ownerId: ctx.ownerId, surface: 'storyboard', model: 'gemini-2.5-flash-image', costUsd: frameCost.costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
       }
     } catch (e) {
       // The image model is intermittently flaky (returns 200 with no image ~1/3). Skip a
@@ -594,7 +624,7 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     if (!clip.cached) {
       rendered++;
       // One ledger row per real rendered clip (Veo is priced per-second, not flat).
-      await recordMediaCost({ ownerId: ctx.ownerId, surface: 'orchestration', model: 'veo-3.1-lite', costUsd: videoClipCost(1, durationSec).costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+      await recordMediaCost({ ownerId: ctx.ownerId, surface: 'video', model: VEO_MODEL_ID, costUsd: videoClipCost(1, durationSec).costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
     }
   }
 
@@ -612,7 +642,7 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
       if (!audio.cached) {
         ttsRendered = true;
         // One ledger row per real TTS render (cached voiceover made no provider call).
-        await recordMediaCost({ ownerId: ctx.ownerId, surface: 'orchestration', model: 'gemini-2.5-flash-tts', costUsd: ttsCost().costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+        await recordMediaCost({ ownerId: ctx.ownerId, surface: 'video', model: 'gemini-2.5-flash-tts', costUsd: ttsCost().costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
       }
       finalVideo = await muxAudio(finalVideo, audio.outputFile);
     } catch (e) {

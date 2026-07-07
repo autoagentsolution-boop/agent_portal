@@ -5,7 +5,7 @@
 import { prisma } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
 import { costFromUsage, costUsdFromUsage, type GeminiUsage } from '../orchestration/executor/node-cost.ts';
-import { creditsFromTokens } from './credits.ts';
+import { creditsFromTokens, creditsFromUsd } from './credits.ts';
 
 // Normalize a raw Gemini generateContent response envelope → GeminiUsage. Reads the REAL
 // usageMetadata (incl. thoughtsTokenCount + cachedContentTokenCount) rather than estimating.
@@ -105,7 +105,7 @@ export interface UsageTotals {
 
 // Per-owner spend total + per-surface breakdown — the billing/analysis view.
 export const usageTotals = async (ownerId: string): Promise<UsageTotals> => {
-  const [agg, grouped] = await Promise.all([
+  const [agg, grouped, mediaGrouped] = await Promise.all([
     prisma.llmUsage.aggregate({
       where: { ownerId },
       _sum: { costUsd: true, totalTokens: true, promptTokens: true, outputTokens: true, thoughtTokens: true },
@@ -117,19 +117,35 @@ export const usageTotals = async (ownerId: string): Promise<UsageTotals> => {
       _sum: { costUsd: true, totalTokens: true },
       _count: true,
     }),
+    // Media rows carry USD but zero tokens (feedback #4). Sum the USD of the tokenless rows per
+    // surface so their spend converts to credits ON TOP of the token-passthrough — otherwise a
+    // video/image run shows real USD but 0 credits and the media spend is invisible in the UI.
+    prisma.llmUsage.groupBy({
+      by: ['surface'],
+      where: { ownerId, totalTokens: 0 },
+      _sum: { costUsd: true },
+    }),
   ]);
+  const mediaUsdBySurface = new Map(mediaGrouped.map((g) => [g.surface, g._sum.costUsd ?? 0]));
   const totalTokens = agg._sum.totalTokens ?? 0;
+  // Credits are ADDITIVE per surface: token passthrough for the LLM tokens PLUS the USD-derived
+  // credits of any tokenless media rows on that surface. Robust even if a surface mixes both.
+  const bySurface = grouped
+    .map((g) => {
+      const tokens = g._sum.totalTokens ?? 0;
+      const credits = creditsFromTokens(tokens) + creditsFromUsd(mediaUsdBySurface.get(g.surface) ?? 0);
+      return { surface: g.surface, costUsd: g._sum.costUsd ?? 0, totalTokens: tokens, credits, calls: g._count };
+    })
+    .sort((a, b) => b.costUsd - a.costUsd);
   return {
     costUsd: agg._sum.costUsd ?? 0,
     totalTokens,
     promptTokens: agg._sum.promptTokens ?? 0,
     outputTokens: agg._sum.outputTokens ?? 0,
     thoughtTokens: agg._sum.thoughtTokens ?? 0,
-    credits: creditsFromTokens(totalTokens),
+    credits: bySurface.reduce((s, x) => s + x.credits, 0),
     calls: agg._count,
-    bySurface: grouped
-      .map((g) => ({ surface: g.surface, costUsd: g._sum.costUsd ?? 0, totalTokens: g._sum.totalTokens ?? 0, credits: creditsFromTokens(g._sum.totalTokens ?? 0), calls: g._count }))
-      .sort((a, b) => b.costUsd - a.costUsd),
+    bySurface,
   };
 };
 

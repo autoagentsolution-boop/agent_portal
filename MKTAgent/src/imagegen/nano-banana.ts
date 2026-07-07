@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { env } from '../config/env.ts';
 import { logger } from '../lib/logger.ts';
 import { withRetry } from '../lib/retry.ts';
+import type { GeminiUsage } from '../orchestration/executor/node-cost.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // MKTAgent-owned output dir (sibling of src). The publisher reads it via the
@@ -32,6 +33,10 @@ export interface ImageResult {
   outputFile: string; // absolute path on disk — what the `local:` AssetStore reads
   cached: boolean;
   durationMs: number;
+  // Real token usage from the response (Gemini image gen bills image output AS tokens). null on a
+  // cache hit (no provider call) or if the envelope omitted usageMetadata → caller falls back to
+  // the flat per-image price. Lets the ledger + node badge show real tokens instead of 0.
+  usage?: GeminiUsage | null;
 }
 
 const hashKey = ({ prompt, mode, referenceImagePath }: ImageRequest): string =>
@@ -56,7 +61,7 @@ const loadReferenceAsInline = async (p: string): Promise<{ mimeType: string; dat
   return { mimeType, data: buf.toString('base64') };
 };
 
-const callNanoBanana = async (req: ImageRequest): Promise<Buffer> => {
+const callNanoBanana = async (req: ImageRequest): Promise<{ png: Buffer; usage: GeminiUsage | null }> => {
   const apiKey = process.env.NANO_BANANA_API_KEY ?? env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('NANO_BANANA_API_KEY or GEMINI_API_KEY required');
 
@@ -77,10 +82,15 @@ const callNanoBanana = async (req: ImageRequest): Promise<Buffer> => {
   }
   const json = (await response.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: string } }> } }>;
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; cachedContentTokenCount?: number };
   };
   const inline = json.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData;
   if (!inline?.data) throw new Error('nano_banana_no_image_in_response');
-  return Buffer.from(inline.data, 'base64');
+  const u = json.usageMetadata;
+  const usage: GeminiUsage | null = u
+    ? { promptTokens: u.promptTokenCount ?? 0, outputTokens: u.candidatesTokenCount ?? 0, thoughtTokens: 0, cachedTokens: u.cachedContentTokenCount ?? 0 }
+    : null;
+  return { png: Buffer.from(inline.data, 'base64'), usage };
 };
 
 export const generate = async (req: ImageRequest): Promise<ImageResult> => {
@@ -95,9 +105,9 @@ export const generate = async (req: ImageRequest): Promise<ImageResult> => {
   }
 
   const started = Date.now();
-  const png = await withRetry(() => callNanoBanana(req), { label: 'nano_banana' });
+  const { png, usage } = await withRetry(() => callNanoBanana(req), { label: 'nano_banana' });
   await writeFile(outputFile, png);
   const durationMs = Date.now() - started;
-  logger.info('image_generated', { key, ms: durationMs, bytes: png.byteLength });
-  return { imagePath, outputFile, cached: false, durationMs };
+  logger.info('image_generated', { key, ms: durationMs, bytes: png.byteLength, tokens: usage ? usage.promptTokens + usage.outputTokens : null });
+  return { imagePath, outputFile, cached: false, durationMs, usage };
 };

@@ -15,8 +15,10 @@ import { logger } from '../lib/logger.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const VIDEO_OUTPUT_DIR = path.resolve(__dirname, '..', '..', 'output', 'videos');
-// veo-3.1-lite is the cheapest i2v tier; override via VEO_MODEL if needed.
-const MODEL = env.VEO_MODEL || 'veo-3.1-lite-generate-preview';
+// veo-3.1-lite is the cheapest i2v tier; override via VEO_MODEL if needed. Exported so the cost
+// ledger records the ACTUAL model that ran (not a hardcoded literal) — accurate billing analysis.
+export const VEO_MODEL_ID = env.VEO_MODEL || 'veo-3.1-lite-generate-preview';
+const MODEL = VEO_MODEL_ID;
 const POLL_MS = 8000;
 const TIMEOUT_MS = 10 * 60 * 1000;
 
