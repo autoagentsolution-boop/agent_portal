@@ -1,0 +1,44 @@
+# Connect / Credential Layer Review — §11 Connector Stack
+
+Read-only senior review. Lens: Atria AUTONOMOUSLY executes + publishes, no human to click "Connect" mid-run.
+Scope: connection resolver, connector runtime, credential vault, OAuth/token refresh, per-agent cred fields.
+
+## Verdict
+The §11 layer is well-built for the INTERACTIVE path (`POST /runs/:id/execute` gates cleanly at $0). But
+AUTONOMY exposes several gaps: the safety chokepoint is **bypassed by the scheduler**, the connection gate
+runs **once, only at the HTTP execute route** (never re-checked before the actual publish, which for
+video/scheduled flows happens much later), and **two success-looking-but-nothing-went-out** paths exist
+(X text-degrade; unverified pasted tokens trusted by the gate). Kill switch cannot stop a scheduled fleet.
+
+## Prioritized findings
+
+| # | Severity | Category | File:line | Finding | Impact under autonomous execution |
+|---|----------|----------|-----------|---------|-----------------------------------|
+| 1 | CRITICAL | autonomy-hazard / security | `scheduler/tick.ts:21,68,119,184`; `scheduler/cron.ts:12` | Scheduler cron publishes via `publishTo` **directly**, NOT via `runtimePublishFn`/`invokeAction`. The entire §11 runtime is bypassed: **no kill-switch check, no audit row, no idempotency, no rate-limit**. Only the orchestration publisher node routes through the runtime. | The global kill switch (Phase-03 "pause all external actions") does **not** stop autonomously SCHEDULED posts — you cannot halt an in-flight autonomous fleet. No forensic audit of what a scheduled autonomous run actually posted. |
+| 2 | HIGH | autonomy-hazard / gap | gate at `api/orchestration-router.ts:272`; resume at `:293-304`; waiver at `executor/workflow-executor.ts:~243-251` | `resolveConnections` runs **only** in `/execute` when status is planned/failed/needs_connection. `/approve-node` (publisher-gate & concept-gate resume) and the scheduler path **never re-resolve**. Executor auto-publish waiver comment asserts "the connection resolver already ran before the DAG, so by here every target IS connected" — stale for video flows (publish minutes later) and scheduled posts (hours later). | Token can expire/revoke between the gate and the actual write. Auto-publish fires on a now-unconnected platform. Publish fails at the adapter (loud-ish) **but only after all media spend** — the "$0 gate" promise is void once resume/schedule is involved. |
+| 3 | HIGH | autonomy-hazard | `social/x.ts:58-69,86` | X media upload 403 (free tier lacks media.write) **silently degrades to a text-only tweet and returns `ok:true`**. | An autonomous image/video post to X reports SUCCESS while the visual deliverable never went out. Classic "ok:true ≠ what was intended posted." No signal to Atria that the asset was dropped. |
+| 4 | HIGH | gap / bug | `connectors/runtime/connection-resolver.ts:46-55` vs `api/connection-state.ts:32-38` | The pre-DAG gate's default reader treats a bare pasted form credential (vault key, **no OAuthToken row, never liveness-verified**) as a synthetic `active` → gate returns `resolved`. The Connections UI derives the **same** token as `needs_attention` (unverified). The two surfaces disagree. | Autonomous run passes the gate and spends full media budget on a token that may be dead; user's Connections panel simultaneously shows it as needing attention. Gate over-trusts unverified secrets. |
+| 5 | MEDIUM | bug / autonomy-hazard | `tokens/service.ts:52-83` | `getActiveToken` returns a stored token as long as `status !== 'revoked'` — so a `needs_attention` / expired token is still handed to the adapter. Also falls back to an unverified form token. Resolver would catch `expired`/`needs_attention` — but the **scheduler path (finding 1) has no resolver**, so a known-bad token is used at publish. | Scheduled autonomous publish attempts with a token already flagged dead; wasted call, error status, no pre-emption. |
+| 6 | MEDIUM | security / autonomy-hazard | `social/facebook.ts:29`; `social/instagram.ts:26`; `tokens/providers.ts:11-17` | Identity-id resolution falls back to **env DAIS defaults** (`MKT_FB_PAGE_ID`, `MKT_IG_USER_ID`) when the tenant hasn't set a page/account id. Token is owner-scoped, but the *destination id* is not. | If a tenant's token happens to have access to the system-default page (e.g. shared DAIS app assets), an autonomous post could be **published to the wrong (system-default) account**; otherwise it fails. Wrong-destination publish risk with no per-tenant assertion that page id belongs to the tenant. |
+| 7 | MEDIUM | gap | resolver reads `goal.platforms` (`connection-resolver.ts:95`); publisher/scheduler write `post.platforms` (`scheduler/tick.ts:79`) | Gate is computed over `goal.platforms`; the actual fan-out uses `post.platforms`. For auto-created posts these match, but a pre-existing/edited post can carry a platform absent from `goal.platforms`. | A platform added to the post after planning is **never connection-gated**; autonomous publish to it fails at the adapter instead of gating up front. |
+| 8 | MEDIUM | autonomy-hazard | `config/env.ts:20` (default false); `tokens/providers.ts:88-89` (LinkedIn) | Token maintenance cron is OFF by default (`ENABLE_TOKEN_CRON`). Without it, token `status`/liveness only updates lazily at publish time, so the resolver gate reads **stale** status (can show `connected` for a silently-dead token, or never clear `needs_attention`). LinkedIn issues no refresh_token on common app tiers → token silently dies at ~60d with no auto-renew. | Autonomous runs gate on stale connection truth. LinkedIn (and any deployment with the cron off) will silently expire mid-campaign; the first symptom is a failed autonomous publish, not a pre-run gate. |
+| 9 | LOW | security | `tokens/providers.ts:31,43,55,60`; `social/instagram.ts:43,65,76,84` | OAuth access tokens are passed as **URL query-string** params (`?access_token=...`) for all Meta/Threads liveness, refresh, and IG publish calls. | Secret exposure surface via any egress proxy / access-log / APM that records URLs. Meta's GET API partly forces this, but IG publish POSTs and the Threads refresh could use headers/body. Not currently logged by `withRetry` (it logs `String(err)`, not the URL), so risk is external-logging only. |
+| 10 | LOW | gap | `connectors/runtime/connector-runtime.ts:96-100` | `withRetry` guards only genuine transport throws; adapters swallow failures into `ok:false`, which is NOT retried (documented). Idempotency/rate-limit only protect the runtime path — which the scheduler bypasses (finding 1). | Retry/idempotency/rate-limit are effectively dormant for the autonomous scheduled path. |
+
+## Positives (correctly handled)
+- Vault: AES-256-GCM, key from env, tamper-detecting authTag, plaintext never persisted; `token-repo` seals/opens through the pluggable `CredentialVault`. All reads keyed by `(ownerId, platform)` — no cross-tenant bleed in the repo layer. `listTokenStatusForOwner` returns metadata only (no ciphertext).
+- Resolver reads token METADATA only (status/expiry), never a token value. Pure + injectable.
+- Connector runtime checks the kill switch FIRST, audits every real attempt with redacted detail (postId/assetType only — no secret), validates required inputs pre-network.
+- No `DRY_RUN` env default — the LIVE path really publishes (DRY-RUN only via injected stub in verify scripts). The memory note "adapters default DRY-RUN" is imprecise; there is no silent-no-op env switch. Confirmed no adapter returns `ok:true` without a real API call **except X's text-degrade (finding 3)**.
+
+## Top autonomy remediations (suggested, not applied)
+1. Route the scheduler through `runtimePublishFn` (or add kill-switch + audit + connection re-check inside `processPost`) so autonomous scheduled publishing inherits §11 safety. (finding 1/2)
+2. Re-resolve connections immediately before the publisher node fires (executor), not just at `/execute`. (finding 2)
+3. Make X's media-drop return a non-ok / partial signal, or record it on the result so Atria knows the asset didn't post. (finding 3)
+4. Align the gate reader with `connection-state`: an unverified pasted token should be `needs_attention` (gate blocks), not synthetic `active`. (finding 4)
+5. Assert per-tenant ownership of page/account ids before falling back to env defaults; refuse rather than post to a system-default destination. (finding 6)
+
+## Unresolved questions
+- Does Atria's autonomous loop invoke `POST /runs/:id/execute` (gated) or call `runWorkflow` directly? Only the router gates; `runWorkflow` itself has no connection gate. Confirm the autonomy entrypoint.
+- Is `ENABLE_TOKEN_CRON=1` set in the target autonomous deployment? Gate correctness depends on it (finding 8).
+- Intended behavior when a tenant has a valid token but no page/account id — hard-fail or env-default? (finding 6)
