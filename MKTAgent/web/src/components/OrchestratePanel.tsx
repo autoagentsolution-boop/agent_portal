@@ -8,6 +8,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, type WorkflowRunDto } from '../api/client';
 import { PlanCard, SaveOfferCard } from './orchestrate-run-cards';
+import { AtriaSuggestionCards } from './atria-suggestion-cards';
+import { AtriaResumeWorkCards } from './atria-resume-work-cards';
 
 export interface OrchestrateRestore {
   sessionId: string;
@@ -39,6 +41,10 @@ interface Props {
   // "Plan it" on Atria and the Command Center bar are SENDS, not drafts — landing the
   // user on an idle composer reads as the intent being swallowed.
   autoStart?: boolean;
+  // Empty-state "Continue where you left off" — recent chats + saved flows with no
+  // campaign. Atria IS this surface, so the strategist home lives here, not on a hub page.
+  chats: Array<{ id: string; title: string; updatedAt: string }>;
+  onResumeChat: (id: string) => void;
 }
 
 interface Msg { role: 'user' | 'agent'; content: string }
@@ -49,7 +55,7 @@ const starters = [
   'Write a short LinkedIn post about our new feature',
 ];
 
-export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart }: Props) {
+export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, chats, onResumeChat }: Props) {
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   const [run, setRun] = useState<WorkflowRunDto | null>(restore?.run ?? null);
   const [sessionId, setSessionId] = useState<string | null>(restore?.sessionId ?? null);
@@ -141,17 +147,19 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
       {!hasStarted && (
         <div className="empty-chat-hero">
           <h1>What should we orchestrate?</h1>
-          <p>Describe a marketing goal. The Master Agent reasons about it, asks only what materially shapes the result, then plans a dynamic agent workflow. Save it as a flow and run it from Active Flows.</p>
-          {flowsWithoutStrategy.length > 0 && (
-            <div className="flow-hint">
-              <span className="muted small">Pick up where you left off — flows with no campaign yet:</span>
-              <div className="flow-hint-row">
-                {flowsWithoutStrategy.slice(0, 4).map((f) => (
-                  <button key={f.id} className="prompt-chip" onClick={() => onSetupCampaign(f.id)}>⚡ {f.name}</button>
-                ))}
-              </div>
-            </div>
-          )}
+          <p>Describe a marketing goal. Atria reasons about it, asks only what materially shapes the result, then plans a dynamic agent workflow. Save it as a flow and run it from Active Flows.</p>
+          <div className="atria-home-stack">
+            <section>
+              <h3 className="atria-section-title">Reminders from Atria</h3>
+              <AtriaSuggestionCards notify={notify} onPlanCampaign={(t) => void start(t)} />
+            </section>
+            <AtriaResumeWorkCards
+              chats={chats.slice(0, 4)}
+              flows={flowsWithoutStrategy.slice(0, 4)}
+              onResumeChat={onResumeChat}
+              onOpenFlow={onOpenFlow}
+            />
+          </div>
         </div>
       )}
 

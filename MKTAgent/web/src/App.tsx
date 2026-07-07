@@ -8,11 +8,13 @@ import { ConnectionsPanel } from './components/ConnectionsPanel';
 import { ProductKnowledgeLibrary } from './components/ProductKnowledgeLibrary';
 import { LeadsPage } from './components/LeadsPage';
 import { UsageDashboard } from './components/UsageDashboard';
-import { AtriaHubPage } from './components/atria-hub-page';
+import { InstructionEditor } from './components/instruction-editor';
+import { ImpactReport } from './components/impact-report';
+import { CampaignCommandView } from './components/campaign-command-view';
 import { CommandCenterPage } from './components/command-center-page';
 import type { DemoMode } from './flow/demo-flow';
 
-type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads' | 'usage' | 'command-center' | 'atria';
+type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads' | 'usage' | 'command-center' | 'instructions' | 'impact';
 type Theme = 'light' | 'dark';
 
 const postTitle = (post: PostDto, index: number): string => {
@@ -300,8 +302,9 @@ export function App() {
           <button className="icon-btn" aria-label="Toggle theme" onClick={() => setTheme((t) => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '◐' : '☼'}</button>
         </div>
         <button className={`sidebar-item ${page === 'command-center' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('command-center'); }}>◈ Command Center</button>
-        <button className={`sidebar-item ${page === 'atria' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('atria'); }}>✦ Atria</button>
-        <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>✎ New chat</button>
+        <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>✦ Atria</button>
+        <button className={`sidebar-item ${page === 'instructions' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('instructions'); }}>⚙ Instructions</button>
+        <button className={`sidebar-item ${page === 'impact' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('impact'); }}>📈 Impact</button>
         <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('connections'); }}>🔌 Connections</button>
         <button className={`sidebar-item ${page === 'usage' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('usage'); }}>📊 Usage</button>
         <div className="flow-sidebar-tree">
@@ -369,11 +372,13 @@ export function App() {
               initialInput={orchestratePrefill ?? undefined}
               autoStart={Boolean(orchestratePrefill)}
               flowsWithoutStrategy={flowsWithoutStrategy}
+              chats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
               notify={show}
               onRunActivity={(sessionId) => { void loadChats(); if (!activeChatId) setActiveChatId(sessionId); bump(); }}
               onSaved={() => { void loadSavedRuns(); }}
               onSetupCampaign={(runId) => { void loadSavedRuns().then(() => setupFirstCampaign(runId)); }}
               onOpenFlow={(runId) => { void loadSavedRuns().then(() => openSavedFlow(runId)); }}
+              onResumeChat={(id) => void selectChat(id)}
               onCampaignCreated={(campaignId, postId) => { void openCreatedCampaign(campaignId, postId); }}
             />
           </div>
@@ -393,16 +398,20 @@ export function App() {
           <div className="master-home">
             <LeadsPage notify={show} />
           </div>
-        ) : page === 'atria' ? (
-          <AtriaHubPage
-            activeCampaign={activeCampaign}
-            chats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
-            flowsWithoutStrategy={flowsWithoutStrategy}
-            notify={show}
-            onPlanCampaign={launchFromCommandCenter}
-            onResumeChat={(id) => void selectChat(id)}
-            onOpenFlow={openSavedFlow}
-          />
+        ) : page === 'instructions' ? (
+          <div className="master-home">
+            <InstructionEditor scope="workspace" notify={show} />
+          </div>
+        ) : page === 'impact' ? (
+          <div className="master-home atria-home-stack">
+            {activeCampaign && (
+              <>
+                <CampaignCommandView campaignId={activeCampaign} />
+                <ImpactReport campaignId={activeCampaign} />
+              </>
+            )}
+            <ImpactReport period="30d" />
+          </div>
         ) : (
           <ActiveFlowsPage
             activeCampaign={activeCampaign}
