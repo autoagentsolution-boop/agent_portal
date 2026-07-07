@@ -37,7 +37,13 @@ export const pollCommentsForLeads = async (fetcher: CommentFetcher, ownerId?: st
   const posts = await prisma.post.findMany({
     where: {
       leadCaptureKeyword: { not: null },
-      OR: [{ leadCollectorExpiresAt: null }, { leadCollectorExpiresAt: { gt: now } }],
+      // Two independent OR groups → combine under AND so both must hold. Feedback #3: never poll a
+      // post already confirmed deleted. Prisma `not` EXCLUDES null rows, so the explicit `null` arm
+      // keeps active collectors (null status) in scope; only 'post_deleted' is filtered out.
+      AND: [
+        { OR: [{ leadCollectorExpiresAt: null }, { leadCollectorExpiresAt: { gt: now } }] },
+        { OR: [{ leadCollectorStatus: null }, { leadCollectorStatus: { not: 'post_deleted' } }] },
+      ],
       ...(ownerId ? { ownerId } : {}),
     },
     include: { campaign: { select: { product: true } } },

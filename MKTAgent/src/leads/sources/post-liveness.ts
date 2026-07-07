@@ -46,3 +46,36 @@ export const checkPostLinks = async (post: Post, ownerId: string): Promise<LinkS
   }
   return results;
 };
+
+// Proactive liveness sweep (feedback #3): after the leads cron polls, verify each watched post
+// still exists on-platform. checkPostLinks self-heals — a confirmed-deleted link is dropped and the
+// collector marked post_deleted when none remain, so the poller's `leadCollectorStatus != post_deleted`
+// filter skips it next tick. Deliberately runs at the CRON layer (real platform calls), NOT inside
+// pollCommentsForLeads which stays pure/injectable. Best-effort: one dead post never aborts the sweep.
+export const sweepPostLiveness = async (ownerId?: string): Promise<{ checked: number; dead: number }> => {
+  const now = new Date();
+  const posts = await prisma.post.findMany({
+    where: {
+      leadCaptureKeyword: { not: null },
+      // Same scope as the poller: non-expired, not-yet-deleted. Prisma `not` excludes null, so the
+      // explicit null arm keeps active collectors in scope.
+      AND: [
+        { OR: [{ leadCollectorExpiresAt: null }, { leadCollectorExpiresAt: { gt: now } }] },
+        { OR: [{ leadCollectorStatus: null }, { leadCollectorStatus: { not: 'post_deleted' } }] },
+      ],
+      ...(ownerId ? { ownerId } : {}),
+    },
+  });
+  let checked = 0;
+  let dead = 0;
+  for (const post of posts) {
+    try {
+      const links = await checkPostLinks(post, post.ownerId);
+      checked++;
+      if (links.some((l) => l.alive === false)) dead++;
+    } catch (e) {
+      logger.warn('liveness_sweep_failed', { postId: post.id, error: String(e).slice(0, 160) });
+    }
+  }
+  return { checked, dead };
+};
