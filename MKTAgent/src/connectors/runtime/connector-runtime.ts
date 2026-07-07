@@ -37,6 +37,12 @@ export interface InvokeResult {
   actionKey: string;
   externalId: string | null; // the published URL/id, when ok
   error: string | null;
+  // Preserve the adapter's canonical object id + degrade signal THROUGH the runtime shim.
+  // Without these the runtime path (which the executor's publisher already travels, and the
+  // scheduler now does in Phase 03) would silently drop the liveness id (breaking the gone-signal
+  // capture) and the H1c degrade flag (X image→text) that the direct publishTo path preserves.
+  platformPostId?: string | null;
+  degraded?: boolean;
 }
 
 // Map a PublishResult (adapter shape) → InvokeResult (runtime shape). url is the
@@ -47,6 +53,8 @@ const toInvokeResult = (platform: SocialPlatform, actionKey: string, r: PublishR
   actionKey,
   externalId: r.url,
   error: r.error,
+  platformPostId: r.platformPostId ?? null,
+  degraded: r.degraded,
 });
 
 // Invoke one connector action for one platform. Never throws — validation and adapter
@@ -142,5 +150,5 @@ export const runtimePublishFn = async (
     input,
     idempotencyKey: publishIdempotencyKey(input.postId, platform, input.assetType),
   });
-  return { platform, ok: res.ok, url: res.externalId, error: res.error };
+  return { platform, ok: res.ok, url: res.externalId, error: res.error, platformPostId: res.platformPostId ?? null, degraded: res.degraded };
 };

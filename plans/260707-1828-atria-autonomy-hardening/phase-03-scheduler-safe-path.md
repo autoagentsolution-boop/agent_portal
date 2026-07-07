@@ -1,6 +1,9 @@
 # Phase 03 — Scheduler as a Safe Publish Path  [C2]
 
-**Priority:** CRITICAL. **Status:** planned. **Depends on:** Phase 02 (boundary re-read/re-resolve).
+**Priority:** CRITICAL. **Status:** DONE 2026-07-08 (tsc + verify-scheduler-safe-path 8/8 + per-platform-publish/executor/runtime/audit/kill-switch green). NOT committed.
+**Ownership decision (in code):** executor owns IMMEDIATE publish, cron owns SCHEDULED — BOTH via the SAME `runtimePublishFn` §11 chokepoint; executor parks scheduled posts (never inline-publishes) → no double-publish.
+**Implemented:** (E#1) scheduler default publish `publishTo`→`runtimePublishFn` (kill-switch+audit+idempotency+rate-limit) in `runSchedulerTick`+`publishPostNow`. Fixed the shim: `InvokeResult`+`toInvokeResult`+`runtimePublishFn` now carry `platformPostId`+`degraded` (were DROPPED → the executor's live path already lost the gone-signal id + H1c degrade; now preserved on both paths). (A#1/B#3) new `isPublishBlocked(runId)` = running/pending/awaiting_approval nodes OR non-terminal run OR (atria && !scheduleConfirmed); replaces `hasActiveFlowNodes` in the tick (which missed a publisher-parked run). scheduleConfirmed (Phase 01) now gates the cron.
+**Verify proves:** kill-switch stops+audits a scheduled publish; publisher-parked run NOT published (stub never called); atria+unconfirmed schedule held, released once re-confirmed. **Depends on:** Phase 02.
 **Findings:** A#1, B#3, E#1. Reports: autonomous-execution-core, state-machine-qa, connect-credential.
 
 ## Root cause (the scheduler is a shadow publish path)

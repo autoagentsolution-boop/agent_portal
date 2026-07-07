@@ -139,6 +139,30 @@ export const getRunStatusById = async (id: string): Promise<string | null> =>
 export const hasActiveFlowNodes = async (runId: string): Promise<boolean> =>
   (await prisma.workflowNodeRun.count({ where: { runId, status: { in: ['running', 'pending'] } } })) > 0;
 
+// Should the SCHEDULER hold a due post whose flow is this run? (Phase 03 / C2-A#1-B#3). Wider than
+// hasActiveFlowNodes: a post can reach `ready` at the concept gate while its run is still PARKED at
+// a later gate (e.g. the pre-video cost gate) — hasActiveFlowNodes missed that (it counts only
+// running/pending, not awaiting_approval), so the cron published before media existed. Blocked when:
+//   • any node is running/pending/awaiting_approval (flow still producing OR parked at a gate), OR
+//   • the run itself is non-terminal (needs_approval | running | needs_connection | planning), OR
+//   • the run is an atria GRANT whose finalized schedule was NOT re-confirmed (scheduleConfirmed
+//     =false — the "xác nhận lại 1 lần nữa" step): never auto-fire an unconfirmed autonomous schedule.
+// A terminal run (completed) with all nodes terminal and (human OR scheduleConfirmed) → NOT blocked.
+const NON_TERMINAL_RUN = ['planning', 'awaiting_clarification', 'planned', 'running', 'needs_approval', 'needs_connection'];
+export const isPublishBlocked = async (runId: string): Promise<boolean> => {
+  const run = await prisma.workflowRun.findUnique({
+    where: { id: runId },
+    select: { status: true, approvalMode: true, scheduleConfirmed: true },
+  });
+  if (!run) return false; // no run → a legacy standalone post; the post's own state gates it
+  if (NON_TERMINAL_RUN.includes(run.status)) return true;
+  if (run.approvalMode === 'atria' && !run.scheduleConfirmed) return true;
+  const parked = await prisma.workflowNodeRun.count({
+    where: { runId, status: { in: ['running', 'pending', 'awaiting_approval'] } },
+  });
+  return parked > 0;
+};
+
 // a deleted run. Returns: 'deleted' | 'not_found' (wrong tenant / id) | 'in_flight'.
 export const deleteRun = async (
   id: string,

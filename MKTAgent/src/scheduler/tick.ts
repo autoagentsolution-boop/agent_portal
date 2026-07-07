@@ -6,6 +6,14 @@
 // short. node-cron fires every minute; a backlog drains one row per minute.
 // Both guards run: the advisory lock serializes ticks/instances, and the atomic
 // claimForPublish() updateMany guards the row even if the lock were ever bypassed.
+//
+// PUBLISH OWNERSHIP (autonomy-hardening Phase 03 / C2 decision #2): there is ONE publish
+// chokepoint — `runtimePublishFn` (§11 connector runtime: kill-switch + audit + idempotency +
+// rate-limit). The in-flow executor owns IMMEDIATE publishes; this scheduler owns SCHEDULED ones;
+// BOTH call the same runtime path, so there is no shadow bypass. They never double-publish: the
+// executor PARKS a scheduled-future post as `ready` (never inline-publishes it), leaving the cron
+// the sole publisher of scheduled posts. `isPublishBlocked` keeps the cron from firing a post whose
+// run is still producing or parked at any gate (or an atria grant whose schedule wasn't re-confirmed).
 import { acquireSchedulerLock } from './lock.ts';
 import { resolvePlatformInput, publishAssetType, PostValidationError } from './resolve-input.ts';
 import { aggregate, toWriteBack } from './aggregate.ts';
@@ -18,12 +26,12 @@ import {
   getPostForOwner,
   updatePost,
 } from '../db/repos/post-repo.ts';
-import { publishTo } from '../social/index.ts';
+import { runtimePublishFn } from '../connectors/runtime/connector-runtime.ts';
 import { platformSupportsAsset } from '../social/postability.ts';
 import { hasDriveConnected, resolveCampaignFolder } from '../assets/drive-client.ts';
 import { materializeForPublicUrl, NEEDS_PUBLIC_URL, slugify } from '../assets/materialize.ts';
 import { getCampaign } from '../db/repos/campaign-repo.ts';
-import { hasActiveFlowNodes } from '../db/repos/workflow-run-repo.ts';
+import { isPublishBlocked } from '../db/repos/workflow-run-repo.ts';
 import { publishPostStatus } from '../events/bus.ts';
 import { logRun } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
@@ -162,7 +170,7 @@ export async function processPost(post: Post, publish: PublishFn): Promise<TickR
 export async function publishPostNow(
   postId: string,
   ownerId: string,
-  publish: PublishFn = publishTo,
+  publish: PublishFn = runtimePublishFn,
 ): Promise<TickResult> {
   const claimed = await claimForPublishOwned(postId, ownerId);
   if (!claimed) {
@@ -181,7 +189,7 @@ export async function publishPostNow(
   }
 }
 
-export async function runSchedulerTick(publish: PublishFn = publishTo): Promise<TickResult> {
+export async function runSchedulerTick(publish: PublishFn = runtimePublishFn): Promise<TickResult> {
   const lock = await acquireSchedulerLock();
   if (!lock.acquired) {
     logger.info('scheduler_tick_skipped', { reason: 'lock_held' });
@@ -198,11 +206,13 @@ export async function runSchedulerTick(publish: PublishFn = publishTo): Promise<
 
     let delayed = 0;
     for (const due of dueList) {
-      // Flow-active guard: the flow is still producing (a node running/pending — e.g. the video is
-      // still generating past the scheduled time), so DELAY this one. Leave it due + unclaimed and
-      // try the NEXT due post — never publish before media is ready, never block others either.
-      if (due.runId && (await hasActiveFlowNodes(due.runId))) {
-        logger.info('scheduler_delayed_flow_active', { postId: due.id, runId: due.runId });
+      // Publish-blocked guard (Phase 03 / B#3): DELAY a post whose flow is still producing OR PARKED
+      // at any gate (was hasActiveFlowNodes, which counted only running/pending and missed a run
+      // parked awaiting_approval at a later gate → the cron published before media existed). Also
+      // holds an atria grant whose finalized schedule wasn't re-confirmed. Leave it due + unclaimed
+      // and try the NEXT due post — never publish before the flow is truly done, never block others.
+      if (due.runId && (await isPublishBlocked(due.runId))) {
+        logger.info('scheduler_delayed_publish_blocked', { postId: due.id, runId: due.runId });
         delayed++;
         continue;
       }
