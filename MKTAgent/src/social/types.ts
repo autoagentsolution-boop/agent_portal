@@ -31,6 +31,12 @@ export interface PublishResult {
   // Graph (a shortcode always yields code 100, indistinguishable from a genuine delete). Captured
   // here at publish so we never fall back to parsing the shortcode. null when publish failed.
   platformPostId?: string | null;
+  // The post went out but NOT as the intended deliverable — e.g. X dropped the image (media 403 /
+  // free tier) and posted text-only. Still ok:true (something published, and we never re-post), but
+  // the aggregator demotes the overall outcome posted→partial and records the degrade so an
+  // autonomous run never reads a reduced publish as a clean full success (H1c). Optional; absent =
+  // full-fidelity publish.
+  degraded?: boolean;
 }
 
 export interface SocialAdapter {

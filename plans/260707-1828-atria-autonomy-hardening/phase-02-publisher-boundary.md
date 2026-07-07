@@ -1,6 +1,8 @@
 # Phase 02 — Publisher Boundary Correctness  [C1, H1, H4]
 
-**Priority:** CRITICAL. **Status:** planned. **Depends on:** Phase 01 (seam).
+**Priority:** CRITICAL. **Status:** DONE 2026-07-08 (tsc + verify-executor 20/20 + aggregate/token inline + per-platform-publish/connection-resolver/concept-gate/rerun green). NOT committed.
+**Implemented:** (C1) `buildGuardrailCtx` async re-reads FRESH post at boundary (getPostByRunId, not run-start snapshot) + human autoPublish waiver re-reads too → fresh-goal now auto-publishes in ONE pass; real `mediaReady` via resolvePlatformInput. (H4) connection re-resolve for POST.platforms at the publish gate (injectable `connectionReaderFn` DI seam); unconnected → hold. (H1a) `approveOrThrow` fails loud on silent review→ready no-op. (H1b) `runPublisher` throws on !picked / status∉{posted,partial} → node/run failed, never silent completed. (H1c) `PublishResult.degraded` + X sets it on image-drop 403 + `aggregate` demotes posted→partial & notes it.
+**Verify proves:** fresh-goal atria completes 1-pass; no-media publish → run FAILED + no artifact; unconnected atria publish HOLDS; degrade demotion. **Depends on:** Phase 01 (seam).
 **Findings:** A#2, A#5, B#5, D#2, E#2, E#3. Reports: autonomous-execution-core, state-machine-qa, connect-credential.
 
 ## Root cause (3 defects at the same boundary — the publisher node)

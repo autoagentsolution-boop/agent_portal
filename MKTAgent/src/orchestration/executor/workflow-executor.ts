@@ -24,9 +24,10 @@ import {
   setNodeStatus,
   getRunStatusById,
 } from '../../db/repos/workflow-run-repo.ts';
-import { getPostByRunId, approveReview } from '../../db/repos/post-repo.ts';
+import { getPostByRunId, getPostForOwner, approveReview } from '../../db/repos/post-repo.ts';
 import { platformSupportsAsset } from '../../social/postability.ts';
-import { publishAssetType, distinctAssetTypes } from '../../scheduler/resolve-input.ts';
+import { publishAssetType, distinctAssetTypes, resolvePlatformInput, PostValidationError } from '../../scheduler/resolve-input.ts';
+import { resolveConnections, type TokenStatusReader } from '../../connectors/runtime/connection-resolver.ts';
 import { publishNodeStatus } from '../../events/bus.ts';
 import { suggestPublishTimes, summarizeTiming } from '../../agents/publish-timing/suggest-time.ts';
 import { logRun } from '../../db/client.ts';
@@ -83,6 +84,10 @@ export interface ExecuteOptions {
   // what's already stored), then stop. Its downstream dependents are reset to pending by
   // the caller (marked stale) but NOT auto-run — the user re-runs them explicitly.
   rerunOnly?: string;
+  // Injectable token-status reader for the Phase 02 boundary connection re-resolve (H4).
+  // Mirrors the connection resolver's own DI seam so a DRY-RUN verify can simulate a connected
+  // tenant without seeding real OAuth rows. Default = the resolver's real reader.
+  connectionReaderFn?: TokenStatusReader;
 }
 
 export type ExecuteOutcome =
@@ -151,23 +156,50 @@ export const runWorkflow = async (
   const isScheduledFuture = (): boolean =>
     !!attachedPost?.scheduledAt && attachedPost.scheduledAt.getTime() > Date.now();
 
-  // Guardrail snapshot for the atria policy at a given gate. Captures `postId` by reference so a
-  // fresh-goal run (post created mid-run) is judged on the current post, not the run-start null.
-  // ⚠ Phase 01 uses the run-start `attachedPost` for platform/asset checks (connected=true because
-  // /execute already passed the connection gate); Phase 02 tightens this to a real boundary re-read
-  // of the post (media presence + connection re-resolve). Fail-closed everywhere unproven.
-  const buildGuardrailCtx = (gate: GateKind): GuardrailContext => {
+  // Guardrail snapshot for the atria policy at a given gate. Phase 02 (C1): re-read the post FRESH
+  // at the boundary — the run-start `attachedPost` is null on a fresh goal (post created mid-run),
+  // which is exactly why the primary path never auto-published. Fall back to the snapshot only if
+  // the fresh read misses. connected is re-resolved against the POST's platforms (H4): a token can
+  // expire between the /execute gate and the actual publish. Fail-closed everywhere unproven.
+  const buildGuardrailCtx = async (gate: GateKind): Promise<GuardrailContext> => {
+    const post = (await getPostByRunId(runId)) ?? attachedPost;
     const cleanlyPostable =
-      !!attachedPost && attachedPost.platforms.length > 0 &&
-      attachedPost.platforms.every((p) => platformSupportsAsset(p, publishAssetType(attachedPost, p)));
+      !!post && post.platforms.length > 0 &&
+      post.platforms.every((p) => platformSupportsAsset(p, publishAssetType(post, p)));
+    // Real media presence: a target's per-platform input resolves without a PostValidationError
+    // (text needs no media; image/video/carousel need their asset). Reuses the publish validator.
+    const mediaReady =
+      !!post && post.platforms.length > 0 &&
+      post.platforms.every((p) => {
+        try { resolvePlatformInput(post, p); return true; }
+        catch (e) { if (e instanceof PostValidationError) return false; throw e; }
+      });
+    // Connection re-resolve at the boundary (H4) — only for the publish gate (a real external write).
+    let connected = true;
+    if (gate === 'publish' && post && post.platforms.length > 0) {
+      const res = opts.connectionReaderFn
+        ? await resolveConnections(ownerId, { ...goal, platforms: post.platforms }, plan, opts.connectionReaderFn)
+        : await resolveConnections(ownerId, { ...goal, platforms: post.platforms }, plan);
+      connected = res.status === 'resolved';
+    }
     return {
-      connected: true, // resolved at /execute; Phase 02 re-resolves at the publisher boundary
-      mediaReady: !!attachedPost, // Phase 02 re-reads the post for real media presence
+      connected,
+      mediaReady,
       cleanlyPostable,
       estCostUsd: gate === 'cost' ? videoClipCost(1).costUsd : 0,
       budgetUsd: budgetCeiling,
       contentChecksPass: !!postId,
     };
+  };
+  // Approve a post's review→ready, failing LOUD on a silent no-op (Phase 02 / H1a): approveReview
+  // returns null when the post isn't in `review`. That's fine if it's already ready/past-review
+  // (idempotent resume — the worker owns it); but any OTHER state means the approval silently did
+  // nothing and nothing would publish. Throw so the caller marks the node failed instead.
+  const approveOrThrow = async (pid: string): Promise<void> => {
+    if (await approveReview(pid, ownerId, approveScheduledAt)) return;
+    const st = (await getPostForOwner(pid, ownerId))?.status;
+    if (st === 'ready' || st === 'posting' || st === 'posted' || st === 'partial') return;
+    throw new Error(`publisher: post not approvable (status=${st ?? 'missing'})`);
   };
   // Park a granted run at a gate its guardrails did NOT clear: needs a human. Same park mechanism
   // as human mode (awaiting_approval + run needs_approval, resumable via approve-node) + an audit
@@ -297,9 +329,13 @@ export const runWorkflow = async (
     if (!atriaMode && gated && planNode.agentId === 'publisher' && autoPublish) {
       // Per-platform (item 5): each target may publish its own asset type — auto-run only
       // when EVERY target's adapter supports ITS asset type; otherwise gate for the review.
+      // Phase 02 (C1): re-read the post FRESH here — the run-start `attachedPost` snapshot is null
+      // on a fresh goal (post created mid-run), which wrongly forced the gate for every fresh-goal
+      // run. The fresh read makes fresh-goal runs auto-publish-eligible like attached-post runs.
+      const post = (await getPostByRunId(runId)) ?? attachedPost;
       const cleanlyPostable =
-        !!attachedPost && attachedPost.platforms.length > 0 &&
-        attachedPost.platforms.every((p) => platformSupportsAsset(p, publishAssetType(attachedPost, p)));
+        !!post && post.platforms.length > 0 &&
+        post.platforms.every((p) => platformSupportsAsset(p, publishAssetType(post, p)));
       requiresApproval = !cleanlyPostable; // clean → auto-run; any skip/unknown → gate for review
     }
     // Schedule gate (feedback #2): a future-scheduled publisher never publishes inline. First pass
@@ -314,12 +350,22 @@ export const runWorkflow = async (
       // the atria hold below. Human mode still requires the explicit approve-node click.
       const scheduleApproved =
         opts.approveNodeId === planNodeId ||
-        (atriaMode && atriaApprovalPolicy('publish', buildGuardrailCtx('publish')) === 'approve');
+        (atriaMode && atriaApprovalPolicy('publish', await buildGuardrailCtx('publish')) === 'approve');
       if (scheduleApproved) {
         if (atriaMode && opts.approveNodeId !== planNodeId) {
           await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId: planNode.agentId, gate: 'publish', decision: 'approve', scheduled: true }, ownerId);
         }
-        if (postId) await approveReview(postId, ownerId, approveScheduledAt);
+        // H1a: approveOrThrow fails loud if the review→ready approval silently no-ops (post stuck
+        // in a non-publishable state) — the scheduler would otherwise never find it due.
+        try {
+          if (postId) await approveOrThrow(postId);
+        } catch (e) {
+          const msg = String(e instanceof Error ? e.message : e).slice(0, 500);
+          await setNodeStatus(nodeRow.id, 'failed', { finishedAt: new Date(), error: msg });
+          await setRunStatus(runId, 'failed');
+          publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'failed', error: msg });
+          return { status: 'failed', nodeId: planNodeId, error: msg };
+        }
         await setNodeStatus(nodeRow.id, 'completed', { finishedAt: new Date() });
         publishNodeStatus(ownerId, {
           runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed',
@@ -338,7 +384,7 @@ export const runWorkflow = async (
     if (atriaMode && requiresApproval && opts.approveNodeId !== planNodeId) {
       const gateKind = agentGate(planNode.agentId);
       if (gateKind === 'cost' || gateKind === 'publish') {
-        const gctx = buildGuardrailCtx(gateKind);
+        const gctx = await buildGuardrailCtx(gateKind);
         const decision = atriaApprovalPolicy(gateKind, gctx);
         if (decision === 'approve') {
           await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId: planNode.agentId, gate: gateKind, decision, estCostUsd: gctx.estCostUsd, budgetUsd: gctx.budgetUsd }, ownerId);
@@ -394,7 +440,7 @@ export const runWorkflow = async (
       // pick); hold parks + notifies. Human mode keeps its conceptGate behavior untouched.
       if (isSelectionGate(planNode.agentId)) {
         if (atriaMode) {
-          const gctx = buildGuardrailCtx('selection');
+          const gctx = await buildGuardrailCtx('selection');
           if (atriaApprovalPolicy('selection', gctx) === 'hold') {
             return atriaHold(nodeRow.id, planNodeId, planNode.agentId, 'selection', guardrailHoldReason('selection', gctx) ?? 'content not produced');
           }

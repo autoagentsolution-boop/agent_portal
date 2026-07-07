@@ -12,7 +12,7 @@ import { logger } from '../lib/logger.ts';
 import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
 
-const ok = (url: string, platformPostId: string | null = null): PublishResult => ({ platform: 'x', ok: true, url, error: null, platformPostId });
+const ok = (url: string, platformPostId: string | null = null, degraded = false): PublishResult => ({ platform: 'x', ok: true, url, error: degraded ? 'image dropped (media tier) — posted text-only' : null, platformPostId, degraded });
 const fail = (msg: string): PublishResult => ({
   platform: 'x',
   ok: false,
@@ -83,7 +83,10 @@ export const xAdapter: SocialAdapter = {
       const tw = (await twRes.json()) as any;
       const tid = tw?.data?.id;
       if (!twRes.ok || !tid) return fail(`tweet failed: ${twRes.status} ${JSON.stringify(tw).slice(0, 120)}`);
-      return ok(`https://twitter.com/i/web/status/${tid}`, String(tid));
+      // Degraded (H1c): an image was requested (ref present) but its upload failed → we posted
+      // text-only. Surface it so the aggregator demotes posted→partial (never a silent clean ok).
+      const degraded = Boolean(ref) && mediaId === null;
+      return ok(`https://twitter.com/i/web/status/${tid}`, String(tid), degraded);
     } catch (e) {
       return fail(String(e instanceof Error ? e.message : e));
     }

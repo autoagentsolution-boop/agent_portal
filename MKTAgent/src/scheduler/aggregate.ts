@@ -18,8 +18,14 @@ export interface AggregateOutcome {
 
 export function aggregate(results: PublishResult[]): AggregateOutcome {
   const okCount = results.filter((r) => r.ok).length;
-  const status: AggregateOutcome['status'] =
+  const baseStatus: AggregateOutcome['status'] =
     okCount === results.length && okCount > 0 ? 'posted' : okCount > 0 ? 'partial' : 'error';
+  // Degrade demotion (H1c): a platform that published but dropped its intended deliverable
+  // (e.g. X image→text) is a reduced success, not a clean one — demote a full `posted` to
+  // `partial` so an autonomous run never reads it as complete. `error`/`partial` stay as-is.
+  const degraded = results.filter((r) => r.ok && r.degraded);
+  const status: AggregateOutcome['status'] =
+    baseStatus === 'posted' && degraded.length > 0 ? 'partial' : baseStatus;
 
   const postUrls: Record<string, string> = {};
   const platformPostIds: Record<string, string> = {};
@@ -29,12 +35,13 @@ export function aggregate(results: PublishResult[]): AggregateOutcome {
     if (r.platformPostId) platformPostIds[r.platform] = r.platformPostId;
   }
 
-  const error =
-    results
-      .filter((r) => !r.ok)
-      .map((r) => `${r.platform}:${r.error}`)
-      .join(' | ')
-      .slice(0, 500) || null;
+  // Record both hard failures and degraded (reduced) successes so the outcome names exactly
+  // what did not go out as intended.
+  const notes = [
+    ...results.filter((r) => !r.ok).map((r) => `${r.platform}:${r.error}`),
+    ...degraded.map((r) => `${r.platform}:${r.error ?? 'degraded'}`),
+  ];
+  const error = notes.join(' | ').slice(0, 500) || null;
 
   return { status, postUrls, platformPostIds, error, postedAt: new Date() };
 }

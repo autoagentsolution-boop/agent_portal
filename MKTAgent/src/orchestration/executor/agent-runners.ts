@@ -274,11 +274,20 @@ const runPublisher = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   // still overrides it for verification; the runtime falls back to publishTo internally.
   const out = await publishPostNow(postId, ctx.ownerId, ctx.publishFn ?? runtimePublishFn);
   const post = await getPostForOwner(postId, ctx.ownerId);
+  // Fail LOUD (Phase 02 / H1): a publish that did not really happen must surface as a FAILED
+  // node/run, never a silent `completed`. publishPostNow returns picked=false (claim lost / post
+  // not in a publishable state → not_publishable | not_found) or status='error' (every target
+  // failed). Either way nothing went out — throw so the executor marks the node failed. `partial`
+  // (some targets succeeded, incl. a degraded text-only X fallback) is a real outcome and is kept.
+  if (!out.picked || (out.status !== 'posted' && out.status !== 'partial')) {
+    const detail = out.reason ?? post?.error ?? out.status ?? 'unknown';
+    throw new Error(`publisher: publish did not complete (${detail})`);
+  }
   return {
     type: 'publish_result',
     data: {
       postId,
-      status: out.status === 'posted' || out.status === 'partial' || out.status === 'error' ? out.status : 'awaiting_approval',
+      status: out.status,
       postUrls: (post?.postUrls as Record<string, string> | null) ?? null,
       error: post?.error ?? null,
       // Optimal-time suggestion (Phase 02) persisted on the artifact as a record of what

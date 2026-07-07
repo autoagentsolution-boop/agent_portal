@@ -131,41 +131,52 @@ async function main(): Promise<void> {
       const r2b = await runWorkflow(run2.id, user.id, goal2, planned2.plan, { geminiFn: stubGemini, publishFn: stubPublish, approveNodeId: pub2.nodeId });
       const full2 = await getRunWithNodes(run2.id, user.id);
       const pr2 = full2?.artifacts.find((a) => a.type === 'publish_result');
-      check('no-media publish → result status error (faithful, not bypassed)', (pr2?.data as { status?: string })?.status === 'error', { outcome: r2b, pr: pr2?.data });
+      // Phase 02 (H1): a publish that didn't really happen now FAILS LOUD — the publisher node +
+      // run end `failed` with an error, and NO publish_result artifact is stored (never a silent
+      // `completed`). Previously this stored an artifact with status='error' and completed the run.
+      check('no-media publish → run FAILED loud (not silent completed)', r2b.status === 'failed', r2b);
+      check('no-media publish → publisher node failed', full2?.nodes.find((n) => n.agentId === 'publisher')?.status === 'failed', full2?.nodes.find((n) => n.agentId === 'publisher')?.status);
+      check('no-media publish → NO publish_result artifact', !pr2, pr2?.data);
     }
 
-    // ── Atria autonomy grant (Phase 01): a GRANTED run clears its own gates with ZERO
-    // approve-node calls. IMPORTANT Phase-01/02 boundary: `buildGuardrailCtx` still reads the
-    // run-START post snapshot (getPostByRunId), which is NULL on a FRESH goal (the post is created
-    // mid-run by concept_writer — the C1 finding). So on a fresh goal the publish guardrail
-    // fail-CLOSES and the run HOLDS + notifies (never a silent publish). Phase 02 adds the
-    // publisher-boundary re-read that lets a fresh goal auto-publish in a single pass. Here we
-    // prove: (pass 1) concept auto-selects + publisher fail-closed holds + audited; (pass 2, on
-    // resume once the post IS resolvable) the grant publishes with 0 human approvals.
+    // ── Atria autonomy grant (Phase 02): with the publisher-boundary re-read (C1 fixed), a GRANTED
+    // FRESH-goal run now clears its own gates and drives concept→media→publish in ONE pass with
+    // ZERO approve-node calls. The post is created mid-run by concept_writer; buildGuardrailCtx
+    // re-reads it FRESH at the boundary (was null run-start snapshot before). The H4 connection
+    // re-resolve reads token status — the throwaway tenant has none, so we inject a stub reader
+    // simulating a connected facebook (the resolver's own DI seam) to exercise the happy path.
+    const stubConnReader = async () => [{ platform: 'facebook' as const, status: 'active' as const, expiresAt: null }];
     const run3 = await createRun({ ownerId: user.id, goal, plan: planned.plan, status: 'planned' });
     await createNodes(run3.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
     // Grant autonomy (what the endpoint does after the double-confirm handshake).
     await prisma.workflowRun.update({ where: { id: run3.id }, data: { approvalMode: 'atria' } });
-    const r3a = await runWorkflow(run3.id, user.id, goal, planned.plan, {
+    const r3 = await runWorkflow(run3.id, user.id, goal, planned.plan, {
       geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts,
+      connectionReaderFn: stubConnReader,
       // NO approveNodeId — the grant is the authorization. conceptGate/autoPublish left at defaults.
     });
-    check('atria pass1: fresh-goal publish fail-closed HOLDS (Phase 02 unlocks it)', r3a.status === 'needs_approval', r3a);
-    let full3 = await getRunWithNodes(run3.id, user.id);
+    check('atria: fresh-goal completes in ONE pass (0 human approvals)', r3.status === 'completed', r3);
+    const full3 = await getRunWithNodes(run3.id, user.id);
     check('atria: concept auto-selected (completed, not parked)', full3?.nodes.find((n) => n.agentId === 'concept_writer')?.status === 'completed', full3?.nodes.find((n) => n.agentId === 'concept_writer')?.status);
-    check('atria pass1: publisher HELD, nothing published', !(full3?.artifacts.some((a) => a.type === 'publish_result') ?? false));
-    // Forensic traceability: every atria gate decision left an audit row (selection approve + publish hold).
-    const auditRows = await prisma.mktRunLog.count({ where: { ownerId: user.id, step: 'atria_gate', detail: { path: ['runId'], equals: run3.id } } });
-    check('atria: gate decisions audited (≥2 rows: selection + publish)', auditRows >= 2, auditRows);
-
-    // Pass 2 — resume WITHOUT any approve-node (still 0 human approvals). The post now exists, so
-    // buildGuardrailCtx re-reads it non-null → publish guardrails hold → the grant publishes.
-    const r3b = await runWorkflow(run3.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage });
-    check('atria pass2: completes autonomously (0 human approvals)', r3b.status === 'completed', r3b);
-    full3 = await getRunWithNodes(run3.id, user.id);
     check('atria: publisher completed autonomously', full3?.nodes.find((n) => n.agentId === 'publisher')?.status === 'completed');
     const pr3 = full3?.artifacts.find((a) => a.type === 'publish_result');
     check('atria: publish_result posted (dry)', (pr3?.data as { status?: string })?.status === 'posted', pr3?.data);
+    // Forensic traceability: every atria gate decision left an audit row (selection + publish approve).
+    const auditRows = await prisma.mktRunLog.count({ where: { ownerId: user.id, step: 'atria_gate', detail: { path: ['runId'], equals: run3.id } } });
+    check('atria: gate decisions audited (≥2 rows: selection + publish)', auditRows >= 2, auditRows);
+
+    // Guardrail fail-closed: same grant, but the connection re-resolve finds NO live token →
+    // publish HOLDS + notifies (never a dead-token publish), proving H4 at the boundary.
+    const run5 = await createRun({ ownerId: user.id, goal, plan: planned.plan, status: 'planned' });
+    await createNodes(run5.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
+    await prisma.workflowRun.update({ where: { id: run5.id }, data: { approvalMode: 'atria' } });
+    const r5 = await runWorkflow(run5.id, user.id, goal, planned.plan, {
+      geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: stubVideo, ttsFn: stubTts,
+      connectionReaderFn: async () => [], // no connections → publish guardrail fail-closes
+    });
+    check('atria: unconnected publish HOLDS (H4 fail-closed, no dead-token publish)', r5.status === 'needs_approval', r5);
+    const full5 = await getRunWithNodes(run5.id, user.id);
+    check('atria: held run published nothing', !(full5?.artifacts.some((a) => a.type === 'publish_result') ?? false));
 
     // Human-mode regression guard: an ungranted run STILL parks at the publisher (byte-identical
     // to before this phase) — autonomy must never be the accidental default.
