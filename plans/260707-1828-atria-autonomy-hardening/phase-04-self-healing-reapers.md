@@ -1,6 +1,8 @@
 # Phase 04 — Self-Healing Reapers + Failure Propagation  [C3, orphans, partial]
 
-**Priority:** CRITICAL. **Status:** planned. **Depends on:** none (independent backstop; do after 02/03 so it reaps the RIGHT residue).
+**Priority:** CRITICAL. **Status:** DONE 2026-07-08 (tsc + verify-reaper 18/18 + executor/scheduler-safe-path green). NOT committed.
+**Implemented:** new `src/scheduler/reaper.ts` (`runReaperOnce(now?)`, injectable now) + `reaper-cron.ts` (every 5m, gated `ENABLE_REAPER_CRON`) wired in server.ts. Reaps: stuck `posting` post→error (reapPostingToError, guarded); stuck `running` node→failed + cascade run→failed (video-aware budget: REAPER_VIDEO_NODE_TIMEOUT_MIN 30 vs REAPER_NODE_TIMEOUT_MIN 10, keyed on agentId); stuck `running` run→failed; orphan needs_approval/planned/needs_connection past REAPER_ORPHAN_TTL_DAYS 7 → SUMMARY log only (never delete). All guarded on stuck-state (concurrent legit transition wins), best-effort, owner-agnostic worker reads + scoped writes. (B#2) hardened detached `launchWorkflow.catch` → `markRunCrashed(runId)` (fails run + running node + emit) so a crash surfaces `failed` not hung 200. env knobs: ENABLE_REAPER_CRON + 5 timeouts.
+**Verify proves:** fresh rows NOT reaped (false-positive guard); posting/node/run reaped at their timeouts; video budget respected then reaped at 30m; markRunCrashed; orphan surfaced-not-deleted. **Depends on:** 02/03 (reaps the right residue).
 **Findings:** A#3, B#1, B#2, B-F6, B-F7. Reports: autonomous-execution-core, state-machine-qa.
 
 ## Root cause (nothing recovers a stuck row; an always-on fleet needs self-healing)

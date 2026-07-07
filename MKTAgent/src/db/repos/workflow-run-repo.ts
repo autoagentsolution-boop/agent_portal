@@ -327,6 +327,55 @@ export const grantAutonomy = async (
   return r.count === 1 ? prisma.workflowRun.findFirst({ where: { id, ownerId } }) : null;
 };
 
+// ── Self-healing reaper queries (Phase 04) ────────────────────────────────────
+// Owner-AGNOSTIC worker-path reads (same pattern as the scheduler/leads crons): the reaper is a
+// trusted background sweep, not a tenant request, so it scans across owners then writes scoped by
+// the row's own id. Read-then-scoped-write — no cross-tenant leak.
+
+// Runs stuck `running` past the timeout (updatedAt is touched on every status/node write via
+// @updatedAt, so a live run keeps refreshing it; only a crashed/detached-dead run ages out).
+export const findStaleRunningRuns = (before: Date): Promise<WorkflowRun[]> =>
+  prisma.workflowRun.findMany({ where: { status: 'running', updatedAt: { lt: before } } });
+
+// Nodes stuck `running` — aged by `startedAt` (set when the node flips to running). Returns
+// candidates older than the SHORTER (non-video) timeout; the reaper applies the video-specific
+// budget per-node by agentId so a legitimately-long Veo render isn't false-reaped.
+export interface StaleNode { id: string; runId: string; ownerId: string; agentId: string; nodeId: string; startedAt: Date | null }
+export const findStaleRunningNodes = (before: Date): Promise<StaleNode[]> =>
+  prisma.workflowNodeRun.findMany({
+    where: { status: 'running', startedAt: { lt: before } },
+    select: { id: true, runId: true, ownerId: true, agentId: true, nodeId: true, startedAt: true },
+  });
+
+// Orphaned runs parked long past any reasonable human-action window (needs_approval/planned).
+// Surfaced (logged/notified) for cleanup — NOT auto-deleted (the user may still act on them).
+export const findOrphanedRuns = (before: Date): Promise<WorkflowRun[]> =>
+  prisma.workflowRun.findMany({
+    where: { status: { in: ['needs_approval', 'planned', 'needs_connection'] }, updatedAt: { lt: before } },
+  });
+
+// Reaper writes (scoped by the row's own id; guarded on the stuck state so a concurrent legit
+// transition wins the race — the reaper never clobbers a row that just moved on).
+export const reapRunToFailed = async (id: string): Promise<boolean> => {
+  const r = await prisma.workflowRun.updateMany({ where: { id, status: 'running' }, data: { status: 'failed' } });
+  return r.count === 1;
+};
+export const reapNodeToFailed = async (id: string, error: string): Promise<boolean> => {
+  const r = await prisma.workflowNodeRun.updateMany({ where: { id, status: 'running' }, data: { status: 'failed', error: error.slice(0, 500), finishedAt: new Date() } });
+  return r.count === 1;
+};
+
+// Detached-executor crash recovery (Phase 04): the fire-and-forget `void runWorkflow().catch()`
+// only rejects when the run threw OUTSIDE the per-node try/catch (which already fails the node+run).
+// In that case the run is wedged `running` with a still-`running` node → mark BOTH failed so the
+// crash surfaces as `failed` (not a hung HTTP 200) — the reaper is the backstop if the process died.
+// Guarded on `running`, so a run that legitimately moved on is untouched. Returns run reaped?.
+export const markRunCrashed = async (runId: string, error: string): Promise<boolean> => {
+  await prisma.workflowNodeRun.updateMany({ where: { runId, status: 'running' }, data: { status: 'failed', error: error.slice(0, 500), finishedAt: new Date() } });
+  const r = await prisma.workflowRun.updateMany({ where: { id: runId, status: 'running' }, data: { status: 'failed' } });
+  return r.count === 1;
+};
+
 // ── Transitions ──────────────────────────────────────────────────────────────
 // Guarded status transition: only advance if currently in `from` AND owned by
 // the caller. Returns the row or null (stale/wrong-tenant) — route maps null→409.

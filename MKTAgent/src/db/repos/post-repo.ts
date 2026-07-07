@@ -80,6 +80,20 @@ export const claimForPublishOwned = async (id: string, ownerId: string): Promise
 export const updatePost = (id: string, data: Prisma.PostUpdateInput): Promise<Post> =>
   prisma.post.update({ where: { id }, data });
 
+// ── Self-healing reaper (Phase 04) ────────────────────────────────────────────
+// Posts stuck `posting` past the timeout: claimForPublish flipped ready→posting, then a
+// crash/redeploy before write-back left the row permanently `posting` — not editable, not
+// deletable, never re-picked. Aged by @updatedAt (touched by the claim). Owner-agnostic worker read.
+export const findStalePostingPosts = (before: Date): Promise<Post[]> =>
+  prisma.post.findMany({ where: { status: 'posting', updatedAt: { lt: before } } });
+
+// Reap a stuck `posting` post → `error` (guarded on `posting` so a concurrent write-back wins the
+// race). Makes it editable/deletable/re-runnable again. Returns the row (or null if already moved).
+export const reapPostingToError = async (id: string, reason: string): Promise<Post | null> => {
+  const r = await prisma.post.updateMany({ where: { id, status: 'posting' }, data: { status: 'error', error: reason.slice(0, 500), postedAt: new Date() } });
+  return r.count === 1 ? prisma.post.findUnique({ where: { id } }) : null;
+};
+
 export const setStatus = (id: string, status: PostStatus): Promise<Post> =>
   prisma.post.update({ where: { id }, data: { status } });
 

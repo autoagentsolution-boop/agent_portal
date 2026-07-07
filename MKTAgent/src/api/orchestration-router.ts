@@ -38,8 +38,10 @@ import {
   getFlowCostRollup,
   agentCostAverages,
   grantAutonomy,
+  markRunCrashed,
 } from '../db/repos/workflow-run-repo.ts';
 import { issueGrantToken, verifyGrantToken } from './autonomy-grant-token.ts';
+import { publishNodeStatus } from '../events/bus.ts';
 import { logRun } from '../db/client.ts';
 import { deleteArtifactsByNodes } from '../orchestration/executor/artifact-store.ts';
 import { getAgent } from '../orchestration/registry/agent-registry.ts';
@@ -249,8 +251,19 @@ const launchWorkflow = (
   plan: WorkflowPlan,
   opts: Parameters<typeof runWorkflow>[4] = {},
 ): void => {
-  void runWorkflow(runId, ownerId, goal, plan, opts).catch((e) => {
-    logger.error('wf_execute_detached_failed', { runId, error: String(e instanceof Error ? e.message : e) });
+  void runWorkflow(runId, ownerId, goal, plan, opts).catch(async (e) => {
+    const msg = String(e instanceof Error ? e.message : e);
+    logger.error('wf_execute_detached_failed', { runId, error: msg });
+    // Don't swallow (Phase 04 / B#2): a reject here means the run threw OUTSIDE the per-node
+    // try/catch → it's wedged `running`. Surface it as `failed` so Atria/the UI sees the real
+    // outcome instead of a hung HTTP 200. Best-effort; the reaper backstops a truly-dead process.
+    try {
+      if (await markRunCrashed(runId, `executor crashed: ${msg}`)) {
+        publishNodeStatus(ownerId, { runId, nodeId: '-', agentId: '-', status: 'failed', error: 'executor crashed' });
+      }
+    } catch (e2) {
+      logger.error('wf_execute_detached_recover_failed', { runId, error: String(e2).slice(0, 160) });
+    }
   });
 };
 

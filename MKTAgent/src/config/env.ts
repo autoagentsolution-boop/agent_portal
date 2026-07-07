@@ -58,6 +58,16 @@ const schema = z.object({
   // gate (e.g. the Veo video step, ≈$0.40/8s). Above this, the run parks + notifies for a human
   // OK. 0 → never auto-waive any cost gate (fail-closed). Default $2 allows one video autonomously.
   ATRIA_AUTONOMY_COST_CEILING_USD: z.coerce.number().nonnegative().default(2),
+  // Self-healing reaper (Phase 04): a cron that rescues rows stuck in a transient state after a
+  // crash/redeploy — no row may sit `posting`/`running` forever. OFF by default (like the other
+  // workers). Timeouts are minutes and set GENEROUSLY above real max durations to avoid false
+  // reaping; the video node gets a bigger budget (Veo render is minutes × N clips).
+  ENABLE_REAPER_CRON: z.coerce.boolean().default(false),
+  REAPER_POSTING_TIMEOUT_MIN: z.coerce.number().positive().default(10), // post stuck `posting`
+  REAPER_RUN_TIMEOUT_MIN: z.coerce.number().positive().default(20),     // run stuck `running`
+  REAPER_NODE_TIMEOUT_MIN: z.coerce.number().positive().default(10),    // non-video node `running`
+  REAPER_VIDEO_NODE_TIMEOUT_MIN: z.coerce.number().positive().default(30), // video node `running`
+  REAPER_ORPHAN_TTL_DAYS: z.coerce.number().positive().default(7),      // needs_approval/planned surfacing
 
   // Lead capture
   MKT_LEAD_WEBHOOK_SECRET: z.string().default(''),
