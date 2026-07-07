@@ -6,6 +6,27 @@ aspiration.
 
 ## Now
 
+### Atria: Campaign Intelligence + Content Quality + Impact — ✅ DONE (2026-07-08, `953903e`)
+Atria goes from a single-post generator to a **proactive campaign strategist** with **expert +
+user-customizable content quality** and a **value/ROI report**. 8 phases, fully additive (single-post
+planning byte-identical). Plan `plans/260708-0108-atria-campaign-intelligence-quality-impact/`.
+- **Quality** — one `build-agent-prompt` builder (expert `promptSections` + language + user
+  instructions + JSON contract-wins-last); `mkt_instruction` layered user instructions injected into
+  every agent + copy-gen; `source:memory` seam for the future Memory Agent.
+- **Campaign** — `campaign_strategist` produces an editable `content_calendar`; materializer turns
+  approved slots into scheduled Posts (activates dormant `postingWindow`/`timezone`); one
+  campaign-scoped double-confirm grant runs the whole month, per-post guardrails intact.
+- **Proactive** — no-PII signal reader + deterministic suggestions (plan-a-month / repeat-a-winner /
+  pitch Email / pitch Memory) + roadmap demand log.
+- **Impact** — real cost/output/leads (reconciles with Usage) + clearly-labeled saved-vs-agency
+  estimate; per-campaign + per-period.
+- **UI** — ✦ Atria hub (suggestions, instruction editor, impact) + calendar review mounted on the
+  strategist gate (materialize → grant with upfront cost).
+- Status: tsc (server+web) green; 9 verify suites + regressions green; pushed. **Pending:** live-auth
+  browser e2e + real-Gemini quality smoke — `docs/atria-campaign-intelligence-e2e.md`.
+- **v2 (out of scope):** real platform reach metrics (Analytics agent), Memory Agent as a runner
+  (learned instructions), capability/LLM-driven planner, roadmap agents as runners.
+
 ### Flow-as-Template · Post-as-Instance — ✅ DONE (2026-07-02, not committed)
 The 3-tier IA rework: **Flow = frozen blueprint** (the approved agent "team", read-only,
 never executed), **Campaign = strategy grouping**, **Post = execution instance** (clones

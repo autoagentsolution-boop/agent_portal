@@ -3,6 +3,69 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-08
+
+### Feat: Atria campaign intelligence + content quality + impact — 8 phases (commit `953903e`)
+Plan `plans/260708-0108-atria-campaign-intelligence-quality-impact/`. Turns Atria from a single-post
+generator into a proactive campaign strategist with expert + user-customizable content quality and a
+value/ROI report. Fully additive — single-post planning is byte-identical. tsc (server + web) green;
+9 new DRY-RUN verify suites + executor/planner/campaign-intent/refine regressions green.
+
+**Content quality (Phases 01–02) — the foundation, lifts every agent.**
+- `orchestration/prompts/build-agent-prompt.ts` (NEW): ONE builder assembles each agent's system
+  prompt in layers — expert base (registry `promptSections`) → language → user instructions →
+  a strict JSON **output contract that is appended LAST so it always wins**. Flat prompts in
+  `agent-prompts.ts` refactored into `AGENT_OUTPUT_CONTRACTS` (schemas identical → no runner break).
+  ideation/strategy/storyboard runners route through it; expert `promptSections` authored for each.
+- `mkt_instruction` table (migration `atria_user_instructions`): layered, ChatGPT-style user
+  instructions — scope `workspace|campaign|post`, optional `agentId`, `source user|memory` (the
+  Memory-Agent seam). `resolveInstructions` composes most-general→most-specific + agent-scoped;
+  injected into EVERY agent via the builder AND copy-gen. Hard guardrails still win. `/instructions`
+  CRUD. `build-agent-prompt`, `resolve-instructions`, `instruction-repo`, `instructions-router`.
+
+**Campaign engine (Phases 03–05).**
+- GoalSpec `campaignScope (single|campaign|spotlight, default single)` + `duration`/`cadence`;
+  deterministic analyzer detects multi-post intent NARROWLY (bare "campaign" stays single so the
+  existing rich single-post flow is untouched); Gemini analyzer unions the deterministic scope.
+- `content_calendar` artifact + `campaign_strategist` agent (Intelligence, `gate:selection`) — a
+  research-backed, editable N-slot calendar. Scope-aware planner: campaign → content_search? →
+  ideation → strategy → campaign_strategist, then STOPS (per-post work belongs to the posts).
+- `scheduler/schedule-calendar.ts` (pure, tz-aware via Intl, injectable `now`) ACTIVATES the dormant
+  `Campaign.postingWindow`+`timezone`. `master/campaign-materializer.ts`: each slot → single-scope
+  GoalSpec → `planWorkflow` → instance run + Post(`runId`, `scheduledAt`, `assetType`). Idempotent
+  `POST /campaigns/:id/materialize` (sweeps un-published, never touches a posted post).
+- Campaign-scoped HMAC double-confirm grant (`autonomy-grant-token`): one confirm flips EVERY
+  materialized post's run to `atria` in one audited action (`grantAutonomyForCampaign`), per-post
+  guardrails unchanged. Upfront whole-calendar cost estimate + per-campaign ceiling (`campaign-grant`).
+  `POST /campaigns/:id/grant-autonomy` + `GET /campaigns/:id/status` (derived dot rollup).
+
+**Proactivity + proof (Phases 06–07).**
+- `orchestration/atria/signal-reader.ts` (no PII — structural counts only) + `atria-suggestions.ts`
+  (deterministic rules → ranked, explainable nudges: plan-a-month, repeat-a-winner, pitch Email,
+  pitch Memory). `registry/roadmap-agents.ts` + `mkt_roadmap_demand` log (migration
+  `atria_roadmap_demand`). `GET /atria/suggestions` (dedups pitches), `/atria/roadmap-demand`.
+- `impact/impact-metrics.ts` (REAL: cost from the `mkt_llm_usage` ledger, published posts, media,
+  leads by `sourceProduct`, run minutes — reconciles with the Usage page) + `impact/value-model.ts`
+  (CONFIGURABLE agency baseline → saved $/time + estimated reach, all clearly LABELED as estimates).
+  env `IMPACT_*` constants. `GET /campaigns/:id/impact` + `/impact?period=`.
+
+**UI v2 (Phase 08).**
+- `web`: client DTOs/methods; components `instruction-editor`, `atria-suggestion-cards`,
+  `content-calendar` (edit → materialize → 2-step grant with upfront cost), `campaign-command-view`
+  (8s poll board), `impact-report`, `atria-hub-page`. New sidebar page ✦ **Atria**.
+- Calendar mounted into the strategist gate: `SavedFlowDetail` special-cases the
+  `campaign_strategist` selection gate → renders the calendar. Bridge `POST
+  /orchestration/runs/:id/materialize-calendar` creates the campaign FROM the run goal, materializes,
+  resolves the gate, returns `campaignId` (UI then grants). `artifact-format` renders the calendar.
+
+**Deviations from plan (deliberate):** did NOT add a `campaign_plan` run `kind` — `WorkflowRun.kind`
+is already `template|instance` with dependent queries; campaign plans are identified by the
+`content_calendar` artifact instead. Per-campaign leads attributed by `sourceProduct` (`mkt_lead`
+has no campaign FK). Campaign cost ceiling = per-run ceiling × post count.
+
+**Open:** live-auth browser e2e (Google login) — see `docs/atria-campaign-intelligence-e2e.md`; real-
+Gemini smoke of the strategist + the expert-prompt quality lift (verifies use stubs, zero spend).
+
 ## 2026-07-07
 
 ### Feat: Atria Command Center page (Phase 04) + agency-agents prompt mining (Phase 05-B)
