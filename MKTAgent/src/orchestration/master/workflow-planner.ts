@@ -68,6 +68,15 @@ export const planWorkflow = (goal: GoalSpec): PlanResult => {
     return { ok: false, error: 'no_agents_selected', detail: ['goal produced no output requirements'] };
   }
 
+  // Publish-only goal (Phase 05 / D-F5): needsPublishing selected the publisher but no content
+  // agent was — nothing produces the `content_concept` the publisher requires, so validatePlan
+  // would fail with a cryptic `plan_unsatisfiable_inputs`. Surface an ACTIONABLE error instead:
+  // a publish needs something to publish. (A future "publish existing media" path would add a
+  // source node here; today we ask the user to include content.)
+  if (selected.includes('publisher') && !selected.includes('concept_writer')) {
+    return { ok: false, error: 'publish_only_no_content', detail: ['A publish goal needs content — add a text post, image, or video for the publisher to send.'] };
+  }
+
   const placed: Array<{ nodeId: string; def: AgentDefinition }> = [];
   const nodes: WorkflowNode[] = [];
 

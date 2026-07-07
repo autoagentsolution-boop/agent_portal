@@ -151,7 +151,12 @@ export const AGENTS: AgentDefinition[] = [
     description: 'Publish the post to targeted platforms (live via publish path).',
     implStatus: 'live',
     requires: ['content_concept'],
-    optional: ['infographic_brief', 'video_prompt'],
+    // `storyboard` is optional-but-DAG-visible (Phase 05 / H3): a carousel post's media is
+    // attached as a side-effect inside runStoryboard, invisible to the DAG's input check. Declaring
+    // it here makes the planner derive a publisher→storyboard edge whenever storyboard is in the
+    // plan, so the publisher can never run before its carousel media exists (the blank-carousel
+    // hazard once execution parallelizes). Optional → no edge when there's no storyboard node.
+    optional: ['infographic_brief', 'video_prompt', 'storyboard'],
     produces: ['publish_result'],
     requiresConnection: true,
     requiresApproval: true, // external-write gate (brief §11.12)

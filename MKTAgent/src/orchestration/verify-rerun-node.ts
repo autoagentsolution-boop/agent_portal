@@ -51,14 +51,12 @@ async function main(): Promise<void> {
     const run = await createRun({ ownerId: user.id, goal, plan: planned.plan, status: 'planned' });
     await createNodes(run.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
 
-    // Run to the publisher gate, then approve to complete.
+    // Run to the publisher gate — the REAL rerun use case is iterating BEFORE publishing, so the
+    // post is `ready` (concept auto-approved review→ready), NOT yet posted. We do NOT publish here.
     const r1 = await runWorkflow(run.id, user.id, goal, planned.plan, opts);
     check('first pass halts needs_approval', r1.status === 'needs_approval', r1);
-    let full = await getRunWithNodes(run.id, user.id);
+    const full = await getRunWithNodes(run.id, user.id);
     const pub = full!.nodes.find((n) => n.agentId === 'publisher')!;
-    await runWorkflow(run.id, user.id, goal, planned.plan, { ...opts, approveNodeId: pub.nodeId });
-    full = await getRunWithNodes(run.id, user.id);
-    check('run completed after approve', full!.status === 'completed', full!.status);
 
     const concept = full!.nodes.find((n) => n.agentId === 'concept_writer')!;
     const info = full!.nodes.find((n) => n.agentId === 'infographic')!;
@@ -94,6 +92,24 @@ async function main(): Promise<void> {
     check('image gen NOT re-invoked (deliberate spend)', imageRuns === imageRunsBefore, { imageRuns, imageRunsBefore });
     check('publisher still pending (not re-published)', after!.nodes.find((n) => n.nodeId === pub.nodeId)!.status === 'pending');
     check('fresh content_concept artifact exists', after!.artifacts.some((a) => a.nodeId === concept.nodeId && a.type === 'content_concept'));
+
+    // ── Posted-guard (Phase 05 / B-F8 + H2): re-running concept on an ALREADY-PUBLISHED post must
+    // REFUSE — no silent posted→brief that would open a re-publish path. Drive a fresh run all the
+    // way to `posted`, then attempt to re-run concept: the executor must FAIL the node, not rewind.
+    const run2 = await createRun({ ownerId: user.id, goal, plan: planned.plan, status: 'planned' });
+    await createNodes(run2.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
+    await runWorkflow(run2.id, user.id, goal, planned.plan, opts); // → needs_approval at publisher
+    const pub2 = (await getRunWithNodes(run2.id, user.id))!.nodes.find((n) => n.agentId === 'publisher')!;
+    await runWorkflow(run2.id, user.id, goal, planned.plan, { ...opts, approveNodeId: pub2.nodeId }); // publish → posted
+    const posted2 = await getRunWithNodes(run2.id, user.id);
+    const post2Id = (posted2!.artifacts.find((a) => a.type === 'content_concept')!.data as { postId?: string }).postId!;
+    check('run2 post is posted (setup)', (await prisma.post.findUnique({ where: { id: post2Id } }))?.status === 'posted');
+    // Reset concept + downstream (as the endpoint would) and try to re-run concept on the posted post.
+    const concept2 = posted2!.nodes.find((n) => n.agentId === 'concept_writer')!;
+    await resetNodes(run2.id, user.id, [concept2.nodeId, ...collectDownstream(posted2!.nodes, concept2.nodeId)]);
+    const rrPosted = await runWorkflow(run2.id, user.id, goal, planned.plan, { ...opts, rerunOnly: concept2.nodeId });
+    check('re-run concept on POSTED post FAILS (no silent un-publish)', rrPosted.status === 'failed', rrPosted);
+    check('post stays posted (not rewound to brief)', (await prisma.post.findUnique({ where: { id: post2Id } }))?.status === 'posted');
   } finally {
     await prisma.user.deleteMany({ where: { id: user.id } });
     console.log('cleanup: throwaway tenant removed');

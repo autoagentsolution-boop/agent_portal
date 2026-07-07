@@ -41,6 +41,7 @@ import {
   markRunCrashed,
 } from '../db/repos/workflow-run-repo.ts';
 import { issueGrantToken, verifyGrantToken } from './autonomy-grant-token.ts';
+import { getPostByRunId } from '../db/repos/post-repo.ts';
 import { publishNodeStatus } from '../events/bus.ts';
 import { logRun } from '../db/client.ts';
 import { deleteArtifactsByNodes } from '../orchestration/executor/artifact-store.ts';
@@ -380,6 +381,22 @@ orchestrationRouter.post('/runs/:id/rerun-node/:nodeId', asyncHandler(async (req
   // Reset the target + everything downstream of it (now stale), and drop their artifacts.
   const downstream = collectDownstream(full.nodes, node.nodeId);
   const toReset = [node.nodeId, ...downstream];
+
+  // Already-published guard (Phase 05 / H2): if the reset chain includes the publisher and the
+  // attached post is already live, refuse — re-running would reach a re-pending publisher and
+  // RE-POST a live post. Regenerating content for a posted post means creating a NEW post, not
+  // rewinding the published one. (Re-publishing intentionally is a deliberate, separate action.)
+  const resetHitsPublisher = toReset.some((nid) => {
+    const n = byId.get(nid);
+    return n && getAgent(n.agentId as Parameters<typeof getAgent>[0])?.requiresConnection;
+  });
+  if (resetHitsPublisher) {
+    const post = await getPostByRunId(full.id);
+    if (post && (post.status === 'posted' || post.status === 'partial' || post.status === 'posting')) {
+      return fail(res, 409, 'already_posted', 'This post is already published — re-running would risk re-posting it. Create a new post to iterate on the content.');
+    }
+  }
+
   await deleteArtifactsByNodes(full.id, req.userId!, toReset);
   await resetNodes(full.id, req.userId!, toReset);
 

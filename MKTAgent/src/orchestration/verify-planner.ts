@@ -100,12 +100,33 @@ const mkGoal = (outputs: Partial<GoalSpec['outputs']>, platforms: string[] = ['f
   }
 }
 
+// Variant F — carousel (storyboard) + publishing: publisher MUST depend on storyboard so it can
+// never run before its carousel media (Phase 05 / H3 — the blank-carousel hazard under parallel exec).
+{
+  console.log('Variant F: carousel storyboard → publisher edge');
+  const r = planWorkflow(mkGoal({ needsTextPost: true, needsStoryboard: true, needsPublishing: true }));
+  check('plan ok', r.ok, r);
+  if (r.ok) {
+    const sb = r.plan.nodes.find((n) => n.agentId === 'storyboard')!;
+    const pub = r.plan.nodes.find((n) => n.agentId === 'publisher')!;
+    check('publisher depends_on storyboard (no blank carousel)', pub.dependsOn.includes(sb.nodeId), pub.dependsOn);
+  }
+}
+
 // Negative — empty outputs → recoverable error, no throw.
 {
   console.log('Negative: empty goal');
   const r = planWorkflow(mkGoal({ needsTextPost: false, needsPublishing: false }));
   check('returns recoverable error (not throw)', !r.ok, r);
   if (!r.ok) check('error = no_agents_selected', r.error === 'no_agents_selected', r.error);
+}
+
+// Negative — publish-only (no content) → actionable error, not cryptic plan_unsatisfiable_inputs (D-F5).
+{
+  console.log('Negative: publish-only goal');
+  const r = planWorkflow(mkGoal({ needsTextPost: false, needsPublishing: true }));
+  check('returns recoverable error (not throw)', !r.ok, r);
+  if (!r.ok) check('error = publish_only_no_content', r.error === 'publish_only_no_content', r.error);
 }
 
 console.log(failures === 0 ? '\nPASS — all planner checks green' : `\nFAIL — ${failures} check(s) failed`);

@@ -6,6 +6,8 @@
 import { prisma } from '../client.ts';
 import { Prisma } from '../../../prisma/generated/prisma/client.ts';
 import { creditsFromTokens } from '../../cost/credits.ts';
+import { getAgent } from '../../orchestration/registry/agent-registry.ts';
+import type { RunnableAgentId } from '../../orchestration/registry/agent-types.ts';
 import type {
   WorkflowRun,
   WorkflowNodeRun,
@@ -105,6 +107,14 @@ export const cloneTemplateRun = async (
   const template = await prisma.workflowRun.findFirst({ where: { id: templateId, ownerId, kind: 'template' } });
   if (!template || !template.plan) return null;
   const plan = template.plan as { nodes: Array<{ nodeId: string; agentId: string; dependsOn: string[] }> };
+  // Registry re-validation (Phase 05 / D#8): a frozen template captured agentIds that may since have
+  // been removed/renamed in the live registry. Cloning it verbatim would create an instance that
+  // crashes at execute time (getAgent → undefined). Fail LOUD with the offending agent(s) instead —
+  // the flow needs re-authoring, not a silent broken post.
+  const missing = [...new Set(plan.nodes.map((n) => n.agentId).filter((id) => !getAgent(id as RunnableAgentId)))];
+  if (missing.length) {
+    throw new Error(`template references removed agent(s): ${missing.join(', ')} — re-create this flow`);
+  }
   const instance = await prisma.workflowRun.create({
     data: {
       ownerId,

@@ -100,6 +100,18 @@ async function main(): Promise<void> {
     check('template untouched after clone (still template/locked)', templateStill?.kind === 'template' && templateStill.locked === true);
     check('template has NO artifacts', (templateStill?.artifacts.length ?? 0) === 0, templateStill?.artifacts.length);
 
+    // ── 3b. Registry re-validation on clone (Phase 05 / D#8): a template referencing an agent that
+    // no longer exists in the registry must fail LOUD on clone, not create a broken instance.
+    const ghostTemplate = await prisma.workflowRun.create({
+      data: { ownerId: user.id, goal: {}, plan: { nodes: [{ nodeId: 'n1', agentId: 'ghost_agent', dependsOn: [] }] }, status: 'template', kind: 'template', locked: true },
+    });
+    let cloneThrew = false;
+    let cloneErr = '';
+    try { await cloneTemplateRun(ghostTemplate.id, user.id, { product: 'x', platforms: ['facebook'] }); }
+    catch (e) { cloneThrew = true; cloneErr = String(e instanceof Error ? e.message : e); }
+    check('clone of template with removed agent THROWS (not silent)', cloneThrew, cloneErr);
+    check('clone error names the removed agent', /ghost_agent/.test(cloneErr), cloneErr);
+
     // ── 4. Create Post FOR the instance, then execute → no dup campaign/post ──
     const post = await createPostForOwner({
       campaignId: campaign.id, ownerId: user.id, runId: instance!.id,

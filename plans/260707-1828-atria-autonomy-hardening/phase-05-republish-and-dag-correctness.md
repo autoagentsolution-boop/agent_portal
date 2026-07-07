@@ -1,6 +1,8 @@
 # Phase 05 — Republish Safety + DAG Correctness  [H2, H3, concept-reset, cloneTemplateRun, publish-only]
 
-**Priority:** HIGH. **Status:** planned. **Depends on:** none (independent).
+**Priority:** HIGH. **Status:** DONE 2026-07-08 (tsc + verify-planner/rerun-node/template-instance/executor/per-platform/concept-gate/storyboard-dep green). NOT committed.
+**Implemented:** (H3) publisher.optional += `storyboard` → planner derives publisher→storyboard edge for carousel (no blank-carousel under parallel exec). (H2+B-F8) `/rerun-node` refuses when reset chain hits publisher AND post posted/partial/posting (409 already_posted); concept runner existing-post THROWS on posted/partial/posting instead of silent `posted→brief` (backstop). Note: Phase 02 runPublisher already blocks the actual double-publish (claim only from `ready`); this stops the state-rewind that ENABLED it. (D#8) cloneTemplateRun validates every node agentId vs live registry → throws `template references removed agent(s): X` (was silent broken instance). (D-F5) planWorkflow returns actionable `publish_only_no_content` when publisher selected w/o concept_writer.
+**Verify proves:** carousel publisher→storyboard edge; rerun on POSTED post FAILS + post stays posted; removed-agent clone throws naming the agent; publish-only actionable error. **⚠ Rewrote verify-rerun-node** main case to iterate BEFORE publish (post `ready`) since the old case approved-to-posted-then-reran = the B-F8 bug it now blocks.
 **Findings:** B#4, D#1, B-F8, D#8, D-F5. Reports: state-machine-qa, workflow-registry.
 
 ## Defects

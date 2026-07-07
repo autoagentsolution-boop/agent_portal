@@ -165,8 +165,16 @@ const runConceptWriterForExistingPost = async (ctx: RunnerContext, postId: strin
     return conceptFromExistingCopy(ctx, post);
   }
 
+  // Never silently un-publish (Phase 05 / B-F8): a re-run of concept on an ALREADY-PUBLISHED post
+  // used to reset it `posted → brief`, discarding the live-post state and opening a re-publish path
+  // (H2). Refuse instead — the /rerun-node API gates this too, so reaching here is a defense-in-depth
+  // backstop. Regenerating content for an already-posted post means creating a NEW post, not
+  // rewinding the published one.
+  if (post.status === 'posted' || post.status === 'partial' || post.status === 'posting') {
+    throw new Error(`concept_writer: refusing to re-run on an already-published post (status=${post.status})`);
+  }
   // Reset to `brief` so copy-gen runs whether this is the first execution (already brief)
-  // or a re-run of a post that reached review/ready/posted (would otherwise be refused as
+  // or a re-run of a post that reached review/ready (would otherwise be refused as
   // not_generatable). This is the "regenerate this step" semantics for the concept node.
   if (post.status !== 'brief' && post.status !== 'rework') {
     await setPostStatus(post.id, 'brief');
