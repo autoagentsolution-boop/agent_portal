@@ -133,6 +133,10 @@ export const createPostFromAgentBody = z.object({
   // Follow-up answers to the clarify questions (slot → value). Present on the SECOND call
   // after the modal collected the missing brief fields. Absent → first (gating) call.
   answers: z.record(z.string(), z.union([z.string(), z.array(z.string())])).optional(),
+  // Product library entry to ground this post on (feedback #4). Lets the agent-create path pick a
+  // stored product — reusing a flow with a DIFFERENT product without re-uploading. null/absent →
+  // inherit the campaign default. The FK wins over campaign.brandContext in every grounding chain.
+  productKnowledgeId: z.string().uuid().nullable().optional(),
 });
 export type CreatePostFromAgentBody = z.infer<typeof createPostFromAgentBody>;
 

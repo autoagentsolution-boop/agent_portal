@@ -16,6 +16,7 @@ import {
 } from '../db/repos/post-repo.ts';
 import { buildGeminiBody, buildVariantsBody } from './prompt.ts';
 import { resolveCopyConfig } from './resolve-config.ts';
+import { resolveLinkedKnowledge } from '../db/repos/product-knowledge-repo.ts';
 import { callGemini } from './gemini.ts';
 import { parseGeminiResponse, parseVariants, type CopyVariants } from './parse.ts';
 import { logRun } from '../db/client.ts';
@@ -43,9 +44,12 @@ async function processCopyGen(
   post: PostWithCampaignOwner,
   callFn: GeminiFn,
 ): Promise<CopyGenResult> {
+  // Ground copy on the SELECTED product (post-level FK wins over the campaign default); null →
+  // buildGeminiBody falls back to campaign.brandContext. Brings copy to parity with image/video.
+  const knowledge = await resolveLinkedKnowledge(post.ownerId, post.productKnowledgeId, post.campaign.productKnowledgeId);
   let body: ReturnType<typeof buildGeminiBody>;
   try {
-    body = buildGeminiBody(post);
+    body = buildGeminiBody(post, undefined, knowledge);
   } catch (e) {
     // Bad brief (e.g. campaign missing product) → terminal error, won't fix on retry.
     const msg = e instanceof Error ? e.message : String(e);
@@ -145,7 +149,8 @@ export async function refineForPost(
     const current = post.copy as { body: string; threads: string; x: string } | null;
     if (!current) return { picked: false, postId, reason: 'no_copy' };
 
-    const body = buildGeminiBody(post, { instruction, current });
+    const knowledge = await resolveLinkedKnowledge(post.ownerId, post.productKnowledgeId, post.campaign.productKnowledgeId);
+    const body = buildGeminiBody(post, { instruction, current }, knowledge);
     const raw = await callFn(body);
     // Record once per physical refine call (distinct call site from processCopyGen's — a
     // refine is its own Gemini request, not a re-use of the original generation).
@@ -189,7 +194,8 @@ export async function generateVariantsForPost(
     const post = await getPostForCopyGen(postId, ownerId);
     if (!post) return { picked: false, reason: 'not_found' };
     if (post.status !== 'brief' && post.status !== 'rework') return { picked: false, postId, reason: 'not_generatable' };
-    const raw = await callFn(buildVariantsBody(post, n));
+    const knowledge = await resolveLinkedKnowledge(post.ownerId, post.productKnowledgeId, post.campaign.productKnowledgeId);
+    const raw = await callFn(buildVariantsBody(post, n, knowledge));
     // Record once per physical variants call — this is the concept_writer DAG node's ONLY
     // Gemini call (N variants generated in one request), so one ledger row per node run.
     await recordGeminiCall(raw, { ownerId: post.ownerId, surface: 'copygen', model: env.GEMINI_MODEL, refId: post.id });

@@ -369,6 +369,24 @@
               "null"
             ]
           },
+          "leadCollectorStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "leadCollectorExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "versionCount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "scheduledAt": {
             "type": [
               "string",
@@ -422,6 +440,9 @@
           "productKnowledgeId",
           "referenceImage",
           "leadCaptureKeyword",
+          "leadCollectorStatus",
+          "leadCollectorExpiresAt",
+          "versionCount",
           "scheduledAt",
           "postUrls",
           "error",
@@ -613,6 +634,24 @@
               "null"
             ]
           },
+          "leadCollectorStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "leadCollectorExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "versionCount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "scheduledAt": {
             "type": [
               "string",
@@ -772,6 +811,9 @@
           "productKnowledgeId",
           "referenceImage",
           "leadCaptureKeyword",
+          "leadCollectorStatus",
+          "leadCollectorExpiresAt",
+          "versionCount",
           "scheduledAt",
           "postUrls",
           "error",
@@ -1132,6 +1174,13 @@
                 }
               ]
             }
+          },
+          "productKnowledgeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         },
         "required": [
@@ -1356,6 +1405,24 @@
                   "null"
                 ]
               },
+              "leadCollectorStatus": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "leadCollectorExpiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "versionCount": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
               "scheduledAt": {
                 "type": [
                   "string",
@@ -1409,6 +1476,9 @@
               "productKnowledgeId",
               "referenceImage",
               "leadCaptureKeyword",
+              "leadCollectorStatus",
+              "leadCollectorExpiresAt",
+              "versionCount",
               "scheduledAt",
               "postUrls",
               "error",
@@ -1552,6 +1622,14 @@
               "null"
             ],
             "maxLength": 80
+          },
+          "versionCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 5
           },
           "scheduledAt": {
             "type": [
@@ -1980,6 +2058,9 @@
               "costUsd": {
                 "type": "number"
               },
+              "credits": {
+                "type": "number"
+              },
               "runs": {
                 "type": "number"
               }
@@ -2004,6 +2085,9 @@
                 "type": "number"
               },
               "costUsd": {
+                "type": "number"
+              },
+              "credits": {
                 "type": "number"
               },
               "runs": {

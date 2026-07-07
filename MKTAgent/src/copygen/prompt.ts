@@ -31,18 +31,19 @@ export function lengthSpecFor(lengthRaw: string): string {
 
 // Persona line: business uses the resolved brand voice/context; personal omits any
 // company persona. Returned as an array of system lines spliced into the prompt.
-function personaLines(cfg: ResolvedCopyConfig): string[] {
+function personaLines(cfg: ResolvedCopyConfig, productFacts: string | null): string[] {
   if (cfg.brandVoice) {
     const who = cfg.brandName ? `${cfg.brandName}` : 'the brand';
     return [
       `You are a social-media copywriter for ${who}. Brand voice: ${cfg.brandVoice}.`,
-      cfg.brandContext ? `Brand context (facts you may use, do not invent beyond these): ${cfg.brandContext}.` : '',
+      productFacts ? `Brand context (facts you may use, do not invent beyond these): ${productFacts}.` : '',
       'Write ONE high-engagement Facebook/Threads post. Write like a HUMAN sharing, NOT a brand advertising.',
     ].filter(Boolean);
   }
   // Personal / no-brand: human sharing, no company persona, no forced brand hashtags.
   return [
     'You are a real person sharing a genuine post on social media — NOT a brand, NOT an advertiser.',
+    productFacts ? `Product facts you may reference (do not invent beyond these): ${productFacts}.` : '',
     'Write ONE high-engagement Facebook/Threads post in a natural, personal voice. No company persona.',
   ];
 }
@@ -55,7 +56,10 @@ export interface RefineDirective {
   current: { body: string; threads: string; x: string };
 }
 
-export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDirective): GeminiRequestBody {
+// `knowledge` (feedback #4): the resolved product-library grounding — the post-selected entry wins
+// over the campaign default (resolved in service.ts). When present it OVERRIDES campaign.brandContext
+// so a per-post product choice actually reaches the copy (previously copy read only brandContext).
+export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDirective, knowledge?: string | null): GeminiRequestBody {
   const product = (post.campaign.product ?? '').trim();
   // Post-level angle overrides the campaign's (per-post strategy).
   const angle = (post.angle ?? post.campaign.angle ?? '').trim();
@@ -65,6 +69,9 @@ export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDire
   if (!product) throw new Error('mkt_copygen: campaign missing product');
 
   const cfg = resolveCopyConfig(post);
+  // Selected product library entry wins; campaign brand context is the fallback (matches the media
+  // grounding chain so copy + image/video ground on the SAME product).
+  const productFacts = (knowledge ?? '').trim() || cfg.brandContext;
   const lengthSpec = lengthSpecFor(cfg.lengthRaw);
   const lang = cfg.language;
   const hashtagRule = cfg.brandVoice
@@ -72,7 +79,7 @@ export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDire
     : 'end with 2-4 relevant, natural hashtags (no forced brand tags)';
 
   const system = [
-    ...personaLines(cfg),
+    ...personaLines(cfg, productFacts),
     `LANGUAGE: write EVERY variant (body, threads, x) in ${lang}. Do not mix languages; keep it natural and idiomatic in ${lang}.`,
     'FORMAT (hard guardrail): NO HTML/markdown (no <br>, <b>, **). Real newlines only to separate lines. Short sentences (<20 words). Generous blank lines between lines for mobile readability.',
     `STRUCTURE for "body": first-line HOOK MAX 50 CHARACTERS (including emoji & punctuation) — a concrete number/situation, a contrarian line, or a pain admission; no rambling, no product name in the hook. Then: blank line; a deeper re-hook; blank line; 2-3 emoji-led body lines about the real human/operational RESULT (not a feature list); blank line; 1 closing line; 1 SPECIFIC discussion question (avoid "what do you think?"); 1 single CTA; final line ${hashtagRule}.`,
@@ -129,8 +136,8 @@ export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDire
 // Multi-variant request (concept selection): reuse the single-copy prompt's system +
 // guardrails, but ask for N DISTINCT versions the user can choose from, and return an array.
 // Each variant honors every hard guardrail; they must differ in hook/angle, not be rephrasings.
-export function buildVariantsBody(post: PostWithCampaignOwner, n: number): GeminiRequestBody {
-  const base = buildGeminiBody(post);
+export function buildVariantsBody(post: PostWithCampaignOwner, n: number, knowledge?: string | null): GeminiRequestBody {
+  const base = buildGeminiBody(post, undefined, knowledge);
   const baseUser = base.contents[0]?.parts[0]?.text ?? '';
   const user =
     baseUser +

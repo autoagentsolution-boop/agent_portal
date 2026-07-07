@@ -12,6 +12,7 @@ export interface ProductKnowledgeInput {
   brandVoice?: string | null;
   language?: string | null;
   sourceDocs?: string[];
+  referenceImage?: string | null;
 }
 
 export const createProductKnowledge = (input: ProductKnowledgeInput): Promise<ProductKnowledge> =>
@@ -24,6 +25,7 @@ export const createProductKnowledge = (input: ProductKnowledgeInput): Promise<Pr
       brandVoice: input.brandVoice ?? null,
       language: input.language ?? null,
       sourceDocs: input.sourceDocs ?? [],
+      referenceImage: input.referenceImage ?? null,
     },
   });
 
@@ -48,6 +50,7 @@ export const updateProductKnowledge = async (
       ...(patch.brandVoice !== undefined ? { brandVoice: patch.brandVoice } : {}),
       ...(patch.language !== undefined ? { language: patch.language } : {}),
       ...(patch.sourceDocs !== undefined ? { sourceDocs: patch.sourceDocs } : {}),
+      ...(patch.referenceImage !== undefined ? { referenceImage: patch.referenceImage } : {}),
     },
   });
   return r.count === 1 ? prisma.productKnowledge.findFirst({ where: { id, ownerId } }) : null;
@@ -58,7 +61,7 @@ export const updateProductKnowledge = async (
 export const mergeProductKnowledge = async (
   id: string,
   ownerId: string,
-  add: { productDetails: string; profile?: unknown; brandVoice?: string | null; language?: string | null; sourceDocs?: string[] },
+  add: { productDetails: string; profile?: unknown; brandVoice?: string | null; language?: string | null; sourceDocs?: string[]; referenceImage?: string | null },
 ): Promise<ProductKnowledge | null> => {
   const cur = await prisma.productKnowledge.findFirst({ where: { id, ownerId } });
   if (!cur) return null;
@@ -68,6 +71,8 @@ export const mergeProductKnowledge = async (
     brandVoice: add.brandVoice ?? cur.brandVoice,
     language: add.language ?? cur.language,
     sourceDocs: [...cur.sourceDocs, ...(add.sourceDocs ?? [])],
+    // A newly uploaded image replaces the reference; otherwise keep the existing one.
+    referenceImage: add.referenceImage ?? cur.referenceImage,
   });
 };
 
@@ -87,4 +92,18 @@ export const resolveLinkedKnowledge = async (
   if (!id) return null;
   const pk = await getProductKnowledge(id, ownerId);
   return pk?.productDetails?.trim() || null;
+};
+
+// Visual reference image from a linked library entry (feedback): a product image uploaded once at
+// 📚 Product Knowledge grounds infographic/storyboard for every post that selects that product.
+// Same post→campaign precedence as resolveLinkedKnowledge. Returns the `local:<path>` ref or null.
+export const resolveLinkedReferenceImage = async (
+  ownerId: string,
+  postPkId: string | null,
+  campaignPkId: string | null,
+): Promise<string | null> => {
+  const id = postPkId ?? campaignPkId;
+  if (!id) return null;
+  const pk = await getProductKnowledge(id, ownerId);
+  return pk?.referenceImage?.trim() || null;
 };

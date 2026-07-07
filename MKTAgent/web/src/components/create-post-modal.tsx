@@ -4,8 +4,8 @@
 //                          fields so the user never hand-fills the form. If it can't fill
 //                          the high-impact fields (angle/platforms/format) it ASKS first
 //                          (clarify view), then creates the post under THIS campaign.
-import { useState } from 'react';
-import { api, type PostDto, type Dto } from '../api/client';
+import { useEffect, useState } from 'react';
+import { api, type PostDto, type Dto, type ProductKnowledgeEntry } from '../api/client';
 
 type ClarifyQuestion = NonNullable<Dto['PostFromAgentDto']['questions']>[number];
 
@@ -25,6 +25,11 @@ export function CreatePostModal({ campaignId, notify, onManual, onCreated, onClo
   const [busy, setBusy] = useState(false);
   const [questions, setQuestions] = useState<ClarifyQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+  // Product library so an agent-created post can reuse a stored product (feedback #4) instead of
+  // re-describing it — pick here, or leave "Inherit from campaign" for the campaign default.
+  const [library, setLibrary] = useState<ProductKnowledgeEntry[]>([]);
+  const [knowledgeId, setKnowledgeId] = useState<string>('');
+  useEffect(() => { void api.listProductKnowledge().then((r) => { if (r.ok) setLibrary(r.data); }); }, []);
 
   // Finalize: post the message (+ answers when finishing a clarify round). A 200 with
   // questions switches to the clarify view; a 201 with a post closes + hands it up.
@@ -33,7 +38,7 @@ export function CreatePostModal({ campaignId, notify, onManual, onCreated, onClo
     if (text.length < 3) { notify('Describe the post first', 'err'); return; }
     setBusy(true);
     try {
-      const r = await api.createPostFromAgent(campaignId, text, withAnswers);
+      const r = await api.createPostFromAgent(campaignId, text, withAnswers, knowledgeId || null);
       if (!r.ok) { notify(`Create failed: ${r.error.error}`, 'err'); return; }
       if (r.data.questions?.length) {
         setQuestions(r.data.questions);
@@ -103,6 +108,16 @@ export function CreatePostModal({ campaignId, notify, onManual, onCreated, onClo
               placeholder="e.g. Short punchy Vietnamese Instagram post about our AI automation course, upbeat brand voice"
               rows={4}
             />
+            {library.length > 0 && (
+              <div className="field">
+                <label>Product knowledge (library)</label>
+                <select value={knowledgeId} disabled={busy} onChange={(e) => setKnowledgeId(e.target.value)}>
+                  <option value="">Inherit from campaign</option>
+                  {library.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+                <div className="help-text">Reuse a stored product profile — grounds copy + media on it without re-uploading.</div>
+              </div>
+            )}
             {busy && (
               <div className="chat-bubble agent thinking-bubble" role="status" aria-live="polite">
                 <span className="thinking-copy">Thinking</span>

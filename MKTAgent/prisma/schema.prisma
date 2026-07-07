@@ -314,6 +314,8 @@ model ProductKnowledge {
   brandVoice     String?  @map("brand_voice")
   language       String?
   sourceDocs     String[] @map("source_docs") // uploaded file names, for provenance
+  referenceImage String?  @map("reference_image") // local:<path> of an uploaded product image, reused
+                                                   // as the visual reference for infographic/storyboard
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

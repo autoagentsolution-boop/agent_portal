@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { ok, fail, parseOr422, asyncHandler } from './http.ts';
 import { analyzeDocuments, SUPPORTED_MIME, type UploadedDoc } from '../product-knowledge/analyze-documents.ts';
+import { saveProductReferenceImage, isImageMime } from '../product-knowledge/save-reference-image.ts';
 import { getCampaign, updateCampaign } from '../db/repos/campaign-repo.ts';
 import {
   createProductKnowledge,
@@ -82,6 +83,14 @@ productKnowledgeRouter.post(
       return fail(res, status, 'analysis_failed', msg.slice(0, 200));
     }
 
+    // Reference image (feedback): keep the FIRST uploaded image as a reusable visual reference so
+    // any post that later selects this product grounds infographic/storyboard on it (edit mode).
+    // Best-effort — a save failure yields null and the text profile still persists.
+    const firstImage = body.files.find((f) => isImageMime(f.mimeType));
+    const referenceImage = firstImage
+      ? await saveProductReferenceImage(firstImage.dataB64, firstImage.mimeType)
+      : null;
+
     // Library persistence (item 6): merge into an existing entry, or create a new one.
     let entry: ProductKnowledge | null = null;
     const docNames = body.files.map((f) => f.name);
@@ -92,6 +101,7 @@ productKnowledgeRouter.post(
         brandVoice: result.brandVoice,
         language: result.language,
         sourceDocs: docNames,
+        referenceImage,
       });
       if (!entry) return fail(res, 404, 'product_knowledge_not_found');
     } else if (body.saveToLibrary) {
@@ -103,6 +113,7 @@ productKnowledgeRouter.post(
         brandVoice: result.brandVoice,
         language: result.language,
         sourceDocs: docNames,
+        referenceImage,
       });
     }
 

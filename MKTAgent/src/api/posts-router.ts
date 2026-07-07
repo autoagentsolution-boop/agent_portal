@@ -40,6 +40,7 @@ import {
   approveReview,
   rejectReview,
   createPostForOwner,
+  updatePost,
   updatePostFields,
   editPostCopy,
   deletePost,
@@ -147,7 +148,10 @@ postsRouter.post(
     }
 
     const { brief, filled } = goalToBrief(goal, body.answers ?? {});
-    const post = await buildPostUnderCampaign(campaign, brief, req.userId!);
+    let post = await buildPostUnderCampaign(campaign, brief, req.userId!);
+    // Link the chosen product library entry (feedback #4). Mirrors the manual brief's create-then-set;
+    // the FK grounds copy + image/video on THIS product regardless of the campaign default.
+    if (body.productKnowledgeId) post = await updatePost(post.id, { productKnowledge: { connect: { id: body.productKnowledgeId } } });
     res.status(201);
     ok(res, { post: toPostDto(post), filled });
   }),

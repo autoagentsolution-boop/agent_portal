@@ -29,13 +29,24 @@ export const platformAssetSupport: Record<SocialPlatform, AssetType[]> = {
   x: ['image'],
 };
 
+// Language is FREE-FORM (T3). The campaign select uses the '' "inherit" entry; the post brief is a
+// text input with these as datalist hints (filters out ''), so any language/dialect works uncoded.
 export const languageOptions = [
   { value: '', label: 'Inherit default' },
   { value: 'vi', label: 'Tiếng Việt' },
   { value: 'en', label: 'English' },
-  { value: 'th', label: 'Thai' },
-  { value: 'ja', label: 'Japanese' },
-  { value: 'ko', label: 'Korean' },
+  { value: 'th', label: 'ไทย (Thai)' },
+  { value: 'ja', label: '日本語 (Japanese)' },
+  { value: 'ko', label: '한국어 (Korean)' },
+  { value: 'zh', label: '中文 (Chinese)' },
+  { value: 'id', label: 'Bahasa Indonesia' },
+  { value: 'ms', label: 'Bahasa Melayu' },
+  { value: 'es', label: 'Español (Spanish)' },
+  { value: 'fr', label: 'Français (French)' },
+  { value: 'de', label: 'Deutsch (German)' },
+  { value: 'pt', label: 'Português (Portuguese)' },
+  { value: 'hi', label: 'हिन्दी (Hindi)' },
+  { value: 'ar', label: 'العربية (Arabic)' },
 ];
 
 export const lengthOptions = [

@@ -7,6 +7,7 @@ import { assetTypeFromOutputs, type GoalSpec } from '../schemas/goal-spec.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
 import { cloneTemplateRun } from '../../db/repos/workflow-run-repo.ts';
 import { createPostForOwner } from '../../db/repos/post-repo.ts';
+import { getUserById } from '../../db/repos/user-repo.ts';
 import type { Campaign, Post, SocialPlatform, WorkflowRun } from '../../../prisma/generated/prisma/client.ts';
 
 export interface CampaignFromFlowResult {
@@ -32,6 +33,10 @@ export const createCampaignFromFlow = async (
     ? platformOverride
     : goal.platforms.length ? goal.platforms : ['facebook']) as SocialPlatform[];
   const product = clean(names.campaignName) ?? clean(goal.slots.product) ?? 'New campaign';
+  // Never leave a campaign language-less (feedback): a null campaign language makes every post fall
+  // through to the user default, which read as "ignoring the campaign". Capture the goal's language,
+  // else pin the user's default NOW so the campaign carries a concrete language its posts inherit.
+  const language = clean(goal.slots.language) ?? (await getUserById(ownerId))?.defaultLanguage ?? null;
 
   const campaign = await createCampaign({
     ownerId,
@@ -40,7 +45,7 @@ export const createCampaignFromFlow = async (
     angle: clean(goal.slots.angle),
     brandVoice: clean(goal.slots.brandVoice),
     brandContext: clean(goal.slots.productDetails),
-    language: clean(goal.slots.language),
+    language,
     platforms,
   });
 

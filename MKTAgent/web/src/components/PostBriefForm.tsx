@@ -33,6 +33,15 @@ const cleanPlatformAssets = (
 
 type PostBody = Omit<Dto['CreatePostBody'], 'campaignId'>;
 
+const REF_MAX_BYTES = 8 * 1024 * 1024;
+const toB64 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).replace(/^data:[^;]*;base64,/, ''));
+    r.onerror = () => reject(new Error('read failed'));
+    r.readAsDataURL(file);
+  });
+
 interface Props {
   campaignId: string;
   post?: PostDto | null;
@@ -63,6 +72,12 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
   const [leadKeyword, setLeadKeyword] = useState<string>(post?.leadCaptureKeyword ?? '');
   const [versionCount, setVersionCount] = useState<number>(post?.versionCount ?? 1);
   const [library, setLibrary] = useState<ProductKnowledgeEntry[]>([]);
+  // The language this post will actually generate in when the field is left blank (campaign lang →
+  // user default). Shown as the input placeholder so "inherit" is never an opaque guess (feedback).
+  const [resolvedLang, setResolvedLang] = useState<string>('');
+  // Reference image to condition infographic/storyboard on (feedback): uploadable at brief time, not
+  // only at the concept gate. Held until save, then POSTed to the (created) post's referenceImage.
+  const [refFile, setRefFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const mode = post ? 'edit' : 'create';
 
@@ -76,6 +91,17 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
 
   // Product Knowledge library (item 6): the user picks a reusable entry to ground this post.
   useEffect(() => { void api.listProductKnowledge().then((r) => { if (r.ok) setLibrary(r.data); }); }, []);
+
+  // Resolve the inherited language (campaign → user default) so the brief shows what a blank field
+  // will actually produce (feedback: manual posts silently fell back to 'vi').
+  useEffect(() => {
+    void (async () => {
+      const [c, m] = await Promise.all([api.getCampaign(campaignId), api.me()]);
+      const camp = c.ok ? c.data.language : null;
+      const usr = m.ok ? m.data?.defaultLanguage : null;
+      setResolvedLang((camp || usr || 'vi').trim());
+    })();
+  }, [campaignId]);
 
   const setField = <K extends keyof PostBody>(key: K, value: PostBody[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -92,6 +118,19 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
     scheduledAt: fromLocalDateTimeInput(String(form.scheduledAt ?? '')),
   });
 
+  // Upload the chosen reference image onto a (now-existing) post. Best-effort: a failure warns but
+  // never blocks the save. asHero=false → it's a REFERENCE the media agents follow, not the hero.
+  const uploadRefIfAny = async (id: string): Promise<void> => {
+    if (!refFile) return;
+    if (refFile.size > REF_MAX_BYTES) { notify(`"${refFile.name}" is over 8MB — use a smaller image.`, 'err'); return; }
+    try {
+      const b64 = await toB64(refFile);
+      const r = await api.uploadReferenceImage(id, b64, refFile.type || 'image/png', false);
+      if (!r.ok) notify(`Reference image failed: ${r.error.error}`, 'err');
+      else notify('Reference image added — infographic/storyboard will follow it');
+    } catch { notify('Could not read the reference image', 'err'); }
+  };
+
   const save = async () => {
     setSaving(true);
     const body = payload();
@@ -104,9 +143,9 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
     const leadKeywordPayload = leadKeyword.trim() || null;
     if (post) {
       const result = await api.updatePost(post.id, { ...body, platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload, leadCaptureKeyword: leadKeywordPayload, versionCount });
-      setSaving(false);
-      if (result.ok) { notify('Brief updated'); onSaved(result.data); }
+      if (result.ok) { await uploadRefIfAny(post.id); notify('Brief updated'); onSaved(result.data); }
       else notify(`Brief save failed: ${result.error.error}`, 'err');
+      setSaving(false);
       return;
     }
     // Create then persist edit-only fields (platformAssets, library link, versionCount) with a
@@ -118,6 +157,7 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
       const patched = await api.updatePost(saved.id, { platformAssets: platformAssetsPayload, productKnowledgeId: knowledgePayload, leadCaptureKeyword: leadKeywordPayload, versionCount });
       if (patched.ok) saved = patched.data;
     }
+    await uploadRefIfAny(saved.id);
     setSaving(false);
     notify('Brief created');
     onSaved(saved);
@@ -134,9 +174,16 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
       <div className="form-grid three">
         <div className="field">
           <label>Language</label>
-          <select value={form.language ?? ''} onChange={(e) => setField('language', e.target.value)}>
-            {languageOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          <input
+            list="brief-language-list"
+            value={form.language ?? ''}
+            onChange={(e) => setField('language', e.target.value)}
+            placeholder={resolvedLang ? `Inherit → ${resolvedLang}` : 'Inherit default'}
+          />
+          <datalist id="brief-language-list">
+            {languageOptions.filter((o) => o.value).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </datalist>
+          <div className="help-text">Type any language, or leave blank to inherit{resolvedLang ? ` (${resolvedLang})` : ''}.</div>
         </div>
         <div className="field">
           <label>Length</label>
@@ -162,6 +209,16 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
           <div className="help-text">Ground this post in a reusable product profile. Analyze docs once at the Master Agent (or a campaign) to build the library.</div>
         </div>
       )}
+
+      <div className="field">
+        <label>Reference image (optional)</label>
+        <input type="file" accept="image/*" onChange={(e) => setRefFile(e.target.files?.[0] ?? null)} />
+        <div className="help-text">
+          {refFile ? <><strong>{refFile.name}</strong> — </> : ''}
+          Infographic/storyboard generate FROM this image (edit mode) so they follow your product/look.
+          {post?.referenceImage && !refFile ? ' A reference image is already set; choosing a new one replaces it.' : ''}
+        </div>
+      </div>
 
       <div className="field">
         <label>Media storage</label>

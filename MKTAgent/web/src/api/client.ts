@@ -289,8 +289,8 @@ export const api = {
   // description so the user never hand-fills the form. First call may return `questions`
   // (the agent needs more info); passing `answers` on the second call creates the post
   // (`post` + `filled` — the fields it captured).
-  createPostFromAgent: (campaignId: string, message: string, answers?: Record<string, string | string[]>) =>
-    request<Dto['PostFromAgentDto']>('/posts/from-agent', { method: 'POST', body: { campaignId, message, ...(answers ? { answers } : {}) } }),
+  createPostFromAgent: (campaignId: string, message: string, answers?: Record<string, string | string[]>, productKnowledgeId?: string | null) =>
+    request<Dto['PostFromAgentDto']>('/posts/from-agent', { method: 'POST', body: { campaignId, message, ...(answers ? { answers } : {}), ...(productKnowledgeId ? { productKnowledgeId } : {}) } }),
   // versionCount not yet in the generated UpdatePostBody — hand-typed alongside it.
   updatePost: (id: string, body: Dto['UpdatePostBody'] & { versionCount?: number }) =>
     request<PostDto>(`/posts/${id}`, { method: 'PATCH', body }),
