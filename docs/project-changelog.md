@@ -3,6 +3,34 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-07
+
+### Feat: Atria Command Center page (Phase 04) + agency-agents prompt mining (Phase 05-B)
+Report `plans/reports/researcher-260707-0753-agency-agents-mining.md`. Two parallel, non-conflicting streams.
+
+**Command Center ("Neural Network" landing) — new page, additive, page-scoped dark theme.**
+- `web/src/components/command-center-page.tsx` (NEW): Atria core + agent nodes on an ellipse,
+  coloured by real division; live credit badge. It is a FUNNEL, not a second app — clicking a node /
+  the core / the command bar redirects into the existing Orchestrate surface (`onLaunch`, optional
+  prefill), and `⌂ Workspace` exits back to Flows. No re-implementation of orchestrate/workspace.
+- `GET /orchestration/agents` (orchestration-router): serves the registry as display data (groups +
+  nodes) so the view renders REAL agents, no decorative fakes.
+- `OrchestratePanel` gains optional `initialInput` — the command typed on the Command Center is
+  carried once into a fresh composer (no lost input).
+- Dark theme confined to `.command-center` (page-scoped CSS vars) → zero global churn, fully
+  reversible. This is the deliberate safe-move: adopt the command-center look without a global reskin.
+
+**agency-agents mining (MIT, attribution `docs/agency-agents-attribution.md`).**
+- Enriched all 8 runnable agents' persona fields (vibe / decisionFramework / successMetrics; +
+  `promptSections` for concept_writer + publisher) from 7 marketing personas: growth-hacker →
+  Strategy (+ lead-scoring rubric); content-creator/instagram/linkedin/carousel → Editor;
+  multi-platform-publisher → Publisher; seo-specialist → Researcher.
+- 0 schema changes, 0 new agent ids, 0 DAG wiring changes — persona text only; tsc clean.
+
+Verify: backend + web `tsc --noEmit` green (after `prisma generate` — client was stale vs the
+`platform_post_ids` migration); `vite build` green; `/orchestration/agents` payload confirmed real
+(8 nodes, 3 groups). Live screenshot deferred (stack not running).
+
 ## 2026-07-06
 
 ### Fix: trustworthy per-platform post-liveness / deleted-post detection (commit `e89aa2e`)
