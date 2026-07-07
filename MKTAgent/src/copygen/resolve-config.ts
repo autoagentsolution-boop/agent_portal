@@ -4,6 +4,12 @@
 // both the prompt builder and (later) the scheduler read from here.
 import type { PostWithCampaignOwner } from '../db/repos/post-repo.ts';
 
+// The ONE final language fallback for a run (Phase 07 / M1). Used here (copy) AND by
+// resolveRunLanguage (media/ideation/strategy/research) so COPY and MEDIA of the same run can
+// never diverge (copy→'vi' vs media→'en' on a legacy no-post run was the bug). user.defaultLanguage
+// is NOT NULL (schema default 'vi'), so this literal only fires for a truly-null chain.
+export const DEFAULT_LANGUAGE = 'vi';
+
 export interface ResolvedCopyConfig {
   language: string; // resolved free-form language code/label
   lengthRaw: string; // resolved length keyword/wordcount (may be '')
@@ -27,7 +33,7 @@ export function resolveCopyConfig(post: PostWithCampaignOwner): ResolvedCopyConf
 
   // Language always resolves to a concrete value (user.defaultLanguage is NOT NULL,
   // default 'vi') so copy-gen always knows what to generate.
-  const language = firstNonEmpty(post.language, campaign.language, user.defaultLanguage) ?? 'vi';
+  const language = firstNonEmpty(post.language, campaign.language, user.defaultLanguage) ?? DEFAULT_LANGUAGE;
 
   const lengthRaw = firstNonEmpty(post.lengthSpec, campaign.defaultLength) ?? '';
 

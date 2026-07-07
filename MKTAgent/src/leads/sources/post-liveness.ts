@@ -7,6 +7,7 @@
 // collector is marked post_deleted.
 import { prisma } from '../../db/client.ts';
 import { logger } from '../../lib/logger.ts';
+import { env } from '../../config/env.ts';
 import { checkPlatformAlive } from './post-exists.ts';
 import { extractPostId } from './comment-watch.ts';
 import type { Post, SocialPlatform } from '../../../prisma/generated/prisma/client.ts';
@@ -17,20 +18,33 @@ const COMMENTABLE = new Set<SocialPlatform>(['facebook', 'instagram', 'threads',
 // or a platform we can't check — e.g. an unparseable URL or a LIVE-UNTESTED tier limit).
 export interface LinkStatus { platform: string; url: string; alive: boolean | null }
 
-export const checkPostLinks = async (post: Post, ownerId: string): Promise<LinkStatus[]> => {
+// The liveness checker is injectable (default = the real network check) so the union-iteration
+// self-heal logic (M2) can be verified without real platform calls, like the resolver's reader seam.
+export type AliveFn = (platform: SocialPlatform, id: string, ownerId: string) => Promise<boolean | null>;
+
+export const checkPostLinks = async (
+  post: Post,
+  ownerId: string,
+  aliveFn: AliveFn = checkPlatformAlive,
+): Promise<LinkStatus[]> => {
   const postUrls = (post.postUrls ?? {}) as Record<string, string>;
   const sources = (post.commentSourceIds ?? {}) as Record<string, string>;
   const platformIds = (post.platformPostIds ?? {}) as Record<string, string>;
   const liveSources = { ...sources };
   const results: LinkStatus[] = [];
 
-  for (const [platformKey, url] of Object.entries(postUrls)) {
+  // Iterate the UNION of published links AND watched comment-sources (Phase 07 / M2). A watched
+  // platform with NO postUrls entry (X publishes without a stored URL) was never existence-checked,
+  // so `noneLeft` could never trigger and the collector polled a deleted X post until 30d expiry.
+  const platformKeys = new Set<string>([...Object.keys(postUrls), ...Object.keys(sources)]);
+  for (const platformKey of platformKeys) {
     const platform = platformKey as SocialPlatform;
+    const url = postUrls[platform] ?? '';
     if (!COMMENTABLE.has(platform)) { results.push({ platform, url, alive: null }); continue; }
     // Prefer the canonical resolvable id captured at publish; then the watched collector source;
-    // finally parse the URL (legacy rows → a shortcode, which checkPlatformAlive treats as null).
-    const id = platformIds[platform] ?? sources[platform] ?? extractPostId(platform, url);
-    const alive = id ? await checkPlatformAlive(platform, id, ownerId) : null;
+    // finally parse the URL if we have one (legacy rows → a shortcode, treated as null downstream).
+    const id = platformIds[platform] ?? sources[platform] ?? (url ? extractPostId(platform, url) : null);
+    const alive = id ? await aliveFn(platform, id, ownerId) : null;
     results.push({ platform, url, alive });
     if (alive === false) delete liveSources[platform]; // confirmed deleted → stop watching this platform
   }
@@ -54,6 +68,10 @@ export const checkPostLinks = async (post: Post, ownerId: string): Promise<LinkS
 // pollCommentsForLeads which stays pure/injectable. Best-effort: one dead post never aborts the sweep.
 export const sweepPostLiveness = async (ownerId?: string): Promise<{ checked: number; dead: number }> => {
   const now = new Date();
+  // Throttle (Phase 07 / M3): only re-check a post whose last sweep is older than the window (or
+  // never) — the poller's reactive PostGoneError stays the fast detector, so a full re-sweep every
+  // 30-min tick just doubled API volume and re-hit already-dead URLs.
+  const staleBefore = new Date(now.getTime() - env.LEADS_LIVENESS_THROTTLE_HOURS * 3_600_000);
   const posts = await prisma.post.findMany({
     where: {
       leadCaptureKeyword: { not: null },
@@ -62,6 +80,7 @@ export const sweepPostLiveness = async (ownerId?: string): Promise<{ checked: nu
       AND: [
         { OR: [{ leadCollectorExpiresAt: null }, { leadCollectorExpiresAt: { gt: now } }] },
         { OR: [{ leadCollectorStatus: null }, { leadCollectorStatus: { not: 'post_deleted' } }] },
+        { OR: [{ lastLivenessCheckAt: null }, { lastLivenessCheckAt: { lt: staleBefore } }] },
       ],
       ...(ownerId ? { ownerId } : {}),
     },
@@ -71,6 +90,7 @@ export const sweepPostLiveness = async (ownerId?: string): Promise<{ checked: nu
   for (const post of posts) {
     try {
       const links = await checkPostLinks(post, post.ownerId);
+      await prisma.post.update({ where: { id: post.id }, data: { lastLivenessCheckAt: new Date() } }).catch(() => {});
       checked++;
       if (links.some((l) => l.alive === false)) dead++;
     } catch (e) {

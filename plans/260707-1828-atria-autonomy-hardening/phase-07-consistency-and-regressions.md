@@ -1,6 +1,8 @@
 # Phase 07 — Consistency Cleanups + My Batch-3 Regressions  [H6, M1, M2, M3, M6, LOW]
 
-**Priority:** HIGH (H6) → MED/LOW. **Status:** planned. **Depends on:** none. Fastest phase — good warm-up; several are regressions I introduced 2026-07-07 (`feat(cost)`/`feat(leads)`).
+**Priority:** HIGH (H6) → MED/LOW. **Status:** DONE 2026-07-08 (tsc backend+web + credits/llm-usage/executor/planner/refine/leads-post-deleted/leads-liveness-union green; migration applied). NOT committed.
+**Implemented:** (H6+LOW) new `web/src/lib/credits.ts` mirroring backend anchors; run-dag-view badge basis → `cost>0?creditsFromUsd(cost):creditsFromTokens(totalTok)` (costUsd already sums token+media → fixes storyboard >10× undercount + model-tier-accurate; kills hardcoded 250/0.000625). (M1) shared `DEFAULT_LANGUAGE='vi'` in resolve-config, used by resolveCopyConfig AND resolveRunLanguage no-post branch (was 'en' → media/copy diverged). (M2) checkPostLinks iterates UNION of postUrls+commentSourceIds keys → URL-less X source existence-checked + self-heals; added injectable `aliveFn` DI seam. (M3) `Post.lastLivenessCheckAt` (migration 20260708001800) + sweep filters null-or-older-than `LEADS_LIVENESS_THROTTLE_HOURS`(6) + stamps after check → kills ~2× per-tick API. (M6) deleted dead `SPENDING_AGENTS` (0 imports, wrongly omitted live content_search); concept_writer gate already truthful via P01 gate:'selection'.
+**Verify proves:** new verify-leads-liveness-union (X-only source self-heals to post_deleted, was un-healable). **Depends on:** none.
 **Findings:** C#1, C#2, C#3, C#4, C#5, D#5. Report: `review-260707-1518-consistency-audit.md`, `review-260707-1828-workflow-registry.md`.
 
 ## Items

@@ -4,6 +4,7 @@
 // which SSE patches in the run-detail case.
 import { useEffect, useRef, useState } from 'react';
 import type { WorkflowRunDto } from '../api/client';
+import { creditsFromTokens, creditsFromUsd } from '../lib/credits';
 
 type Node = WorkflowRunDto['nodes'][number];
 
@@ -51,10 +52,12 @@ function NodeStats({ node }: { node: Node }) {
   const totalTok = inTok + outTok;
   const cost = node.costUsd ?? 0;
   // ONE consistent unit across every node (feedback: some nodes showed tokens, others USD — jarring).
-  // Credits = the friendly passthrough the Usage page uses: token nodes by tokens/250, media nodes
-  // (USD-billed, no tokens) by USD/$0.000625 — same basis, so text + image + video read on one scale.
-  // Raw tokens / USD stay on hover for anyone who wants the underlying number.
-  const credits = totalTok > 0 ? Math.max(1, Math.round(totalTok / 250)) : cost > 0 ? Math.max(1, Math.round(cost / 0.000625)) : 0;
+  // Basis = the node's TOTAL spend in USD (node.costUsd already SUMS token cost + any media flat, per
+  // the backend's costFields/sumCost). Deriving credits from it fixes the storyboard >10× undercount
+  // (H6): the old ternary took the token branch and dropped the flat frame USD folded into costUsd.
+  // costUsd is also model-tier-accurate (pro/lite priced right), unlike a flat tokens/250. Fall back
+  // to tokens only when a node recorded tokens but no USD (stub/accounting gap). Raw tokens/USD on hover.
+  const credits = cost > 0 ? creditsFromUsd(cost) : creditsFromTokens(totalTok);
   const detail = totalTok > 0 ? `↑${inTok} ↓${outTok} tokens` : cost > 0 ? `$${cost.toFixed(3)}` : '';
   if (dur === null && credits === 0) return null;
   return (

@@ -54,6 +54,9 @@ const schema = z.object({
   ENABLE_COPYGEN_CRON: z.coerce.boolean().default(false),
   // Auto-run the lead collector (comment-keyword poll) every 30 min across all tenants.
   ENABLE_LEADS_CRON: z.coerce.boolean().default(false),
+  // Throttle for the proactive liveness sweep (Phase 07 / M3): a watched post is re-checked only
+  // when its last sweep is older than this many hours (default 6), instead of every 30-min tick.
+  LEADS_LIVENESS_THROTTLE_HOURS: z.coerce.number().positive().default(6),
   // Atria autonomy (Phase 01): per-gate spend ceiling a GRANTED run may auto-waive at a cost
   // gate (e.g. the Veo video step, ≈$0.40/8s). Above this, the run parks + notifies for a human
   // OK. 0 → never auto-waive any cost gate (fail-closed). Default $2 allows one video autonomously.

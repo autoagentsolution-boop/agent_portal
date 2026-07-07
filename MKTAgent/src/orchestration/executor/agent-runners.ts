@@ -11,7 +11,7 @@ import { campaignIdeas, strategyBrief, storyboard, videoPrompt, type ArtifactTyp
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
 import { createPost, getPostForOwner, getPostForCopyGen, attachPostMedia, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
-import { resolveCopyConfig } from '../../copygen/resolve-config.ts';
+import { resolveCopyConfig, DEFAULT_LANGUAGE } from '../../copygen/resolve-config.ts';
 import { getUserById } from '../../db/repos/user-repo.ts';
 import { generateVariantsForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
@@ -323,7 +323,9 @@ const runPublisher = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 const resolveRunLanguage = async (ctx: RunnerContext): Promise<string> => {
   const post = ctx.postId ? await getPostForCopyGen(ctx.postId, ctx.ownerId) : null;
   if (post) return resolveCopyConfig(post).language;
-  return ctx.goal.slots.language?.trim() || (await getUserById(ctx.ownerId))?.defaultLanguage || 'en';
+  // No-post (legacy) branch: SAME chain + final default as resolveCopyConfig (M1) so media never
+  // diverges from copy — was `|| 'en'` while copy defaulted 'vi'.
+  return ctx.goal.slots.language?.trim() || (await getUserById(ctx.ownerId))?.defaultLanguage || DEFAULT_LANGUAGE;
 };
 
 // Product knowledge that grounds the IMAGE/VIDEO prompts: the goal slot first, else the

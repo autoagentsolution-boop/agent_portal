@@ -281,6 +281,10 @@ model Post {
   // for LinkedIn. The permalink shortcode in postUrls does NOT resolve on Graph, so liveness +
   // activate-from-Leads read ids from here. Populated going forward; older rows are null.
   platformPostIds    Json?   @map("platform_post_ids") // { instagram: "<numeric media id>", ... }
+  // Last proactive liveness sweep (Phase 07 / M3): the sweep only re-checks a watched post whose
+  // last check is older than the throttle window (default 6h), instead of every 30-min leads tick
+  // (~2× API volume). The reactive PostGoneError path stays the fast detector. Null = never swept.
+  lastLivenessCheckAt DateTime? @map("last_liveness_check_at") @db.Timestamptz(6)
   // Outcome.
   postUrls    Json?            @map("post_urls") // { facebook: url, ... }
   error       String?

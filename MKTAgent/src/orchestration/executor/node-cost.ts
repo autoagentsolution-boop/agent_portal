@@ -6,7 +6,6 @@
 //
 // Prices are current public list (2026-07); adjust in ONE place. Costed per model tier so a
 // pro/lite call isn't priced at flash rates.
-import type { RunnableAgentId } from '../registry/agent-types.ts';
 
 export interface NodeCost {
   promptTokens: number;
@@ -107,9 +106,3 @@ export const sumCost = (a: NodeCost | undefined, b: NodeCost | undefined): NodeC
   totalTokens: (a?.totalTokens ?? 0) + (b?.totalTokens ?? 0),
   costUsd: (a?.costUsd ?? 0) + (b?.costUsd ?? 0),
 });
-
-// Which agents actually spend. content_search stub + publisher = $0. storyboard (images) and
-// video (Veo clips) now spend. Used only as a guard; the runner returns the real estimate.
-export const SPENDING_AGENTS: ReadonlySet<RunnableAgentId> = new Set<RunnableAgentId>([
-  'ideation', 'strategy', 'concept_writer', 'infographic', 'storyboard', 'video',
-]);
