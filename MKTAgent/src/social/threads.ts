@@ -41,6 +41,13 @@ const getJson = async (url: string, init?: RequestInit): Promise<any> => {
   return res.json();
 };
 
+// Access token in the Authorization header, NOT the URL query (Phase 06 / log hygiene) — a token
+// in a URL leaks into access logs/proxies/traces. The Threads Graph API accepts Bearer.
+const bearer = (token: string, init: RequestInit = {}): RequestInit => ({
+  ...init,
+  headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },
+});
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 export const threadsAdapter: SocialAdapter = {
@@ -57,8 +64,8 @@ export const threadsAdapter: SocialAdapter = {
 
       // 1) create container
       const create = await getJson(
-        `https://graph.threads.net/${TV}/${user}/threads?media_type=IMAGE&image_url=${encodeURIComponent(imageUrl)}&text=${encodeURIComponent(text)}&access_token=${encodeURIComponent(token)}`,
-        { method: 'POST' },
+        `https://graph.threads.net/${TV}/${user}/threads?media_type=IMAGE&image_url=${encodeURIComponent(imageUrl)}&text=${encodeURIComponent(text)}`,
+        bearer(token, { method: 'POST' }),
       );
       const creationId = create?.id;
       if (!creationId || create?.error) return fail(create?.error?.message ?? 'container create failed');
@@ -68,15 +75,16 @@ export const threadsAdapter: SocialAdapter = {
 
       // 3) publish
       const pub = await getJson(
-        `https://graph.threads.net/${TV}/${user}/threads_publish?creation_id=${encodeURIComponent(creationId)}&access_token=${encodeURIComponent(token)}`,
-        { method: 'POST' },
+        `https://graph.threads.net/${TV}/${user}/threads_publish?creation_id=${encodeURIComponent(creationId)}`,
+        bearer(token, { method: 'POST' }),
       );
       const mediaId = pub?.id;
       if (!mediaId || pub?.error) return fail(pub?.error?.message ?? 'threads_publish failed');
 
       // 4) permalink (publish returns id only)
       const perma = await getJson(
-        `https://graph.threads.net/${TV}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(token)}`,
+        `https://graph.threads.net/${TV}/${mediaId}?fields=permalink`,
+        bearer(token),
       );
       // Store the NUMERIC mediaId (not the permalink shortcode) — /{id}/replies + liveness resolve it.
       return ok(perma?.permalink ?? `https://www.threads.net/t/${mediaId}`, String(mediaId));

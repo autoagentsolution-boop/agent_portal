@@ -10,6 +10,7 @@ import { env } from '../config/env.ts';
 import { withRetry } from '../lib/retry.ts';
 import { getActiveToken, getTokenMeta } from '../tokens/service.ts';
 import { getPublisherAppCred } from '../db/repos/agent-credential-repo.ts';
+import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { assetStore } from '../assets/store.ts';
 import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
@@ -25,9 +26,13 @@ const fail = (msg: string): PublishResult => ({
 
 const pageId = async (ownerId: string): Promise<string> => {
   const meta = await getTokenMeta(ownerId, 'facebook');
-  // OAuth token meta → paste-token vault field → env (DAIS default).
-  const id = (meta?.pageId as string) || (await getPublisherAppCred(ownerId, 'facebook_page_id')) || env.MKT_FB_PAGE_ID;
-  if (!id) throw new Error('FB page id missing');
+  // OAuth token meta → paste-token vault field. The env default (MKT_FB_PAGE_ID) is DAIS's own
+  // page and is used ONLY for the system owner (Phase 06 / M4): a real tenant WITHOUT a page id
+  // must fail loud, never fall back to the system page — an owner-scoped token pointed at the
+  // wrong destination id would publish a tenant's post to the SYSTEM account.
+  const envDefault = ownerId === SYSTEM_OWNER_ID ? env.MKT_FB_PAGE_ID : '';
+  const id = (meta?.pageId as string) || (await getPublisherAppCred(ownerId, 'facebook_page_id')) || envDefault;
+  if (!id) throw new Error('FB page id missing — connect a Facebook Page for this account');
   return id;
 };
 

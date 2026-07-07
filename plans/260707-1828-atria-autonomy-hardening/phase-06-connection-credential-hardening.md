@@ -1,6 +1,8 @@
 # Phase 06 — Connection / Credential Hardening  [H5, M4, M5]
 
-**Priority:** HIGH. **Status:** planned. **Depends on:** Phase 02 (boundary re-resolve consumes this).
+**Priority:** HIGH. **Status:** DONE 2026-07-08 (tsc + verify-connection-hardening 8/8 + resolver/per-platform/executor/scheduler-safe-path green). NOT committed.
+**Implemented (the security phase, fail-closed):** (H5) connection-resolver synthetic bare-form-token status `active`→`needs_attention` — a never-liveness-verified paste no longer passes the spend gate; now AGREES with connection-state (a verified paste has a real OAuthToken row via verifyAndRecordFormToken → unaffected). (E-note) `getActiveToken` no longer returns needs_attention/expired tokens — attempts a refresh, returns only if recovered to active, else THROWS not-usable (kills stale-liveness + LinkedIn silent-expiry publishes). (M4) facebook.ts/instagram.ts env destination default (MKT_FB_PAGE_ID/MKT_IG_USER_ID) restricted to SYSTEM_OWNER_ID — a real tenant w/o a page/account id fails loud, never lands on the system account. (log hygiene) IG + Threads pass access_token via `Authorization: Bearer` header, dropped from URL query.
+**Verify proves:** bare form token gate-blocked + resolver/state agree; verified token resolves; getActiveToken throws on needs_attention + expired, returns live. **Deferred (deploy/doc, not code):** ENABLE_TOKEN_CRON=1 in autonomous deploy; LinkedIn no-refresh re-auth prompt — the code fail-closes on the resulting expired token. E-note gate-goal.platforms-vs-post.platforms already covered by Phase 02 boundary re-resolve.
 **Findings:** E#4, E#5, E-notes. Report: connect-credential (`review-260707-1828-connect-credential.md`).
 
 ## Defects

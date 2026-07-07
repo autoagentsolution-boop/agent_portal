@@ -56,20 +56,35 @@ export const getActiveToken = async (
   // OAuth-first: a live OAuthToken (minted via /connect) always wins — it refreshes.
   const rec = await getToken(ownerId, platform);
   if (rec && rec.status !== 'revoked') {
-    // Lazy refresh-ahead: closes the last-minutes gap between cron sweeps (X's window
-    // is only 15 min). Best-effort — a refresh hiccup falls through to the existing
-    // token so a publish never dies on a transient refresh error; the cron sweep and
-    // needs_attention status surface a genuinely dead token.
     const provider = providers[platform];
+    const expired = !!rec.expiresAt && rec.expiresAt.getTime() <= Date.now();
+    // Happy path — a live token: lazy refresh-ahead closes the last-minutes gap between cron
+    // sweeps (X's window is only 15 min). Best-effort — a refresh hiccup falls through to the
+    // existing (still-active) token so a publish never dies on a transient refresh error.
+    if (rec.status === 'active' && !expired) {
+      if (provider) {
+        try {
+          const { token } = await refreshIfDue(ownerId, platform, rec, provider);
+          return token;
+        } catch (e) {
+          logger.warn('token_lazy_refresh_failed', { ownerId, platform, error: String(e).slice(0, 200) });
+        }
+      }
+      return rec.token;
+    }
+    // Stale token (needs_attention or past expiry) — NEVER publish on it blindly (Phase 06 / E-note:
+    // getActiveToken used to return anything not `revoked`, so an expired/attention token still
+    // published; LinkedIn's no-refresh tier silently died this way). Attempt ONE refresh and return
+    // only if it actually produced a fresh token; otherwise fail closed (treat as not-connected).
     if (provider) {
       try {
-        const { token } = await refreshIfDue(ownerId, platform, rec, provider);
-        return token;
+        const { token, refreshed } = await refreshIfDue(ownerId, platform, rec, provider);
+        if (refreshed) return token;
       } catch (e) {
-        logger.warn('token_lazy_refresh_failed', { ownerId, platform, error: String(e).slice(0, 200) });
+        logger.warn('token_stale_refresh_failed', { ownerId, platform, error: String(e).slice(0, 200) });
       }
     }
-    return rec.token;
+    throw new Error(`token: ${platform} needs re-auth (status=${rec.status}${expired ? ', expired' : ''})`);
   }
 
   // Fallback: a token entered directly in the Connections form, stored encrypted in

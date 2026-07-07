@@ -47,10 +47,16 @@ export const defaultTokenStatusReader: TokenStatusReader = async (ownerId) => {
   const rows = await listTokenStatusForOwner(ownerId);
   const present = new Set(rows.map((r) => r.platform));
   const formKeys = await listPublisherPlatformTokenKeys(ownerId);
+  // A pasted form credential with NO OAuthToken row was never liveness-verified. It must NOT
+  // read as `active` for a gate that authorizes real spend (Phase 06 / H5) — the resolver and
+  // connection-state.ts disagreed here (state already said needs_attention). A verified paste has
+  // a REAL row (verifyAndRecordFormToken upserts one), so it's `present` and never synthesized;
+  // only a never-verified token is synthesized, now as `needs_attention` → the gate holds until
+  // the user verifies. Fail-closed: both surfaces now agree.
   const synthetic: TokenStatusLike[] = CONNECTORS
     .map((c) => c.platformKey)
     .filter((p) => !present.has(p) && formKeys.has(platformTokenKey(p)))
-    .map((platform) => ({ platform, status: 'active' as TokenStatus, expiresAt: null }));
+    .map((platform) => ({ platform, status: 'needs_attention' as TokenStatus, expiresAt: null }));
   return [...rows, ...synthetic];
 };
 

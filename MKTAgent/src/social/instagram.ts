@@ -7,6 +7,7 @@ import { env } from '../config/env.ts';
 import { withRetry } from '../lib/retry.ts';
 import { getActiveToken, getTokenMeta } from '../tokens/service.ts';
 import { getPublisherAppCred } from '../db/repos/agent-credential-repo.ts';
+import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { assetStore } from '../assets/store.ts';
 import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
@@ -22,9 +23,12 @@ const fail = (msg: string): PublishResult => ({
 
 const igUserId = async (ownerId: string): Promise<string> => {
   const meta = await getTokenMeta(ownerId, 'instagram');
-  // OAuth token meta → paste-token vault field → env (DAIS default).
-  const id = (meta?.userId as string) || (await getPublisherAppCred(ownerId, 'instagram_business_account_id')) || env.MKT_IG_USER_ID;
-  if (!id) throw new Error('IG user id missing');
+  // OAuth token meta → paste-token vault field. env default (DAIS's IG account) ONLY for the
+  // system owner (Phase 06 / M4) — a real tenant without an IG account id must fail loud, never
+  // publish to the system-default account.
+  const envDefault = ownerId === SYSTEM_OWNER_ID ? env.MKT_IG_USER_ID : '';
+  const id = (meta?.userId as string) || (await getPublisherAppCred(ownerId, 'instagram_business_account_id')) || envDefault;
+  if (!id) throw new Error('IG user id missing — connect an Instagram Business account for this account');
   return id;
 };
 
@@ -33,6 +37,13 @@ const getJson = async (url: string, init?: RequestInit): Promise<any> => {
   return res.json();
 };
 
+// Pass the access token in the Authorization header, NOT the URL query (Phase 06 / log hygiene):
+// a token in a URL leaks into access logs, proxies, and error traces. Graph API accepts Bearer.
+const bearer = (token: string, init: RequestInit = {}): RequestInit => ({
+  ...init,
+  headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },
+});
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 async function pollContainer(creationId: string, token: string): Promise<void> {
@@ -40,7 +51,8 @@ async function pollContainer(creationId: string, token: string): Promise<void> {
   for (let i = 0; i < 12; i++) {
     await sleep(5000);
     const j = await getJson(
-      `https://graph.facebook.com/${G}/${creationId}?fields=status_code&access_token=${encodeURIComponent(token)}`,
+      `https://graph.facebook.com/${G}/${creationId}?fields=status_code`,
+      bearer(token),
     );
     if (j?.status_code === 'FINISHED') return;
     if (j?.status_code === 'ERROR') throw new Error('IG container processing ERROR');
@@ -62,8 +74,8 @@ export const instagramAdapter: SocialAdapter = {
 
       // 1) create container
       const create = await getJson(
-        `https://graph.facebook.com/${G}/${user}/media?image_url=${encodeURIComponent(imageUrl)}&caption=${encodeURIComponent(caption)}&access_token=${encodeURIComponent(token)}`,
-        { method: 'POST' },
+        `https://graph.facebook.com/${G}/${user}/media?image_url=${encodeURIComponent(imageUrl)}&caption=${encodeURIComponent(caption)}`,
+        bearer(token, { method: 'POST' }),
       );
       const creationId = create?.id;
       if (!creationId || create?.error) return fail(create?.error?.message ?? 'container create failed');
@@ -73,15 +85,16 @@ export const instagramAdapter: SocialAdapter = {
 
       // 3) publish
       const pub = await getJson(
-        `https://graph.facebook.com/${G}/${user}/media_publish?creation_id=${encodeURIComponent(creationId)}&access_token=${encodeURIComponent(token)}`,
-        { method: 'POST' },
+        `https://graph.facebook.com/${G}/${user}/media_publish?creation_id=${encodeURIComponent(creationId)}`,
+        bearer(token, { method: 'POST' }),
       );
       const mediaId = pub?.id;
       if (!mediaId || pub?.error) return fail(pub?.error?.message ?? 'media_publish failed');
 
       // 4) permalink (publish returns id only)
       const perma = await getJson(
-        `https://graph.facebook.com/${G}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(token)}`,
+        `https://graph.facebook.com/${G}/${mediaId}?fields=permalink`,
+        bearer(token),
       );
       // Store the NUMERIC mediaId (not the permalink shortcode) — Graph comments/liveness resolve it.
       return ok(perma?.permalink ?? `https://www.instagram.com/p/${mediaId}/`, String(mediaId));
