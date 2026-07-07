@@ -102,7 +102,14 @@ export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
       // Platforms are regex-detectable facts — union the deterministic parse so a platform
       // named in the message is never lost to an LLM miss ("asked fb+linkedin, only fb stuck").
       const platforms = Array.from(new Set([...parsed.data.platforms, ...parsePlatforms(message)])) as GoalSpec['platforms'];
-      return { goal: { ...parsed.data, platforms, provider: `gemini:${env.GEMINI_MODEL}` }, removals };
+      // Campaign scope (Phase 03) is likewise a regex-detectable intent ("plan a month of content",
+      // "3 posts a week"). The LLM defaults it to `single` silently, so when it did NOT escalate but
+      // the deterministic parser detects a multi-post intent, adopt that scope + duration/cadence.
+      const det = analyzeDeterministic(message);
+      const campaign = parsed.data.campaignScope === 'single' && det.campaignScope !== 'single'
+        ? { campaignScope: det.campaignScope, duration: det.duration, cadence: det.cadence }
+        : {};
+      return { goal: { ...parsed.data, platforms, ...campaign, provider: `gemini:${env.GEMINI_MODEL}` }, removals };
     } catch {
       return fallback();
     }

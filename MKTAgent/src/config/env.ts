@@ -72,6 +72,16 @@ const schema = z.object({
   REAPER_VIDEO_NODE_TIMEOUT_MIN: z.coerce.number().positive().default(30), // video node `running`
   REAPER_ORPHAN_TTL_DAYS: z.coerce.number().positive().default(7),      // needs_approval/planned surfacing
 
+  // Impact / value report (Atria Phase 07). The CONFIGURABLE market baseline the Impact report
+  // compares Atria's real spend against — a workspace tunes these to its own market. Cost SAVED and
+  // reach are ESTIMATES derived from them (clearly labeled in the report); real spend/output/leads
+  // are measured. Defaults are conservative mid-market figures.
+  IMPACT_AGENCY_DAY_RATE_USD: z.coerce.number().nonnegative().default(500),   // agency day rate
+  IMPACT_HOURS_PER_POST: z.coerce.number().nonnegative().default(2),          // human hours to make one post
+  IMPACT_WORK_HOURS_PER_DAY: z.coerce.number().positive().default(8),         // hours in a work day
+  IMPACT_FREELANCER_PER_POST_USD: z.coerce.number().nonnegative().default(50),// freelancer per-post rate
+  IMPACT_REACH_PER_POST: z.coerce.number().nonnegative().default(300),        // est. reach per published post (LABELED estimate)
+
   // Lead capture
   MKT_LEAD_WEBHOOK_SECRET: z.string().default(''),
   MKT_CALCOM_WEBHOOK_SECRET: z.string().default(''),

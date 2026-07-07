@@ -337,6 +337,51 @@ export const grantAutonomy = async (
   return r.count === 1 ? prisma.workflowRun.findFirst({ where: { id, ownerId } }) : null;
 };
 
+// Campaign-level autonomy grant (Atria Phase 05): flip EVERY materialized post's run in a campaign
+// into 'atria' mode in ONE audited action, guarded per-run to a grantable state (a running/posted
+// post's run is left alone → no double-publish, no autonomy leak). Owner-scoped. Returns the count
+// actually flipped. The endpoint enforces the campaign-scoped double-confirm before calling this.
+export const grantAutonomyForCampaign = async (
+  campaignId: string,
+  ownerId: string,
+  scheduleConfirmed = false,
+): Promise<{ granted: number; runIds: string[] }> => {
+  const posts = await prisma.post.findMany({ where: { campaignId, ownerId, runId: { not: null } }, select: { runId: true } });
+  const runIds = [...new Set(posts.map((p) => p.runId).filter((r): r is string => Boolean(r)))];
+  if (runIds.length === 0) return { granted: 0, runIds: [] };
+  const r = await prisma.workflowRun.updateMany({
+    where: { id: { in: runIds }, ownerId, status: { in: ['planned', 'failed', 'needs_connection'] } },
+    data: { approvalMode: 'atria', scheduleConfirmed },
+  });
+  return { granted: r.count, runIds };
+};
+
+// Per-run plan node agent ids for a campaign's posts (Phase 05 cost estimate). Reads each backing
+// run's frozen plan snapshot. Owner-scoped.
+export const getCampaignRunPlans = async (
+  campaignId: string,
+  ownerId: string,
+): Promise<Array<{ runId: string; postId: string; postStatus: string; agentIds: string[]; runStatus: string; scheduledAt: Date | null }>> => {
+  const posts = await prisma.post.findMany({
+    where: { campaignId, ownerId, runId: { not: null } },
+    select: { id: true, status: true, scheduledAt: true, runId: true, run: { select: { id: true, status: true, plan: true } } },
+    orderBy: { scheduledAt: 'asc' },
+  });
+  return posts
+    .filter((p) => p.run)
+    .map((p) => {
+      const plan = p.run!.plan as { nodes?: Array<{ agentId: string }> } | null;
+      return {
+        runId: p.run!.id,
+        postId: p.id,
+        postStatus: p.status,
+        agentIds: plan?.nodes?.map((n) => n.agentId) ?? [],
+        runStatus: p.run!.status,
+        scheduledAt: p.scheduledAt,
+      };
+    });
+};
+
 // ── Self-healing reaper queries (Phase 04) ────────────────────────────────────
 // Owner-AGNOSTIC worker-path reads (same pattern as the scheduler/leads crons): the reaper is a
 // trusted background sweep, not a tenant request, so it scans across owners then writes scoped by

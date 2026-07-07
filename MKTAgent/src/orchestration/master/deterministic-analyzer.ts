@@ -79,6 +79,46 @@ export const parseAccountType = (t: string): NonNullable<GoalSpec['slots']['acco
 const isCampaign = (t: string): boolean =>
   /\b(campaign|branding|brand|chiến dịch|chien dich|thương hiệu|thuong hieu|lên ý tưởng|len y tuong|chiến lược|chien luoc|strategy)\b/i.test(t);
 
+// Campaign framing (Atria Phase 03). Detect a MULTI-POST intent (plan a month, weekly content,
+// content calendar, N posts) → 'campaign'; a concentrated one-shot push → 'spotlight'; else the
+// default single post. Duration + cadence are parsed from the phrasing (sensible defaults when
+// unstated) and only meaningful when scope !== 'single'.
+// Deliberately NARROW: bare "campaign"/"branding" already drives the rich SINGLE-post pipeline
+// (isCampaign below) — only an unambiguous MULTI-post intent (a calendar, a duration, a cadence,
+// an explicit push) escalates to campaign/spotlight scope, so existing one-post goals are unchanged.
+const SPOTLIGHT_RE = /\b(spotlight campaign|big push|launch push|launch campaign|content blitz)\b/i;
+const CAMPAIGN_PLAN_RE = /\b(content calendar|content plan|posting schedule|plan (?:a|the|out|my)?\s*(?:month|week|content)|a month of|weeks? of content|weekly (?:posts?|content)|month.long campaign|multi.?post|series of posts|lịch đăng|lich dang|kế hoạch nội dung|ke hoach noi dung)\b/i;
+
+const parseDurationWeeks = (t: string): number | null => {
+  const w = t.match(/(\d{1,2})\s*(?:weeks?|tuần|tuan)\b/i)?.[1];
+  if (w) return Math.min(52, Math.max(1, Number(w)));
+  const mo = t.match(/(\d{1,2})\s*(?:months?|tháng|thang)\b/i)?.[1];
+  if (mo) return Math.min(52, Math.max(1, Number(mo) * 4));
+  if (/\b(a month|one month|month.long|monthly|một tháng|mot thang|hàng tháng|hang thang)\b/i.test(t)) return 4;
+  if (/\b(a week|one week|weekly|một tuần|mot tuan|hàng tuần|hang tuan)\b/i.test(t)) return 1;
+  return null;
+};
+
+const parseCadencePerWeek = (t: string): number | null => {
+  const n = t.match(/(\d{1,2})\s*(?:posts?|bài|bai)\s*(?:a|per|\/|mỗi|moi)?\s*(?:week|tuần|tuan)/i)?.[1]
+    ?? t.match(/(\d{1,2})\s*(?:times?|lần|lan)\s*(?:a|per|\/|mỗi|moi)?\s*(?:week|tuần|tuan)/i)?.[1];
+  if (n) return Math.min(21, Math.max(1, Number(n)));
+  if (/\bdaily\b|mỗi ngày|moi ngay|every day\b/i.test(t)) return 7;
+  return null;
+};
+
+// scope + (weeks, perWeek). Defaults 4 weeks × 3/week for a campaign with unstated cadence.
+const inferCampaign = (t: string): Pick<GoalSpec, 'campaignScope' | 'duration' | 'cadence'> => {
+  const isSpotlight = SPOTLIGHT_RE.test(t);
+  const isPlan = CAMPAIGN_PLAN_RE.test(t) || parseDurationWeeks(t) !== null || parseCadencePerWeek(t) !== null;
+  const scope: GoalSpec['campaignScope'] = isSpotlight ? 'spotlight' : isPlan ? 'campaign' : 'single';
+  if (scope === 'single') return { campaignScope: 'single', duration: null, cadence: null };
+  // Spotlight = one concentrated week by default; a planned campaign defaults to a month × 3/week.
+  const weeks = parseDurationWeeks(t) ?? (scope === 'spotlight' ? 1 : 4);
+  const perWeek = parseCadencePerWeek(t) ?? (scope === 'spotlight' ? 5 : 3);
+  return { campaignScope: scope, duration: { weeks }, cadence: { postsPerWeek: perWeek } };
+};
+
 const inferOutputs = (t: string): GoalSpec['outputs'] => {
   const campaign = isCampaign(t);
   // A carousel / multiple images → the storyboard produces the slides (NOT a single
@@ -155,11 +195,13 @@ export const analyzeDeterministic = (message: string): GoalSpec => {
     lengthSpec: parseLength(m) ?? undefined,
   };
   const filled = Object.values(slots).filter(Boolean).length + platforms.length;
+  const campaign = inferCampaign(m);
 
   return goalSpec.parse({
     outputs: inferOutputs(m),
     platforms,
     slots,
+    ...campaign,
     confidence: Math.min(0.9, 0.3 + filled * 0.08),
     provider: 'deterministic-v1',
   });

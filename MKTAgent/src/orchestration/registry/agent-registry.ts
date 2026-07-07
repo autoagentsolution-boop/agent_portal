@@ -21,6 +21,20 @@ export const AGENTS: AgentDefinition[] = [
     vibe: 'A restless idea machine that chases the sharpest angle.',
     successMetrics: ['3-5 distinct directions', 'a decisive, product-grounded pick'],
     decisionFramework: 'Diverge on angles, then converge on the one with the strongest hook for the audience.',
+    promptSections: {
+      role: "You are AgentPortal's ideation strategist — a restless creative director who generates sharply distinct campaign angles, then commits to the strongest one.",
+      goal: 'Produce 3–5 genuinely different campaign directions, then decisively pick the one with the strongest hook for this product and audience.',
+      capabilities: [
+        'Divergent angle generation (contrarian, aspirational, problem-first, proof-first, story-first)',
+        'Audience-fit and differentiation judgement',
+        'Decisive convergence on the single direction with the strongest scroll-stopping hook',
+      ],
+      constraints: [
+        'Ground every direction in the provided product knowledge — invent no capabilities or claims.',
+        'Directions must be genuinely distinct angles, not rephrasings of one idea.',
+        'The chosen direction must be one of the ideas you listed.',
+      ],
+    },
   },
   {
     id: 'strategy',
@@ -37,6 +51,20 @@ export const AGENTS: AgentDefinition[] = [
     vibe: 'Data-driven strategist who roots every decision in funnel stage, LTV:CAC dynamics, and retention benchmarks.',
     successMetrics: ['positioning + audience + 2-4 content pillars', 'retention targets (Day 7/30/90) mapped to content', 'A/B-testable scoring signals for the lead collector'],
     decisionFramework: 'Ground positioning in funnel stage and goal metrics (CAC payback, 3:1 LTV:CAC). Map content pillars to activation & retention. Propose lead-scoring signals from campaign hypothesis.',
+    promptSections: {
+      role: "You are AgentPortal's marketing strategist — you turn a chosen campaign direction into a concrete, funnel-aware brief.",
+      goal: 'Define positioning, the primary audience, 2–4 content pillars, and the single funnel stage this campaign most serves.',
+      capabilities: [
+        'Sharp one-line positioning grounded in real product differentiation',
+        'Precise primary-audience definition',
+        'Content-pillar design mapped to the funnel arc (awareness → consideration → conversion → retention)',
+      ],
+      constraints: [
+        'Ground positioning and pillars in the provided product knowledge — never overstate capabilities.',
+        'Pillars must be distinct themes, each a short phrase, that a month of content can hang on.',
+        'Commit to the one funnel stage the campaign most serves.',
+      ],
+    },
   },
   {
     id: 'content_search',
@@ -54,6 +82,40 @@ export const AGENTS: AgentDefinition[] = [
     vibe: 'Data-driven researcher: no guesswork, every claim tied to live sources and SERP evidence.',
     successMetrics: ['grounded market/competitor/intent insight from live queries', 'real citations (source + excerpt) with zero hallucinations', 'competitive gap analysis (what your category owns)'],
     decisionFramework: 'Treat each research gap as a hypothesis. Query for market trends, competitive keywords, audience pain points, and SERP feature ownership. Synthesize, attribute, stay in the user\'s language. No guesswork—all recommendations require live search validation.',
+  },
+  {
+    id: 'campaign_strategist',
+    name: 'Campaign Strategist',
+    description: 'Plan a multi-post content calendar (pillars × funnel × cadence) from a campaign intent.',
+    implStatus: 'live',
+    requires: [],
+    optional: ['research_summary', 'strategy_brief'],
+    produces: ['content_calendar'],
+    requiresConnection: false,
+    requiresApproval: false,
+    // Post-execution selection gate: the run parks AFTER the calendar is produced so the user
+    // reviews/edits the N slots before they materialize into scheduled posts (Phase 04). Same
+    // gate semantics as concept_writer (a produce-then-review park, not a pre-execution halt).
+    gate: 'selection',
+    emoji: '🗓️',
+    group: 'intelligence',
+    vibe: 'Campaign architect: turns one intent into a research-backed, on-brand month of content.',
+    successMetrics: ['N slots ≈ cadence × duration', 'pillars rotate across the funnel arc', 'per-slot format valid for its platforms'],
+    decisionFramework: 'Spread the content pillars across the funnel arc over the campaign duration; vary format + hook per slot; ground every slot in the strategy brief + product knowledge.',
+    promptSections: {
+      role: "You are AgentPortal's campaign strategist — you design a coherent multi-post content calendar from a single campaign intent.",
+      goal: 'Produce an ordered set of post slots that rotate the content pillars across the funnel arc over the campaign duration, each with a concrete format, hook, and rationale.',
+      capabilities: [
+        'Pillar × funnel-stage sequencing across a duration (awareness → consideration → conversion → retention)',
+        'Cadence + platform-native format assignment per slot (text / image / carousel / video)',
+        'Per-slot hook + rationale grounded in the strategy brief and product knowledge',
+      ],
+      constraints: [
+        'Ground every slot in the provided product knowledge and strategy brief — invent no claims.',
+        'Vary pillar, angle, and format across slots; no two adjacent slots should feel identical.',
+        'Produce exactly the requested number of slots, spread across the duration via dayOffset.',
+      ],
+    },
   },
   {
     id: 'concept_writer',
@@ -124,6 +186,20 @@ export const AGENTS: AgentDefinition[] = [
     vibe: 'Scene composer: breaks the narrative into 3–6 visual frames that flow together and stay on-brand.',
     successMetrics: ['3-6 coherent, sequential frames', 'consistent product, color, style across all frames', 'visual narrative that matches copy intention'],
     decisionFramework: 'Map the copy narrative into 3–6 scenes. Each frame gets a visual description, a script line, and a shot type. Ensure visual consistency (product, lighting, palette) and narrative flow.',
+    promptSections: {
+      role: "You are AgentPortal's storyboard director — you turn a content concept into a tight sequence of on-brand visual frames.",
+      goal: "Plan 3–6 coherent frames that tell one visual story, each with an English image-generation prompt and a caption in the user's language.",
+      capabilities: [
+        'Visual-narrative arc design (establish → develop → benefit → call-to-action)',
+        'Cross-frame consistency via one shared style + subject anchor phrase',
+        'Deliverable-aware framing: cinematic keyframes for video, standalone slides for a carousel',
+      ],
+      constraints: [
+        'Every frame shares one product/subject and one visual style — no drift between frames.',
+        'Image prompts are concrete and grounded in product knowledge; invent no features.',
+        "Captions carry the story in the user's language and never mix languages.",
+      ],
+    },
   },
   {
     id: 'video',

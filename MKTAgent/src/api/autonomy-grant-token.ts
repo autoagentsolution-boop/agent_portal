@@ -24,3 +24,17 @@ export const verifyGrantToken = (runId: string, ownerId: string, token: unknown)
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
 };
+
+// Campaign-scoped variant (Atria Phase 05): one double-confirm authorizes EVERY materialized post's
+// run in the campaign. Distinct prefix so a run token can't confirm a campaign grant (or vice-versa),
+// and scoped to (campaignId, ownerId) so it can't cross campaigns or tenants.
+export const issueCampaignGrantToken = (campaignId: string, ownerId: string): string =>
+  createHmac('sha256', key()).update(`atria-campaign-grant:${campaignId}:${ownerId}`).digest('hex');
+
+export const verifyCampaignGrantToken = (campaignId: string, ownerId: string, token: unknown): boolean => {
+  if (typeof token !== 'string' || token.length === 0) return false;
+  const expected = issueCampaignGrantToken(campaignId, ownerId);
+  const a = Buffer.from(token);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+};

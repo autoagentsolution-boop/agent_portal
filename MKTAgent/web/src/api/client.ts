@@ -190,6 +190,83 @@ export interface ApiError {
 
 export type Result<T> = { ok: true; data: T; meta?: unknown } | { ok: false; error: ApiError };
 
+// ---- Atria campaign-intelligence DTOs (Phases 02–07) --------------------------------------------
+export type InstructionScope = 'workspace' | 'campaign' | 'post';
+export interface InstructionDto {
+  id: string;
+  scope: InstructionScope;
+  scopeRefId: string | null;
+  agentId: string | null;
+  content: string;
+  enabled: boolean;
+  source: 'user' | 'memory';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SuggestionKind = 'plan_campaign' | 'repeat_winner' | 'roadmap_email' | 'roadmap_memory';
+export interface AtriaSuggestion {
+  kind: SuggestionKind;
+  headline: string;
+  rationale: string;
+  rank: number;
+  prefill: { intent?: string; product?: string; roadmapAgentId?: string };
+}
+export interface RoadmapAgentDto { id: string; name: string; whatItWouldDo: string; triggerSignal: string }
+
+export type CalendarFormat = 'text' | 'image' | 'carousel' | 'video';
+export interface CalendarSlotDto {
+  index: number;
+  pillar: string;
+  angle: string;
+  format: CalendarFormat;
+  platforms: string[];
+  hook: string;
+  rationale: string;
+  dayOffset: number;
+}
+export interface MaterializeResultDto {
+  campaignId: string;
+  swept: number;
+  posts: Array<{ postId: string; runId: string; index: number; scheduledAt: string | null }>;
+  skipped: Array<{ index: number; reason: string }>;
+}
+export type DerivedPostStatus = 'planned' | 'running' | 'held' | 'posted' | 'failed';
+export interface CampaignStatusDto {
+  campaignId: string;
+  total: number;
+  counts: Record<DerivedPostStatus, number>;
+  posts: Array<{ postId: string; runId: string; status: DerivedPostStatus; scheduledAt: string | null }>;
+}
+export interface CampaignCostEstimateDto { posts: number; agentCount: number; totalTokens: number; costUsd: number; credits: number }
+export interface CampaignGrantResponse {
+  campaignId: string;
+  pendingConfirmation?: boolean;
+  confirmationToken?: string;
+  granted?: number;
+  scheduleConfirmed?: boolean;
+  estimate: CampaignCostEstimateDto;
+  status: CampaignStatusDto;
+}
+
+export interface ImpactMetricsDto {
+  postsPublished: number; postsTotal: number; platforms: string[]; mediaPieces: number;
+  usdSpent: number; totalTokens: number; creditsSpent: number; leadsCaptured: number; runMinutes: number;
+}
+export interface ImpactValueDto {
+  estimated: true; baselineUsd: number; freelancerUsd: number; baselineDays: number;
+  savedUsd: number; savedDays: number; estimatedReach: number;
+  assumptions: Record<string, number>;
+}
+export interface ImpactReportDto {
+  scope: 'campaign' | 'period';
+  metrics: ImpactMetricsDto;
+  value: ImpactValueDto;
+  headline: string;
+  creditsSpent: number;
+  period?: string;
+}
+
 interface RequestOpts {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
@@ -375,6 +452,37 @@ export const api = {
     ),
   listPublisherCredentialKeys: () =>
     request<Array<{ agentId: string; key: string; status: string }>>('/agent/credentials/status'),
+
+  // ---- Atria: user instructions (Phase 02) ----
+  listInstructions: (scope?: InstructionScope, refId?: string) =>
+    request<InstructionDto[]>('/instructions', { query: { scope, refId } }),
+  createInstruction: (body: { scope: InstructionScope; scopeRefId?: string | null; agentId?: string | null; content: string; enabled?: boolean }) =>
+    request<InstructionDto>('/instructions', { method: 'POST', body }),
+  updateInstruction: (id: string, body: { content?: string; enabled?: boolean; agentId?: string | null }) =>
+    request<InstructionDto>(`/instructions/${id}`, { method: 'PATCH', body }),
+  deleteInstruction: (id: string) => request<void>(`/instructions/${id}`, { method: 'DELETE' }),
+
+  // ---- Atria: proactive suggestions + roadmap (Phase 06) ----
+  atriaSuggestions: () => request<AtriaSuggestion[]>('/atria/suggestions'),
+  atriaRoadmap: () => request<RoadmapAgentDto[]>('/atria/roadmap'),
+  acceptRoadmap: (agentId: string) => request<{ ok: boolean }>('/atria/roadmap-demand', { method: 'POST', body: { agentId } }),
+
+  // ---- Atria: calendar materialize + campaign grant/status (Phases 04–05) ----
+  materializeCalendar: (campaignId: string, slots: CalendarSlotDto[]) =>
+    request<MaterializeResultDto>(`/campaigns/${campaignId}/materialize`, { method: 'POST', body: { slots } }),
+  // Approve a strategist run's calendar: creates the campaign from the run, materializes, returns campaignId.
+  materializeCalendarFromRun: (runId: string, slots: CalendarSlotDto[]) =>
+    request<{ campaignId: string; materialize: MaterializeResultDto | null }>(
+      `/orchestration/runs/${runId}/materialize-calendar`, { method: 'POST', body: { slots } },
+    ),
+  campaignStatus: (id: string) => request<CampaignStatusDto>(`/campaigns/${id}/status`),
+  grantCampaign: (id: string, body: { confirmationToken?: string; scheduleConfirmed?: boolean }) =>
+    request<CampaignGrantResponse>(`/campaigns/${id}/grant-autonomy`, { method: 'POST', body }),
+
+  // ---- Atria: impact / value report (Phase 07) ----
+  campaignImpact: (id: string) => request<ImpactReportDto>(`/campaigns/${id}/impact`),
+  periodImpact: (period: '7d' | '30d' | '90d' | 'all' = '30d') =>
+    request<ImpactReportDto>('/impact', { query: { period } }),
 };
 
 // Social OAuth connect is a full-page navigation (platform redirect), not a fetch.

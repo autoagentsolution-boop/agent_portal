@@ -59,7 +59,9 @@ export interface RefineDirective {
 // `knowledge` (feedback #4): the resolved product-library grounding — the post-selected entry wins
 // over the campaign default (resolved in service.ts). When present it OVERRIDES campaign.brandContext
 // so a per-post product choice actually reaches the copy (previously copy read only brandContext).
-export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDirective, knowledge?: string | null): GeminiRequestBody {
+// `instructions` (Atria Phase 02): the user's resolved layered instructions for the concept_writer.
+// Injected right after the persona so the hard FORMAT/STRUCTURE/LENGTH guardrails below still WIN.
+export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDirective, knowledge?: string | null, instructions?: string[]): GeminiRequestBody {
   const product = (post.campaign.product ?? '').trim();
   // Post-level angle overrides the campaign's (per-post strategy).
   const angle = (post.angle ?? post.campaign.angle ?? '').trim();
@@ -78,8 +80,12 @@ export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDire
     ? `end with 4-6 hashtags${cfg.brandName ? ` starting with #${cfg.brandName.replace(/\s+/g, '')}` : ''}`
     : 'end with 2-4 relevant, natural hashtags (no forced brand tags)';
 
+  const userInstructions = (instructions ?? []).map((s) => s.trim()).filter(Boolean);
   const system = [
     ...personaLines(cfg, productFacts),
+    ...(userInstructions.length
+      ? [`USER INSTRUCTIONS (the user's own steer — honor these unless they conflict with a hard guardrail below, which always wins):\n${userInstructions.map((s) => `- ${s}`).join('\n')}`]
+      : []),
     `LANGUAGE: write EVERY variant (body, threads, x) in ${lang}. Do not mix languages; keep it natural and idiomatic in ${lang}.`,
     'FORMAT (hard guardrail): NO HTML/markdown (no <br>, <b>, **). Real newlines only to separate lines. Short sentences (<20 words). Generous blank lines between lines for mobile readability.',
     `STRUCTURE for "body": first-line HOOK MAX 50 CHARACTERS (including emoji & punctuation) — a concrete number/situation, a contrarian line, or a pain admission; no rambling, no product name in the hook. Then: blank line; a deeper re-hook; blank line; 2-3 emoji-led body lines about the real human/operational RESULT (not a feature list); blank line; 1 closing line; 1 SPECIFIC discussion question (avoid "what do you think?"); 1 single CTA; final line ${hashtagRule}.`,
@@ -136,8 +142,8 @@ export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDire
 // Multi-variant request (concept selection): reuse the single-copy prompt's system +
 // guardrails, but ask for N DISTINCT versions the user can choose from, and return an array.
 // Each variant honors every hard guardrail; they must differ in hook/angle, not be rephrasings.
-export function buildVariantsBody(post: PostWithCampaignOwner, n: number, knowledge?: string | null): GeminiRequestBody {
-  const base = buildGeminiBody(post, undefined, knowledge);
+export function buildVariantsBody(post: PostWithCampaignOwner, n: number, knowledge?: string | null, instructions?: string[]): GeminiRequestBody {
+  const base = buildGeminiBody(post, undefined, knowledge, instructions);
   const baseUser = base.contents[0]?.parts[0]?.text ?? '';
   const user =
     baseUser +

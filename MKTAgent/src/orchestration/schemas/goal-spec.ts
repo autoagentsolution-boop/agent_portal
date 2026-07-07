@@ -58,6 +58,14 @@ export type GoalSlots = z.infer<typeof goalSlots>;
 export const assetTypeFromOutputs = (o: OutputFlags): 'image' | 'carousel' | 'video' =>
   o.needsVideo ? 'video' : o.needsStoryboard ? 'carousel' : 'image';
 
+// Campaign scope (Atria campaign-intelligence Phase 03). `single` = today's one-post flow
+// (DEFAULT → byte-identical planning). `campaign` = a multi-post content plan across a duration.
+// `spotlight` = one concentrated push (a short, high-intensity campaign). Non-single scopes route
+// the planner to the campaign_strategist (research → strategy → editable N-slot content calendar)
+// and STOP before per-post media/publish — those belong to the materialized posts (Phase 04).
+export const campaignScope = z.enum(['single', 'campaign', 'spotlight']);
+export type CampaignScope = z.infer<typeof campaignScope>;
+
 export const goalSpec = z.object({
   // Stable goal classifier. Milestone 1 only plans `marketing_content`; the field
   // exists so future goal types (lead_nurture, report, etc.) slot in additively.
@@ -65,6 +73,11 @@ export const goalSpec = z.object({
   outputs: outputFlags,
   platforms: z.array(socialPlatform).default([]),
   slots: goalSlots,
+  // Campaign framing (Phase 03). Default `single` keeps every existing goal on the unchanged
+  // one-post path. duration/cadence are only meaningful when scope !== 'single'.
+  campaignScope: campaignScope.default('single'),
+  duration: z.object({ weeks: z.number().int().positive().max(52) }).nullish(),
+  cadence: z.object({ postsPerWeek: z.number().int().positive().max(21) }).nullish(),
   // Analyzer's self-reported confidence (mirrors the existing intake draft).
   confidence: z.number().min(0).max(1).default(0.5),
   // Which analyzer produced this (gemini | deterministic-v1) — for debugging.

@@ -25,6 +25,9 @@ import { agentRouter } from './api/agent-router.ts';
 import { orchestrationRouter } from './api/orchestration-router.ts';
 import { productKnowledgeRouter } from './api/product-knowledge-router.ts';
 import { connectionsRouter } from './api/connections-router.ts';
+import { instructionsRouter } from './api/instructions-router.ts';
+import { atriaRouter } from './api/atria-router.ts';
+import { impactRouter } from './api/impact-router.ts';
 import { IMAGE_OUTPUT_DIR } from './imagegen/nano-banana.ts';
 import { VIDEO_OUTPUT_DIR } from './video/veo.ts';
 
@@ -81,6 +84,17 @@ app.use('/connect', connectRouter);
 // cron/webhook s2s routes (mounted in later phases), not user-facing CRUD.
 app.use('/posts', requireAuth, postsRouter);
 app.use('/campaigns', requireAuth, campaignsRouter);
+
+// Atria user instructions (Phase 02). Layered, ChatGPT-style custom instructions injected into
+// every agent's system prompt via buildAgentPrompt. Owner-scoped CRUD; tenant-scoped via requireAuth.
+app.use('/instructions', requireAuth, instructionsRouter);
+
+// Atria proactive suggestions + roadmap pitches (Phase 06). Read-only nudges derived from the
+// tenant's own history; accepting prefills a flow or logs demand — nothing runs without a grant.
+app.use('/atria', requireAuth, atriaRouter);
+
+// Atria impact / value report (Phase 07). Per-period ROI proof (per-campaign lives on /campaigns/:id/impact).
+app.use('/impact', requireAuth, impactRouter);
 
 // Master Agent typed intake. Draft-only parser that helps users set up the flow;
 // writes still happen through the explicit campaign/post APIs after UI confirmation.

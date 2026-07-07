@@ -4,7 +4,8 @@
 // publisher gate (manual approve, DRY by default), and lets the user click a node to
 // view that node's output as CLEAN TEXT (+ the real generated image) — never raw JSON.
 import { useEffect, useState } from 'react';
-import { api, type PlanTier, type PlanTierId, type WorkflowRunDto } from '../api/client';
+import { api, type PlanTier, type PlanTierId, type WorkflowRunDto, type CalendarSlotDto } from '../api/client';
+import { ContentCalendar } from './content-calendar';
 import { useRunEvents } from '../hooks/use-run-events';
 import { RunDagView } from './run-dag-view';
 import { ConnectionRequired } from './connection-required';
@@ -34,6 +35,7 @@ const AGENT_ROLE: Record<string, string> = {
   ideation: 'Brainstorms campaign directions and picks the strongest angle',
   strategy: 'Turns the idea into positioning, audience and content pillars',
   content_search: 'Gathers research, references and proof points',
+  campaign_strategist: 'Plans a multi-post content calendar you review and edit',
   concept_writer: 'Writes the campaign angle and copy variants',
   infographic: 'Generates the marketing image',
   storyboard: 'Plans the video scenes and script',
@@ -277,7 +279,20 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
         <ConnectionRequired actions={requiredActions} busy={busy} onContinue={() => void execute()} />
       )}
 
-      {run.status === 'needs_approval' && gateNode && (
+      {/* Campaign strategist selection gate: the run parked with an editable content calendar.
+          Review/edit the slots, then Approve → creates the campaign, schedules N posts, and grants. */}
+      {run.status === 'needs_approval' && gateNode?.agentId === 'campaign_strategist' && (
+        <div className="gate-block">
+          <ContentCalendar
+            runId={run.id}
+            slots={((run.artifacts.find((a) => a.type === 'content_calendar')?.data as { slots?: CalendarSlotDto[] } | undefined)?.slots ?? [])}
+            notify={notify}
+            onDone={() => { void load(); onStatusChange(); }}
+          />
+        </div>
+      )}
+
+      {run.status === 'needs_approval' && gateNode && gateNode.agentId !== 'campaign_strategist' && (
         <div className="gate-block">
           <p className="muted small">Paused before <strong>{gateNode.agentId.replace(/_/g, ' ')}</strong> — an external action. Approve to proceed.</p>
           <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId)}>

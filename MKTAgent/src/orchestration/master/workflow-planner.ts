@@ -19,6 +19,18 @@ import { validatePlan } from './workflow-validator.ts';
 const selectAgents = (goal: GoalSpec): RunnableAgentId[] => {
   const ids: RunnableAgentId[] = [];
   const { outputs } = goal;
+
+  // Campaign scope (Atria Phase 03): a multi-post plan routes to the campaign_strategist and STOPS
+  // at the editable content calendar — per-post copy/media/publish belong to the posts materialized
+  // from the approved calendar (Phase 04), NOT to this planning run. `single` falls through to the
+  // unchanged one-post pipeline below (byte-identical). ideation + strategy always ground the
+  // strategist; research only when asked (it's a paid grounded call).
+  if (goal.campaignScope && goal.campaignScope !== 'single') {
+    if (outputs.needsResearch) ids.push('content_search');
+    ids.push('ideation', 'strategy', 'campaign_strategist');
+    return ids;
+  }
+
   if (outputs.needsResearch) ids.push('content_search');
   // strategy requires campaign_ideas → ideation is implied whenever strategy runs.
   if (outputs.needsIdeation || outputs.needsStrategy) ids.push('ideation');

@@ -82,6 +82,23 @@ enum UserRole {
   admin
 }
 
+// Atria user-instruction system (campaign-intelligence Phase 02). Layered, ChatGPT-style
+// custom instructions the user controls; resolved most-general → most-specific and injected
+// into EVERY agent's system prompt via buildAgentPrompt.
+enum InstructionScope {
+  workspace // global — the "how I want my content" box (ChatGPT custom-instructions analogue)
+  campaign  // scopeRefId = campaignId
+  post      // scopeRefId = postId
+}
+
+// Provenance of an instruction. `user` = authored by hand (v1). `memory` = later WRITTEN by the
+// Memory Agent (roadmap/v2) from what the user edits + what performs — kept distinguishable so a
+// learned instruction stays reviewable + revertible, never a black box.
+enum InstructionSource {
+  user
+  memory
+}
+
 // A tenant. Identity = email (from Google login). One User owns many Campaigns,
 // Leads and OAuthTokens; every tenant-scoped query filters by this id (T2).
 // Branding + language are config-as-data defaults inherited by campaigns (T3).
@@ -117,8 +134,52 @@ model User {
   workflowRuns       WorkflowRun[]
   productKnowledge   ProductKnowledge[]
   leadIntakeTokens   LeadIntakeToken[]
+  instructions       Instruction[]
+  roadmapDemands     RoadmapDemand[]
 
   @@map("mkt_user")
+}
+
+// Roadmap-agent demand log (Atria Phase 06). Each time Atria PITCHES a not-yet-built roadmap agent
+// (Email / Memory / Analytics) on a triggering signal, and each time the user ACCEPTS the pitch, a
+// row lands here — real, per-tenant demand data for prioritizing which agent to build next. No PII.
+model RoadmapDemand {
+  id        String   @id @default(uuid()) @db.Uuid
+  ownerId   String   @map("owner_id") @db.Uuid
+  agentId   String   @map("agent_id") // roadmap agent id (email | memory | analytics)
+  action    String   // 'pitched' | 'accepted'
+  signal    String?  // the triggering signal label (e.g. "leads_no_email"), no personal data
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, agentId], name: "ix_roadmap_demand_owner_agent")
+  @@map("mkt_roadmap_demand")
+}
+
+// One free-form user instruction (Atria Phase 02). Layered: workspace (global) → campaign → post,
+// optionally targeting a single agent. resolveInstructions composes the enabled ones, most-general
+// → most-specific, and buildAgentPrompt appends them to the agent's system prompt (hard output
+// contracts + guardrails still WIN over user text). Owner-scoped; small per-tenant.
+model Instruction {
+  id         String            @id @default(uuid()) @db.Uuid
+  ownerId    String            @map("owner_id") @db.Uuid
+  scope      InstructionScope
+  // The entity this instruction is scoped to: campaignId / postId. Null for workspace (global).
+  scopeRefId String?           @map("scope_ref_id") @db.Uuid
+  // Optional single-agent target (registry agentId, e.g. "storyboard"). Null = all agents.
+  agentId    String?           @map("agent_id")
+  content    String
+  enabled    Boolean           @default(true)
+  source     InstructionSource @default(user)
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, scope], name: "ix_instruction_owner_scope")
+  @@index([ownerId, scope, scopeRefId], name: "ix_instruction_scope_ref")
+  @@map("mkt_instruction")
 }
 
 // Per-owner lead intake token (Atria Lead Collector §01.1). An external funnel presents

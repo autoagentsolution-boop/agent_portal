@@ -4,7 +4,7 @@
 // Keeping each payload Zod-defined means a malformed agent result is a recoverable
 // error, not a silent bad input to the next node.
 import { z } from 'zod';
-import { copyBag } from '../../api/schemas.ts';
+import { copyBag, socialPlatform } from '../../api/schemas.ts';
 
 // The closed set of artifact types produced in Milestone 1. Stubs emit the same
 // shapes as future live agents will, so wiring a stub→live agent later needs no
@@ -18,6 +18,7 @@ export const artifactType = z.enum([
   'storyboard',
   'video_prompt',
   'publish_result',
+  'content_calendar',
 ]);
 export type ArtifactType = z.infer<typeof artifactType>;
 
@@ -115,6 +116,26 @@ export const publishResult = z.object({
   timingSuggestion: z.string().optional(),
 });
 
+// campaign_strategist → content_calendar (Atria Phase 03). An ordered set of planned posts
+// (slots) the user reviews/edits before materializing into real scheduled Posts (Phase 04).
+// `format` is the deliverable per slot; `dayOffset` is a spread hint (concrete dates assigned at
+// materialization from the campaign's posting window + timezone).
+export const calendarSlot = z.object({
+  index: z.number().int().nonnegative(),
+  pillar: z.string(),
+  angle: z.string(),
+  format: z.enum(['text', 'image', 'carousel', 'video']).default('image'),
+  platforms: z.array(socialPlatform).default([]),
+  hook: z.string().default(''),
+  rationale: z.string().default(''),
+  dayOffset: z.number().int().nonnegative().default(0),
+});
+export type CalendarSlot = z.infer<typeof calendarSlot>;
+
+export const contentCalendar = z.object({
+  slots: z.array(calendarSlot).min(1),
+});
+
 // Lookup: artifactType → its payload schema. The executor uses this to validate
 // an agent's output by its declared `produces` type.
 export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
@@ -126,4 +147,5 @@ export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
   storyboard,
   video_prompt: videoPrompt,
   publish_result: publishResult,
+  content_calendar: contentCalendar,
 };

@@ -8,10 +8,11 @@ import { ConnectionsPanel } from './components/ConnectionsPanel';
 import { ProductKnowledgeLibrary } from './components/ProductKnowledgeLibrary';
 import { LeadsPage } from './components/LeadsPage';
 import { UsageDashboard } from './components/UsageDashboard';
+import { AtriaHubPage } from './components/atria-hub-page';
 import { CommandCenterPage } from './components/command-center-page';
 import type { DemoMode } from './flow/demo-flow';
 
-type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads' | 'usage' | 'command-center';
+type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads' | 'usage' | 'command-center' | 'atria';
 type Theme = 'light' | 'dark';
 
 const postTitle = (post: PostDto, index: number): string => {
@@ -295,6 +296,7 @@ export function App() {
           <button className="icon-btn" aria-label="Toggle theme" onClick={() => setTheme((t) => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '◐' : '☼'}</button>
         </div>
         <button className={`sidebar-item ${page === 'command-center' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('command-center'); }}>◈ Command Center</button>
+        <button className={`sidebar-item ${page === 'atria' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('atria'); }}>✦ Atria</button>
         <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>✎ New chat</button>
         <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('connections'); }}>🔌 Connections</button>
         <button className={`sidebar-item ${page === 'usage' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('usage'); }}>📊 Usage</button>
@@ -386,6 +388,8 @@ export function App() {
           <div className="master-home">
             <LeadsPage notify={show} />
           </div>
+        ) : page === 'atria' ? (
+          <AtriaHubPage activeCampaign={activeCampaign} notify={show} onPlanCampaign={launchFromCommandCenter} />
         ) : (
           <ActiveFlowsPage
             activeCampaign={activeCampaign}

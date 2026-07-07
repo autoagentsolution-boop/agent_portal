@@ -39,7 +39,12 @@ import {
   agentCostAverages,
   grantAutonomy,
   markRunCrashed,
+  setNodeStatus,
 } from '../db/repos/workflow-run-repo.ts';
+import { createCampaign } from '../db/repos/campaign-repo.ts';
+import { materializeCalendar } from '../orchestration/master/campaign-materializer.ts';
+import type { CalendarSlot } from '../orchestration/schemas/artifact-schemas.ts';
+import { z } from 'zod';
 import { issueGrantToken, verifyGrantToken } from './autonomy-grant-token.ts';
 import { getPostByRunId } from '../db/repos/post-repo.ts';
 import { publishNodeStatus } from '../events/bus.ts';
@@ -334,6 +339,55 @@ orchestrationRouter.post('/runs/:id/grant-autonomy', asyncHandler(async (req, re
   await logRun('info', 'atria_grant', { runId: run.id, approvalMode: 'atria', scheduleConfirmed }, req.userId!);
   logger.info('wf_autonomy_granted', { runId: run.id, scheduleConfirmed });
   return respondRun(res, run.id, req.userId!);
+}));
+
+// Materialize an approved content calendar (Atria Phase 03→04 bridge). The campaign_strategist run
+// parks at its selection gate with a content_calendar artifact but NO campaign yet — this endpoint
+// creates the campaign FROM the run's goal, materializes the user-edited slots into scheduled posts,
+// and resolves the gate. Returns the new campaignId (the UI then runs the Phase-05 grant on it).
+const materializeSlotSchema = z.object({
+  index: z.number().int().nonnegative(),
+  pillar: z.string().max(400).default(''),
+  angle: z.string().max(2000).default(''),
+  format: z.enum(['text', 'image', 'carousel', 'video']).default('image'),
+  platforms: z.array(z.string()).default([]),
+  hook: z.string().max(1000).default(''),
+  rationale: z.string().max(2000).default(''),
+  dayOffset: z.number().int().nonnegative().default(0),
+});
+const materializeCalendarBody = z.object({ slots: z.array(materializeSlotSchema).min(1).max(120) }).strict();
+
+orchestrationRouter.post('/runs/:id/materialize-calendar', asyncHandler(async (req, res) => {
+  const run = await getRunWithNodes(req.params.id, req.userId!);
+  if (!run) return fail(res, 404, 'run_not_found');
+  const strategistNode = run.nodes.find((n) => n.agentId === 'campaign_strategist');
+  if (!strategistNode) return fail(res, 409, 'not_a_campaign_plan', 'this run has no campaign strategist step');
+  const body = parseOr422(res, materializeCalendarBody, req.body ?? {});
+  if (!body) return;
+
+  const goal = goalSpec.parse(run.goal);
+  const clean = (s?: string | null): string | null => (s && s.trim() ? s.trim() : null);
+  const isBrand = goal.slots.accountType === 'business' || goal.slots.accountType === 'company';
+  const campaign = await createCampaign({
+    ownerId: req.userId!,
+    flowId: run.id, // link the campaign to the strategist flow that produced its calendar
+    product: goal.slots.product ?? 'Untitled product',
+    angle: clean(goal.slots.angle),
+    brandVoice: clean(goal.slots.brandVoice) ?? (isBrand ? 'Professional, trustworthy brand voice' : null),
+    brandContext: clean(goal.slots.productDetails),
+    language: clean(goal.slots.language),
+    platforms: goal.platforms.length ? goal.platforms : ['facebook'],
+  });
+
+  const result = await materializeCalendar(campaign.id, req.userId!, body.slots as CalendarSlot[]);
+
+  // Resolve the strategist selection gate — the calendar is approved; the materialized posts run
+  // as their own flows now, so the planning run is complete.
+  await setNodeStatus(strategistNode.id, 'completed');
+  await setRunStatus(run.id, 'completed');
+  await logRun('info', 'atria_calendar_materialized', { runId: run.id, campaignId: campaign.id, posts: result?.posts.length ?? 0 }, req.userId!);
+
+  ok(res, { campaignId: campaign.id, materialize: result });
 }));
 
 orchestrationRouter.post('/runs/:id/approve-node/:nodeId', asyncHandler(async (req, res) => {

@@ -7,7 +7,7 @@
 import { assetTypeFromOutputs, type GoalSpec } from '../schemas/goal-spec.ts';
 import { distinctAssetTypes } from '../../scheduler/resolve-input.ts';
 import { resolveLinkedKnowledge, resolveLinkedReferenceImage } from '../../db/repos/product-knowledge-repo.ts';
-import { campaignIdeas, strategyBrief, storyboard, videoPrompt, type ArtifactType } from '../schemas/artifact-schemas.ts';
+import { campaignIdeas, strategyBrief, storyboard, videoPrompt, contentCalendar, type ArtifactType } from '../schemas/artifact-schemas.ts';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
 import { createPost, getPostForOwner, getPostForCopyGen, attachPostMedia, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
@@ -16,7 +16,8 @@ import { getUserById } from '../../db/repos/user-repo.ts';
 import { generateVariantsForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
-import { ideationSystemPrompt, strategySystemPrompt, storyboardSystemPrompt, storyboardCarouselSystemPrompt } from '../prompts/agent-prompts.ts';
+import { buildAgentPrompt } from '../prompts/build-agent-prompt.ts';
+import { resolveInstructions } from '../prompts/resolve-instructions.ts';
 import { generate as generateImage, type ImageResult, type ImageRequest } from '../../imagegen/nano-banana.ts';
 import { generate as generateVideo, VEO_MODEL_ID, type VideoRequest, type VideoResult } from '../../video/veo.ts';
 import { generate as generateTts, type TtsRequest } from '../../video/tts.ts';
@@ -328,6 +329,20 @@ const resolveRunLanguage = async (ctx: RunnerContext): Promise<string> => {
   return ctx.goal.slots.language?.trim() || (await getUserById(ctx.ownerId))?.defaultLanguage || DEFAULT_LANGUAGE;
 };
 
+// The user's layered "Atria Instructions" for THIS agent + run (Phase 02). Derives the
+// campaign from the attached post so campaign/post-scoped instructions resolve; workspace
+// instructions always apply. buildAgentPrompt wraps the result in its USER INSTRUCTIONS block
+// (hard output contract still wins). Empty for a tenant with no instructions → no prompt change.
+const resolveRunInstructions = async (ctx: RunnerContext, agentId: string): Promise<string[]> => {
+  const post = ctx.postId ? await getPostForCopyGen(ctx.postId, ctx.ownerId) : null;
+  return resolveInstructions({
+    ownerId: ctx.ownerId,
+    agentId,
+    campaignId: post?.campaignId ?? null,
+    postId: ctx.postId ?? null,
+  });
+};
+
 // Product knowledge that grounds the IMAGE/VIDEO prompts: the goal slot first, else the
 // campaign's brandContext — where uploaded-document analysis is persisted. Copy-gen already
 // reads brandContext (resolveCopyConfig), so this brings the media prompts to parity: a rich
@@ -388,27 +403,31 @@ const goalContext = (ctx: RunnerContext, resolvedLang?: string, knowledge?: stri
 // output against the artifact schema here so a bad response fails the node loudly.
 const runIdeation = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
-  const prompt = goalContext(ctx, await resolveRunLanguage(ctx), await resolveProductKnowledge(ctx));
+  const language = await resolveRunLanguage(ctx);
+  const { system } = buildAgentPrompt('ideation', { language, userInstructions: await resolveRunInstructions(ctx, 'ideation') });
+  const prompt = goalContext(ctx, language, await resolveProductKnowledge(ctx));
   // onUsage reports REAL token usage from the live call; injected DRY-RUN stubs ignore the
   // sink, so `usage` stays null there — doubles as "was this a real call" for the ledger guard.
   let usage: GeminiUsage | null = null;
-  const raw = await call(ideationSystemPrompt, prompt, (u) => { usage = u; });
+  const raw = await call(system, prompt, (u) => { usage = u; });
   const parsed = campaignIdeas.safeParse(raw);
   if (!parsed.success) throw new Error(`ideation: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
   if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'orchestration', model: env.GEMINI_MODEL, usage, runId: ctx.runId, refId: ctx.postId ?? null });
   return {
     type: 'campaign_ideas',
     data: parsed.data,
-    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(ideationSystemPrompt + prompt, JSON.stringify(parsed.data)),
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(system + prompt, JSON.stringify(parsed.data)),
   };
 };
 
 // strategy (LIVE): turn the chosen idea into a positioning/audience/pillars brief.
 const runStrategy = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
-  const prompt = goalContext(ctx, await resolveRunLanguage(ctx), await resolveProductKnowledge(ctx));
+  const language = await resolveRunLanguage(ctx);
+  const { system } = buildAgentPrompt('strategy', { language, userInstructions: await resolveRunInstructions(ctx, 'strategy') });
+  const prompt = goalContext(ctx, language, await resolveProductKnowledge(ctx));
   let usage: GeminiUsage | null = null;
-  const raw = await call(strategySystemPrompt, prompt, (u) => { usage = u; });
+  const raw = await call(system, prompt, (u) => { usage = u; });
   const parsed = strategyBrief.safeParse(raw);
   if (!parsed.success) throw new Error(`strategy: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
   if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'orchestration', model: env.GEMINI_MODEL, usage, runId: ctx.runId, refId: ctx.postId ?? null });
@@ -419,7 +438,45 @@ const runStrategy = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   return {
     type: 'strategy_brief',
     data,
-    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(strategySystemPrompt + prompt, JSON.stringify(data)),
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(system + prompt, JSON.stringify(data)),
+  };
+};
+
+// campaign_strategist (LIVE — Atria Phase 03): from a campaign intent + the strategy brief,
+// author an editable N-slot content calendar (pillars × funnel arc × cadence × platform format).
+// Uses the shared expert builder + the user's instructions, grounded in product knowledge. The
+// run parks at the strategist's selection gate with the calendar for the user to review/edit
+// before Phase 04 materializes it into scheduled posts. N ≈ cadence × duration.
+const runCampaignStrategist = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const call = ctx.llmJsonFn ?? callGeminiJson;
+  const language = await resolveRunLanguage(ctx);
+  const { system } = buildAgentPrompt('campaign_strategist', {
+    language,
+    userInstructions: await resolveRunInstructions(ctx, 'campaign_strategist'),
+  });
+  const weeks = ctx.goal.duration?.weeks ?? 4;
+  const perWeek = ctx.goal.cadence?.postsPerWeek ?? 3;
+  const slotCount = Math.max(1, Math.min(60, weeks * perWeek));
+  const platforms = ctx.goal.platforms.length ? ctx.goal.platforms : ['facebook'];
+  const strat = ctx.upstream.strategy_brief as { pillars?: string[]; funnelStage?: string } | undefined;
+  const parts = [
+    goalContext(ctx, language, await resolveProductKnowledge(ctx)),
+    `Campaign scope: ${ctx.goal.campaignScope}. Duration: ${weeks} week(s). Cadence: ${perWeek} post(s)/week.`,
+    `Produce EXACTLY ${slotCount} slots, spread across ${weeks * 7} days via dayOffset (honor the cadence).`,
+    strat?.pillars?.length ? `Content pillars to rotate: ${strat.pillars.join(', ')}.` : null,
+    strat?.funnelStage ? `Primary funnel stage: ${strat.funnelStage}.` : null,
+    `Target platforms (assign a non-empty subset per slot): ${platforms.join(', ')}.`,
+  ].filter(Boolean);
+  const prompt = parts.join('\n');
+  let usage: GeminiUsage | null = null;
+  const raw = await call(system, prompt, (u) => { usage = u; });
+  const parsed = contentCalendar.safeParse(raw);
+  if (!parsed.success) throw new Error(`campaign_strategist: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+  if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'orchestration', model: env.GEMINI_MODEL, usage, runId: ctx.runId, refId: ctx.postId ?? null });
+  return {
+    type: 'content_calendar',
+    data: parsed.data,
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(system + prompt, JSON.stringify(parsed.data)),
   };
 };
 
@@ -546,8 +603,13 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   if (concept?.keyMessage) parts.push(`Key message: ${concept.keyMessage}`);
   if (concept?.mainAngle) parts.push(`Main angle: ${concept.mainAngle}`);
   const planPrompt = parts.join('\n');
-  // Carousel → business-explainer slides; video → cinematic keyframes.
-  const sbPrompt = isCarousel ? storyboardCarouselSystemPrompt : storyboardSystemPrompt;
+  // Carousel → business-explainer slides; video → cinematic keyframes. One builder, two output
+  // contracts selected by the deliverable (the expert base + language rule are shared).
+  const { system: sbPrompt } = buildAgentPrompt('storyboard', {
+    language: effectiveLang,
+    contractKey: isCarousel ? 'storyboard_carousel' : 'storyboard',
+    userInstructions: await resolveRunInstructions(ctx, 'storyboard'),
+  });
   let planUsage: GeminiUsage | null = null;
   const raw = (await call(sbPrompt, planPrompt, (u) => { planUsage = u; })) as {
     frames?: Array<{ index?: number; imagePrompt?: string; caption?: string }>;
@@ -688,6 +750,7 @@ const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOut
   ideation: runIdeation,
   strategy: runStrategy,
   content_search: runResearcher,
+  campaign_strategist: runCampaignStrategist,
   concept_writer: runConceptWriter,
   infographic: runInfographic,
   storyboard: runStoryboard,

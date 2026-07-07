@@ -15,7 +15,18 @@ import {
   updateCampaign,
   deleteCampaign,
 } from '../db/repos/campaign-repo.ts';
-import { getRunForOwner } from '../db/repos/workflow-run-repo.ts';
+import { getRunForOwner, grantAutonomyForCampaign } from '../db/repos/workflow-run-repo.ts';
+import { z } from 'zod';
+import { socialPlatform } from './schemas.ts';
+import { materializeCalendar } from '../orchestration/master/campaign-materializer.ts';
+import { estimateCampaignCost, campaignStatusRollup } from '../orchestration/master/campaign-grant.ts';
+import { issueCampaignGrantToken, verifyCampaignGrantToken } from './autonomy-grant-token.ts';
+import type { CalendarSlot } from '../orchestration/schemas/artifact-schemas.ts';
+import { logRun } from '../db/client.ts';
+import { env } from '../config/env.ts';
+import { logger } from '../lib/logger.ts';
+import { metricsForCampaign } from '../impact/impact-metrics.ts';
+import { buildImpactReport } from '../impact/value-model.ts';
 
 export const campaignsRouter: Router = Router();
 
@@ -73,5 +84,92 @@ campaignsRouter.delete(
     if (!(await deleteCampaign(req.params.id, req.userId!)))
       return fail(res, 404, 'campaign_not_found');
     res.status(204).end();
+  }),
+);
+
+// Materialize an approved (user-edited) content calendar into N scheduled posts (Atria Phase 04).
+// The client sends the reviewed calendar slots; each becomes a Post + its own runnable DAG, spread
+// across the campaign's posting window. Idempotent: re-materializing sweeps the un-published posts
+// and replaces them, never touching a published one.
+const materializeSlot = z.object({
+  index: z.number().int().nonnegative(),
+  pillar: z.string().max(400).default(''),
+  angle: z.string().max(2000).default(''),
+  format: z.enum(['text', 'image', 'carousel', 'video']).default('image'),
+  platforms: z.array(socialPlatform).default([]),
+  hook: z.string().max(1000).default(''),
+  rationale: z.string().max(2000).default(''),
+  dayOffset: z.number().int().nonnegative().default(0),
+});
+const materializeBody = z.object({ slots: z.array(materializeSlot).min(1).max(120) }).strict();
+
+campaignsRouter.post(
+  '/:id/materialize',
+  asyncHandler(async (req, res) => {
+    const body = parseOr422(res, materializeBody, req.body ?? {});
+    if (!body) return;
+    const result = await materializeCalendar(req.params.id, req.userId!, body.slots as CalendarSlot[]);
+    if (!result) return fail(res, 404, 'campaign_not_found');
+    ok(res, result);
+  }),
+);
+
+// Live status rollup of a campaign's materialized posts (Phase 05) — the command board reads this.
+campaignsRouter.get(
+  '/:id/status',
+  asyncHandler(async (req, res) => {
+    if (!(await getCampaign(req.params.id, req.userId!))) return fail(res, 404, 'campaign_not_found');
+    ok(res, await campaignStatusRollup(req.params.id, req.userId!));
+  }),
+);
+
+// Impact / value report for one campaign (Phase 07): real cost/output/leads + a clearly-labeled
+// saved-vs-agency estimate. The retention/sales proof-of-value screen reads this.
+campaignsRouter.get(
+  '/:id/impact',
+  asyncHandler(async (req, res) => {
+    if (!(await getCampaign(req.params.id, req.userId!))) return fail(res, 404, 'campaign_not_found');
+    const metrics = await metricsForCampaign(req.params.id, req.userId!);
+    ok(res, buildImpactReport('campaign', metrics));
+  }),
+);
+
+// Campaign-level autonomy grant (Phase 05). ONE backend-enforced double-confirm authorizes EVERY
+// materialized post's run to run autonomously. Step 1 (no token) returns the whole-calendar cost
+// estimate + status + a confirmationToken WITHOUT granting; step 2 (echo token) flips all runs to
+// 'atria' in one audited action. Per-post guardrails still gate each external write at run time.
+campaignsRouter.post(
+  '/:id/grant-autonomy',
+  asyncHandler(async (req, res) => {
+    const campaign = await getCampaign(req.params.id, req.userId!);
+    if (!campaign) return fail(res, 404, 'campaign_not_found');
+    const body = (req.body ?? {}) as { confirmationToken?: unknown; scheduleConfirmed?: unknown };
+
+    const estimate = await estimateCampaignCost(campaign.id, req.userId!);
+    // Step 1 — no valid token: surface the cost up front + issue the token, DO NOT grant.
+    if (!verifyCampaignGrantToken(campaign.id, req.userId!, body.confirmationToken)) {
+      const status = await campaignStatusRollup(campaign.id, req.userId!);
+      return ok(res, {
+        campaignId: campaign.id,
+        pendingConfirmation: true,
+        confirmationToken: issueCampaignGrantToken(campaign.id, req.userId!),
+        estimate,
+        status,
+      });
+    }
+
+    // Optional hard ceiling: the per-run ceiling scaled by post count (a runaway avg per-post blocks).
+    const totalCeiling = env.ATRIA_AUTONOMY_COST_CEILING_USD * Math.max(1, estimate.posts);
+    if (totalCeiling > 0 && estimate.costUsd > totalCeiling) {
+      return fail(res, 409, 'campaign_over_cost_ceiling', { estimatedUsd: estimate.costUsd, ceilingUsd: totalCeiling });
+    }
+
+    // Step 2 — token verified: grant the whole campaign in one audited action.
+    const scheduleConfirmed = body.scheduleConfirmed === true;
+    const { granted } = await grantAutonomyForCampaign(campaign.id, req.userId!, scheduleConfirmed);
+    await logRun('info', 'atria_campaign_grant', { campaignId: campaign.id, granted, scheduleConfirmed }, req.userId!);
+    logger.info('wf_campaign_autonomy_granted', { campaignId: campaign.id, granted, scheduleConfirmed });
+    const status = await campaignStatusRollup(campaign.id, req.userId!);
+    ok(res, { campaignId: campaign.id, granted, scheduleConfirmed, estimate, status });
   }),
 );

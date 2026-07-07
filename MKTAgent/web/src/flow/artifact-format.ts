@@ -47,6 +47,7 @@ const ARTIFACT_TITLES: Record<string, string> = {
   storyboard: 'Storyboard',
   video_prompt: 'Video',
   publish_result: 'Publish result',
+  content_calendar: 'Content calendar',
 };
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
@@ -112,6 +113,11 @@ export const formatArtifact = (type: string, data: unknown): ArtifactView => {
           { label: 'Clips', value: d.clipCount ? `${str(d.clipCount)}` : '' },
         ].filter((f) => f.value.trim()),
       };
+    case 'content_calendar': {
+      const slots = Array.isArray(d.slots) ? (d.slots as Array<Record<string, unknown>>) : [];
+      const lines = slots.map((s, i) => `${i + 1}. [${str(s.format)}] ${str(s.pillar)} — ${str(s.angle)} (${Array.isArray(s.platforms) ? (s.platforms as unknown[]).map(str).join(', ') : ''})`);
+      return { title, fields: lines.length ? [{ label: `${slots.length} planned posts`, value: lines.join('\n') }] : [] };
+    }
     case 'publish_result': {
       const urls = (d.postUrls ?? null) as Record<string, string> | null;
       const urlLines = urls ? Object.entries(urls).map(([p, u]) => `• ${p}: ${u}`).join('\n') : '';

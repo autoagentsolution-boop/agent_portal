@@ -315,6 +315,27 @@ export const attachPostMedia = async (
   return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
 };
 
+// Sweep a campaign's UN-published materialized posts before a re-materialize (Atria Phase 04).
+// Deletes every post whose status is pre-publish (brief|review|rework|ready|error) — NEVER a
+// live/in-flight one (posted|partial|posting) — plus each swept post's own instance run (deleting
+// the run cascades its nodes+artifacts). Idempotent re-materialize: replace the plan, keep history.
+// Returns the count swept. All in one transaction so a partial failure leaves the campaign intact.
+const SWEEPABLE_STATUSES: PostStatus[] = ['brief', 'review', 'rework', 'ready', 'error'];
+export const sweepUnpublishedCampaignPosts = async (campaignId: string, ownerId: string): Promise<number> => {
+  const victims = await prisma.post.findMany({
+    where: { campaignId, ownerId, status: { in: SWEEPABLE_STATUSES } },
+    select: { id: true, runId: true },
+  });
+  if (victims.length === 0) return 0;
+  const postIds = victims.map((v) => v.id);
+  const runIds = victims.map((v) => v.runId).filter((r): r is string => Boolean(r));
+  await prisma.$transaction([
+    prisma.post.deleteMany({ where: { id: { in: postIds }, ownerId } }),
+    ...(runIds.length ? [prisma.workflowRun.deleteMany({ where: { id: { in: runIds }, ownerId } })] : []),
+  ]);
+  return postIds.length;
+};
+
 // Scoped delete, blocked only while the scheduler holds the row (status=posting).
 // Returns: 'ok' | 'locked' (in-flight → 409). Not-found/wrong-tenant is handled by
 // the route's prior 404 probe, so a 0-count here means the locked guard tripped.
