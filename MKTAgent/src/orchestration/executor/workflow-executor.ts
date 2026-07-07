@@ -131,6 +131,15 @@ export const runWorkflow = async (
   // needed type. Empty (post not yet created on a legacy first run) → no gating; run per plan.
   const neededAssets: AssetType[] = attachedPost ? distinctAssetTypes(attachedPost) : [];
 
+  // Schedule-aware publish (feedback #2): a future scheduledAt means the publisher must NOT
+  // fire inline when the flow reaches it. The user approves, the post is parked `ready` with its
+  // schedule intact, and the scheduler cron publishes at the chosen time. Every in-flow approval
+  // here must PRESERVE that scheduledAt — a raw `new Date()` clobbers it, so the cron then treats
+  // the post as due immediately (the original bug). Only manual /publish-now bypasses the schedule.
+  const approveScheduledAt = attachedPost?.scheduledAt ?? new Date();
+  const isScheduledFuture = (): boolean =>
+    !!attachedPost?.scheduledAt && attachedPost.scheduledAt.getTime() > Date.now();
+
   await setRunStatus(runId, 'running');
 
   // Single-node re-execute: run exactly the requested node and return. Upstream is
@@ -187,7 +196,7 @@ export const runWorkflow = async (
     // to media/publish. A re-execute that doesn't target this node keeps the run parked.
     if (SELECTION_GATE.has(planNode.agentId) && nodeRow.status === 'awaiting_approval') {
       if (opts.approveNodeId === planNodeId) {
-        if (postId) await approveReview(postId, ownerId, new Date());
+        if (postId) await approveReview(postId, ownerId, approveScheduledAt);
         await setNodeStatus(nodeRow.id, 'completed');
         publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed' });
         continue;
@@ -251,6 +260,23 @@ export const runWorkflow = async (
         attachedPost.platforms.every((p) => platformSupportsAsset(p, publishAssetType(attachedPost, p)));
       requiresApproval = !cleanlyPostable; // clean → auto-run; any skip/unknown → gate for review
     }
+    // Schedule gate (feedback #2): a future-scheduled publisher never publishes inline. First pass
+    // → hold for the user's approval (below). On approval → park the post `ready` with its schedule
+    // preserved and mark this node completed; the scheduler cron owns the actual publish at the
+    // chosen time (findPublishDue guards scheduledAt<=now). Manual /publish-now stays the only
+    // immediate bypass. Without this, an approved cleanly-postable post fires runPublisher NOW.
+    if (planNode.agentId === 'publisher' && isScheduledFuture()) {
+      if (opts.approveNodeId === planNodeId) {
+        if (postId) await approveReview(postId, ownerId, approveScheduledAt);
+        await setNodeStatus(nodeRow.id, 'completed', { finishedAt: new Date() });
+        publishNodeStatus(ownerId, {
+          runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed',
+          notice: `Scheduled for ${approveScheduledAt.toISOString()} — the scheduler will publish automatically at that time.`,
+        });
+        continue;
+      }
+      requiresApproval = true;
+    }
     if (requiresApproval && opts.approveNodeId !== planNodeId) {
       await setNodeStatus(nodeRow.id, 'awaiting_approval');
       await setRunStatus(runId, 'needs_approval');
@@ -299,7 +325,7 @@ export const runWorkflow = async (
           publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval' });
           return { status: 'needs_approval', nodeId: planNodeId };
         }
-        if (postId) await approveReview(postId, ownerId, new Date());
+        if (postId) await approveReview(postId, ownerId, approveScheduledAt);
       }
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e).slice(0, 500);

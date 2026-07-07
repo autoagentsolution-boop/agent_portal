@@ -44,6 +44,16 @@ export const findPublishDue = (now: Date): Promise<Post | null> =>
     orderBy: { scheduledAt: 'asc' },
   });
 
+// Batch of due posts (oldest first). The tick walks this so a single flow-active post (a stuck or
+// still-producing run) can't HEAD-OF-LINE block every other due post behind it — it publishes the
+// first publishable one and leaves the flow-active ones for a later tick.
+export const findPublishDueBatch = (now: Date, limit = 20): Promise<Post[]> =>
+  prisma.post.findMany({
+    where: { status: 'ready', scheduledAt: { lte: now } },
+    orderBy: { scheduledAt: 'asc' },
+    take: limit,
+  });
+
 // Atomic claim: only transition ready→posting if still ready (guards double-pick
 // alongside the advisory lock). Returns count so caller can detect a lost race.
 export const claimForPublish = async (id: string): Promise<boolean> => {

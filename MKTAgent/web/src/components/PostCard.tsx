@@ -200,8 +200,8 @@ export function PostCard({ post, demoMode, notify, onEdit, selected = false, onP
           <button className="btn primary" disabled={!canReview || !!busy} onClick={() => setScheduling(true)}>Approve / schedule</button>
           <button className="btn" disabled={!canRefine || !!busy} onClick={() => setRefining(true)}>Refine</button>
           <button className="btn" disabled={!canReview || !!busy} onClick={() => setRejecting(true)}>Reject + rework</button>
-          <button className="btn" disabled={!canPublish || !!busy} title={demoMode === 'safe' ? 'Safe mode blocks real publishing' : 'Real social post'} onClick={() => void publish()}>
-            {busy === 'Publish' ? '…' : demoMode === 'safe' ? 'Publish (safe)' : 'Publish now'}
+          <button className="btn" disabled={!canPublish || !!busy} title={demoMode === 'safe' ? 'Publishing is disabled in Safe Simulation — switch to Live to post now. Scheduled posts publish automatically at their time.' : 'Publishes to real social platforms immediately, bypassing any schedule'} onClick={() => void publish()}>
+            {busy === 'Publish' ? '…' : demoMode === 'safe' ? 'Publish (Live only)' : 'Publish now'}
           </button>
           <button className="btn danger" disabled={!canEdit || !!busy} onClick={() => void del()}>Delete</button>
         </div>

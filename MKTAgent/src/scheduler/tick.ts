@@ -12,6 +12,7 @@ import { aggregate, toWriteBack } from './aggregate.ts';
 import { recordCommentSources } from '../leads/sources/comment-watch.ts';
 import {
   findPublishDue,
+  findPublishDueBatch,
   claimForPublish,
   claimForPublishOwned,
   getPostForOwner,
@@ -187,39 +188,50 @@ export async function runSchedulerTick(publish: PublishFn = publishTo): Promise<
     return { picked: false, reason: 'lock_held' };
   }
   try {
-    const due = await findPublishDue(new Date());
-    if (!due) return { picked: false, reason: 'no_due' };
+    // Walk the due queue (oldest first). A flow-active post (still-producing OR stuck run) must NOT
+    // block the posts behind it — SKIP it (retried a later tick) and publish the first publishable
+    // one. Publishing one post per tick keeps the anti-burst cadence. (Was: findPublishDue returned
+    // only the single earliest due post, so one stuck flow-active post starved the whole queue —
+    // a scheduled, fully-completed post would never publish.)
+    const dueList = await findPublishDueBatch(new Date());
+    if (dueList.length === 0) return { picked: false, reason: 'no_due' };
 
-    // Flow-active guard: if this post's flow is still producing (a node running/pending — e.g. the
-    // video is still generating past the scheduled time), DELAY the publish. Leave the post due +
-    // unclaimed so the next tick retries once the flow finishes — never publish before the media is
-    // ready. (The 18:20-scheduled-but-video-slow case.)
-    if (due.runId && (await hasActiveFlowNodes(due.runId))) {
-      logger.info('scheduler_delayed_flow_active', { postId: due.id, runId: due.runId });
-      return { picked: false, postId: due.id, reason: 'flow_active' };
+    let delayed = 0;
+    for (const due of dueList) {
+      // Flow-active guard: the flow is still producing (a node running/pending — e.g. the video is
+      // still generating past the scheduled time), so DELAY this one. Leave it due + unclaimed and
+      // try the NEXT due post — never publish before media is ready, never block others either.
+      if (due.runId && (await hasActiveFlowNodes(due.runId))) {
+        logger.info('scheduler_delayed_flow_active', { postId: due.id, runId: due.runId });
+        delayed++;
+        continue;
+      }
+
+      // Atomic claim guards against a row picked by another path between read+claim.
+      const claimed = await claimForPublish(due.id);
+      if (!claimed) {
+        logger.warn('scheduler_claim_lost', { postId: due.id });
+        continue; // another path took it — try the next due post
+      }
+
+      try {
+        return await processPost(due, publish);
+      } catch (e) {
+        // Unexpected failure AFTER claim (e.g. DB write). Don't leave the row stuck
+        // in `posting`; mark it error so a future tick/operator sees it terminally.
+        await updatePost(due.id, { status: 'error', error: String(e).slice(0, 500), postedAt: new Date() }).catch(() => {});
+        publishPostStatus(due.ownerId, {
+          postId: due.id,
+          status: 'error',
+          campaignId: due.campaignId,
+          error: String(e).slice(0, 500),
+        });
+        throw e;
+      }
     }
 
-    // Atomic claim guards against a row picked by another path between read+claim.
-    const claimed = await claimForPublish(due.id);
-    if (!claimed) {
-      logger.warn('scheduler_claim_lost', { postId: due.id });
-      return { picked: false, postId: due.id, reason: 'claim_lost' };
-    }
-
-    try {
-      return await processPost(due, publish);
-    } catch (e) {
-      // Unexpected failure AFTER claim (e.g. DB write). Don't leave the row stuck
-      // in `posting`; mark it error so a future tick/operator sees it terminally.
-      await updatePost(due.id, { status: 'error', error: String(e).slice(0, 500), postedAt: new Date() }).catch(() => {});
-      publishPostStatus(due.ownerId, {
-        postId: due.id,
-        status: 'error',
-        campaignId: due.campaignId,
-        error: String(e).slice(0, 500),
-      });
-      throw e;
-    }
+    // Nothing published: every due post was flow-active (delayed) or lost its claim this tick.
+    return { picked: false, reason: delayed > 0 ? 'flow_active' : 'no_due' };
   } catch (e) {
     logger.error('scheduler_tick_failed', { error: String(e).slice(0, 300) });
     await logRun('error', 'mkt_post', { error: String(e).slice(0, 300) }).catch(() => {});
