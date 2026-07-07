@@ -9,6 +9,7 @@ import { conversationSystemPrompt } from '../prompts/conversation-prompt.ts';
 import { languageName } from './detect-language.ts';
 import type { MasterAgentOutcome } from './master-agent.ts';
 import { recordGeminiCall } from '../../cost/llm-usage.ts';
+import { formatWorkspaceReport, type WorkspaceReport } from '../atria/workspace-report.ts';
 
 export interface PriorMessage {
   role: 'user' | 'agent';
@@ -28,6 +29,9 @@ export interface AuthorOptions {
   // right owner in the usage ledger. Optional — a missing value records a system-owned row
   // (recordGeminiCall/recordLlmUsage accept null) rather than skipping the record.
   ownerId?: string | null;
+  // Campaign-scope turns only: the "what already exists" snapshot. The reply opens with a
+  // short report of these campaigns/posts before presenting the new plan + approval ask.
+  workspaceReport?: WorkspaceReport | null;
 }
 
 const endpoint = (model: string): string =>
@@ -49,7 +53,7 @@ const resolveLanguage = (outcome: MasterAgentOutcome, opts: AuthorOptions): stri
 // the prompt forbids restating them verbatim, so this stays a hint, not the output.
 // `replyLanguage` (when known) pins the output language; when null the model mirrors
 // the user's message. Either way it translates every clarification question seed.
-const outcomeContext = (outcome: MasterAgentOutcome, replyLanguage: string | null): unknown => {
+const outcomeContext = (outcome: MasterAgentOutcome, replyLanguage: string | null, report?: WorkspaceReport | null): unknown => {
   const goal = {
     product: outcome.goal.slots.product ?? null,
     productDetails: outcome.goal.slots.productDetails ?? null,
@@ -58,21 +62,29 @@ const outcomeContext = (outcome: MasterAgentOutcome, replyLanguage: string | nul
     angle: outcome.goal.slots.angle ?? null,
     platforms: outcome.goal.platforms,
     outputs: outcome.goal.outputs,
+    // Campaign framing so the model can voice "a 4-week, 3 posts/week campaign plan".
+    campaignScope: outcome.goal.campaignScope,
+    durationWeeks: outcome.goal.duration?.weeks ?? null,
+    postsPerWeek: outcome.goal.cadence?.postsPerWeek ?? null,
   };
   const lang = replyLanguage ? { replyLanguage } : {};
+  const workspace = report ? { workspaceReport: report } : {};
   if (outcome.status === 'awaiting_clarification') {
-    return { ...lang, status: outcome.status, goal, questions: outcome.questions.map((q) => ({ slot: q.slot, question: q.question, required: q.required })) };
+    return { ...lang, ...workspace, status: outcome.status, goal, questions: outcome.questions.map((q) => ({ slot: q.slot, question: q.question, required: q.required })) };
   }
   if (outcome.status === 'planned') {
     const agents = outcome.plan.nodes.map((n) => n.agentId);
-    return { ...lang, status: outcome.status, goal, plan: { agents, nodeCount: outcome.plan.nodes.length, platforms: outcome.goal.platforms } };
+    return { ...lang, ...workspace, status: outcome.status, goal, plan: { agents, nodeCount: outcome.plan.nodes.length, platforms: outcome.goal.platforms } };
   }
-  return { ...lang, status: outcome.status, goal, error: outcome.error, detail: outcome.detail };
+  return { ...lang, ...workspace, status: outcome.status, goal, error: outcome.error, detail: outcome.detail };
 };
 
 // Plain-language fallback composed from the structured outcome — no LLM. Keeps the
 // surface usable (and verify deterministic) when GEMINI_API_KEY is absent.
-export const deterministicReply = (outcome: MasterAgentOutcome): string => {
+export const deterministicReply = (outcome: MasterAgentOutcome, report?: WorkspaceReport | null): string => {
+  // Campaign-scope turns open with the workspace snapshot — even without an LLM, the
+  // reply should show what already exists before proposing the new plan.
+  const reportLead = report ? `${formatWorkspaceReport(report)}\n\n` : '';
   const product = outcome.goal.slots.product?.trim();
   if (outcome.status === 'awaiting_clarification') {
     const lead = product
@@ -82,14 +94,19 @@ export const deterministicReply = (outcome: MasterAgentOutcome): string => {
     const tail = asks.length
       ? ` To plan the right workflow I need a bit more: ${asks.join(' ')}`
       : ` Tell me a little more so I can plan the right steps.`;
-    return lead + tail;
+    return reportLead + lead + tail;
   }
   if (outcome.status === 'planned') {
     const agents = outcome.plan.nodes.map((n) => n.agentId.replace(/_/g, ' '));
     const platforms = outcome.goal.platforms.length ? outcome.goal.platforms.join(', ') : 'Facebook';
-    return `Here's the plan${product ? ` for ${product}` : ''}: I'll run ${agents.join(' → ')} across ${outcome.plan.nodes.length} step(s), publishing to ${platforms}. Nothing is published until you approve — review the workflow below and hit approve to start.`;
+    if (outcome.goal.campaignScope !== 'single') {
+      const weeks = outcome.goal.duration?.weeks ?? 4;
+      const perWeek = outcome.goal.cadence?.postsPerWeek ?? 3;
+      return `${reportLead}Here's my proposal${product ? ` for ${product}` : ''}: a ${weeks}-week campaign at ${perWeek} post(s)/week on ${platforms}. I'll run ${agents.join(' → ')} to draft the full content calendar for your review. Nothing is created or published until you approve — review the plan below and approve to start.`;
+    }
+    return `${reportLead}Here's the plan${product ? ` for ${product}` : ''}: I'll run ${agents.join(' → ')} across ${outcome.plan.nodes.length} step(s), publishing to ${platforms}. Nothing is published until you approve — review the workflow below and hit approve to start.`;
   }
-  return `I couldn't finalize a plan: ${outcome.error}. Add the missing detail and I'll try again.`;
+  return `${reportLead}I couldn't finalize a plan: ${outcome.error}. Add the missing detail and I'll try again.`;
 };
 
 export interface ConversationAuthor {
@@ -98,7 +115,7 @@ export interface ConversationAuthor {
 
 export class GeminiConversationAuthor implements ConversationAuthor {
   async author(outcome: MasterAgentOutcome, prior: PriorMessage[] = [], opts: AuthorOptions = {}): Promise<string> {
-    const fallback = deterministicReply(outcome);
+    const fallback = deterministicReply(outcome, opts.workspaceReport);
     if (!env.GEMINI_API_KEY) return fallback;
     const replyLanguage = resolveLanguage(outcome, opts);
     // Language directive: pin to a named language when we confidently have one, else
@@ -122,7 +139,7 @@ export class GeminiConversationAuthor implements ConversationAuthor {
               parts: [{
                 // Language directive FIRST so it dominates the (mixed-language) question
                 // seeds, then the user's raw message to mirror, then the structured context.
-                text: `${languageDirective} Translate every clarification question into that language — never copy a question's original wording when it is in another language.\n\n${userMessage ? `User's latest message: """${userMessage}"""\n\n` : ''}Turn context:\n${JSON.stringify(outcomeContext(outcome, replyLanguage))}`,
+                text: `${languageDirective} Translate every clarification question into that language — never copy a question's original wording when it is in another language.\n\n${userMessage ? `User's latest message: """${userMessage}"""\n\n` : ''}Turn context:\n${JSON.stringify(outcomeContext(outcome, replyLanguage, opts.workspaceReport))}`,
               }],
             },
           ],

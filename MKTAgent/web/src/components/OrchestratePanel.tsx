@@ -5,7 +5,7 @@
 // Answering is free text (routed through refine); add/remove a step is free text too.
 // Approving SAVES the plan as a named Saved Flow and hands off to Active Flows for
 // execution — nothing runs on this surface (keeps the chat responsive, no JSON dump).
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, type WorkflowRunDto } from '../api/client';
 import { PlanCard, SaveOfferCard } from './orchestrate-run-cards';
 
@@ -35,6 +35,10 @@ interface Props {
   // Seed the composer once (e.g. a command typed on the Command Center before it
   // redirects here). Only applied on a fresh mount; ignored when restoring a chat.
   initialInput?: string;
+  // Submit initialInput immediately on mount instead of parking it in the composer.
+  // "Plan it" on Atria and the Command Center bar are SENDS, not drafts — landing the
+  // user on an idle composer reads as the intent being swallowed.
+  autoStart?: boolean;
 }
 
 interface Msg { role: 'user' | 'agent'; content: string }
@@ -45,13 +49,14 @@ const starters = [
   'Write a short LinkedIn post about our new feature',
 ];
 
-export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput }: Props) {
+export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart }: Props) {
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   const [run, setRun] = useState<WorkflowRunDto | null>(restore?.run ?? null);
   const [sessionId, setSessionId] = useState<string | null>(restore?.sessionId ?? null);
-  const [input, setInput] = useState(restore ? '' : (initialInput ?? ''));
+  const [input, setInput] = useState(restore || autoStart ? '' : (initialInput ?? ''));
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
+  const autoStarted = useRef(false);
 
   const hasStarted = messages.length > 0 || Boolean(pending) || busy;
   const push = (m: Msg) => setMessages((prev) => [...prev, m]);
@@ -81,6 +86,21 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
       applyRun(r.data);
     } finally { setPending(null); setBusy(false); }
   };
+
+  // Auto-submit the seeded intent exactly once on a fresh mount (never on restore).
+  // Ref guard instead of effect deps: StrictMode double-invoke or a re-render must not
+  // fire a second createRun for the same seed.
+  useEffect(() => {
+    if (!autoStart || restore || autoStarted.current) return;
+    const seed = (initialInput ?? '').trim();
+    if (!seed) return;
+    autoStarted.current = true;
+    // A seed too short to be a goal parks in the composer instead of bouncing off the
+    // length guard in start() (which would drop the intent entirely).
+    if (seed.length < 3) { setInput(seed); return; }
+    void start(seed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Save names the flow and (P6) returns the Master Agent's guiding offer as
   // assistantMessage. We stay in the chat, surface the offer bubble + action card, and

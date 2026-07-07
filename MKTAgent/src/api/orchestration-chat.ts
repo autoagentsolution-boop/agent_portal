@@ -4,6 +4,7 @@
 // AgentChatSession, so runs appear in the sidebar "Chats" list and history restores.
 import { prisma } from '../db/client.ts';
 import { conversationAuthor, type PriorMessage } from '../orchestration/master/conversation-author.ts';
+import { readWorkspaceReport } from '../orchestration/atria/workspace-report.ts';
 import { saveOfferAuthor } from '../orchestration/master/save-offer-author.ts';
 import { detectLanguage } from '../orchestration/master/detect-language.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
@@ -52,8 +53,16 @@ export const recordTurn = async (
   // plus a detected code hint when the script is unambiguous (an explicit
   // goal.slots.language still wins inside the author). Fixes wrong-language replies.
   const language = detectLanguage(userMessage);
+  // Campaign-scope conversations open with a report of the campaigns the user already has —
+  // the strategist should show what it knows before proposing the next move. FIRST turn only
+  // (prior holds just the message inserted above): re-narrating the same inventory on every
+  // clarification follow-up is noise. Best-effort — a report failure never blocks the turn.
+  // Single-post turns skip the read entirely (no extra queries, no reply bloat).
+  const workspaceReport = ownerId && outcome.goal.campaignScope !== 'single' && prior.length <= 1
+    ? await readWorkspaceReport(ownerId).catch(() => null)
+    : null;
   // ownerId threads through so a REAL Gemini call bills the usage ledger to this tenant.
-  const assistantMessage = await conversationAuthor.author(outcome, prior, { userMessage, language, ownerId });
+  const assistantMessage = await conversationAuthor.author(outcome, prior, { userMessage, language, ownerId, workspaceReport });
   await prisma.agentChatMessage.create({ data: { sessionId, role: 'agent', content: assistantMessage } });
   // Touch the session so it sorts to the top of the sidebar (child message inserts
   // don't bump the parent's @updatedAt on their own).

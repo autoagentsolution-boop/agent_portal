@@ -31,24 +31,27 @@ export function AtriaSuggestionCards({ notify, onPlanCampaign }: Props) {
       else notify(r.error.error, 'err');
     } else if (s.prefill.intent) {
       onPlanCampaign?.(s.prefill.intent);
-      notify('Opening a campaign plan from your intent — review before it runs.');
+      notify('Asked Atria to draft the plan — review and approve before anything runs.');
     }
     setDismissed((d) => new Set(d).add(s.kind));
   };
 
   const visible = items.filter((s) => !dismissed.has(s.kind));
-  if (!loaded || visible.length === 0) return null;
+  if (!loaded) return null;
+  if (visible.length === 0) {
+    return <p className="muted small">Nothing urgent right now — Atria will nudge you here when it spots an opportunity.</p>;
+  }
 
   return (
-    <section style={{ display: 'grid', gap: 12, margin: '8px 0 20px' }}>
+    <section className="atria-card-grid">
       {visible.map((s) => (
-        <article key={s.kind} style={{ padding: 14, border: '1px solid var(--border, #ddd)', borderRadius: 10, background: 'var(--card, #fafafa)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 20 }}>{ICON[s.kind]}</span>
-            <strong style={{ flex: 1 }}>{s.headline}</strong>
+        <article key={s.kind} className="atria-suggestion">
+          <div className="atria-suggestion-head">
+            <span className="atria-card-icon">{ICON[s.kind]}</span>
+            <strong>{s.headline}</strong>
             <button className="icon-btn" aria-label="Dismiss" onClick={() => setDismissed((d) => new Set(d).add(s.kind))}>×</button>
           </div>
-          <p className="muted" style={{ margin: '8px 0 12px' }}>{s.rationale}</p>
+          <p className="muted">{s.rationale}</p>
           <button className="btn-primary" onClick={() => void accept(s)}>
             {s.prefill.roadmapAgentId ? 'I want this' : 'Plan it'}
           </button>

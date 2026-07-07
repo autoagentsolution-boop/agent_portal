@@ -70,6 +70,7 @@ export function App() {
     // intake-only chat restores with no run (run: null) — the user can continue it as a
     // normal Orchestrate conversation. (The old Master Agent setup surface is retired.)
     const runRes = await api.getRunByChat(id);
+    setOrchestratePrefill(null); // restored chats must never re-trigger a stale auto-send
     setOrchestrateRestore({
       sessionId: id,
       messages: r.data.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -80,8 +81,9 @@ export function App() {
 
   const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setOrchestratePrefill(null); setPage('orchestrate'); };
 
-  // Command Center → jump into the live Orchestrate surface, optionally seeding the
-  // composer with the command the user typed on the neural-network landing.
+  // Command Center / Atria → jump into the live Orchestrate surface. A non-empty
+  // prefill (a typed command or an accepted Atria suggestion) is a SEND — the panel
+  // auto-submits it so the plan appears immediately instead of parking in the composer.
   const launchFromCommandCenter = (prefill?: string) => {
     setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null);
     setOrchestratePrefill(prefill ?? null);
@@ -161,7 +163,9 @@ export function App() {
 
     setChatSessions((prev) => prev.filter((item) => item.id !== chat.id));
     setActiveChatId((current) => current === chat.id ? null : current);
-    if (activeChatId === chat.id) { setOrchestrateRestore(null); setPage('orchestrate'); }
+    // Clear the consumed prefill too — remounting the panel fresh with a stale prefill
+    // would auto-submit the old intent again (duplicate run + LLM spend).
+    if (activeChatId === chat.id) { setOrchestrateRestore(null); setOrchestratePrefill(null); setPage('orchestrate'); }
     show('Chat deleted');
   };
 
@@ -363,6 +367,7 @@ export function App() {
               key={orchestrateRestore?.sessionId ?? 'new'}
               restore={orchestrateRestore}
               initialInput={orchestratePrefill ?? undefined}
+              autoStart={Boolean(orchestratePrefill)}
               flowsWithoutStrategy={flowsWithoutStrategy}
               notify={show}
               onRunActivity={(sessionId) => { void loadChats(); if (!activeChatId) setActiveChatId(sessionId); bump(); }}
@@ -389,7 +394,15 @@ export function App() {
             <LeadsPage notify={show} />
           </div>
         ) : page === 'atria' ? (
-          <AtriaHubPage activeCampaign={activeCampaign} notify={show} onPlanCampaign={launchFromCommandCenter} />
+          <AtriaHubPage
+            activeCampaign={activeCampaign}
+            chats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
+            flowsWithoutStrategy={flowsWithoutStrategy}
+            notify={show}
+            onPlanCampaign={launchFromCommandCenter}
+            onResumeChat={(id) => void selectChat(id)}
+            onOpenFlow={openSavedFlow}
+          />
         ) : (
           <ActiveFlowsPage
             activeCampaign={activeCampaign}

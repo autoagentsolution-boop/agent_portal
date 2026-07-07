@@ -5,6 +5,26 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-08
 
+### Fix: Atria UX feedback pass 1 — Plan-it auto-send, campaign report in replies, hub redesign
+User feedback on the campaign-intelligence release (3 items):
+- **"Plan it" swallowed the intent**: accepting an Atria suggestion (or a Command Center command)
+  only prefilled the Orchestrate composer — nothing was sent, so no run was created and the
+  strategist never planned. `OrchestratePanel` gains `autoStart` (ref-guarded, fresh mounts only):
+  a non-empty handed-over intent now auto-submits, so the campaign plan card appears immediately.
+- **Atria replies now open with a latest-campaigns report** (campaign-scope turns only): NEW
+  `orchestration/atria/workspace-report.ts` reads the tenant's 5 most recent campaigns (posts,
+  live counts, recent post titles) — threaded into `conversationAuthor` context + prompt; campaign
+  plans are voiced as full proposals (duration/cadence/calendar) ending with an explicit approval
+  ask. Deterministic no-LLM fallback renders the same report. Best-effort (report failure never
+  blocks a turn); single-post turns unchanged (no extra queries).
+- **Atria hub redesigned assistant-first**: default view = Ask-Atria box (auto-sends), Atria
+  reminders (suggestion cards, now with empty state), and "Continue where you left off" cards
+  (unfinished chats + flows with no campaign, NEW `atria-resume-work-cards.tsx`). Instruction
+  editor + impact report moved behind Instructions/Impact tabs so the landing no longer reads as
+  a setup page/dashboard. Proper CSS (`.atria-*`) replaces the inline-style cards.
+tsc (server + web) + vite build green; verify-master, verify-campaign-strategist,
+verify-atria-suggestions green.
+
 ### Feat: Atria campaign intelligence + content quality + impact — 8 phases (commit `953903e`)
 Plan `plans/260708-0108-atria-campaign-intelligence-quality-impact/`. Turns Atria from a single-post
 generator into a proactive campaign strategist with expert + user-customizable content quality and a
