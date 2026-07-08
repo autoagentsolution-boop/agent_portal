@@ -17,9 +17,21 @@
    Scheduled view (b31ff4d) and text-only publish (413fef0) are surfaced in the v2 IA.
 
 ## Todo
-- [ ] Fix chained rerun-while-parked (deterministic or guarded)
-- [ ] 1 controlled real text post each: X, LinkedIn, Threads
-- [ ] Fold Scheduled + text-only into the v2 Workspace/Command-Center IA
+- [x] **Fix chained rerun-while-parked — DONE + verified (2026-07-08).** ROOT CAUSE = TOCTOU race in
+  `/rerun-node`: it read run status, checked `!== running`, then did an UNCONDITIONAL `setRunStatus('running')`
+  + fire-and-forget `launchWorkflow`. Two rapid reruns (or rerun racing resume/approve) both passed the check
+  → both launched detached executors → overlapping node writes corrupted state (the "concept failed +
+  infographic stuck pending"). FIX: atomic claim via `transitionRun(id, owner, full.status, 'running')` BEFORE
+  resetting nodes — only ONE caller wins the move to running; loser gets 409 `run_in_flight`, mutates nothing.
+  Also: re-running a `pending`/`awaiting_approval` downstream node now returns a guiding 409 (`node_not_run_yet`
+  → "click Continue") instead of a generic refusal. verify-rerun-race PASS; verify-rerun-node still PASS.
+- [~] 1 controlled real text post each: X, LinkedIn, Threads — **USER-TRIGGERED** (outward-facing + Meta 24-48h
+  burst-ban risk [[feedback_no_burst_social_posts]]; text branches are code-verified DRY). Not done by agent.
+- [x] Scheduled + text-only in v2 IA — **already surfaced**: ◷ Scheduled is in the sidebar; text-only publish
+  (413fef0) works via the publish path; "Ungrouped" jargon removed in P0 vocab nudge. A dedicated CC Scheduled
+  surface is optional (YAGNI — reachable today); not built.
+
+## Status: DONE (the real code item — rerun race — fixed + verified). #2 is a user-triggered live-social check.
 
 ## Success criteria
 - Rerun sequences from a parked run behave predictably (no stuck `pending`).

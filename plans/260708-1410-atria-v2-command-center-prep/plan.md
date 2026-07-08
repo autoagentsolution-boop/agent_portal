@@ -65,8 +65,9 @@ sits on. It is NOT the v2 UI itself.
   upload → public fetch = 200/image/png. Only optional TTL cleanup + a user-triggered live post remain.
 - [ ] **P4 — Voice (SPEC only)** · [phase-04](phase-04-voice-spec.md) — design STT-in/TTS-out
   conversational Atria + tech choice; build deferred to v2 proper.
-- [ ] **P5 — Cleanup** · [phase-05](phase-05-cleanup.md) — refine chained-rerun robustness; X/LI/Threads
-  text live-verify on real accounts.
+- [x] **P5 — Cleanup** · [phase-05](phase-05-cleanup.md) — DONE: fixed the chained-rerun TOCTOU race
+  (`/rerun-node` now claims the run atomically via `transitionRun` before mutating nodes → no double-launch;
+  clearer pending-node 409). verify-rerun-race PASS. Remaining #2 (X/LI/Threads text live post) = user-triggered.
 
 **Sequencing:** P0 + P1 first (unblock the v2 UI shape), then P2/P3 land in parallel while UI v2 iterates;
 P4 is spec now/build in v2; P5 opportunistic. Auth dev-login deferred (see decision 4).

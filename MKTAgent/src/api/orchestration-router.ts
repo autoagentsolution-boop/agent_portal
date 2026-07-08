@@ -33,6 +33,7 @@ import {
   renameRun,
   replanRun,
   setRunStatus,
+  transitionRun,
   resetNodes,
   collectDownstream,
   getFlowCostRollup,
@@ -468,6 +469,12 @@ orchestrationRouter.post('/runs/:id/rerun-node/:nodeId', asyncHandler(async (req
   // choosing to spend, distinct from the automatic pre-video approval halt. Only the publisher
   // requiresConnection, so it uniquely identifies the external write.
   if (getAgent(node.agentId as Parameters<typeof getAgent>[0])?.requiresConnection) return fail(res, 409, 'node_not_rerunnable', 'the publish step runs via approval, not re-run');
+  // A pending/awaiting node hasn't produced output to regenerate — after an upstream re-run leaves
+  // downstream stale-pending, the user resumes with Continue (execute), NOT a per-node re-run. Guide
+  // them there instead of a generic refusal (part of the chained-rerun confusion, P5 #1).
+  if (node.status === 'pending' || node.status === 'awaiting_approval') {
+    return fail(res, 409, 'node_not_run_yet', 'this step hasn’t run yet — click Continue to run it as part of the flow');
+  }
   if (node.status !== 'completed' && node.status !== 'failed') return fail(res, 409, 'node_not_rerunnable', 'only a finished step can be re-run');
 
   // Upstream deps must be completed so the node has valid inputs to read.
@@ -497,10 +504,17 @@ orchestrationRouter.post('/runs/:id/rerun-node/:nodeId', asyncHandler(async (req
     }
   }
 
+  // ATOMIC CLAIM (P5 #1): reads above use the `full` snapshot; two rapid reruns (or a rerun racing a
+  // resume/approve) could BOTH pass the not-running check and BOTH launch a detached executor, whose
+  // overlapping node writes corrupt the run (the flaky "concept failed + infographic stuck pending").
+  // Guard the transition on the exact status we read — only ONE caller wins the move to `running`; the
+  // loser gets 409 and mutates nothing. Claim BEFORE resetting nodes so a losing rerun can't wipe state.
+  const claimed = await transitionRun(full.id, req.userId!, full.status, 'running');
+  if (!claimed) return fail(res, 409, 'run_in_flight', 'the run changed — refresh and try again');
+
   await deleteArtifactsByNodes(full.id, req.userId!, toReset);
   await resetNodes(full.id, req.userId!, toReset);
 
-  await setRunStatus(full.id, 'running');
   launchWorkflow(full.id, req.userId!, goal, plan, { rerunOnly: node.nodeId });
   return respondRun(res, full.id, req.userId!);
 }));
