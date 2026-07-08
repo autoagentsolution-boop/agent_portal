@@ -89,7 +89,10 @@ export const evaluateClarification = (
     // user's own language regardless of the literal text here.
     q.push({
       slot: 'productDetails',
-      question: 'Sản phẩm/dịch vụ của bạn là gì — nó làm được gì, cho ai, và điểm khác biệt là gì?',
+      // Language-NEUTRAL seed (P2-5): when GEMINI_API_KEY is absent the conversation author can't
+      // translate, so a VN literal would leak to a non-VN user. English is the safer fallback; the
+      // LLM path still voices it in the user's own language.
+      question: 'What is your product or service — what does it do, who is it for, and what makes it different?',
       required: true,
     });
   }
@@ -160,7 +163,9 @@ export const evaluateClarification = (
   if (!goal.slots.accountType) {
     q.push({
       slot: 'accountType',
-      question: 'Bạn đang quảng bá với tư cách nào — cá nhân, thương hiệu/shop, hay công ty?',
+      // Neutral seed (P2-5) — English fallback; the LLM path translates. Choices stay as-is: they map
+      // to the accountType enum via parseAccountType, which is tuned for both VN and EN answers.
+      question: 'Who are you marketing as — an individual, a brand/shop, or a company?',
       required: thinProduct,
       choices: ['cá nhân', 'thương hiệu', 'công ty'],
     });

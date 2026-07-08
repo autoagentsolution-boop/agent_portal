@@ -69,7 +69,16 @@ export const recordLlmUsage = async (input: RecordUsageInput): Promise<void> => 
 export const recordGeminiCall = async (
   raw: unknown,
   meta: { ownerId?: string | null; surface: string; model: string; extraCostUsd?: number; runId?: string | null; refId?: string | null },
-): Promise<void> => recordLlmUsage({ ...meta, usage: extractGeminiUsage(raw) });
+): Promise<void> => {
+  const usage = extractGeminiUsage(raw);
+  // Undercount edge (P2-6): a REAL call that returns no usageMetadata records a tokenless row, so its
+  // true token spend is invisible. We can't recover the count, but a warn makes the gap auditable
+  // instead of silent. extraCostUsd (media surcharge) present → not a metadata miss, don't warn.
+  if (!meta.extraCostUsd && usage.promptTokens === 0 && usage.outputTokens === 0 && usage.thoughtTokens === 0) {
+    logger.warn('gemini_usage_metadata_missing', { surface: meta.surface, model: meta.model, ownerId: meta.ownerId ?? null });
+  }
+  return recordLlmUsage({ ...meta, usage });
+};
 
 // Record a media (image/video/tts) generation that bills a flat/derived USD amount, not tokens.
 export const recordMediaCost = async (

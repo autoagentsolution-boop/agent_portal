@@ -412,6 +412,8 @@ export const postDto = z.object({
   versionCount: z.number().nullable(),
   scheduledAt: z.string().nullable(),
   postUrls: z.record(z.string()).nullable(),
+  // Persisted last per-platform liveness snapshot (audit P0-3) so the Leads UI survives a refresh.
+  linkStatus: z.array(z.object({ platform: z.string(), url: z.string(), alive: z.boolean().nullable() })).nullable(),
   error: z.string().nullable(),
   postedAt: z.string().nullable(),
   createdAt: z.string(),

@@ -10,7 +10,7 @@ import { logger } from '../../lib/logger.ts';
 import { env } from '../../config/env.ts';
 import { checkPlatformAlive } from './post-exists.ts';
 import { extractPostId } from './comment-watch.ts';
-import type { Post, SocialPlatform } from '../../../prisma/generated/prisma/client.ts';
+import type { Post, SocialPlatform, Prisma } from '../../../prisma/generated/prisma/client.ts';
 
 const COMMENTABLE = new Set<SocialPlatform>(['facebook', 'instagram', 'threads', 'linkedin', 'x']);
 
@@ -22,10 +22,14 @@ export interface LinkStatus { platform: string; url: string; alive: boolean | nu
 // self-heal logic (M2) can be verified without real platform calls, like the resolver's reader seam.
 export type AliveFn = (platform: SocialPlatform, id: string, ownerId: string) => Promise<boolean | null>;
 
+// persist (default true): write the liveness snapshot + timestamp to the post so the Leads UI
+// survives a refresh (audit P0-3). The verify seam passes false to keep its assertions pure
+// (it only tests the self-heal write, which still fires regardless of this flag).
 export const checkPostLinks = async (
   post: Post,
   ownerId: string,
   aliveFn: AliveFn = checkPlatformAlive,
+  persist = true,
 ): Promise<LinkStatus[]> => {
   const postUrls = (post.postUrls ?? {}) as Record<string, string>;
   const sources = (post.commentSourceIds ?? {}) as Record<string, string>;
@@ -49,12 +53,17 @@ export const checkPostLinks = async (
     if (alive === false) delete liveSources[platform]; // confirmed deleted → stop watching this platform
   }
 
-  // Persist self-heal only if a WATCHED source actually died.
-  if (JSON.stringify(liveSources) !== JSON.stringify(sources)) {
-    const noneLeft = Object.keys(sources).length > 0 && Object.keys(liveSources).length === 0;
+  // One write covers BOTH concerns: (1) persist the liveness snapshot + timestamp so the UI
+  // survives a refresh (when persist), and (2) the self-heal drop of a dead watched source.
+  const selfHealChanged = JSON.stringify(liveSources) !== JSON.stringify(sources);
+  const noneLeft = selfHealChanged && Object.keys(sources).length > 0 && Object.keys(liveSources).length === 0;
+  if (persist || selfHealChanged) {
     await prisma.post.update({
       where: { id: post.id },
-      data: { commentSourceIds: liveSources, ...(noneLeft ? { leadCollectorStatus: 'post_deleted' } : {}) },
+      data: {
+        ...(persist ? { linkStatus: results as unknown as Prisma.InputJsonValue, lastLivenessCheckAt: new Date() } : {}),
+        ...(selfHealChanged ? { commentSourceIds: liveSources, ...(noneLeft ? { leadCollectorStatus: 'post_deleted' } : {}) } : {}),
+      },
     });
     logger.info('post_links_checked', { postId: post.id, stopped: noneLeft, dead: results.filter((r) => r.alive === false).map((r) => r.platform) });
   }
@@ -89,8 +98,8 @@ export const sweepPostLiveness = async (ownerId?: string): Promise<{ checked: nu
   let dead = 0;
   for (const post of posts) {
     try {
+      // checkPostLinks now persists linkStatus + lastLivenessCheckAt itself (persist defaults true).
       const links = await checkPostLinks(post, post.ownerId);
-      await prisma.post.update({ where: { id: post.id }, data: { lastLivenessCheckAt: new Date() } }).catch(() => {});
       checked++;
       if (links.some((l) => l.alive === false)) dead++;
     } catch (e) {

@@ -109,7 +109,10 @@ export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
       const campaign = parsed.data.campaignScope === 'single' && det.campaignScope !== 'single'
         ? { campaignScope: det.campaignScope, duration: det.duration, cadence: det.cadence }
         : {};
-      return { goal: { ...parsed.data, platforms, ...campaign, provider: `gemini:${env.GEMINI_MODEL}` }, removals };
+      // Auto-publish is a regex-detectable command ("đăng luôn", "auto-publish") the LLM may miss;
+      // OR the two so an explicit hands-off ask is never lost. Default stays false (gated).
+      const autoPublish = parsed.data.autoPublish || det.autoPublish;
+      return { goal: { ...parsed.data, platforms, ...campaign, autoPublish, provider: `gemini:${env.GEMINI_MODEL}` }, removals };
     } catch {
       return fallback();
     }

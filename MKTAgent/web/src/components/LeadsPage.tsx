@@ -53,7 +53,17 @@ export function LeadsPage({ notify }: Props) {
     // Published posts can have comments — show them all as potential/active lead collectors.
     // Published posts only; a deleted post (collector stopped) is hidden — but any leads it already
     // collected stay in the leads list above (leads are separate rows, not tied to the post).
-    if (p.ok) setCollectors(p.data.filter((post) => (post.status === 'posted' || post.status === 'partial') && post.leadCollectorStatus !== 'post_deleted'));
+    if (p.ok) {
+      const posts = p.data.filter((post) => (post.status === 'posted' || post.status === 'partial') && post.leadCollectorStatus !== 'post_deleted');
+      setCollectors(posts);
+      // Hydrate the persisted liveness snapshot so ⚪/🔴/🟢 survives a refresh (audit P0-3).
+      // Keep any fresher in-session result (from a manual "Check links") over the server snapshot.
+      setLinkStatus((prev) => {
+        const seeded: Record<string, LinkStatusEntry[]> = { ...prev };
+        for (const post of posts) if (!seeded[post.id] && post.linkStatus?.length) seeded[post.id] = post.linkStatus;
+        return seeded;
+      });
+    }
     setLoading(false);
   };
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps

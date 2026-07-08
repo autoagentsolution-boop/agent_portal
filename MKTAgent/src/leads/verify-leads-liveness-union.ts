@@ -31,7 +31,7 @@ async function main(): Promise<void> {
     });
 
     const fresh = await prisma.post.findUnique({ where: { id: p.id } });
-    const results = await checkPostLinks(fresh!, user.id, deadFor('x'));
+    const results = await checkPostLinks(fresh!, user.id, deadFor('x'), false);
     ck('X source (no postUrls) WAS checked (union iteration)', results.some((r) => r.platform === 'x'), results);
     ck('X reported dead', results.find((r) => r.platform === 'x')?.alive === false, results);
 
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     // Control: a still-alive X source is kept + stays active.
     const p2 = await createPost({ campaignId: campaign.id, ownerId: user.id, status: 'posted', platforms: ['x'] });
     await prisma.post.update({ where: { id: p2.id }, data: { leadCaptureKeyword: 'Atria AI', commentSourceIds: { x: 'tweet999' }, platformPostIds: { x: 'tweet999' }, leadCollectorStatus: null } });
-    await checkPostLinks((await prisma.post.findUnique({ where: { id: p2.id } }))!, user.id, deadFor());
+    await checkPostLinks((await prisma.post.findUnique({ where: { id: p2.id } }))!, user.id, deadFor(), false);
     const alive = await prisma.post.findUnique({ where: { id: p2.id } });
     ck('alive X source kept + collector still active', (alive?.commentSourceIds as any)?.x === 'tweet999' && alive?.leadCollectorStatus === null, { s: alive?.commentSourceIds, st: alive?.leadCollectorStatus });
   } finally {

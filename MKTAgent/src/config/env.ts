@@ -72,6 +72,14 @@ const schema = z.object({
   REAPER_VIDEO_NODE_TIMEOUT_MIN: z.coerce.number().positive().default(30), // video node `running`
   REAPER_ORPHAN_TTL_DAYS: z.coerce.number().positive().default(7),      // needs_approval/planned surfacing
 
+  // Autonomy kickoff (Phase 04): a cron that actually STARTS granted-but-unstarted runs
+  // (approvalMode='atria' left at 'planned'). Without it, granting autonomy only removes the human
+  // gate — nothing runs the DAG. OFF by default (like the other workers). Publishing on this path is
+  // forced DRY-RUN in the runner (demo decision "tự chạy nhưng DRY") — the loop completes end-to-end
+  // without a real external post. MAX_PER_TICK bounds fan-out so one tick can't stampede the executor.
+  ENABLE_AUTONOMY_CRON: z.coerce.boolean().default(false),
+  AUTONOMY_MAX_PER_TICK: z.coerce.number().int().positive().default(3),
+
   // Impact / value report (Atria Phase 07). The CONFIGURABLE market baseline the Impact report
   // compares Atria's real spend against — a workspace tunes these to its own market. Cost SAVED and
   // reach are ESTIMATES derived from them (clearly labeled in the report); real spend/output/leads

@@ -40,14 +40,16 @@ export type ProductKnowledgeEntry = {
 // Optional so casts from narrower generated shapes (e.g. PostFromAgentDto['post']) stay valid.
 // leadCollectorExpiresAt — Lead Collector Phase 04 field (set to now+30d on activate, refreshed
 // by re-calling setCollector with the same keyword); not yet in openapi.json/schema.d.ts.
+// Per-platform on-demand liveness check (§01.4 "Check links") — route not in openapi yet.
+export type LinkStatusEntry = { platform: string; url: string; alive: boolean | null };
 export type PostDto = Dto['PostDto'] & {
   versionCount?: number | null;
   leadCollectorStatus?: string | null;
   commentSourceIds?: Record<string, string> | null;
   leadCollectorExpiresAt?: string | null;
+  // Persisted liveness snapshot (audit P0-3) so the Leads UI survives a refresh.
+  linkStatus?: LinkStatusEntry[] | null;
 };
-// Per-platform on-demand liveness check (§01.4 "Check links") — route not in openapi yet.
-export type LinkStatusEntry = { platform: string; url: string; alive: boolean | null };
 export type PostDetailDto = Dto['PostDetailDto'];
 export type LeadDto = Dto['LeadDto'];
 // Lead Collector (§01) — routes not in openapi yet, hand-typed.
@@ -403,7 +405,10 @@ export const api = {
   renameRun: (id: string, name: string) =>
     request<WorkflowRunDto>(`/orchestration/runs/${id}`, { method: 'PATCH', body: { name } }),
   // Execute a saved/planned flow (async — returns running immediately; SSE drives the DAG).
-  executeRun: (id: string) => request<WorkflowRunDto>(`/orchestration/runs/${id}/execute`, { method: 'POST' }),
+  // opts.autoPublish (UI toggle, default OFF server-side) publishes without the approval gate; when
+  // omitted the executor falls back to the goal's NL flag (Atria honoring "đăng luôn") else the gate.
+  executeRun: (id: string, opts?: { autoPublish?: boolean }) =>
+    request<WorkflowRunDto>(`/orchestration/runs/${id}/execute`, { method: 'POST', body: opts ?? {} }),
   approveRunNode: (id: string, nodeId: string) =>
     request<WorkflowRunDto>(`/orchestration/runs/${id}/approve-node/${nodeId}`, { method: 'POST' }),
   rerunRunNode: (id: string, nodeId: string) =>

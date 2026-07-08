@@ -119,6 +119,13 @@ const inferCampaign = (t: string): Pick<GoalSpec, 'campaignScope' | 'duration' |
   return { campaignScope: scope, duration: { weeks }, cadence: { postsPerWeek: perWeek } };
 };
 
+// Auto-publish intent (decision 2026-07-08): default OFF (the post halts at the approval gate). Only
+// an explicit "publish without review" phrasing flips it — so a plain "post this to Facebook" still
+// gets the human gate, while "đăng luôn khỏi duyệt" / "auto-publish" honors the user's hands-off ask.
+const parseAutoPublish = (t: string): boolean =>
+  /\b(auto.?publish|publish automatically|post automatically|no review|without review)\b/i.test(t)
+  || /(đăng luôn|dang luon|tự động đăng|tu dong dang|đăng tự động|dang tu dong|khỏi duyệt|khoi duyet|không cần duyệt|khong can duyet|không cần duyệt gì|tự đăng|tu dang)/i.test(t);
+
 const inferOutputs = (t: string): GoalSpec['outputs'] => {
   const campaign = isCampaign(t);
   // A carousel / multiple images → the storyboard produces the slides (NOT a single
@@ -202,6 +209,7 @@ export const analyzeDeterministic = (message: string): GoalSpec => {
     platforms,
     slots,
     ...campaign,
+    autoPublish: parseAutoPublish(m),
     confidence: Math.min(0.9, 0.3 + filled * 0.08),
     provider: 'deterministic-v1',
   });

@@ -17,12 +17,20 @@ export interface AtriaSignals {
   editedPostRatio: number; // copyEdited / totalPosts — the "you keep rewriting my copy" signal
   completedCampaignCount: number; // multi-post campaigns fully posted — the "repeat what worked" signal
   leadCount: number; // captured leads — the "nurture these" signal
+  // The product attracting the most leads, and how many — the "leads are spiking on X, ride it with a
+  // campaign" signal. null when no lead carries a sourceProduct. Excludes products that already run a
+  // multi-post campaign (don't suggest one that exists).
+  leadTopProduct: string | null;
+  leadTopProductCount: number;
 }
 
 export interface SignalInput {
   campaigns: Array<{ id: string; product: string; postCount: number }>;
   posts: Array<{ campaignId: string; status: string; copyEdited: boolean }>;
   leadCount: number;
+  // Captured-lead counts per product (from lead.sourceProduct); null products are ignored. Optional
+  // so existing callers/tests keep compiling — an absent list just yields no lead-spike signal.
+  leadProducts?: Array<{ product: string | null; count: number }>;
 }
 
 const LIVE_POST = new Set(['posted', 'partial']);
@@ -56,6 +64,14 @@ export function deriveSignals(input: SignalInput): AtriaSignals {
     if (st.length > 0 && st.every((s) => LIVE_POST.has(s))) completedCampaignCount++;
   }
 
+  // Lead spike per product: the product with the most leads that does NOT already run a campaign.
+  let leadTopProduct: string | null = null;
+  let leadTopProductCount = 0;
+  for (const { product, count } of input.leadProducts ?? []) {
+    if (!product || multiProducts.has(product)) continue;
+    if (count > leadTopProductCount) { leadTopProductCount = count; leadTopProduct = product; }
+  }
+
   return {
     totalPosts,
     oneOffTopProduct,
@@ -65,18 +81,22 @@ export function deriveSignals(input: SignalInput): AtriaSignals {
     editedPostRatio: totalPosts > 0 ? editedPostCount / totalPosts : 0,
     completedCampaignCount,
     leadCount: input.leadCount,
+    leadTopProduct,
+    leadTopProductCount,
   };
 }
 
 export async function readSignals(ownerId: string): Promise<AtriaSignals> {
-  const [campaigns, posts, leadCount] = await Promise.all([
+  const [campaigns, posts, leadCount, leadByProduct] = await Promise.all([
     prisma.campaign.findMany({ where: { ownerId }, select: { id: true, product: true, _count: { select: { posts: true } } } }),
     prisma.post.findMany({ where: { ownerId }, select: { campaignId: true, status: true, copyEdited: true } }),
     prisma.lead.count({ where: { ownerId } }),
+    prisma.lead.groupBy({ by: ['sourceProduct'], where: { ownerId, sourceProduct: { not: null } }, _count: true }),
   ]);
   return deriveSignals({
     campaigns: campaigns.map((c) => ({ id: c.id, product: c.product, postCount: c._count.posts })),
     posts,
     leadCount,
+    leadProducts: leadByProduct.map((g) => ({ product: g.sourceProduct, count: g._count })),
   });
 }

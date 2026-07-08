@@ -9,6 +9,7 @@ import cookieParser from 'cookie-parser';
 import { logger } from './lib/logger.ts';
 import { startSchedulerCron } from './scheduler/cron.ts';
 import { startReaperCron } from './scheduler/reaper-cron.ts';
+import { startAutonomyCron } from './orchestration/autonomy/autonomy-cron.ts';
 import { startCopyGenCron } from './copygen/cron.ts';
 import { startTokenCron } from './tokens/cron.ts';
 import { startLeadsCron } from './leads/sources/comment-cron.ts';
@@ -143,6 +144,7 @@ const bootstrap = (): void => {
   });
   if (env.ENABLE_SCHEDULER_CRON) startSchedulerCron();
   if (env.ENABLE_REAPER_CRON) startReaperCron();
+  if (env.ENABLE_AUTONOMY_CRON) startAutonomyCron();
   if (env.ENABLE_COPYGEN_CRON) startCopyGenCron();
   if (env.ENABLE_TOKEN_CRON) startTokenCron();
   if (env.ENABLE_LEADS_CRON) startLeadsCron();

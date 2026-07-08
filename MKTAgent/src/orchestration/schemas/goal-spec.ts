@@ -78,6 +78,11 @@ export const goalSpec = z.object({
   campaignScope: campaignScope.default('single'),
   duration: z.object({ weeks: z.number().int().positive().max(52) }).nullish(),
   cadence: z.object({ postsPerWeek: z.number().int().positive().max(21) }).nullish(),
+  // Auto-publish preference (decision 2026-07-08). DEFAULT false → a cleanly-postable post STILL
+  // halts at the approval gate; the user reviews then approves. The analyzer flips this true when
+  // the message explicitly asks to publish without review ("đăng luôn", "auto publish", "no review")
+  // so Atria honors a natural-language command; the /execute body toggle (UI) overrides it per-run.
+  autoPublish: z.boolean().default(false),
   // Analyzer's self-reported confidence (mirrors the existing intake draft).
   confidence: z.number().min(0).max(1).default(0.5),
   // Which analyzer produced this (gemini | deterministic-v1) — for debugging.

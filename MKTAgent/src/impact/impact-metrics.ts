@@ -42,16 +42,20 @@ export async function metricsForCampaign(campaignId: string, ownerId: string): P
   const published = posts.filter((p) => LIVE.includes(p.status));
 
   const ledgerWhere = { ownerId, OR: [{ refId: { in: postIds } }, { runId: { in: runIds } }] };
-  const [agg, media, runs, leadsCaptured] = await Promise.all([
+  const [agg, media, mediaCredit, runs, leadsCaptured] = await Promise.all([
     prisma.llmUsage.aggregate({ where: ledgerWhere, _sum: { costUsd: true, totalTokens: true } }),
-    prisma.llmUsage.aggregate({ where: { ...ledgerWhere, surface: { in: MEDIA_SURFACES } }, _sum: { costUsd: true }, _count: true }),
+    // mediaPieces counts ALL media generations (incl. token-bearing image gens) — no token filter.
+    prisma.llmUsage.aggregate({ where: { ...ledgerWhere, surface: { in: MEDIA_SURFACES } }, _count: true }),
+    // Credit basis mirrors the Usage page (llm-usage.ts:123-127): ONLY tokenless media USD converts to
+    // credits, so token-bearing image gens aren't double-counted (once in totalTokens, once in USD).
+    prisma.llmUsage.aggregate({ where: { ...ledgerWhere, surface: { in: MEDIA_SURFACES }, totalTokens: 0 }, _sum: { costUsd: true } }),
     runIds.length ? prisma.workflowRun.findMany({ where: { id: { in: runIds }, ownerId }, select: { createdAt: true, updatedAt: true } }) : Promise.resolve([]),
     // Leads have no campaign FK — attribute by the campaign's product (best available link), owner-scoped.
     campaign.product ? prisma.lead.count({ where: { ownerId, sourceProduct: campaign.product } }) : Promise.resolve(0),
   ]);
 
   const totalTokens = agg._sum.totalTokens ?? 0;
-  const mediaUsd = media._sum.costUsd ?? 0;
+  const mediaCreditUsd = mediaCredit._sum.costUsd ?? 0;
   return {
     postsPublished: published.length,
     postsTotal: posts.length,
@@ -59,7 +63,7 @@ export async function metricsForCampaign(campaignId: string, ownerId: string): P
     mediaPieces: media._count,
     usdSpent: agg._sum.costUsd ?? 0,
     totalTokens,
-    creditsSpent: creditsFor(totalTokens, mediaUsd),
+    creditsSpent: creditsFor(totalTokens, mediaCreditUsd),
     leadsCaptured,
     runMinutes: runMinutesFor(runs),
   };
@@ -72,15 +76,18 @@ export async function metricsForPeriod(ownerId: string, since: Date): Promise<Im
   const published = posts.filter((p) => LIVE.includes(p.status));
 
   const ledgerWhere = { ownerId, createdAt: { gte: since } };
-  const [agg, media, runs, leadsCaptured] = await Promise.all([
+  const [agg, media, mediaCredit, runs, leadsCaptured] = await Promise.all([
     prisma.llmUsage.aggregate({ where: ledgerWhere, _sum: { costUsd: true, totalTokens: true } }),
-    prisma.llmUsage.aggregate({ where: { ...ledgerWhere, surface: { in: MEDIA_SURFACES } }, _sum: { costUsd: true }, _count: true }),
+    // mediaPieces counts ALL media generations (incl. token-bearing image gens) — no token filter.
+    prisma.llmUsage.aggregate({ where: { ...ledgerWhere, surface: { in: MEDIA_SURFACES } }, _count: true }),
+    // Credit basis mirrors the Usage page: ONLY tokenless media USD converts to credits.
+    prisma.llmUsage.aggregate({ where: { ...ledgerWhere, surface: { in: MEDIA_SURFACES }, totalTokens: 0 }, _sum: { costUsd: true } }),
     runIds.length ? prisma.workflowRun.findMany({ where: { id: { in: runIds }, ownerId }, select: { createdAt: true, updatedAt: true } }) : Promise.resolve([]),
     prisma.lead.count({ where: { ownerId, receivedAt: { gte: since } } }),
   ]);
 
   const totalTokens = agg._sum.totalTokens ?? 0;
-  const mediaUsd = media._sum.costUsd ?? 0;
+  const mediaCreditUsd = mediaCredit._sum.costUsd ?? 0;
   return {
     postsPublished: published.length,
     postsTotal: posts.length,
@@ -88,7 +95,7 @@ export async function metricsForPeriod(ownerId: string, since: Date): Promise<Im
     mediaPieces: media._count,
     usdSpent: agg._sum.costUsd ?? 0,
     totalTokens,
-    creditsSpent: creditsFor(totalTokens, mediaUsd),
+    creditsSpent: creditsFor(totalTokens, mediaCreditUsd),
     leadsCaptured,
     runMinutes: runMinutesFor(runs),
   };

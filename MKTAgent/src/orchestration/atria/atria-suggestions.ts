@@ -23,6 +23,7 @@ export interface Suggestion {
 // Thresholds — named so the rules stay explainable + tunable (no magic numbers).
 const ONE_OFF_MIN = 3; // ≥3 one-off posts for one product → suggest a real campaign
 const LEADS_MIN = 5; // ≥5 captured leads with no email capability → pitch Email
+const LEAD_SPIKE_MIN = 3; // ≥3 leads on ONE product (no campaign yet) → ride it with a campaign
 const EDIT_RATIO_MIN = 0.5; // ≥50% of posts hand-edited → pitch Memory
 const EDIT_COUNT_MIN = 3; // …and at least 3 edits, so a tiny sample doesn't trigger it
 
@@ -37,6 +38,19 @@ export function suggestFor(signals: AtriaSignals): Suggestion[] {
       rationale: `You've made ${signals.oneOffTopProductCount} one-off posts about ${signals.oneOffTopProduct} but never run a full campaign for it. A planned month keeps the message consistent and saves you setting up each post by hand.`,
       rank: 100,
       prefill: { intent: `Plan a month of content for ${signals.oneOffTopProduct}`, product: signals.oneOffTopProduct },
+    });
+  }
+
+  // R1b — leads are spiking on ONE product with no campaign yet → ride the demand with a campaign.
+  // Ranked just under R1 (piecemeal posting) but above "repeat what worked": a live lead signal is
+  // the strongest "act now" cue Atria has today.
+  if (signals.leadTopProduct && signals.leadTopProductCount >= LEAD_SPIKE_MIN) {
+    out.push({
+      kind: 'plan_campaign',
+      headline: `${signals.leadTopProductCount} leads on ${signals.leadTopProduct} — plan a campaign?`,
+      rationale: `${signals.leadTopProduct} has pulled in ${signals.leadTopProductCount} leads but has no campaign running. A planned month while interest is hot compounds the momentum instead of letting it cool.`,
+      rank: 90,
+      prefill: { intent: `Plan a month of content for ${signals.leadTopProduct}`, product: signals.leadTopProduct },
     });
   }
 

@@ -41,6 +41,22 @@ async function main(): Promise<void> {
   const withActive = deriveSignals({ ...oneOff, campaigns: [...oneOff.campaigns, { id: 'c4', product: 'AI CRM', postCount: 8 }] });
   check('R1: suppressed when product already has a campaign', !kinds(suggestFor(withActive)).includes('plan_campaign'), suggestFor(withActive));
 
+  // ── R1b: leads spiking on one product with no campaign → plan_campaign for it ─────────────
+  const leadSpike = deriveSignals({
+    campaigns: [{ id: 'c1', product: 'Other', postCount: 1 }],
+    posts: [{ campaignId: 'c1', status: 'posted', copyEdited: false }],
+    leadCount: 4,
+    leadProducts: [{ product: 'AI CRM', count: 4 }],
+  });
+  check('signal: lead-top product = AI CRM ×4', leadSpike.leadTopProduct === 'AI CRM' && leadSpike.leadTopProductCount === 4, leadSpike);
+  check('R1b: plan_campaign suggested on lead spike', kinds(suggestFor(leadSpike)).includes('plan_campaign'), kinds(suggestFor(leadSpike)));
+  // R1b suppressed when that product already runs a campaign.
+  const leadSpikeActive = deriveSignals({
+    campaigns: [{ id: 'c1', product: 'AI CRM', postCount: 6 }],
+    posts: [], leadCount: 4, leadProducts: [{ product: 'AI CRM', count: 4 }],
+  });
+  check('R1b: suppressed when product already has a campaign', leadSpikeActive.leadTopProduct === null, leadSpikeActive);
+
   // ── R3: many leads, no email capability → pitch Email roadmap ─────────────────────────────
   const leadsSig = deriveSignals({ campaigns: [], posts: [], leadCount: 12 });
   const sugLeads = suggestFor(leadsSig);

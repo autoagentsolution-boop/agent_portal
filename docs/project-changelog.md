@@ -5,6 +5,37 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-08
 
+### Fix: WOW-audit tech-debt batch — 5 phases (P0/P1/P2, code green, uncommitted)
+Clears the read-only audit's findings (`plans/260708-0346-project-wow-audit/`) after resolving 4
+product decisions with the user. tsc (server + web) + pure `verify-atria-suggestions` green; DB-backed
+verifies + the link-status migration pending a running database.
+- **Link-status persistence (P0-3, user-observed)**: added `Post.linkStatus Json?` (migration
+  `20260708120000_post_link_status`). `checkPostLinks` now persists the liveness snapshot + timestamp
+  unconditionally (single write covers persist + self-heal; new `persist` param defaults true, the
+  verify seam passes false). Exposed in the post DTO + client type; `LeadsPage` hydrates it on load so
+  ⚪/🔴/🟢 survives a refresh instead of resetting to blank.
+- **Impact ↔ Usage credit reconcile (P0-4)**: `impact-metrics.ts` split the media aggregate —
+  `mediaPieces` counts ALL media rows, but the credit basis now sums only tokenless media USD
+  (`totalTokens:0`), mirroring the Usage page so the two totals agree (image gens no longer
+  double-count once in tokens + once in USD). `usdSpent` unchanged.
+- **Campaign proactivity (decision: no auto-widen)**: kept the single-post default; escalation flows
+  through Atria's proactive suggestions. Added the "leads spiking on one product → plan a campaign for
+  it" signal (`signal-reader` lead-per-product groupBy + `atria-suggestions` R1b, rank 90). Accepting
+  it prefills the existing "Plan a month…" intent that escalates to the strategist calendar.
+- **Autonomy kickoff (decision: auto-run but DRY)**: NEW `ENABLE_AUTONOMY_CRON` granted-run executor
+  (`src/orchestration/autonomy/*`). Every 2 min it atomically claims `approvalMode='atria' + planned`
+  runs and executes them through the SAME gated executor (the fail-closed policy still guards each
+  gate); publishing is forced DRY-RUN so the autonomous loop completes end-to-end without a real post.
+- **Auto-publish (decision: default OFF + toggle)**: goal-level `autoPublish` flag; the analyzer
+  detects a hands-off command ("đăng luôn", "auto-publish"); executor defaults OFF and honors, in order,
+  the caller's explicit toggle → the goal flag → the gate. `/execute` accepts a per-run body toggle;
+  `executeRun` client seam ready for the UI switch (deferred to the UI phase).
+- **Polish**: registry `implStatus` `stub`→`live` for the three fully-live media agents
+  (infographic/storyboard/video); `materialize-calendar` logs partial-failure counts + reasons
+  (response already carried `skipped`); two Vietnamese clarification seeds made language-neutral so the
+  no-LLM fallback doesn't leak VN to other-language users; `recordGeminiCall` warns on a real call that
+  returns no `usageMetadata` (undercount edge now auditable).
+
 ### Fix: Atria UX feedback pass 1 — Plan-it auto-send, campaign report in replies, hub redesign
 User feedback on the campaign-intelligence release (3 items):
 - **"Plan it" swallowed the intent**: accepting an Atria suggestion (or a Command Center command)

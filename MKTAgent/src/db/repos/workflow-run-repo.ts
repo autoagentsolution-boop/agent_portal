@@ -409,6 +409,25 @@ export const findOrphanedRuns = (before: Date): Promise<WorkflowRun[]> =>
     where: { status: { in: ['needs_approval', 'planned', 'needs_connection'] }, updatedAt: { lt: before } },
   });
 
+// Autonomy kickoff (Phase 04): a GRANTED run (approvalMode='atria') left at 'planned' has nothing
+// to start it — the scheduler only publishes `ready` posts. The autonomy cron claims one atomically
+// (updateMany guarded on 'planned' so overlapping ticks/workers can't double-execute) and runs it.
+// `status:'planned'` already excludes templates (status='template') and in-flight runs. Returns the
+// claimed run (now 'running') or null when nothing is claimable / the claim was lost to a race.
+export const claimNextGrantedRun = async (): Promise<WorkflowRun | null> => {
+  const candidate = await prisma.workflowRun.findFirst({
+    where: { approvalMode: 'atria', status: 'planned' },
+    orderBy: { updatedAt: 'asc' },
+    select: { id: true },
+  });
+  if (!candidate) return null;
+  const claim = await prisma.workflowRun.updateMany({
+    where: { id: candidate.id, approvalMode: 'atria', status: 'planned' },
+    data: { status: 'running' },
+  });
+  return claim.count === 1 ? prisma.workflowRun.findUnique({ where: { id: candidate.id } }) : null;
+};
+
 // Reaper writes (scoped by the row's own id; guarded on the stuck state so a concurrent legit
 // transition wins the race — the reaper never clobbers a row that just moved on).
 export const reapRunToFailed = async (id: string): Promise<boolean> => {

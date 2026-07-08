@@ -346,6 +346,10 @@ model Post {
   // last check is older than the throttle window (default 6h), instead of every 30-min leads tick
   // (~2× API volume). The reactive PostGoneError path stays the fast detector. Null = never swept.
   lastLivenessCheckAt DateTime? @map("last_liveness_check_at") @db.Timestamptz(6)
+  // Persisted snapshot of the last per-platform liveness check (Phase 07 / audit P0-3) so the
+  // Leads UI shows ⚪/🔴/🟢 after a refresh instead of losing it — checkPostLinks writes it, the
+  // post DTO exposes it, LeadsPage hydrates from it. LinkStatus[] = { platform, url, alive }.
+  linkStatus  Json?             @map("link_status")
   // Outcome.
   postUrls    Json?            @map("post_urls") // { facebook: url, ... }
   error       String?

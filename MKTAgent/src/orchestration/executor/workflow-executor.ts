@@ -322,7 +322,9 @@ export const runWorkflow = async (
     // holds. autoPublish=false restores the manual gate (verify scripts, opt-out).
     // Auto-publish is suppressed when the run produces a video: approving the video cost gate must
     // NOT also publish. The user reviews the finished video, then approves the publisher separately.
-    const autoPublish = (opts.autoPublish ?? true) && !hasCostGate;
+    // Default OFF (decision 2026-07-08): halt at the approval gate unless the caller's explicit opt
+    // (UI toggle) OR the goal's NL flag ("đăng luôn", set by the analyzer) enables auto-publish.
+    const autoPublish = (opts.autoPublish ?? goal.autoPublish ?? false) && !hasCostGate;
     let requiresApproval = gated;
     // Human auto-publish waiver (unchanged). In atria mode the grant policy is the sole authority
     // for the publisher gate (see the atria override below), so skip this heuristic entirely.

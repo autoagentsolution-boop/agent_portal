@@ -298,11 +298,11 @@ orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
     return respondRun(res, run.id, req.userId!, { requiredActions: resolution.required });
   }
 
-  // Auto-publish (item 2): default ON — a cleanly-postable post publishes with no Approve
-  // step; the executor still halts for the publish review when some target can't take the
-  // asset (item 1/3). Callers (e.g. verify scripts) may opt out with autoPublish=false to
-  // force the manual gate. Only an explicit `false` disables it; anything else → default.
-  const autoPublish = (req.body as { autoPublish?: unknown } | undefined)?.autoPublish !== false;
+  // Auto-publish (decision 2026-07-08): default OFF — a post halts at the approval gate for review.
+  // Only pass an explicit body toggle through (UI switch); when the body omits it, leave undefined so
+  // the executor falls back to the goal's NL flag (Atria honoring "đăng luôn") and otherwise the gate.
+  const rawAutoPublish = (req.body as { autoPublish?: unknown } | undefined)?.autoPublish;
+  const autoPublish = typeof rawAutoPublish === 'boolean' ? rawAutoPublish : undefined;
   // Concept selection gate default ON: pause after concept for the user to pick a version.
   const conceptGate = (req.body as { conceptGate?: unknown } | undefined)?.conceptGate !== false;
 
@@ -385,7 +385,12 @@ orchestrationRouter.post('/runs/:id/materialize-calendar', asyncHandler(async (r
   // as their own flows now, so the planning run is complete.
   await setNodeStatus(strategistNode.id, 'completed');
   await setRunStatus(run.id, 'completed');
-  await logRun('info', 'atria_calendar_materialized', { runId: run.id, campaignId: campaign.id, posts: result?.posts.length ?? 0 }, req.userId!);
+  // Surface partial failures (P1-4): a slot whose GoalSpec failed to plan is skipped, not silently
+  // dropped — log the count + reasons so a materialized < requested count is explainable (the
+  // response's `materialize.skipped` carries the per-slot detail for the UI).
+  const skipped = result?.skipped ?? [];
+  await logRun('info', 'atria_calendar_materialized', { runId: run.id, campaignId: campaign.id, posts: result?.posts.length ?? 0, requested: body.slots.length, skipped: skipped.length, skippedReasons: skipped.slice(0, 5) }, req.userId!);
+  if (skipped.length) logger.warn('atria_materialize_partial', { campaignId: campaign.id, requested: body.slots.length, created: result?.posts.length ?? 0, skipped: skipped.length });
 
   ok(res, { campaignId: campaign.id, materialize: result });
 }));

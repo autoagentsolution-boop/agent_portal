@@ -49,6 +49,7 @@ export const toPostDto = (p: Post): PostDto => ({
   versionCount: p.versionCount,
   scheduledAt: iso(p.scheduledAt),
   postUrls: (p.postUrls as Record<string, string> | null) ?? null,
+  linkStatus: (p.linkStatus as PostDto['linkStatus']) ?? null,
   error: p.error,
   postedAt: iso(p.postedAt),
   createdAt: p.createdAt.toISOString(),
