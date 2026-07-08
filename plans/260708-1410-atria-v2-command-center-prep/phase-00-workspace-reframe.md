@@ -30,10 +30,12 @@ Also retire the v1 test-scaffold confusion surfaced today:
 4. Keep `/runs/:id/test-run` as the canonical "run this workspace" action.
 
 ## Todo
-- [ ] Workspace view-model + per-agent rollup (backend, read-only over existing tables)
-- [ ] `GET /workspaces[/:id]` + DTOs
-- [ ] Sidebar IA Flows→Workspaces; hide template/instance jargon
-- [ ] tsc + verify existing flow tests still green (no engine change)
+- [x] Workspace view-model + per-agent rollup (backend, read-only over existing tables) — `campaignAgentRollup` (workflow-run-repo) + `workspace-view.ts` (listWorkspaces/getWorkspace)
+- [x] `GET /workspaces[/:id]` + DTOs — `workspaces-router.ts` mounted; client `listWorkspaces`/`getWorkspace` + `WorkspaceSummaryDto`/`WorkspaceDetailDto`
+- [~] Sidebar IA Flows→Workspaces — vocabulary nudge landed (▦ Workspaces, drop "Ungrouped"). **Structural tree-collapse (flat Workspace→Posts, hide flow-blueprint tier) DEFERRED to P1** — P1 rebuilds the Command Center as the hub w/ inline workspace panels; collapsing the sidebar now = throwaway + inconsistent interim UI (decision 1: thin/hybrid, don't double-build).
+- [x] tsc (backend + web) + verify green — new `verify-workspace-view.ts` PASS; regression: verify-campaign-grant + verify-flow-cost-rollup PASS
+
+## Status: DONE (backend view-model + endpoints + client wiring + vocab). Structural sidebar collapse folded into P1.
 
 ## Success criteria
 - One "Workspace" concept in the UI = a campaign room; no user-facing template/instance/"Ungrouped".

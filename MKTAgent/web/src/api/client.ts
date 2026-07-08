@@ -240,6 +240,39 @@ export interface CampaignStatusDto {
   counts: Record<DerivedPostStatus, number>;
   posts: Array<{ postId: string; runId: string; status: DerivedPostStatus; scheduledAt: string | null }>;
 }
+// Workspace view-model (Atria v2 P0) — a Campaign reframed as an agent-room "Workspace". Routes
+// (/workspaces) not in openapi yet → hand-typed at the boundary (same pattern as CampaignStatusDto).
+export interface WorkspaceAgentCardDto {
+  agentId: string;
+  name: string;
+  emoji: string;
+  group: string | null;
+  totalTokens: number;
+  costUsd: number;
+  credits: number;
+  runs: number;
+  completed: number;
+  running: number;
+  failed: number;
+}
+export interface WorkspaceSummaryDto {
+  campaignId: string;
+  name: string;
+  product: string;
+  active: boolean;
+  platforms: string[];
+  postCount: number;
+  counts: Record<DerivedPostStatus, number>;
+  costUsd: number;
+  credits: number;
+  updatedAt: string;
+}
+export interface WorkspaceDetailDto extends WorkspaceSummaryDto {
+  totalTokens: number;
+  posts: CampaignStatusDto['posts'];
+  agents: WorkspaceAgentCardDto[];
+}
+
 export interface CampaignCostEstimateDto { posts: number; agentCount: number; totalTokens: number; costUsd: number; credits: number }
 export interface CampaignGrantResponse {
   campaignId: string;
@@ -487,6 +520,10 @@ export const api = {
       `/orchestration/runs/${runId}/materialize-calendar`, { method: 'POST', body: { slots } },
     ),
   campaignStatus: (id: string) => request<CampaignStatusDto>(`/campaigns/${id}/status`),
+
+  // ---- Workspaces (Atria v2 P0) — read-only reframe of Campaigns for the Command Center hub ----
+  listWorkspaces: () => request<WorkspaceSummaryDto[]>('/workspaces'),
+  getWorkspace: (campaignId: string) => request<WorkspaceDetailDto>(`/workspaces/${campaignId}`),
   grantCampaign: (id: string, body: { confirmationToken?: string; scheduleConfirmed?: boolean }) =>
     request<CampaignGrantResponse>(`/campaigns/${id}/grant-autonomy`, { method: 'POST', body }),
 

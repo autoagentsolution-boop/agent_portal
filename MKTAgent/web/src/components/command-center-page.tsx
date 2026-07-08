@@ -1,20 +1,31 @@
-// Atria Command Center — the "Neural Network" landing (Atria Phase 04). A visual,
-// page-scoped dark surface that renders REAL registry nodes (GET /orchestration/agents)
-// grouped by division, with the live credit total (GET /orchestration/usage). It is a
-// funnel, not a second app: every node / the core / the command bar redirects into the
-// existing Orchestrate surface (onLaunch), and ⌂ Workspace exits back to the normal UI
-// (onExit). Dark theme is confined to `.command-center` so the rest of the app is
-// untouched — the safe, incremental adoption the plan calls for.
+// Atria Command Center — the operating HUB (Atria v2 P1). A page-scoped dark "Neural Network"
+// surface rendering REAL registry nodes (GET /orchestration/agents) grouped by division + the live
+// credit total (GET /orchestration/usage). v2: it is no longer a funnel — clicking a node opens an
+// INLINE drawer (WorkspacePanel / AgentSpotlight over the P0 workspace view-model), not a redirect.
+// Only the Atria core + the command bar hand off to the Orchestrate chat (onLaunch); ⌂ Workspace
+// exits to the classic UI (onExit). Dark theme stays confined to `.command-center`; the drawer is
+// light so embedded post views keep native styling.
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { api, type AgentCatalog, type AgentNodeDto } from '../api/client';
+import { api, type AgentCatalog, type AgentNodeDto, type WorkspaceSummaryDto, type DerivedPostStatus } from '../api/client';
+import { WorkspacePanel } from './workspace-panel';
+import { AgentSpotlight } from './agent-spotlight';
 
 interface Props {
-  // Redirect into the live Orchestrate surface, optionally seeding the composer.
+  // Hand off to the live Orchestrate chat (Atria core / command bar), optionally seeding the composer.
   onLaunch: (prefill?: string) => void;
   // Leave the command center for the normal workspace (current UI/UX).
   onExit: () => void;
+  // Open the Connections page (bubbled up from an embedded PostWorkflowView's connection gate).
+  onOpenConnections?: () => void;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
 }
+
+// Inline drawer target: a workspace room or an agent spotlight.
+type Panel = { kind: 'workspace'; campaignId: string } | { kind: 'agent'; agent: AgentNodeDto };
+
+const STATUS_COLOR: Record<DerivedPostStatus, string> = {
+  planned: '#9aa0a6', running: '#1a73e8', held: '#f9ab00', posted: '#188038', failed: '#d93025',
+};
 
 const QUICK_CMDS = [
   'Tạo chiến dịch marketing cho sản phẩm mới',
@@ -29,9 +40,11 @@ const nodePos = (i: number, total: number): { left: string; top: string } => {
   return { left: `${50 + Math.cos(ang) * 42}%`, top: `${50 + Math.sin(ang) * 40}%` };
 };
 
-export function CommandCenterPage({ onLaunch, onExit, notify }: Props) {
+export function CommandCenterPage({ onLaunch, onExit, onOpenConnections, notify }: Props) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummaryDto[]>([]);
+  const [panel, setPanel] = useState<Panel | null>(null);
   const [cmd, setCmd] = useState('');
 
   useEffect(() => {
@@ -40,6 +53,7 @@ export function CommandCenterPage({ onLaunch, onExit, notify }: Props) {
       else notify(`Agents: ${r.error.error}`, 'err');
     });
     void api.getUsage().then((r) => { if (r.ok) setCredits(r.data.credits); });
+    void api.listWorkspaces().then((r) => { if (r.ok) setWorkspaces(r.data); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const colorOf = useMemo(() => {
@@ -82,6 +96,30 @@ export function CommandCenterPage({ onLaunch, onExit, notify }: Props) {
         </div>
       </div>
 
+      {workspaces.length > 0 && (
+        <div className="cc-ws-strip">
+          <span className="cc-ws-strip-label">Workspaces</span>
+          {workspaces.map((w) => {
+            const dots = (['running', 'held', 'failed', 'posted', 'planned'] as DerivedPostStatus[]).filter((k) => w.counts[k] > 0);
+            return (
+              <button
+                key={w.campaignId}
+                className={`cc-ws-chip ${panel?.kind === 'workspace' && panel.campaignId === w.campaignId ? 'is-active' : ''}`}
+                onClick={() => setPanel({ kind: 'workspace', campaignId: w.campaignId })}
+                title={`${w.postCount} post(s) · ◈ ${Math.round(w.credits).toLocaleString()} cr`}
+              >
+                <span className="cc-ws-chip-dots">
+                  {dots.length === 0
+                    ? <span className="ws-dot" style={{ background: STATUS_COLOR.planned }} />
+                    : dots.map((k) => <span key={k} className="ws-dot" style={{ background: STATUS_COLOR[k] }} />)}
+                </span>
+                {w.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="cc-network">
         <button className="cc-core" onClick={() => onLaunch()}>
           <span className="cc-core-label">Master Agent</span>
@@ -106,9 +144,9 @@ export function CommandCenterPage({ onLaunch, onExit, notify }: Props) {
           return (
             <button
               key={a.id}
-              className={`cc-node ${a.implStatus === 'stub' ? 'is-stub' : ''} ${planned ? 'is-planned' : ''}`}
+              className={`cc-node ${a.implStatus === 'stub' ? 'is-stub' : ''} ${planned ? 'is-planned' : ''} ${panel?.kind === 'agent' && panel.agent.id === a.id ? 'is-active' : ''}`}
               style={nodePos(i, agents.length)}
-              onClick={() => planned ? notify(`${a.name} — sắp ra mắt`) : onLaunch()}
+              onClick={() => planned ? notify(`${a.name} — sắp ra mắt`) : setPanel({ kind: 'agent', agent: a })}
               title={planned ? `${a.name} (sắp ra mắt) — ${a.vibe ?? a.description}` : (a.vibe ?? a.description)}
             >
               <span className="cc-node-circle" style={{ borderColor: colorOf(a) }}>
@@ -138,6 +176,27 @@ export function CommandCenterPage({ onLaunch, onExit, notify }: Props) {
         </div>
         <div className="cc-hint">Atria tự nhận diện ngôn ngữ, xác nhận cách hiểu, rồi đề xuất phương án kèm chi phí.</div>
       </form>
+
+      {panel && (
+        <>
+          <div className="cc-drawer-scrim" onClick={() => setPanel(null)} />
+          <aside className="cc-drawer" role="dialog" aria-label="Workspace panel">
+            <div className="cc-drawer-chrome">
+              <span className="cc-drawer-kind">{panel.kind === 'workspace' ? '▦ Workspace' : '◆ Agent'}</span>
+              <button className="cc-drawer-close" aria-label="Close panel" onClick={() => setPanel(null)}>✕</button>
+            </div>
+            {panel.kind === 'workspace' ? (
+              <WorkspacePanel campaignId={panel.campaignId} notify={notify} onOpenConnections={onOpenConnections} />
+            ) : (
+              <AgentSpotlight
+                agent={panel.agent}
+                notify={notify}
+                onOpenWorkspace={(campaignId) => setPanel({ kind: 'workspace', campaignId })}
+              />
+            )}
+          </aside>
+        </>
+      )}
     </div>
   );
 }

@@ -27,7 +27,8 @@ const postTitle = (post: PostDto, index: number): string => {
 export function App() {
   const auth = useAuth();
   const { toast, show } = useToast();
-  const [page, setPage] = useState<Page>('orchestrate');
+  // Command Center is the default landing (Atria v2 P1) — the operating hub, not the chat.
+  const [page, setPage] = useState<Page>('command-center');
   const [theme, setTheme] = useState<Theme>('light');
   const [activeCampaign, setActiveCampaign] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState<DemoMode>('safe');
@@ -317,11 +318,11 @@ export function App() {
             <button className={`tree-row level-1 tree-label flow-head ${page === 'leads' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('leads'); }}>🎯 Leads</button>
           </div>
           <div className="tree-section-head">
-            <button className={`tree-row level-1 tree-label flow-head ${page === 'flows' && !selectedRunId && !activeCampaign ? 'active' : ''}`} onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>▦ Flows</button>
-            <button className="tree-row-add" aria-label="New flow" title="New flow — describe it to the Master Agent" onClick={(e) => { e.stopPropagation(); openOrchestrate(); }}>+</button>
+            <button className={`tree-row level-1 tree-label flow-head ${page === 'flows' && !selectedRunId && !activeCampaign ? 'active' : ''}`} onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>▦ Workspaces</button>
+            <button className="tree-row-add" aria-label="New workspace" title="New workspace — describe it to Atria" onClick={(e) => { e.stopPropagation(); openOrchestrate(); }}>+</button>
           </div>
           {savedRuns.length === 0 && campaigns.length === 0 && (
-            <div className="tree-empty">No flows yet — orchestrate one to begin</div>
+            <div className="tree-empty">No workspaces yet — start one to begin</div>
           )}
           {savedRuns.map((flow) => {
             const flowCampaigns = campaigns.filter((c) => c.flowId === flow.id);
@@ -338,7 +339,7 @@ export function App() {
           })}
           {campaigns.some((c) => !c.flowId) && (
             <>
-              <div className="tree-row level-2 tree-label">Ungrouped campaigns</div>
+              <div className="tree-row level-2 tree-label">Workspaces</div>
               {campaigns.filter((c) => !c.flowId).map(renderCampaign)}
             </>
           )}
@@ -363,6 +364,7 @@ export function App() {
           <CommandCenterPage
             onLaunch={launchFromCommandCenter}
             onExit={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('flows'); }}
+            onOpenConnections={() => { setSelectedRunId(null); setPage('connections'); }}
             notify={show}
           />
         ) : page === 'orchestrate' ? (

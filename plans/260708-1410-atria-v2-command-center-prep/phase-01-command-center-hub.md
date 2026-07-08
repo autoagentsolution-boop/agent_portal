@@ -29,10 +29,19 @@ panel, not a redirect. Two node kinds:
 5. Keep the current chat page reachable, but Command Center becomes the default home.
 
 ## Todo
-- [ ] Inline panel router in Command Center (no redirect)
-- [ ] Workspace panel (tabs + SSE timeline + output + dashboard) over P0 view-model
-- [ ] Per-agent controls wired to existing run endpoints
-- [ ] Command Center as default landing
+- [x] Inline panel router in Command Center (no redirect) — `panel` state + `.cc-drawer` (scrim + slide-in); agent node → AgentSpotlight, workspace chip → WorkspacePanel. Atria core + cmd bar still onLaunch (chat).
+- [x] Workspace panel over P0 view-model — `workspace-panel.tsx`: dashboard (status counts + cost-by-agent cards) + posts list; live via `use-workspace-events.ts` (SSE multiplex over the workspace's runIds → debounced refetch) + 10s poll fallback.
+- [x] Per-agent controls wired to existing endpoints — post drill embeds the existing `PostWorkflowView` (re-run node / edit-copy / refine / publish gate all reused, NOT re-implemented).
+- [x] Command Center as default landing — App.tsx default `page='command-center'`; ⌂ Workspace + sidebar still reach classic UI + chat.
+- [x] Agent spotlight — `agent-spotlight.tsx`: an agent's activity across ALL workspaces (client-side compose over listWorkspaces→getWorkspace; capped fan-out).
+
+## Status: DONE + LIVE-VERIFIED (2026-07-08, browser-driven via agent-browser on real account, 18 workspaces).
+Confirmed live: CC default landing renders (13 nodes + core + 18 workspace-strip chips w/ real status dots);
+workspace chip → inline drawer with dashboard (7 cost-by-agent cards: Concept 38cr / Storyboard 35cr /
+Ideation 26cr / Strategy 24cr…, status "Needs you 1 / Posted 5", 6 posts); post drill → embedded
+PostWorkflowView (full 7-step DAG, per-node runtime+credits, re-run/edit/publish, "view post ↗"); agent
+node → spotlight ("💡 Ideation, Active in 1 workspace · 6 runs" — cross-checked accurate vs DB). Light
+drawer over dark CC = no theme bleed. Build green (web tsc -b + vite build; backend tsc).
 
 ## Success criteria
 - Clicking a node opens its workspace/agent detail INLINE (matches the image), live-updating via SSE.

@@ -246,6 +246,56 @@ export const getFlowCostRollup = async (templateId: string, ownerId: string): Pr
   };
 };
 
+// Per-AGENT rollup across a whole campaign's posts (Atria v2 P0 — the Workspace dashboard's
+// "cost by agent": Researcher 42cr / Editor 38cr…). Aggregates every node run of every post's
+// run in the campaign, grouped by agentId, with token/cost sums + a status breakdown. Read-only
+// over existing tables — no engine change. Owner-scoped: reads only the caller's posts/runs.
+// Node counts per campaign are small (posts × ~8 agents), so we fetch rows and reduce in JS
+// rather than firing two groupBy round-trips.
+export interface CampaignAgentRollup {
+  agentId: string;
+  totalTokens: number;
+  costUsd: number;
+  credits: number;
+  runs: number; // node-run instances for this agent across the campaign
+  completed: number;
+  running: number;
+  failed: number;
+  // pending (queued, not yet started) = runs - completed - running - failed (derived, not stored).
+}
+export const campaignAgentRollup = async (
+  campaignId: string,
+  ownerId: string,
+): Promise<CampaignAgentRollup[]> => {
+  const posts = await prisma.post.findMany({
+    where: { campaignId, ownerId, runId: { not: null } },
+    select: { runId: true },
+  });
+  const runIds = [...new Set(posts.map((p) => p.runId).filter((r): r is string => Boolean(r)))];
+  if (runIds.length === 0) return [];
+  const nodes = await prisma.workflowNodeRun.findMany({
+    where: { ownerId, runId: { in: runIds } },
+    select: { agentId: true, status: true, totalTokens: true, costUsd: true },
+  });
+  const byAgent = new Map<string, CampaignAgentRollup>();
+  for (const n of nodes) {
+    const r =
+      byAgent.get(n.agentId) ??
+      { agentId: n.agentId, totalTokens: 0, costUsd: 0, credits: 0, runs: 0, completed: 0, running: 0, failed: 0 };
+    r.totalTokens += n.totalTokens ?? 0;
+    r.costUsd += n.costUsd ?? 0;
+    r.runs += 1;
+    if (n.status === 'completed') r.completed += 1;
+    else if (n.status === 'running') r.running += 1;
+    else if (n.status === 'failed') r.failed += 1;
+    // pending/awaiting_approval fall through — derivable as runs - completed - running - failed.
+    byAgent.set(n.agentId, r);
+  }
+  return [...byAgent.values()]
+    .map((r) => ({ ...r, credits: creditsFromTokens(r.totalTokens) }))
+    .sort((a, b) => b.costUsd - a.costUsd);
+};
+
 export const listRuns = (ownerId: string, limit = 50): Promise<WorkflowRun[]> =>
   prisma.workflowRun.findMany({ where: { ownerId }, orderBy: { updatedAt: 'desc' }, take: limit });
 

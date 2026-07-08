@@ -17,6 +17,7 @@ import { requireAuth } from './api/middleware-auth.ts';
 import { postsRouter } from './api/posts-router.ts';
 import { postMediaRouter } from './api/post-media-router.ts';
 import { campaignsRouter } from './api/campaigns-router.ts';
+import { workspacesRouter } from './api/workspaces-router.ts';
 import { authRouter } from './api/auth-router.ts';
 import { connectRouter } from './api/connect-router.ts';
 import { driveConnectRouter } from './api/drive-connect-router.ts';
@@ -85,6 +86,9 @@ app.use('/connect', connectRouter);
 // cron/webhook s2s routes (mounted in later phases), not user-facing CRUD.
 app.use('/posts', requireAuth, postsRouter);
 app.use('/campaigns', requireAuth, campaignsRouter);
+// Workspaces (Atria v2 P0) — read-only reframe of Campaigns as agent-room "Workspaces" for the
+// Command Center hub. Thin view-model over the same runs/nodes/ledger; no engine change.
+app.use('/workspaces', requireAuth, workspacesRouter);
 
 // Atria user instructions (Phase 02). Layered, ChatGPT-style custom instructions injected into
 // every agent's system prompt via buildAgentPrompt. Owner-scoped CRUD; tenant-scoped via requireAuth.

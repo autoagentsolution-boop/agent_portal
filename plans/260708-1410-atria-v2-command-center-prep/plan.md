@@ -47,11 +47,14 @@ sits on. It is NOT the v2 UI itself.
    image publish (the local-asset-URL blocker). SSO later if user traction is good.
 
 ## Phases (build order)
-- [ ] **P0 — Workspace reframe (thin/hybrid)** · [phase-00](phase-00-workspace-reframe.md) — Workspace
-  view-model over Campaign+runs; retire the template/instance confusion (Run-a-test 409, Ungrouped);
-  rename Flows→Workspaces in IA. No deep model rip-out (that's the post-UI 2nd beat).
-- [ ] **P1 — Command Center as hub** · [phase-01](phase-01-command-center-hub.md) — node → inline
-  Workspace panel (live activity + output + per-agent dashboard), not a chat redirect. Reuse SSE + cost.
+- [x] **P0 — Workspace reframe (thin/hybrid)** · [phase-00](phase-00-workspace-reframe.md) — DONE:
+  backend view-model over Campaign+runs (`campaignAgentRollup` + `workspace-view.ts`) + `GET /workspaces[/:id]`
+  + client wiring + vocab nudge (Flows→Workspaces, drop "Ungrouped"). Structural sidebar collapse folded
+  into P1 (avoid double-build). No deep model rip-out (that's the post-UI 2nd beat).
+- [x] **P1 — Command Center as hub** · [phase-01](phase-01-command-center-hub.md) — DONE: node → inline
+  drawer (WorkspacePanel dashboard+posts / AgentSpotlight), NOT a redirect; post drill reuses
+  PostWorkflowView (re-run/edit/publish); CC is default landing; SSE multiplex + poll. Build green,
+  not yet browser-driven.
 - [ ] **P2 — Vision agents → real** · [phase-02](phase-02-vision-agents-real.md) — Memory first
   (learn-style, builds on instruction system), then Analytics, Email, Lead Collector.
 - [ ] **P3 — Media storage via Google Drive** · [phase-03](phase-03-media-drive-storage.md) — publish
