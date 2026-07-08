@@ -132,6 +132,7 @@ const ACTION_BY_ASSET: Record<string, string> = {
   image: 'social.post.image',
   video: 'social.post.video',
   carousel: 'social.post.carousel',
+  text: 'social.post.text',
 };
 export const actionKeyForAsset = (assetType: string): string =>
   ACTION_BY_ASSET[assetType] ?? 'social.post.image';

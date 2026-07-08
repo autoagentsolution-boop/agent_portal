@@ -32,19 +32,20 @@ const tweetText = (input: PublishInput): string => {
 
 export const xAdapter: SocialAdapter = {
   platform: 'x',
-  supports: ['image'] as AssetType[],
+  supports: ['image', 'text'] as AssetType[],
   async publish(input: PublishInput): Promise<PublishResult> {
     try {
       const token = await getActiveToken(input.ownerId, 'x');
       const auth = { Authorization: `Bearer ${token}` };
+      // A text post (Fix D) carries no asset — post the copy directly. An image post needs a ref.
       const ref = input.assets[0];
-      if (!ref) return fail('no asset for image post');
+      if (!ref && input.assetType !== 'text') return fail('no asset for image post');
 
       // 1) upload media (multipart binary). v2 /2/media/upload needs media.write scope AND a
       // paid access tier — free/limited apps get a 403 Forbidden here. Rather than fail the whole
       // X post, DEGRADE to a text-only tweet (X is text-first; copyX already carries the message).
       let mediaId: string | null = null;
-      try {
+      if (ref) try {
         const { bytes, contentType } = await assetStore.fetchBinary(ref);
         const form = new FormData();
         form.append('media_category', 'tweet_image');

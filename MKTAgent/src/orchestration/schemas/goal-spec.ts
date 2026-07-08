@@ -55,8 +55,12 @@ export type GoalSlots = z.infer<typeof goalSlots>;
 // plan to its deliverable, so post.assetType always matches what the flow produces (and the
 // executor's media gating agrees). Priority: video ⇒ 'video'; storyboard-only ⇒ 'carousel'
 // (the storyboard frames ARE the slides); else ⇒ 'image'.
-export const assetTypeFromOutputs = (o: OutputFlags): 'image' | 'carousel' | 'video' =>
-  o.needsVideo ? 'video' : o.needsStoryboard ? 'carousel' : 'image';
+// video ⇒ 'video'; storyboard-only ⇒ 'carousel'; an explicit image ⇒ 'image'; else (copy only,
+// no media step) ⇒ 'text' — a text-only post that publishes without any asset (Fix D). Previously
+// this defaulted to 'image', so a text-only flow produced an image-typed post with no image and the
+// publisher failed "no asset (image)".
+export const assetTypeFromOutputs = (o: OutputFlags): 'image' | 'carousel' | 'video' | 'text' =>
+  o.needsVideo ? 'video' : o.needsStoryboard ? 'carousel' : o.needsInfographic ? 'image' : 'text';
 
 // Campaign scope (Atria campaign-intelligence Phase 03). `single` = today's one-post flow
 // (DEFAULT → byte-identical planning). `campaign` = a multi-post content plan across a duration.

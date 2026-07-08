@@ -31,14 +31,35 @@ const ownerUrn = async (ownerId: string): Promise<string> => {
 
 export const linkedinAdapter: SocialAdapter = {
   platform: 'linkedin',
-  supports: ['image'] as AssetType[],
+  supports: ['image', 'text'] as AssetType[],
   async publish(input: PublishInput): Promise<PublishResult> {
     try {
       const token = await getActiveToken(input.ownerId, 'linkedin');
       const owner = await ownerUrn(input.ownerId);
+      const authHeader = { Authorization: `Bearer ${token}` };
+
+      // Text-only post (Fix D): a ugcPost with shareMediaCategory NONE — no registerUpload/binary.
+      if (input.assetType === 'text') {
+        const res = await withRetry(
+          () => fetch('https://api.linkedin.com/v2/ugcPosts', {
+            method: 'POST',
+            headers: { ...authHeader, 'Content-Type': 'application/json', 'X-Restli-Protocol-Version': '2.0.0' },
+            body: JSON.stringify({
+              author: owner,
+              lifecycleState: 'PUBLISHED',
+              specificContent: { 'com.linkedin.ugc.ShareContent': { shareCommentary: { text: input.body }, shareMediaCategory: 'NONE' } },
+              visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
+            }),
+          }),
+          { label: 'li_post_text' },
+        );
+        const turn = res.headers.get('x-restli-id') ?? '';
+        if (!res.ok || !turn) { const b = await res.text(); return fail(`ugcPost(text) failed: ${res.status} ${b.slice(0, 120)}`); }
+        return ok(`https://www.linkedin.com/feed/update/${turn}`, turn);
+      }
+
       const ref = input.assets[0];
       if (!ref) return fail('no asset for image post');
-      const authHeader = { Authorization: `Bearer ${token}` };
 
       // 1) registerUpload → uploadUrl + asset URN
       const regRes = await withRetry(

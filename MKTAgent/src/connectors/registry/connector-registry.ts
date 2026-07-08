@@ -47,6 +47,8 @@ const ACTION_FOR: Record<string, Omit<ConnectorAction, 'key'>> = {
   'social.post.image': { assetType: 'image', requiredInputs: ['postId', 'ownerId', 'assets', 'body'] },
   'social.post.video': { assetType: 'video', requiredInputs: ['postId', 'ownerId', 'assets', 'body'] },
   'social.post.carousel': { assetType: 'carousel', requiredInputs: ['postId', 'ownerId', 'assets', 'body'] },
+  // Text-only post (Fix D): no media asset required — only the copy body.
+  'social.post.text': { assetType: 'text', requiredInputs: ['postId', 'ownerId', 'body'] },
 };
 
 const actionsFrom = (caps: string[]): ConnectorAction[] =>
@@ -67,11 +69,14 @@ interface ConnectorSeed {
 // publish asset type Y right now" lives in each adapter's `supports` array and is
 // read via social/postability.ts. Don't wire asset-type validation off this table.
 const SEEDS: ConnectorSeed[] = [
-  { platformKey: 'facebook', displayName: 'Facebook', capabilities: ['social.post.image', 'social.post.video', 'social.post.carousel'], media: { maxAssets: 10, bodyMaxChars: null } },
+  // 'social.post.text' (Fix D) declared for the platforms whose adapters can post copy-only
+  // (FB/X/LinkedIn/Threads). Instagram requires media, so it has no text capability → a text post
+  // targeting IG is skipped by postability rather than published.
+  { platformKey: 'facebook', displayName: 'Facebook', capabilities: ['social.post.image', 'social.post.video', 'social.post.carousel', 'social.post.text'], media: { maxAssets: 10, bodyMaxChars: null } },
   { platformKey: 'instagram', displayName: 'Instagram', capabilities: ['social.post.image', 'social.post.video', 'social.post.carousel'], media: { maxAssets: 10, bodyMaxChars: 2200 } },
-  { platformKey: 'threads', displayName: 'Threads', capabilities: ['social.post.image', 'social.post.video'], media: { maxAssets: 1, bodyMaxChars: 480 } },
-  { platformKey: 'linkedin', displayName: 'LinkedIn', capabilities: ['social.post.image', 'social.post.video'], media: { maxAssets: 1, bodyMaxChars: null } },
-  { platformKey: 'x', displayName: 'X', capabilities: ['social.post.image', 'social.post.video'], media: { maxAssets: 1, bodyMaxChars: 280 } },
+  { platformKey: 'threads', displayName: 'Threads', capabilities: ['social.post.image', 'social.post.video', 'social.post.text'], media: { maxAssets: 1, bodyMaxChars: 480 } },
+  { platformKey: 'linkedin', displayName: 'LinkedIn', capabilities: ['social.post.image', 'social.post.video', 'social.post.text'], media: { maxAssets: 1, bodyMaxChars: null } },
+  { platformKey: 'x', displayName: 'X', capabilities: ['social.post.image', 'social.post.video', 'social.post.text'], media: { maxAssets: 1, bodyMaxChars: 280 } },
 ];
 
 // Static config — no per-request cost. Order is the display order in the panel.

@@ -15,7 +15,7 @@ export const postStatus = z.enum([
   'partial',
   'error',
 ]);
-export const assetType = z.enum(['image', 'carousel', 'video']);
+export const assetType = z.enum(['image', 'carousel', 'video', 'text']);
 export const socialPlatform = z.enum(['facebook', 'instagram', 'threads', 'linkedin', 'x']);
 export const leadSource = z.enum(['webhook', 'form', 'calcom']);
 

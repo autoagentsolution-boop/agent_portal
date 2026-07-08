@@ -52,11 +52,31 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 export const threadsAdapter: SocialAdapter = {
   platform: 'threads',
-  supports: ['image'] as AssetType[],
+  supports: ['image', 'text'] as AssetType[],
   async publish(input: PublishInput): Promise<PublishResult> {
     try {
       const token = await getActiveToken(input.ownerId, 'threads');
       const user = await userId(input.ownerId);
+
+      // Text-only post (Fix D): media_type=TEXT container — no image_url, no 35s image ingest wait.
+      if (input.assetType === 'text') {
+        const text = threadsText(input);
+        const create = await getJson(
+          `https://graph.threads.net/${TV}/${user}/threads?media_type=TEXT&text=${encodeURIComponent(text)}`,
+          bearer(token, { method: 'POST' }),
+        );
+        const cid = create?.id;
+        if (!cid || create?.error) return fail(create?.error?.message ?? 'container create failed');
+        const pub = await getJson(
+          `https://graph.threads.net/${TV}/${user}/threads_publish?creation_id=${encodeURIComponent(cid)}`,
+          bearer(token, { method: 'POST' }),
+        );
+        const mid = pub?.id;
+        if (!mid || pub?.error) return fail(pub?.error?.message ?? 'threads_publish failed');
+        const perma = await getJson(`https://graph.threads.net/${TV}/${mid}?fields=permalink`, bearer(token));
+        return ok(perma?.permalink ?? `https://www.threads.net/t/${mid}`, String(mid));
+      }
+
       const ref = input.assets[0];
       if (!ref) return fail('no asset for image post');
       const imageUrl = assetStore.publicUrl(ref);

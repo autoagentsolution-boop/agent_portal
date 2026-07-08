@@ -111,6 +111,11 @@ export function resolvePlatformInput(post: Post, platform: SocialPlatform): Publ
 // Shared validation + shape. `where` labels errors with the platform when per-platform.
 const buildInput = (post: Post, assetType: AssetType, assets: AssetRef[], where?: SocialPlatform): PublishInput => {
   const tag = where ? `${where}: ` : '';
+  // Text-only post (Fix D): no media required — publish the copy alone. Skip the asset checks.
+  if (assetType === 'text') {
+    const c = readCopy(post.copy);
+    return { postId: post.id, ownerId: post.ownerId, assetType, assets: [], body: c.body, threads: c.threads, x: c.x };
+  }
   if (assets.length === 0) throw new PostValidationError(`${tag}no asset (${assetType})`);
   if (assetType === 'carousel' && assets.length < 2) throw new PostValidationError(`${tag}carousel needs >=2 assets`);
   if (assetType !== 'carousel' && assets.length !== 1) {

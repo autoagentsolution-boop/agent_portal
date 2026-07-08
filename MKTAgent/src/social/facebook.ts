@@ -47,6 +47,17 @@ const errMsg = (j: any, fallbackMsg: string): string => {
   return j?.message ?? fallbackMsg;
 };
 
+// Text-only post (Fix D): POST /{page}/feed with just the message — no media.
+async function publishText(input: PublishInput, token: string, page: string): Promise<PublishResult> {
+  const form = new FormData();
+  form.append('message', input.body);
+  form.append('access_token', token);
+  const j = await postForm(`https://graph.facebook.com/${G}/${page}/feed`, form);
+  const pid = j?.id;
+  if (pid && !j?.error) return ok(`https://facebook.com/${pid}`, String(pid));
+  return fail(errMsg(j, 'text publish failed'));
+}
+
 async function publishImage(input: PublishInput, token: string, page: string): Promise<PublishResult> {
   const ref = input.assets[0];
   if (!ref) return fail('no asset for image post');
@@ -108,11 +119,12 @@ async function publishVideo(input: PublishInput, token: string, page: string): P
 
 export const facebookAdapter: SocialAdapter = {
   platform: 'facebook',
-  supports: ['image', 'carousel', 'video'] as AssetType[],
+  supports: ['image', 'carousel', 'video', 'text'] as AssetType[],
   async publish(input: PublishInput): Promise<PublishResult> {
     try {
       const token = await getActiveToken(input.ownerId, 'facebook');
       const page = await pageId(input.ownerId);
+      if (input.assetType === 'text') return await publishText(input, token, page);
       if (input.assetType === 'carousel') return await publishCarousel(input, token, page);
       if (input.assetType === 'video') return await publishVideo(input, token, page);
       return await publishImage(input, token, page);

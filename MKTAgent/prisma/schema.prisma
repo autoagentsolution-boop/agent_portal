@@ -38,6 +38,7 @@ enum AssetType {
   image
   carousel
   video
+  text // text-only post (no media) — FB/X/LinkedIn/Threads; IG requires media so it skips.
 }
 
 // Social platforms (lowercase to match the n8n `platforms` CSV values).
