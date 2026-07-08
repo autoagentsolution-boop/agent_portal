@@ -58,9 +58,10 @@ sits on. It is NOT the v2 UI itself.
 - [~] **P2 — Vision agents → real** · [phase-02](phase-02-vision-agents-real.md) — **2a Memory DONE+LIVE**
   (learn copy-style from edits → propose → approve → source:'memory' instruction concept_writer honors;
   Memory node now live surface w/ MemoryPanel). Remaining: 2b Analytics, 2c Email, 2d Lead Collector.
-- [ ] **P3 — Media storage via Google Drive** · [phase-03](phase-03-media-drive-storage.md) — publish
-  media from Drive public URLs → unblock IG/Threads/LinkedIn image publish, no S3. Leans on the kept
-  Google auth.
+- [x] **P3 — Media storage via Google Drive** · [phase-03](phase-03-media-drive-storage.md) — ALREADY
+  BUILT (2026-07-05). `materializeForPublicUrl` uploads local images → owner's Drive → lh3 public URL in
+  ALL 3 publish paths (cron/DAG/manual, via processPost) for IG/Threads. Verified this session: real
+  upload → public fetch = 200/image/png. Only optional TTL cleanup + a user-triggered live post remain.
 - [ ] **P4 — Voice (SPEC only)** · [phase-04](phase-04-voice-spec.md) — design STT-in/TTS-out
   conversational Atria + tech choice; build deferred to v2 proper.
 - [ ] **P5 — Cleanup** · [phase-05](phase-05-cleanup.md) — refine chained-rerun robustness; X/LI/Threads

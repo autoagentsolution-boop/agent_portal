@@ -24,12 +24,32 @@ simplify`).
 3. IG/Threads container create + LinkedIn use the Drive URL → real multi-platform image publish.
 4. Respect per-user Drive; clean up / TTL old assets to bound storage.
 
+## FINDING 2026-07-08 — P3 CODE ALREADY COMPLETE (built 2026-07-05, verified this session)
+Investigated: the whole Drive→public-URL path is already wired end-to-end and the runtime prereqs
+are met. Nothing needed re-wiring.
+- `processPost` (scheduler/tick.ts) runs `materializeForPublicUrl` (local: image → owner's Drive
+  fileId) gated on `hasDriveConnected`, for platforms in `NEEDS_PUBLIC_URL={instagram,threads}`.
+- ALL THREE publish paths reach it: scheduler cron (`runSchedulerTick`), DAG publisher node
+  (agent-runners → `publishPostNow`), manual "Publish now" (posts-router → `publishPostNow`) — all
+  call `processPost`. So no path bypasses Drive.
+- `assetStore.publicUrl` → lh3 for a Drive id, throws for `local:` (loud). FB/LinkedIn/X use
+  `fetchBinary` (binary off disk) → LinkedIn never needed Drive (plan's "LinkedIn fails" was a
+  separate/untested concern, not the public-URL issue).
+- Prereqs met for the test account: creds present = google_drive_refresh_token, instagram_access_token
+  + instagram_business_account_id, threads_access_token (+ fb/linkedin/x).
+- **VERIFIED the exact broken→fixed link (no social post):** uploaded a real 1.39 MB PNG via
+  `uploadImageToDrive` → `publicUrl` lh3 → public `fetch` = HTTP 200, image/png, 1391343 bytes. Meta
+  can fetch it. The `local asset has no public URL` blocker is functionally resolved.
+
 ## Todo
-- [ ] Drive upload on media gen (owner folder) + store public URL on the asset ref
-- [ ] `assetStore.publicUrl` prefers Drive URL; FB stays binary
-- [ ] IG/Threads/LinkedIn publish consume the public URL (image)
-- [ ] Live-verify IG/Threads image publish (currently blocked); LinkedIn image
-- [ ] TTL/cleanup for Drive assets
+- [x] Drive upload on media gen/publish (owner folder) + public URL on the asset ref — `materializeForPublicUrl`
+- [x] `assetStore.publicUrl` prefers Drive URL; FB stays binary — DriveAssetStore
+- [x] IG/Threads publish consume the public URL (image) — instagram.ts/threads.ts use publicUrl (LinkedIn=fetchBinary, N/A)
+- [~] Live-verify — critical Drive→public-URL link VERIFIED (200/image/png). Actual IG/Threads feed post
+  = outward-facing + burst-risk ([[feedback_no_burst_social_posts]]) → USER-triggered, one controlled post/platform.
+- [ ] TTL/cleanup for Drive assets — NOT built (optional; YAGNI until storage bloats). Only real remaining code item.
+
+## Status: DONE (code + critical-link verification). Only optional TTL cleanup + a user-triggered live social post remain.
 
 ## Success criteria
 - An image post publishes for real to IG/Threads/LinkedIn (not just FB) using a Drive public URL.
