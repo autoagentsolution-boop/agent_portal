@@ -28,6 +28,7 @@ import { orchestrationRouter } from './api/orchestration-router.ts';
 import { productKnowledgeRouter } from './api/product-knowledge-router.ts';
 import { connectionsRouter } from './api/connections-router.ts';
 import { instructionsRouter } from './api/instructions-router.ts';
+import { memoryRouter } from './api/memory-router.ts';
 import { atriaRouter } from './api/atria-router.ts';
 import { impactRouter } from './api/impact-router.ts';
 import { IMAGE_OUTPUT_DIR } from './imagegen/nano-banana.ts';
@@ -93,6 +94,10 @@ app.use('/workspaces', requireAuth, workspacesRouter);
 // Atria user instructions (Phase 02). Layered, ChatGPT-style custom instructions injected into
 // every agent's system prompt via buildAgentPrompt. Owner-scoped CRUD; tenant-scoped via requireAuth.
 app.use('/instructions', requireAuth, instructionsRouter);
+
+// Atria Memory Agent (v2 P2-2a). Learns copy style from hand-edited posts → proposed learned
+// instructions (source:'memory') the user approves; future concept_writer runs honour them.
+app.use('/memory', requireAuth, memoryRouter);
 
 // Atria proactive suggestions + roadmap pitches (Phase 06). Read-only nudges derived from the
 // tenant's own history; accepting prefills a flow or logs demand — nothing runs without a grant.

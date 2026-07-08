@@ -877,6 +877,20 @@ a { color: var(--accent); }
 .ws-post-when { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-post-open { font-size: 12px; color: var(--muted); flex-shrink: 0; }
 
+/* Memory panel (P2-2a) — proposals + remembered rules. */
+.mem-proposal { display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--panel); }
+.mem-proposal-body { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.mem-proposal-body strong { font-size: 13px; line-height: 1.35; }
+.mem-proposal-body .muted { font-size: 12px; }
+.mem-proposal-actions { display: flex; flex-direction: column; gap: 5px; flex-shrink: 0; }
+.btn.sm { font-size: 12px; padding: 5px 10px; }
+.mem-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--panel); }
+.mem-row-content { flex: 1; font-size: 13px; line-height: 1.35; }
+.mem-forget { border: 0; background: transparent; cursor: pointer; }
+.mem-forget:hover { color: var(--text); }
+
 /* Atria hub (feedback pass 1) — assistant-first landing: ask box, reminders, resume-work
    cards; Instructions/Impact live behind tabs so the page never reads as setup/dashboard. */
 .atria-hub { display: block; padding: 24px 20px 60px; overflow-y: auto; }

@@ -616,10 +616,12 @@ orchestrationRouter.get('/agents', asyncHandler(async (_req, res) => {
         group: a.group ?? 'action',
         vibe: a.vibe ?? null,
         implStatus: a.implStatus as 'live' | 'stub' | 'planned',
+        surface: null as string | null,
         requiresConnection: a.requiresConnection,
         requiresApproval: a.requiresApproval,
       })),
-      // Vision agents (roadmap) — display-only, flagged planned; not runnable.
+      // Vision agents (roadmap). Most are display-only 'planned'; one that shipped a real surface
+      // (Memory, P2-2a) reports implStatus 'live' + a `surface` id → the UI makes it clickable.
       ...VISION_AGENTS.map((a) => ({
         id: a.id,
         name: a.name,
@@ -627,7 +629,8 @@ orchestrationRouter.get('/agents', asyncHandler(async (_req, res) => {
         emoji: a.emoji,
         group: a.group,
         vibe: a.vibe,
-        implStatus: 'planned' as const,
+        implStatus: (a.implStatus ?? 'planned') as 'live' | 'stub' | 'planned',
+        surface: a.surface ?? null,
         requiresConnection: false,
         requiresApproval: false,
       })),

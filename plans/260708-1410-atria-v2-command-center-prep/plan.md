@@ -55,8 +55,9 @@ sits on. It is NOT the v2 UI itself.
   drawer (WorkspacePanel dashboard+posts / AgentSpotlight), NOT a redirect; post drill reuses
   PostWorkflowView (re-run/edit/publish); CC is default landing; SSE multiplex + poll. Build green,
   not yet browser-driven.
-- [ ] **P2 — Vision agents → real** · [phase-02](phase-02-vision-agents-real.md) — Memory first
-  (learn-style, builds on instruction system), then Analytics, Email, Lead Collector.
+- [~] **P2 — Vision agents → real** · [phase-02](phase-02-vision-agents-real.md) — **2a Memory DONE+LIVE**
+  (learn copy-style from edits → propose → approve → source:'memory' instruction concept_writer honors;
+  Memory node now live surface w/ MemoryPanel). Remaining: 2b Analytics, 2c Email, 2d Lead Collector.
 - [ ] **P3 — Media storage via Google Drive** · [phase-03](phase-03-media-drive-storage.md) — publish
   media from Drive public URLs → unblock IG/Threads/LinkedIn image publish, no S3. Leans on the kept
   Google auth.

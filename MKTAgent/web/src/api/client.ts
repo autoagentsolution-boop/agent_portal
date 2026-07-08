@@ -159,6 +159,9 @@ export interface AgentNodeDto {
   vibe: string | null;
   // 'planned' = roadmap/vision agent, display-only (not runnable, not clickable).
   implStatus: 'live' | 'stub' | 'planned';
+  // A vision agent that shipped a real Command-Center surface names its panel here (e.g. 'memory').
+  // null for DAG agents and still-planned vision nodes.
+  surface?: string | null;
   requiresConnection: boolean;
   requiresApproval: boolean;
 }
@@ -272,6 +275,11 @@ export interface WorkspaceDetailDto extends WorkspaceSummaryDto {
   posts: CampaignStatusDto['posts'];
   agents: WorkspaceAgentCardDto[];
 }
+
+// Memory Agent (Atria v2 P2-2a) — learned copy-style loop. Routes (/memory) not in openapi yet.
+export interface MemoryProposalDto { content: string; rationale: string; agentId: string }
+export interface MemoryProposalsDto { editedCount: number; sampled: number; proposals: MemoryProposalDto[]; model: string | null }
+export interface MemoryDto { id: string; agentId: string | null; content: string; enabled: boolean; createdAt: string }
 
 export interface CampaignCostEstimateDto { posts: number; agentCount: number; totalTokens: number; costUsd: number; credits: number }
 export interface CampaignGrantResponse {
@@ -524,6 +532,12 @@ export const api = {
   // ---- Workspaces (Atria v2 P0) — read-only reframe of Campaigns for the Command Center hub ----
   listWorkspaces: () => request<WorkspaceSummaryDto[]>('/workspaces'),
   getWorkspace: (campaignId: string) => request<WorkspaceDetailDto>(`/workspaces/${campaignId}`),
+
+  // ---- Memory Agent (Atria v2 P2-2a) — learn copy style from edits ----
+  listMemories: () => request<MemoryDto[]>('/memory'),
+  memoryProposals: () => request<MemoryProposalsDto>('/memory/proposals'),
+  acceptMemory: (content: string, agentId?: string) => request<MemoryDto>('/memory/accept', { method: 'POST', body: { content, ...(agentId ? { agentId } : {}) } }),
+  deleteMemory: (id: string) => request<void>(`/memory/${id}`, { method: 'DELETE' }),
   grantCampaign: (id: string, body: { confirmationToken?: string; scheduleConfirmed?: boolean }) =>
     request<CampaignGrantResponse>(`/campaigns/${id}/grant-autonomy`, { method: 'POST', body }),
 

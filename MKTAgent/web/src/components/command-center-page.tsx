@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, type AgentCatalog, type AgentNodeDto, type WorkspaceSummaryDto, type DerivedPostStatus } from '../api/client';
 import { WorkspacePanel } from './workspace-panel';
 import { AgentSpotlight } from './agent-spotlight';
+import { MemoryPanel } from './memory-panel';
 
 interface Props {
   // Hand off to the live Orchestrate chat (Atria core / command bar), optionally seeding the composer.
@@ -20,8 +21,11 @@ interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
-// Inline drawer target: a workspace room or an agent spotlight.
-type Panel = { kind: 'workspace'; campaignId: string } | { kind: 'agent'; agent: AgentNodeDto };
+// Inline drawer target: a workspace room, an agent spotlight, or a live agent surface (Memory).
+type Panel =
+  | { kind: 'workspace'; campaignId: string }
+  | { kind: 'agent'; agent: AgentNodeDto }
+  | { kind: 'surface'; surface: string; agent: AgentNodeDto };
 
 const STATUS_COLOR: Record<DerivedPostStatus, string> = {
   planned: '#9aa0a6', running: '#1a73e8', held: '#f9ab00', posted: '#188038', failed: '#d93025',
@@ -144,9 +148,12 @@ export function CommandCenterPage({ onLaunch, onExit, onOpenConnections, notify 
           return (
             <button
               key={a.id}
-              className={`cc-node ${a.implStatus === 'stub' ? 'is-stub' : ''} ${planned ? 'is-planned' : ''} ${panel?.kind === 'agent' && panel.agent.id === a.id ? 'is-active' : ''}`}
+              className={`cc-node ${a.implStatus === 'stub' ? 'is-stub' : ''} ${planned ? 'is-planned' : ''} ${(panel?.kind === 'agent' || panel?.kind === 'surface') && panel.agent.id === a.id ? 'is-active' : ''}`}
               style={nodePos(i, agents.length)}
-              onClick={() => planned ? notify(`${a.name} — sắp ra mắt`) : setPanel({ kind: 'agent', agent: a })}
+              onClick={() =>
+                planned ? notify(`${a.name} — sắp ra mắt`)
+                : a.surface ? setPanel({ kind: 'surface', surface: a.surface, agent: a })
+                : setPanel({ kind: 'agent', agent: a })}
               title={planned ? `${a.name} (sắp ra mắt) — ${a.vibe ?? a.description}` : (a.vibe ?? a.description)}
             >
               <span className="cc-node-circle" style={{ borderColor: colorOf(a) }}>
@@ -182,11 +189,15 @@ export function CommandCenterPage({ onLaunch, onExit, onOpenConnections, notify 
           <div className="cc-drawer-scrim" onClick={() => setPanel(null)} />
           <aside className="cc-drawer" role="dialog" aria-label="Workspace panel">
             <div className="cc-drawer-chrome">
-              <span className="cc-drawer-kind">{panel.kind === 'workspace' ? '▦ Workspace' : '◆ Agent'}</span>
+              <span className="cc-drawer-kind">{panel.kind === 'workspace' ? '▦ Workspace' : panel.kind === 'surface' ? '✨ Agent surface' : '◆ Agent'}</span>
               <button className="cc-drawer-close" aria-label="Close panel" onClick={() => setPanel(null)}>✕</button>
             </div>
             {panel.kind === 'workspace' ? (
               <WorkspacePanel campaignId={panel.campaignId} notify={notify} onOpenConnections={onOpenConnections} />
+            ) : panel.kind === 'surface' && panel.surface === 'memory' ? (
+              <MemoryPanel notify={notify} />
+            ) : panel.kind === 'surface' ? (
+              <AgentSpotlight agent={panel.agent} notify={notify} onOpenWorkspace={(campaignId) => setPanel({ kind: 'workspace', campaignId })} />
             ) : (
               <AgentSpotlight
                 agent={panel.agent}

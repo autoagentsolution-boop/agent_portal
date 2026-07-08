@@ -34,11 +34,11 @@ Already real (comment keyword capture, 5 platforms, liveness). Promote from visi
 Command-Center workspace surface (leads dashboard as an agent room).
 
 ## Todo
-- [ ] 2a Memory: edits→proposed learned-instructions→approve→applied; Memory node runnable
+- [x] **2a Memory: DONE + LIVE-VERIFIED (2026-07-08).** edits→proposed learned-instructions→approve→applied. `memory-agent.ts` (proposeMemories: gathers copyEdited posts → Gemini → 1-3 style rules, injectable LlmJsonFn for DRY verify, records surface:'memory'); `memory-router.ts` (GET / , GET /proposals, POST /accept, DELETE /:id); accepted = `source:'memory'` instruction scope=workspace agentId=concept_writer → resolveInstructions (already in copygen) injects it into every future draft. Memory node flipped `implStatus:'live'`+`surface:'memory'` (vision-agents), CC opens `MemoryPanel` inline (new drawer kind 'surface'). verify-memory-agent PASS (loop incl. applied-to-concept_writer-not-ideation + tenant isolation). LIVE: real Gemini produced 3 evidence-grounded rules from user's 3 edits; accepted one → DB row source=memory/concept_writer confirmed.
 - [ ] 2b Analytics: FB Page Insights → real reach into Impact
 - [ ] 2c Email: provider + template + send-to-leads
 - [ ] 2d Lead Collector: promote to Command-Center workspace surface
-- [ ] flip each from vision-agents.ts → runnable registry as it lands
+- [x] flip Memory from vision-agents.ts → live surface (not a DAG runner — it's a meta/assistant surface, so implStatus:'live'+surface rather than a RunnableAgentId). Analytics/Email/Lead Collector still planned.
 
 ## Success criteria
 - Memory demonstrably changes future content after an approved "remember" (verifiable signal).

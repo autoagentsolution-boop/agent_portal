@@ -15,17 +15,25 @@ export interface VisionAgent {
   emoji: string;
   group: AgentGroupId;
   vibe: string;
+  // Most vision agents are 'planned' (dimmed "soon" node). One that has shipped a real SURFACE
+  // (not a DAG runner) flips to 'live' + names its Command-Center panel via `surface`, so the node
+  // becomes clickable and opens that panel instead of the "coming soon" toast. Memory is the first.
+  implStatus?: 'planned' | 'live';
+  surface?: string;
 }
 
 export const VISION_AGENTS: VisionAgent[] = [
   {
     id: 'memory',
     name: 'Memory Agent',
-    description: 'Learns from every campaign and surfaces the patterns the user misses.',
+    description: 'Learns your copy style from the posts you edit, then teaches it to every future draft.',
     emoji: '🧠',
     // Assistant: the cross-cutting store every other agent reads/writes (Trợ lý).
     group: 'assistant',
-    vibe: 'An archivist who turns past campaigns into grounded, reusable insight.',
+    vibe: 'An archivist who turns your edits into reusable style Atria remembers.',
+    // P2-2a: shipped as a real Command-Center surface (learn→propose→approve→apply).
+    implStatus: 'live',
+    surface: 'memory',
   },
   {
     id: 'lead_collector',
