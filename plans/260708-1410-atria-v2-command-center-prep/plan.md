@@ -63,8 +63,10 @@ sits on. It is NOT the v2 UI itself.
   BUILT (2026-07-05). `materializeForPublicUrl` uploads local images → owner's Drive → lh3 public URL in
   ALL 3 publish paths (cron/DAG/manual, via processPost) for IG/Threads. Verified this session: real
   upload → public fetch = 200/image/png. Only optional TTL cleanup + a user-triggered live post remain.
-- [ ] **P4 — Voice (SPEC only)** · [phase-04](phase-04-voice-spec.md) — design STT-in/TTS-out
-  conversational Atria + tech choice; build deferred to v2 proper.
+- [x] **P4 — Voice (SPEC only)** · [phase-04](phase-04-voice-spec.md) — SPEC COMPLETE. Decision:
+  Architecture A (pipeline: browser Web Speech STT → reuse orchestration-chat brain → reuse video/tts.ts
+  Gemini TTS) FIRST; B (realtime duplex) later. Flow/turn-taking/language/cost-surfaces/privacy/P1
+  integration all specified. Build deferred to v2 proper (buildable as-is).
 - [x] **P5 — Cleanup** · [phase-05](phase-05-cleanup.md) — DONE: fixed the chained-rerun TOCTOU race
   (`/rerun-node` now claims the run atomically via `transitionRun` before mutating nodes → no double-launch;
   clearer pending-node 409). verify-rerun-race PASS. Remaining #2 (X/LI/Threads text live post) = user-triggered.
