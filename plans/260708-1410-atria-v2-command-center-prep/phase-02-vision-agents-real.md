@@ -48,8 +48,19 @@ Command-Center workspace surface (leads dashboard as an agent room).
   Engagement group WORKS: 6 FB posts measured, measuredEngaged=0 (real: 0 clicks/reactions). Reach populates
   automatically on a qualifying page. UI stat "engagements (FB) · measured · clicks + reactions · 6 posts" live.
 - [ ] 2c Email: provider + template + send-to-leads
-- [ ] 2d Lead Collector: promote to Command-Center workspace surface
-- [x] flip Memory from vision-agents.ts → live surface (not a DAG runner — it's a meta/assistant surface, so implStatus:'live'+surface rather than a RunnableAgentId). Analytics/Email/Lead Collector still planned.
+- [x] **2d Lead Collector: DONE + LIVE-VERIFIED (2026-07-08).** Already real (comment capture/scoring/liveness);
+  promoted from display-only vision node → live CC surface. `lead_collector` flipped `implStatus:'live'`+`surface:'leads'`;
+  CC drawer renders the existing `LeadsPage` inline (DRY reuse, like Analytics→ImpactReport). No backend change.
+  Live: node opens the full Leads dashboard (collectors w/ per-platform links, keyword Start/Stop/Extend, Poll comments, Intake setup).
+- [x] flip Memory/Analytics/Lead-Collector → live surfaces (implStatus:'live'+surface; NOT DAG RunnableAgentIds — they're meta/assistant surfaces opening a CC drawer panel). Only **email** still planned.
+
+## Follow-up (2b multi-platform) — user asked "áp dụng cho platform khác không?"
+Feasible but PER-PLATFORM (each = own Insights API/metric shape, not a free generalize):
+- **IG** = best next (Meta, we have media ids + business_account_id; IG gives reach even for small accounts) → add `sumIgInsights` (`/{media}/insights?metric=reach,impressions,...`), merge into ImpactMetrics.
+- **Threads** = `/{media}/insights?metric=views,likes,replies` (newer, limited).
+- **X** = `public_metrics` but free tier blocks impression_count (needs paid tier).
+- **LinkedIn** = org analytics partner-gated (hard).
+Same best-effort/null-degrade pattern as fb-insights. Deferred (not committed).
 
 ## Success criteria
 - Memory demonstrably changes future content after an approved "remember" (verifiable signal).

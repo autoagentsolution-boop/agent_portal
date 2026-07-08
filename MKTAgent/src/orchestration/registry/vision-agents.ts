@@ -42,6 +42,10 @@ export const VISION_AGENTS: VisionAgent[] = [
     emoji: '🎯',
     group: 'action',
     vibe: 'A classifier who captures qualified leads and never wastes a sales cycle.',
+    // P2-2d: already real (comment capture, scoring, liveness) — promoted from vision node to a live
+    // Command-Center surface. The node opens the Leads dashboard inline.
+    implStatus: 'live',
+    surface: 'leads',
   },
   {
     id: 'analytics',

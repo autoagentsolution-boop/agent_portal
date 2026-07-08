@@ -11,6 +11,7 @@ import { WorkspacePanel } from './workspace-panel';
 import { AgentSpotlight } from './agent-spotlight';
 import { MemoryPanel } from './memory-panel';
 import { ImpactReport } from './impact-report';
+import { LeadsPage } from './LeadsPage';
 
 interface Props {
   // Hand off to the live Orchestrate chat (Atria core / command bar), optionally seeding the composer.
@@ -199,6 +200,8 @@ export function CommandCenterPage({ onLaunch, onExit, onOpenConnections, notify 
               <MemoryPanel notify={notify} />
             ) : panel.kind === 'surface' && panel.surface === 'impact' ? (
               <div className="cc-drawer-body"><ImpactReport period="30d" /></div>
+            ) : panel.kind === 'surface' && panel.surface === 'leads' ? (
+              <div className="cc-drawer-body"><LeadsPage notify={notify} /></div>
             ) : panel.kind === 'surface' ? (
               <AgentSpotlight agent={panel.agent} notify={notify} onOpenWorkspace={(campaignId) => setPanel({ kind: 'workspace', campaignId })} />
             ) : (

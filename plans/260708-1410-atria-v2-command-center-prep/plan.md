@@ -56,9 +56,9 @@ sits on. It is NOT the v2 UI itself.
   PostWorkflowView (re-run/edit/publish); CC is default landing; SSE multiplex + poll. Build green,
   not yet browser-driven.
 - [~] **P2 — Vision agents → real** · [phase-02](phase-02-vision-agents-real.md) — **2a Memory + 2b Analytics
-  DONE+LIVE**. 2a: learned copy-style memory concept_writer honors. 2b: FB Page Insights (2 metric groups,
-  best-effort) → measured reach/engagement into Impact; Analytics node live→opens Impact inline. ⚠ v25.0
-  withholds post reach for small pages→engagement measured, reach=estimate. Remaining: 2c Email, 2d Lead Collector.
+  + 2d Lead-Collector DONE+LIVE** (3 of 4 vision agents now live CC surfaces). 2a: learned copy-style memory.
+  2b: FB Insights→Impact (⚠ v25.0 withholds small-page reach→engagement measured). 2d: Lead-Collector promoted
+  to live surface (reuse LeadsPage in drawer). Remaining: **2c Email** (needs provider). Follow-up: extend 2b to IG/Threads.
 - [x] **P3 — Media storage via Google Drive** · [phase-03](phase-03-media-drive-storage.md) — ALREADY
   BUILT (2026-07-05). `materializeForPublicUrl` uploads local images → owner's Drive → lh3 public URL in
   ALL 3 publish paths (cron/DAG/manual, via processPost) for IG/Threads. Verified this session: real
