@@ -54,13 +54,16 @@ Command-Center workspace surface (leads dashboard as an agent room).
   Live: node opens the full Leads dashboard (collectors w/ per-platform links, keyword Start/Stop/Extend, Poll comments, Intake setup).
 - [x] flip Memory/Analytics/Lead-Collector → live surfaces (implStatus:'live'+surface; NOT DAG RunnableAgentIds — they're meta/assistant surfaces opening a CC drawer panel). Only **email** still planned.
 
-## Follow-up (2b multi-platform) — user asked "áp dụng cho platform khác không?"
-Feasible but PER-PLATFORM (each = own Insights API/metric shape, not a free generalize):
-- **IG** = best next (Meta, we have media ids + business_account_id; IG gives reach even for small accounts) → add `sumIgInsights` (`/{media}/insights?metric=reach,impressions,...`), merge into ImpactMetrics.
-- **Threads** = `/{media}/insights?metric=views,likes,replies` (newer, limited).
-- **X** = `public_metrics` but free tier blocks impression_count (needs paid tier).
-- **LinkedIn** = org analytics partner-gated (hard).
-Same best-effort/null-degrade pattern as fb-insights. Deferred (not committed).
+## 2b multi-platform (user: "áp dụng cho platform khác không?")
+- [x] **Instagram DONE 2026-07-08.** `src/analytics/ig-insights.ts` (`sumIgInsights` — reach + total_interactions
+  groups, best-effort, TTL cache; IG `impressions` deprecated post-2024-07 → always null). Shared `insights-types.ts`
+  (`InsightsSum` + `mergeInsights` null-aware) unifies FB+IG; impact-metrics merges both (renamed field
+  `fbPostsMeasured`→`postsMeasured` + `insightsPlatforms`); headline/UI label the source (FB / IG / FB+IG).
+  verify-ig-insights PASS. ⚠ Live-unverified for IG (account has NO IG posts yet — the IG publish path was
+  fixed by P3 Drive but never live-posted) → IG contributes null, FB still measured. Real IG reach flows the
+  moment an IG post exists (IG gives reach even for small accounts, unlike FB).
+- Threads (`/{media}/insights?metric=views,likes,replies`, newer/limited), X (`public_metrics` — free tier
+  blocks impressions), LinkedIn (org analytics partner-gated) = same pattern, still follow-up.
 
 ## Success criteria
 - Memory demonstrably changes future content after an approved "remember" (verifiable signal).

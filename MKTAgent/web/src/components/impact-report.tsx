@@ -34,6 +34,10 @@ export function ImpactReport({ campaignId, period = '30d' }: Props) {
   if (loading) return <p className="muted">Loading impact…</p>;
   if (!report) return <p className="muted">No impact data yet.</p>;
   const { metrics, value } = report;
+  const ABBR: Record<string, string> = { facebook: 'FB', instagram: 'IG', threads: 'TH', linkedin: 'LI', x: 'X' };
+  const srcLabel = metrics.insightsPlatforms.length
+    ? metrics.insightsPlatforms.map((p) => ABBR[p] ?? p.toUpperCase()).join('+')
+    : 'measured';
 
   return (
     <section style={{ maxWidth: 820 }}>
@@ -49,16 +53,16 @@ export function ImpactReport({ campaignId, period = '30d' }: Props) {
         <Stat label="leads captured" value={String(metrics.leadsCaptured)} />
         {metrics.measuredReach !== null && (
           <Stat
-            label="reach (FB)"
+            label={`reach (${srcLabel})`}
             value={metrics.measuredReach.toLocaleString()}
-            hint={`measured · ${metrics.fbPostsMeasured} post${metrics.fbPostsMeasured === 1 ? '' : 's'}${metrics.measuredImpressions !== null ? ` · ${metrics.measuredImpressions.toLocaleString()} impressions` : ''}`}
+            hint={`measured · ${metrics.postsMeasured} post${metrics.postsMeasured === 1 ? '' : 's'}${metrics.measuredImpressions !== null ? ` · ${metrics.measuredImpressions.toLocaleString()} impressions` : ''}`}
           />
         )}
         {metrics.measuredEngaged !== null && (
           <Stat
-            label="engagements (FB)"
+            label={`engagements (${srcLabel})`}
             value={metrics.measuredEngaged.toLocaleString()}
-            hint={`measured · clicks + reactions · ${metrics.fbPostsMeasured} post${metrics.fbPostsMeasured === 1 ? '' : 's'}`}
+            hint={`measured · ${metrics.postsMeasured} post${metrics.postsMeasured === 1 ? '' : 's'}`}
           />
         )}
       </div>

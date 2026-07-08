@@ -53,12 +53,13 @@ async function main(): Promise<void> {
   check('sum: reach 800+400', sum.measuredReach === 1200, sum);
   check('sum: impressions 1000+500', sum.measuredImpressions === 1500, sum);
   check('sum: engaged 5+3', sum.measuredEngaged === 8, sum);
-  check('sum: fbPostsMeasured = 2', sum.fbPostsMeasured === 2, sum);
+  check('sum: postsMeasured = 2', sum.postsMeasured === 2, sum);
+  check('sum: platforms = [facebook]', sum.platforms.join() === 'facebook', sum.platforms);
 
   // ── all-error → every field null (keeps estimate, not a false 0) ─────────────────────────────
   const allErr = ((_: string) => Promise.resolve(errEnv)) as unknown as typeof fetch;
   const dead = await sumFbInsights('o', ['x1', 'x2'], { token: 't', fetchFn: allErr, now: 8000 });
-  check('degrade: all-error → reach & engaged null', dead.measuredReach === null && dead.measuredEngaged === null && dead.fbPostsMeasured === 0, dead);
+  check('degrade: all-error → reach & engaged null', dead.measuredReach === null && dead.measuredEngaged === null && dead.postsMeasured === 0, dead);
 
   // ── no ids / no token → null ────────────────────────────────────────────────────────────────
   check('empty: no ids → null', (await sumFbInsights('o', [], { token: 't', fetchFn: allErr, now: 9000 })).measuredReach === null);

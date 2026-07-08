@@ -10,6 +10,7 @@
 import { env } from '../config/env.ts';
 import { getActiveToken } from '../tokens/service.ts';
 import { logger } from '../lib/logger.ts';
+import { type InsightsSum, emptySum } from './insights-types.ts';
 
 const G = env.GRAPH_VERSION;
 const CACHE_TTL_MS = 30 * 60_000;
@@ -21,12 +22,6 @@ export interface FbPostInsights {
   reach: number | null;       // post_impressions_unique — null when Meta withholds it for this page
   impressions: number | null; // post_impressions
   engaged: number | null;     // post_clicks + Σ reactions-by-type — null when the engage group fails
-}
-export interface FbInsightsSum {
-  measuredReach: number | null;
-  measuredImpressions: number | null;
-  measuredEngaged: number | null;
-  fbPostsMeasured: number; // FB posts that returned ANY measured field
 }
 
 const cache = new Map<string, { data: FbPostInsights; ts: number }>();
@@ -92,12 +87,11 @@ export const sumFbInsights = async (
   ownerId: string,
   fbPostIds: string[],
   deps: { fetchFn?: typeof fetch; token?: string | null; now?: number } = {},
-): Promise<FbInsightsSum> => {
-  const empty: FbInsightsSum = { measuredReach: null, measuredImpressions: null, measuredEngaged: null, fbPostsMeasured: 0 };
+): Promise<InsightsSum> => {
   const ids = fbPostIds.filter(Boolean).slice(0, MAX_POSTS);
-  if (ids.length === 0) return empty;
+  if (ids.length === 0) return emptySum();
   const token = deps.token ?? (await getActiveToken(ownerId, 'facebook').catch(() => null));
-  if (!token) return empty;
+  if (!token) return emptySum();
   const now = deps.now ?? Date.now();
   const results = await Promise.all(ids.map((id) => fetchFbPostInsights(token, id, deps.fetchFn ?? fetch, now)));
 
@@ -106,9 +100,12 @@ export const sumFbInsights = async (
     const vals = results.map((r) => r[key]).filter((v): v is number => v !== null);
     return vals.length ? vals.reduce((s, v) => s + v, 0) : null;
   };
-  const measuredReach = sumField('reach');
-  const measuredImpressions = sumField('impressions');
-  const measuredEngaged = sumField('engaged');
-  const fbPostsMeasured = results.filter((r) => r.reach !== null || r.impressions !== null || r.engaged !== null).length;
-  return { measuredReach, measuredImpressions, measuredEngaged, fbPostsMeasured };
+  const postsMeasured = results.filter((r) => r.reach !== null || r.impressions !== null || r.engaged !== null).length;
+  return {
+    measuredReach: sumField('reach'),
+    measuredImpressions: sumField('impressions'),
+    measuredEngaged: sumField('engaged'),
+    postsMeasured,
+    platforms: postsMeasured > 0 ? ['facebook'] : [],
+  };
 };
