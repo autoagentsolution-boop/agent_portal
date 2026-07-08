@@ -46,9 +46,10 @@ export async function metricsForCampaign(campaignId: string, ownerId: string): P
     prisma.llmUsage.aggregate({ where: ledgerWhere, _sum: { costUsd: true, totalTokens: true } }),
     // mediaPieces counts ALL media generations (incl. token-bearing image gens) — no token filter.
     prisma.llmUsage.aggregate({ where: { ...ledgerWhere, surface: { in: MEDIA_SURFACES } }, _count: true }),
-    // Credit basis mirrors the Usage page (llm-usage.ts:123-127): ONLY tokenless media USD converts to
-    // credits, so token-bearing image gens aren't double-counted (once in totalTokens, once in USD).
-    prisma.llmUsage.aggregate({ where: { ...ledgerWhere, surface: { in: MEDIA_SURFACES }, totalTokens: 0 }, _sum: { costUsd: true } }),
+    // Credit basis mirrors the Usage page EXACTLY (llm-usage.ts:123-127): sum tokenless USD across
+    // EVERY surface (not just MEDIA_SURFACES) so a flat/media cost recorded under any surface converts
+    // to credits, while token-bearing rows are excluded (they're already counted via totalTokens).
+    prisma.llmUsage.aggregate({ where: { ...ledgerWhere, totalTokens: 0 }, _sum: { costUsd: true } }),
     runIds.length ? prisma.workflowRun.findMany({ where: { id: { in: runIds }, ownerId }, select: { createdAt: true, updatedAt: true } }) : Promise.resolve([]),
     // Leads have no campaign FK — attribute by the campaign's product (best available link), owner-scoped.
     campaign.product ? prisma.lead.count({ where: { ownerId, sourceProduct: campaign.product } }) : Promise.resolve(0),
@@ -80,8 +81,9 @@ export async function metricsForPeriod(ownerId: string, since: Date): Promise<Im
     prisma.llmUsage.aggregate({ where: ledgerWhere, _sum: { costUsd: true, totalTokens: true } }),
     // mediaPieces counts ALL media generations (incl. token-bearing image gens) — no token filter.
     prisma.llmUsage.aggregate({ where: { ...ledgerWhere, surface: { in: MEDIA_SURFACES } }, _count: true }),
-    // Credit basis mirrors the Usage page: ONLY tokenless media USD converts to credits.
-    prisma.llmUsage.aggregate({ where: { ...ledgerWhere, surface: { in: MEDIA_SURFACES }, totalTokens: 0 }, _sum: { costUsd: true } }),
+    // Credit basis mirrors the Usage page EXACTLY: sum tokenless USD across EVERY surface so a flat
+    // cost on any surface converts to credits; token-bearing rows are excluded (counted via tokens).
+    prisma.llmUsage.aggregate({ where: { ...ledgerWhere, totalTokens: 0 }, _sum: { costUsd: true } }),
     runIds.length ? prisma.workflowRun.findMany({ where: { id: { in: runIds }, ownerId }, select: { createdAt: true, updatedAt: true } }) : Promise.resolve([]),
     prisma.lead.count({ where: { ownerId, receivedAt: { gte: since } } }),
   ]);
