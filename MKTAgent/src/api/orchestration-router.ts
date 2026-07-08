@@ -40,13 +40,14 @@ import {
   grantAutonomy,
   markRunCrashed,
   setNodeStatus,
+  cloneTemplateRun,
 } from '../db/repos/workflow-run-repo.ts';
 import { createCampaign } from '../db/repos/campaign-repo.ts';
 import { materializeCalendar } from '../orchestration/master/campaign-materializer.ts';
 import type { CalendarSlot } from '../orchestration/schemas/artifact-schemas.ts';
 import { z } from 'zod';
 import { issueGrantToken, verifyGrantToken } from './autonomy-grant-token.ts';
-import { getPostByRunId } from '../db/repos/post-repo.ts';
+import { getPostByRunId, setPostSchedule } from '../db/repos/post-repo.ts';
 import { publishNodeStatus } from '../events/bus.ts';
 import { logRun } from '../db/client.ts';
 import { deleteArtifactsByNodes } from '../orchestration/executor/artifact-store.ts';
@@ -312,6 +313,33 @@ orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
   return respondRun(res, run.id, req.userId!);
 }));
 
+// Test-run a saved flow ("Run a test post"). A saved flow is a TEMPLATE (not directly executable —
+// /execute 409s), so clone it into a throwaway INSTANCE and run THAT: concept_writer materializes a
+// fresh campaign+post, the DAG runs to the publish gate. Fixes the chat offer that 409'd on the
+// just-saved template. A non-template (legacy planned instance) runs in place.
+orchestrationRouter.post('/runs/:id/test-run', asyncHandler(async (req, res) => {
+  const run = await getRunForOwner(req.params.id, req.userId!);
+  if (!run) return fail(res, 404, 'run_not_found');
+  let target = run;
+  if (run.kind === 'template') {
+    const clone = await cloneTemplateRun(run.id, req.userId!);
+    if (!clone) return fail(res, 409, 'template_clone_failed', 'could not clone this flow into a runnable instance');
+    target = clone;
+  } else if (run.status === 'running' || run.status === 'needs_approval') {
+    return fail(res, 409, 'run_in_flight');
+  }
+  const goal = goalSpec.parse(target.goal);
+  const plan: WorkflowPlan = workflowPlan.parse(target.plan);
+  const resolution = await resolveConnections(req.userId!, goal, plan);
+  if (resolution.status !== 'resolved') {
+    await setRunStatus(target.id, 'needs_connection');
+    return respondRun(res, target.id, req.userId!, { requiredActions: resolution.required });
+  }
+  await setRunStatus(target.id, 'running');
+  launchWorkflow(target.id, req.userId!, goal, plan, {});
+  return respondRun(res, target.id, req.userId!);
+}));
+
 // Grant Atria autonomy on a run (autonomy-hardening Phase 01). BACKEND-ENFORCED double-confirm:
 // step 1 (no confirmationToken) issues one — the run is NOT yet granted; step 2 (echo the token)
 // flips approvalMode → 'atria'. A single stray call therefore can never auto-enable autonomy.
@@ -399,6 +427,19 @@ orchestrationRouter.post('/runs/:id/approve-node/:nodeId', asyncHandler(async (r
   const run = await getRunForOwner(req.params.id, req.userId!);
   if (!run) return fail(res, 404, 'run_not_found');
   if (run.status !== 'needs_approval') return fail(res, 409, 'run_not_awaiting_approval');
+  // Optional schedule at the publish gate: the user may pick a FUTURE time. Set it on the run's
+  // post BEFORE resuming so the executor's isScheduledFuture() parks the post `ready` (the scheduler
+  // publishes it at that time) instead of publishing inline. A flow post is `ready` (concept already
+  // auto-approved review→ready), so setting scheduledAt here is the only place to schedule it — the
+  // review-gated /posts/:id/approve path no longer applies. Ignored on a past/invalid date.
+  const rawSched = (req.body as { scheduledAt?: unknown } | undefined)?.scheduledAt;
+  if (typeof rawSched === 'string' && rawSched.trim()) {
+    const when = new Date(rawSched);
+    if (!Number.isNaN(when.getTime()) && when.getTime() > Date.now()) {
+      const post = await getPostByRunId(run.id);
+      if (post) await setPostSchedule(post.id, req.userId!, when);
+    }
+  }
   const goal = goalSpec.parse(run.goal);
   const plan: WorkflowPlan = workflowPlan.parse(run.plan);
   // Resume past the approval gate, also detached (the publisher step itself can take

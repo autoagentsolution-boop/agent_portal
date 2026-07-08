@@ -846,3 +846,17 @@ a { color: var(--accent); }
 .atria-suggestion-head { display: flex; align-items: center; gap: 8px; }
 .atria-suggestion-head strong { flex: 1; font-size: 14px; }
 .atria-suggestion p { margin: 8px 0 12px; font-size: 13px; line-height: 1.5; }
+
+/* Scheduled view (◷ Scheduled) — queued + recently published posts. */
+.scheduled-view { max-width: 900px; }
+.sched-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.sched-row {
+  display: grid; grid-template-columns: 84px 170px 130px 1fr; gap: 10px; align-items: center;
+  width: 100%; text-align: left; padding: 8px 12px; border: 1px solid var(--border, #2a2a2a);
+  border-radius: 8px; background: transparent; cursor: pointer; font-size: 13px;
+}
+.sched-row:hover { border-color: var(--accent, #3b82f6); }
+.sched-row.due { border-left: 3px solid var(--accent, #3b82f6); }
+.sched-when { font-variant-numeric: tabular-nums; }
+.sched-copy { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) { .sched-row { grid-template-columns: 70px 1fr; } .sched-platforms, .sched-copy { display: none; } }

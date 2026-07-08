@@ -7,6 +7,7 @@ import { OrchestratePanel, type OrchestrateRestore } from './components/Orchestr
 import { ConnectionsPanel } from './components/ConnectionsPanel';
 import { ProductKnowledgeLibrary } from './components/ProductKnowledgeLibrary';
 import { LeadsPage } from './components/LeadsPage';
+import { ScheduledView } from './components/scheduled-view';
 import { UsageDashboard } from './components/UsageDashboard';
 import { InstructionEditor } from './components/instruction-editor';
 import { ImpactReport } from './components/impact-report';
@@ -14,7 +15,7 @@ import { CampaignCommandView } from './components/campaign-command-view';
 import { CommandCenterPage } from './components/command-center-page';
 import type { DemoMode } from './flow/demo-flow';
 
-type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads' | 'usage' | 'command-center' | 'instructions' | 'impact';
+type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads' | 'usage' | 'command-center' | 'instructions' | 'impact' | 'scheduled';
 type Theme = 'light' | 'dark';
 
 const postTitle = (post: PostDto, index: number): string => {
@@ -343,7 +344,7 @@ export function App() {
           )}
         </div>
         <button className="sidebar-item muted-action">⌕ Search chats</button>
-        <button className="sidebar-item muted-action">◷ Scheduled</button>
+        <button className={`sidebar-item ${page === 'scheduled' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('scheduled'); }}>◷ Scheduled</button>
 
         <div className="sidebar-section">Chats</div>
         {chatSessions.length === 0 ? (
@@ -397,6 +398,10 @@ export function App() {
         ) : page === 'leads' ? (
           <div className="master-home">
             <LeadsPage notify={show} />
+          </div>
+        ) : page === 'scheduled' ? (
+          <div className="master-home">
+            <ScheduledView notify={show} onOpenPost={(campaignId, postId) => { setActiveCampaign(campaignId); setSelectedPostId(postId); setSelectedRunId(null); setPage('flows'); }} />
           </div>
         ) : page === 'instructions' ? (
           <div className="master-home">

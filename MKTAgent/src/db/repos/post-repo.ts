@@ -238,6 +238,19 @@ export const updatePostFields = async (
   return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
 };
 
+// Set the post's publish schedule from the publish gate (Fix A). Unlike updatePostFields (EDITABLE
+// only), this ALLOWS a `ready` post — a flow post auto-approves review→ready before the publish gate,
+// so `ready` is exactly the state the user schedules from. Refused once the scheduler owns it
+// (posting) or it's already out (posted/partial). Owner-scoped; null on state miss.
+const SCHEDULABLE: PostStatus[] = ['brief', 'review', 'rework', 'ready', 'error'];
+export const setPostSchedule = async (id: string, ownerId: string, when: Date): Promise<Post | null> => {
+  const r = await prisma.post.updateMany({
+    where: { id, ownerId, status: { in: SCHEDULABLE } },
+    data: { scheduledAt: when },
+  });
+  return r.count === 1 ? prisma.post.findFirst({ where: { id, ownerId } }) : null;
+};
+
 // Manual copy edit: overwrite the copy bag and land the post back at `review` so it is
 // re-approved before publishing. Guarded to review|ready (a post with generated copy the
 // user is editing); returns null on state miss (route maps to 409). Owner-scoped.

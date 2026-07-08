@@ -53,6 +53,8 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   const [editCopy, setEditCopy] = useState<Copy | null>(null);
   const [refineOpen, setRefineOpen] = useState(false);
   const [refineText, setRefineText] = useState('');
+  // Publish-gate schedule (Fix A): empty → publish now; a future time → park ready, scheduler fires it.
+  const [publishAt, setPublishAt] = useState('');
 
   const load = async () => {
     const r = await api.getRun(runId);
@@ -83,13 +85,13 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     } finally { setBusy(false); }
   };
 
-  const approveNode = async (nodeId: string) => {
+  const approveNode = async (nodeId: string, scheduledAt?: string) => {
     if (!run) return;
     setBusy(true);
     try {
-      const r = await api.approveRunNode(run.id, nodeId);
+      const r = await api.approveRunNode(run.id, nodeId, scheduledAt);
       if (!r.ok) { notify(`Approve: ${r.error.error}`, 'err'); return; }
-      setRun(r.data); notify('Publishing…');
+      setRun(r.data); notify(scheduledAt ? `Scheduled for ${new Date(scheduledAt).toLocaleString()}` : 'Publishing…');
     } finally { setBusy(false); }
   };
 
@@ -250,8 +252,15 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
                 {gateNode.agentId === 'publisher' && runPostId && (
                   <PublishReview postId={runPostId} onOpenConnections={onOpenConnections} />
                 )}
-                <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId)}>
-                  {busy ? 'Publishing…' : `Approve ${gateNode.agentId.replace(/_/g, ' ')}`}
+                {gateNode.agentId === 'publisher' && (
+                  <div className="field" style={{ marginTop: 8 }}>
+                    <label>Schedule (optional)</label>
+                    <input type="datetime-local" value={publishAt} onChange={(e) => setPublishAt(e.target.value)} />
+                    <div className="help-text">Empty → publish now. A future time parks the post as scheduled; the scheduler publishes it automatically.</div>
+                  </div>
+                )}
+                <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId, gateNode.agentId === 'publisher' && publishAt ? new Date(publishAt).toISOString() : undefined)}>
+                  {busy ? 'Publishing…' : gateNode.agentId === 'publisher' && publishAt ? '📅 Approve + schedule' : `Approve ${gateNode.agentId.replace(/_/g, ' ')}`}
                 </button>
               </>
             )}

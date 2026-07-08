@@ -130,9 +130,10 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
     if (!run) return;
     setBusy(true);
     try {
-      const r = await api.executeRun(run.id);
+      // A saved flow is a template — clone+run it into a fresh instance, then open THAT instance.
+      const r = await api.testRunFlow(run.id);
       if (!r.ok) { notify(`Run flow: ${r.error.error}`, 'err'); return; }
-      onOpenFlow(run.id);
+      onOpenFlow(r.data.id);
     } finally { setBusy(false); }
   };
 

@@ -409,8 +409,14 @@ export const api = {
   // omitted the executor falls back to the goal's NL flag (Atria honoring "đăng luôn") else the gate.
   executeRun: (id: string, opts?: { autoPublish?: boolean }) =>
     request<WorkflowRunDto>(`/orchestration/runs/${id}/execute`, { method: 'POST', body: opts ?? {} }),
-  approveRunNode: (id: string, nodeId: string) =>
-    request<WorkflowRunDto>(`/orchestration/runs/${id}/approve-node/${nodeId}`, { method: 'POST' }),
+  // Test-run a saved flow (template) — clones it into a runnable instance server-side. Returns the
+  // INSTANCE run (open THAT, not the template). Fixes the "Run a test post" 409 on a saved template.
+  testRunFlow: (id: string) =>
+    request<WorkflowRunDto>(`/orchestration/runs/${id}/test-run`, { method: 'POST' }),
+  // approve-node optionally carries a future scheduledAt (publish gate schedule picker): the post
+  // parks `ready` and the scheduler publishes it at that time instead of publishing inline now.
+  approveRunNode: (id: string, nodeId: string, scheduledAt?: string) =>
+    request<WorkflowRunDto>(`/orchestration/runs/${id}/approve-node/${nodeId}`, { method: 'POST', body: scheduledAt ? { scheduledAt } : {} }),
   rerunRunNode: (id: string, nodeId: string) =>
     request<WorkflowRunDto>(`/orchestration/runs/${id}/rerun-node/${nodeId}`, { method: 'POST' }),
   getRun: (id: string) => request<WorkflowRunDto>(`/orchestration/runs/${id}`),
