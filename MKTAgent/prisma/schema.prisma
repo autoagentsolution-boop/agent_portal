@@ -420,6 +420,9 @@ model Lead {
   score          Int?
   scoreReasons   Json?      @map("score_reasons")
   receivedAt     DateTime   @default(now()) @map("received_at") @db.Timestamptz(6)
+  // When a nurture email was last sent to this lead via the Email Agent (P2-2c). null = never
+  // contacted. Guards against re-spamming the same lead + drives the "contacted" badge in the UI.
+  nurturedAt     DateTime?  @map("nurtured_at") @db.Timestamptz(6)
 
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 

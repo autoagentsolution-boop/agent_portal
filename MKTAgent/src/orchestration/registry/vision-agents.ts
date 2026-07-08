@@ -61,9 +61,12 @@ export const VISION_AGENTS: VisionAgent[] = [
   {
     id: 'email',
     name: 'Email Campaign Agent',
-    description: 'Builds email sequences — urgency, per-segment personalization, click-through focus.',
+    description: 'Drafts a personal nurture email for each captured lead and sends it from your Gmail.',
     emoji: '📧',
     group: 'action',
-    vibe: 'An email copywriter who personalizes at scale and measures every click.',
+    vibe: 'An email copywriter who personalizes each nurture and never blasts.',
+    // P2-2c: shipped — draft (LLM) → review → send one lead at a time via the owner's Gmail.
+    implStatus: 'live',
+    surface: 'email',
   },
 ];

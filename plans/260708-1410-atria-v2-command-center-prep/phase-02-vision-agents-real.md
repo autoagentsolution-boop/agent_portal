@@ -1,7 +1,8 @@
 # P2 — Vision agents → real
 
-**Priority:** P1 · **Status:** planned · Sequence: Memory → Analytics → Email → Lead Collector.
-Other/future vision AIs stay display-only "planning / coming-up" nodes.
+**Priority:** P1 · **Status:** DONE — ALL 4 vision agents live (Memory 2a, Analytics 2b +IG, Lead Collector 2d,
+Email 2c). Each is a live Command-Center `surface` (implStatus:'live'+surface), opening a drawer panel — NOT a
+DAG RunnableAgentId (they're meta/assistant surfaces). Future vision AIs stay display-only "coming-up" nodes.
 
 ## Key insight
 `vision-agents.ts` holds 4 display-only nodes (memory, analytics, email, lead_collector) with a
@@ -47,7 +48,15 @@ Command-Center workspace surface (leads dashboard as an agent room).
   (Meta gives no post reach for pages <100 followers) → reach=null for the test page (graceful → estimate).
   Engagement group WORKS: 6 FB posts measured, measuredEngaged=0 (real: 0 clicks/reactions). Reach populates
   automatically on a qualifying page. UI stat "engagements (FB) · measured · clicks + reactions · 6 posts" live.
-- [ ] 2c Email: provider + template + send-to-leads
+- [x] **2c Email: DONE + LIVE-VERIFIED (2026-07-08).** Nurture leads via the owner's own GMAIL (no 3rd-party ESP —
+  reuse Google OAuth, added `gmail.send` scope to `driveAuthUrl`). `src/email/gmail-send.ts` (`sendGmailAs` owner token
+  + shared `buildRaw` RFC822/base64url, extracted from leads/notify.ts DRY; `hasGmailConnected`); `email-agent.ts`
+  (`draftNurtureEmail` — Gemini, warm personal, human-gate no-blast, surface:'email' usage); `email-router.ts`
+  (GET /status, /leads [decrypted, nurture-sorted], POST /draft, POST /send→stamps nurturedAt). Migration
+  `lead_nurtured_at` (Lead.nurturedAt idempotency/audit + repo `markLeadNurtured`). Email node→live surface;
+  `EmailPanel` (leads→Draft→edit→Send one-at-a-time). verify-email-agent PASS. LIVE: real Gemini drafted a grounded
+  nurture email for the real lead, editor renders. ⚠ actual SEND needs user to RECONNECT Google (old token=drive-only
+  scope → `gmail_scope_missing` until re-consent) + is outward-facing (didn't send). **ALL 4 vision agents now live.**
 - [x] **2d Lead Collector: DONE + LIVE-VERIFIED (2026-07-08).** Already real (comment capture/scoring/liveness);
   promoted from display-only vision node → live CC surface. `lead_collector` flipped `implStatus:'live'`+`surface:'leads'`;
   CC drawer renders the existing `LeadsPage` inline (DRY reuse, like Analytics→ImpactReport). No backend change.

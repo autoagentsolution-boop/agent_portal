@@ -5,6 +5,7 @@
 import { google } from 'googleapis';
 import { env } from '../config/env.ts';
 import { logger } from '../lib/logger.ts';
+import { buildRaw } from '../email/gmail-send.ts';
 import type { NormalizedLead } from './normalize.ts';
 
 const isConfigured = (): boolean =>
@@ -14,22 +15,6 @@ const isConfigured = (): boolean =>
       env.GOOGLE_REFRESH_TOKEN &&
       env.MKT_SALES_EMAIL,
   );
-
-// RFC 2822 message → base64url (Gmail API raw format).
-const buildRaw = (to: string, subject: string, body: string): string => {
-  // Encode the subject (UTF-8) so VN/diacritics survive headers.
-  const encodedSubject = `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
-  const mime = [
-    `To: ${to}`,
-    `Subject: ${encodedSubject}`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset="UTF-8"',
-    'Content-Transfer-Encoding: base64',
-    '',
-    Buffer.from(body, 'utf8').toString('base64'),
-  ].join('\r\n');
-  return Buffer.from(mime, 'utf8').toString('base64url');
-};
 
 export const notifySales = async (lead: NormalizedLead): Promise<void> => {
   if (!isConfigured()) {

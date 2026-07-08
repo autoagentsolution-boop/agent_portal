@@ -29,6 +29,7 @@ import { productKnowledgeRouter } from './api/product-knowledge-router.ts';
 import { connectionsRouter } from './api/connections-router.ts';
 import { instructionsRouter } from './api/instructions-router.ts';
 import { memoryRouter } from './api/memory-router.ts';
+import { emailRouter } from './api/email-router.ts';
 import { atriaRouter } from './api/atria-router.ts';
 import { impactRouter } from './api/impact-router.ts';
 import { IMAGE_OUTPUT_DIR } from './imagegen/nano-banana.ts';
@@ -98,6 +99,10 @@ app.use('/instructions', requireAuth, instructionsRouter);
 // Atria Memory Agent (v2 P2-2a). Learns copy style from hand-edited posts → proposed learned
 // instructions (source:'memory') the user approves; future concept_writer runs honour them.
 app.use('/memory', requireAuth, memoryRouter);
+
+// Atria Email Agent (v2 P2-2c). Nurtures captured leads via the owner's own Gmail (gmail.send scope
+// on the Google connect). Draft (LLM) → user review → send one lead at a time (no blast).
+app.use('/email', requireAuth, emailRouter);
 
 // Atria proactive suggestions + roadmap pitches (Phase 06). Read-only nudges derived from the
 // tenant's own history; accepting prefills a flow or logs demand — nothing runs without a grant.

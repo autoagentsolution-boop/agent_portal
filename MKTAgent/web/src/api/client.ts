@@ -281,6 +281,10 @@ export interface MemoryProposalDto { content: string; rationale: string; agentId
 export interface MemoryProposalsDto { editedCount: number; sampled: number; proposals: MemoryProposalDto[]; model: string | null }
 export interface MemoryDto { id: string; agentId: string | null; content: string; enabled: boolean; createdAt: string }
 
+// Email Agent (Atria v2 P2-2c) — nurture captured leads via the owner's Gmail. Routes (/email) not in openapi.
+export interface NurtureLeadDto { id: string; name: string | null; email: string; sourceProduct: string | null; score: number | null; nurturedAt: string | null }
+export interface EmailDraftDto { leadId: string; to: string; subject: string; body: string }
+
 export interface CampaignCostEstimateDto { posts: number; agentCount: number; totalTokens: number; costUsd: number; credits: number }
 export interface CampaignGrantResponse {
   campaignId: string;
@@ -536,6 +540,12 @@ export const api = {
   // ---- Workspaces (Atria v2 P0) — read-only reframe of Campaigns for the Command Center hub ----
   listWorkspaces: () => request<WorkspaceSummaryDto[]>('/workspaces'),
   getWorkspace: (campaignId: string) => request<WorkspaceDetailDto>(`/workspaces/${campaignId}`),
+
+  // ---- Email Agent (Atria v2 P2-2c) — nurture leads via Gmail ----
+  emailStatus: () => request<{ connected: boolean }>('/email/status'),
+  nurtureLeads: () => request<NurtureLeadDto[]>('/email/leads'),
+  draftEmail: (leadId: string) => request<EmailDraftDto>('/email/draft', { method: 'POST', body: { leadId } }),
+  sendEmail: (leadId: string, subject: string, body: string) => request<{ leadId: string; sent: boolean; messageId: string | null }>('/email/send', { method: 'POST', body: { leadId, subject, body } }),
 
   // ---- Memory Agent (Atria v2 P2-2a) — learn copy style from edits ----
   listMemories: () => request<MemoryDto[]>('/memory'),

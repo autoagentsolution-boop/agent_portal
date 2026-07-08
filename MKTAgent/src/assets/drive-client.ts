@@ -120,7 +120,13 @@ export const driveAuthUrl = (redirectUri: string, state: string): string => {
   return auth.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/drive.file'],
+    // drive.file → media storage (P3); gmail.send → the Email Agent nurtures leads from the owner's
+    // own Gmail (P2-2c), no third-party ESP. One Google connect covers both (decision 4: keep-Google).
+    // Users who connected BEFORE gmail.send was added must reconnect to grant it (send fails loud until then).
+    scope: [
+      'https://www.googleapis.com/auth/drive.file',
+      'https://www.googleapis.com/auth/gmail.send',
+    ],
     state,
   });
 };

@@ -34,6 +34,7 @@ export interface DecryptedLead {
   score: number | null;
   scoreReasons: ScoreReason[];
   receivedAt: Date;
+  nurturedAt: Date | null; // last Email-Agent nurture send (P2-2c); null = never contacted
 }
 
 const enc = (v: string | null): string | null => (v && v.trim() ? encryptToken(v) : null);
@@ -56,7 +57,15 @@ export const decryptLead = (l: Lead): DecryptedLead => ({
   score: l.score,
   scoreReasons: asReasons(l.scoreReasons),
   receivedAt: l.receivedAt,
+  nurturedAt: l.nurturedAt,
 });
+
+// Stamp a lead as nurtured (idempotency + audit for the Email Agent). Owner-scoped; returns whether
+// a row was updated (false = wrong tenant / missing).
+export const markLeadNurtured = async (id: string, ownerId: string): Promise<boolean> => {
+  const r = await prisma.lead.updateMany({ where: { id, ownerId }, data: { nurturedAt: new Date() } });
+  return r.count === 1;
+};
 
 export const createLead = async (input: CreateLeadInput): Promise<Lead> =>
   prisma.lead.create({

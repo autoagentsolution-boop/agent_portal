@@ -55,10 +55,10 @@ sits on. It is NOT the v2 UI itself.
   drawer (WorkspacePanel dashboard+posts / AgentSpotlight), NOT a redirect; post drill reuses
   PostWorkflowView (re-run/edit/publish); CC is default landing; SSE multiplex + poll. Build green,
   not yet browser-driven.
-- [~] **P2 — Vision agents → real** · [phase-02](phase-02-vision-agents-real.md) — **2a Memory + 2b Analytics
-  + 2d Lead-Collector DONE+LIVE** (3 of 4 vision agents now live CC surfaces). 2a: learned copy-style memory.
-  2b: FB Insights→Impact (⚠ v25.0 withholds small-page reach→engagement measured). 2d: Lead-Collector promoted
-  to live surface (reuse LeadsPage in drawer). Remaining: **2c Email** (needs provider). Follow-up: extend 2b to IG/Threads.
+- [x] **P2 — Vision agents → real** · [phase-02](phase-02-vision-agents-real.md) — **DONE: ALL 4 live CC surfaces.**
+  2a Memory (learned copy-style), 2b Analytics (FB+IG Insights→Impact; ⚠ v25.0 withholds small-page reach), 2c Email
+  (nurture leads via owner's Gmail — ⚠ needs Google re-consent for gmail.send), 2d Lead-Collector (LeadsPage in drawer).
+  Follow-up: extend 2b to Threads/X/LinkedIn; live-test IG post + a real Gmail send after re-consent.
 - [x] **P3 — Media storage via Google Drive** · [phase-03](phase-03-media-drive-storage.md) — ALREADY
   BUILT (2026-07-05). `materializeForPublicUrl` uploads local images → owner's Drive → lh3 public URL in
   ALL 3 publish paths (cron/DAG/manual, via processPost) for IG/Threads. Verified this session: real
