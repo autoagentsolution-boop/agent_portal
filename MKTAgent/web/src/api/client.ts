@@ -295,6 +295,8 @@ export interface CampaignGrantResponse {
 export interface ImpactMetricsDto {
   postsPublished: number; postsTotal: number; platforms: string[]; mediaPieces: number;
   usdSpent: number; totalTokens: number; creditsSpent: number; leadsCaptured: number; runMinutes: number;
+  // MEASURED FB Page Insights (P2-2b) — null when no FB post could be measured (→ report uses estimate).
+  measuredReach: number | null; measuredImpressions: number | null; measuredEngaged: number | null; fbPostsMeasured: number;
 }
 export interface ImpactValueDto {
   estimated: true; baselineUsd: number; freelancerUsd: number; baselineDays: number;

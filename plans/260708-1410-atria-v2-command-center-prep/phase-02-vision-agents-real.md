@@ -35,7 +35,18 @@ Command-Center workspace surface (leads dashboard as an agent room).
 
 ## Todo
 - [x] **2a Memory: DONE + LIVE-VERIFIED (2026-07-08).** edits→proposed learned-instructions→approve→applied. `memory-agent.ts` (proposeMemories: gathers copyEdited posts → Gemini → 1-3 style rules, injectable LlmJsonFn for DRY verify, records surface:'memory'); `memory-router.ts` (GET / , GET /proposals, POST /accept, DELETE /:id); accepted = `source:'memory'` instruction scope=workspace agentId=concept_writer → resolveInstructions (already in copygen) injects it into every future draft. Memory node flipped `implStatus:'live'`+`surface:'memory'` (vision-agents), CC opens `MemoryPanel` inline (new drawer kind 'surface'). verify-memory-agent PASS (loop incl. applied-to-concept_writer-not-ideation + tenant isolation). LIVE: real Gemini produced 3 evidence-grounded rules from user's 3 edits; accepted one → DB row source=memory/concept_writer confirmed.
-- [ ] 2b Analytics: FB Page Insights → real reach into Impact
+- [x] **2b Analytics: DONE + LIVE-VERIFIED (2026-07-08).** FB Page Insights → measured metrics into Impact.
+  `src/analytics/fb-insights.ts` (TWO independent metric groups — Graph fails the whole call if ANY metric
+  is invalid: reach group `post_impressions_unique,post_impressions`; engage group `post_clicks,post_reactions_by_type_total`;
+  best-effort per group, 30min TTL cache, MAX_POSTS=50). `sumFbInsights` per-field-nullable → Impact keeps
+  its labeled estimate when Meta withholds a field. Wired into `metricsForCampaign`/`metricsForPeriod`
+  (ImpactMetrics += measuredReach/Impressions/Engaged + fbPostsMeasured); `buildImpactReport` headline prefers
+  measured reach→engagement→estimate; impact-report.tsx shows measured reach/engagement stats. Analytics node
+  flipped `implStatus:'live'`+`surface:'impact'` → opens Impact inline in CC drawer. verify-fb-insights PASS.
+  **⚠ LIVE FINDING:** on Graph v25.0 the classic `post_impressions*`/`post_engaged_users` are DEPRECATED/withheld
+  (Meta gives no post reach for pages <100 followers) → reach=null for the test page (graceful → estimate).
+  Engagement group WORKS: 6 FB posts measured, measuredEngaged=0 (real: 0 clicks/reactions). Reach populates
+  automatically on a qualifying page. UI stat "engagements (FB) · measured · clicks + reactions · 6 posts" live.
 - [ ] 2c Email: provider + template + send-to-leads
 - [ ] 2d Lead Collector: promote to Command-Center workspace surface
 - [x] flip Memory from vision-agents.ts → live surface (not a DAG runner — it's a meta/assistant surface, so implStatus:'live'+surface rather than a RunnableAgentId). Analytics/Email/Lead Collector still planned.

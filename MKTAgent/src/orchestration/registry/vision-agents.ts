@@ -46,10 +46,13 @@ export const VISION_AGENTS: VisionAgent[] = [
   {
     id: 'analytics',
     name: 'Analytics Agent',
-    description: 'Turns raw per-platform metrics into campaign wins and clear next moves.',
+    description: 'Pulls real FB Page reach/impressions into your Impact report — measured, not estimated.',
     emoji: '📊',
     group: 'intelligence',
-    vibe: 'A data storyteller who reads the numbers and names the next move.',
+    vibe: 'A data storyteller who reads real Insights and names the next move.',
+    // P2-2b: shipped — measured FB reach flows into Impact. The node opens the Impact report.
+    implStatus: 'live',
+    surface: 'impact',
   },
   {
     id: 'email',

@@ -69,9 +69,17 @@ export interface ImpactReport {
 // The one-line proof: "$X spent (≈N credits) vs ~$Y / Z days with an agency".
 export function buildImpactReport(scope: 'campaign' | 'period', metrics: ImpactMetrics): ImpactReport {
   const value = estimateValue(metrics);
+  // Prefer MEASURED FB Insights (P2-2b): reach if Meta exposes it, else measured engagement; fall
+  // back to the labeled reach estimate only when NO FB insight was measured.
+  const reachPhrase =
+    metrics.measuredReach !== null
+      ? `${metrics.measuredReach.toLocaleString()} reach (measured, FB)`
+      : metrics.measuredEngaged !== null
+        ? `${metrics.measuredEngaged.toLocaleString()} engagements (measured, FB)`
+        : `~${value.estimatedReach.toLocaleString()} est. reach`;
   const headline =
     `$${round2(metrics.usdSpent)} spent (≈${metrics.creditsSpent} credits) vs an estimated ~$${value.baselineUsd} / ${value.baselineDays} days with an agency — ` +
-    `${metrics.postsPublished} posts across ${metrics.platforms.length} platform${metrics.platforms.length === 1 ? '' : 's'}, ${metrics.leadsCaptured} leads.`;
+    `${metrics.postsPublished} posts across ${metrics.platforms.length} platform${metrics.platforms.length === 1 ? '' : 's'}, ${metrics.leadsCaptured} leads, ${reachPhrase}.`;
   return { scope, metrics, value, headline, creditsSpent: metrics.creditsSpent };
 }
 

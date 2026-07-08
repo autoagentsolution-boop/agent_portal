@@ -55,9 +55,10 @@ sits on. It is NOT the v2 UI itself.
   drawer (WorkspacePanel dashboard+posts / AgentSpotlight), NOT a redirect; post drill reuses
   PostWorkflowView (re-run/edit/publish); CC is default landing; SSE multiplex + poll. Build green,
   not yet browser-driven.
-- [~] **P2 — Vision agents → real** · [phase-02](phase-02-vision-agents-real.md) — **2a Memory DONE+LIVE**
-  (learn copy-style from edits → propose → approve → source:'memory' instruction concept_writer honors;
-  Memory node now live surface w/ MemoryPanel). Remaining: 2b Analytics, 2c Email, 2d Lead Collector.
+- [~] **P2 — Vision agents → real** · [phase-02](phase-02-vision-agents-real.md) — **2a Memory + 2b Analytics
+  DONE+LIVE**. 2a: learned copy-style memory concept_writer honors. 2b: FB Page Insights (2 metric groups,
+  best-effort) → measured reach/engagement into Impact; Analytics node live→opens Impact inline. ⚠ v25.0
+  withholds post reach for small pages→engagement measured, reach=estimate. Remaining: 2c Email, 2d Lead Collector.
 - [x] **P3 — Media storage via Google Drive** · [phase-03](phase-03-media-drive-storage.md) — ALREADY
   BUILT (2026-07-05). `materializeForPublicUrl` uploads local images → owner's Drive → lh3 public URL in
   ALL 3 publish paths (cron/DAG/manual, via processPost) for IG/Threads. Verified this session: real

@@ -4,6 +4,7 @@
 // estimates (cost saved, reach) on top. Reconciles with the Usage page (same mkt_llm_usage ledger).
 import { prisma } from '../db/client.ts';
 import { creditsFromTokens, creditsFromUsd } from '../cost/credits.ts';
+import { sumFbInsights } from '../analytics/fb-insights.ts';
 
 export interface ImpactMetrics {
   postsPublished: number; // posts that actually went live (posted | partial)
@@ -15,10 +16,23 @@ export interface ImpactMetrics {
   creditsSpent: number; // friendly credits (token passthrough + media USD), same basis as Usage
   leadsCaptured: number;
   runMinutes: number; // wall-clock across the contributing runs
+  // MEASURED reach from FB Page Insights (P2-2b). null = no FB post could be measured (no FB posts,
+  // or the token lacks read_insights) → the report uses the labeled estimate instead. FB-only for now.
+  measuredReach: number | null;
+  measuredImpressions: number | null;
+  measuredEngaged: number | null;
+  fbPostsMeasured: number; // how many published FB posts contributed real insights
 }
 
 const LIVE = ['posted', 'partial'];
 const MEDIA_SURFACES = ['infographic', 'storyboard', 'video'];
+
+// Published posts → their Facebook post ids (platformPostIds.facebook), for the Insights lookup.
+const fbPostIdsOf = (posts: Array<{ status: string; platformPostIds: unknown }>): string[] =>
+  posts
+    .filter((p) => LIVE.includes(p.status))
+    .map((p) => (p.platformPostIds as { facebook?: string } | null)?.facebook)
+    .filter((id): id is string => Boolean(id));
 
 // Credits consistent with the Usage page: token passthrough PLUS credits from tokenless media USD.
 const creditsFor = (totalTokens: number, mediaUsd: number): number =>
@@ -27,6 +41,7 @@ const creditsFor = (totalTokens: number, mediaUsd: number): number =>
 const emptyMetrics = (): ImpactMetrics => ({
   postsPublished: 0, postsTotal: 0, platforms: [], mediaPieces: 0,
   usdSpent: 0, totalTokens: 0, creditsSpent: 0, leadsCaptured: 0, runMinutes: 0,
+  measuredReach: null, measuredImpressions: null, measuredEngaged: null, fbPostsMeasured: 0,
 });
 
 const runMinutesFor = (runs: Array<{ createdAt: Date; updatedAt: Date }>): number =>
@@ -36,7 +51,7 @@ const runMinutesFor = (runs: Array<{ createdAt: Date; updatedAt: Date }>): numbe
 export async function metricsForCampaign(campaignId: string, ownerId: string): Promise<ImpactMetrics> {
   const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, ownerId }, select: { product: true } });
   if (!campaign) return emptyMetrics();
-  const posts = await prisma.post.findMany({ where: { campaignId, ownerId }, select: { id: true, status: true, platforms: true, runId: true } });
+  const posts = await prisma.post.findMany({ where: { campaignId, ownerId }, select: { id: true, status: true, platforms: true, runId: true, platformPostIds: true } });
   const postIds = posts.map((p) => p.id);
   const runIds = [...new Set(posts.map((p) => p.runId).filter((r): r is string => Boolean(r)))];
   const published = posts.filter((p) => LIVE.includes(p.status));
@@ -57,6 +72,7 @@ export async function metricsForCampaign(campaignId: string, ownerId: string): P
 
   const totalTokens = agg._sum.totalTokens ?? 0;
   const mediaCreditUsd = mediaCredit._sum.costUsd ?? 0;
+  const insights = await sumFbInsights(ownerId, fbPostIdsOf(posts));
   return {
     postsPublished: published.length,
     postsTotal: posts.length,
@@ -67,12 +83,13 @@ export async function metricsForCampaign(campaignId: string, ownerId: string): P
     creditsSpent: creditsFor(totalTokens, mediaCreditUsd),
     leadsCaptured,
     runMinutes: runMinutesFor(runs),
+    ...insights,
   };
 }
 
 // A period's real impact across ALL the owner's activity since `since` (owner-scoped date window).
 export async function metricsForPeriod(ownerId: string, since: Date): Promise<ImpactMetrics> {
-  const posts = await prisma.post.findMany({ where: { ownerId, createdAt: { gte: since } }, select: { status: true, platforms: true, runId: true } });
+  const posts = await prisma.post.findMany({ where: { ownerId, createdAt: { gte: since } }, select: { status: true, platforms: true, runId: true, platformPostIds: true } });
   const runIds = [...new Set(posts.map((p) => p.runId).filter((r): r is string => Boolean(r)))];
   const published = posts.filter((p) => LIVE.includes(p.status));
 
@@ -90,6 +107,7 @@ export async function metricsForPeriod(ownerId: string, since: Date): Promise<Im
 
   const totalTokens = agg._sum.totalTokens ?? 0;
   const mediaCreditUsd = mediaCredit._sum.costUsd ?? 0;
+  const insights = await sumFbInsights(ownerId, fbPostIdsOf(posts));
   return {
     postsPublished: published.length,
     postsTotal: posts.length,
@@ -100,5 +118,6 @@ export async function metricsForPeriod(ownerId: string, since: Date): Promise<Im
     creditsSpent: creditsFor(totalTokens, mediaCreditUsd),
     leadsCaptured,
     runMinutes: runMinutesFor(runs),
+    ...insights,
   };
 }

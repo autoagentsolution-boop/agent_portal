@@ -47,6 +47,20 @@ export function ImpactReport({ campaignId, period = '30d' }: Props) {
         <Stat label="platforms" value={String(metrics.platforms.length)} hint={metrics.platforms.join(', ') || '—'} />
         <Stat label="media pieces" value={String(metrics.mediaPieces)} />
         <Stat label="leads captured" value={String(metrics.leadsCaptured)} />
+        {metrics.measuredReach !== null && (
+          <Stat
+            label="reach (FB)"
+            value={metrics.measuredReach.toLocaleString()}
+            hint={`measured · ${metrics.fbPostsMeasured} post${metrics.fbPostsMeasured === 1 ? '' : 's'}${metrics.measuredImpressions !== null ? ` · ${metrics.measuredImpressions.toLocaleString()} impressions` : ''}`}
+          />
+        )}
+        {metrics.measuredEngaged !== null && (
+          <Stat
+            label="engagements (FB)"
+            value={metrics.measuredEngaged.toLocaleString()}
+            hint={`measured · clicks + reactions · ${metrics.fbPostsMeasured} post${metrics.fbPostsMeasured === 1 ? '' : 's'}`}
+          />
+        )}
       </div>
 
       <h4 style={{ margin: '18px 0 8px' }}>
@@ -55,7 +69,9 @@ export function ImpactReport({ campaignId, period = '30d' }: Props) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         <Stat label="cost saved vs agency" value={money(value.savedUsd)} hint={`baseline ~${money(value.baselineUsd)}`} />
         <Stat label="time saved" value={`${value.savedDays} days`} />
-        <Stat label="est. reach" value={value.estimatedReach.toLocaleString()} hint="needs Insights for real reach (v2)" />
+        {metrics.measuredReach === null && (
+          <Stat label="est. reach" value={value.estimatedReach.toLocaleString()} hint="estimate — connect FB Insights for measured reach" />
+        )}
       </div>
       <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
         Estimates use: ${value.assumptions.agencyDayRateUsd}/day agency rate, {value.assumptions.hoursPerPost}h/post,
