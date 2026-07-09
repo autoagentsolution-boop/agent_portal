@@ -347,7 +347,15 @@ a { color: var(--accent); }
    OrchestratePanel takes the rest. Keeps the neural identity while the conversation is front+center. */
 .command-center.is-chat { display: flex; flex-direction: column; height: 100%; }
 .command-center.is-chat .cc-network { flex: 0 0 200px; height: 200px; min-height: 200px; margin: 4px 0 0; transform: scale(0.9); opacity: 0.85; }
-.command-center.is-chat .cc-core { transform: translate(-50%, -50%) scale(0.7); }
+.command-center.is-chat .cc-core { transform: translate(-50%, -50%) scale(0.7); animation: cc-core-breathe 3.2s ease-in-out infinite; }
+/* "Alive" breathing on the Atria core while a chat is open (P3, decorative — no data binding). */
+@keyframes cc-core-breathe {
+  0%, 100% { filter: drop-shadow(0 0 14px rgba(157,123,255,0.45)); }
+  50% { filter: drop-shadow(0 0 30px rgba(157,123,255,0.85)); }
+}
+/* Typewriter caret (P3). */
+.tw-caret { display: inline-block; margin-left: 1px; color: #9d7bff; animation: tw-blink 0.9s steps(1) infinite; }
+@keyframes tw-blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
 .cc-chat-embed { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid #23252f;
   margin-top: 6px; overflow: hidden; }
 .cc-chat-back { align-self: flex-start; margin: 8px 0 2px 16px; background: none; border: 1px solid #2c2f3d;

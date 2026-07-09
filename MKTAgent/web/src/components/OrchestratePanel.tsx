@@ -10,6 +10,7 @@ import { api, type WorkflowRunDto } from '../api/client';
 import { PlanCard, SaveOfferCard } from './orchestrate-run-cards';
 import { AtriaSuggestionCards } from './atria-suggestion-cards';
 import { AtriaResumeWorkCards } from './atria-resume-work-cards';
+import { TypewriterText } from './typewriter-text';
 
 export interface OrchestrateRestore {
   sessionId: string;
@@ -57,6 +58,9 @@ const starters = [
 
 export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, chats, onResumeChat }: Props) {
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
+  // Messages present at mount (restored history) render instantly; only messages added afterwards get
+  // the typewriter reveal, and only the newest one (P3 — "alive" feel without re-typing old replies).
+  const initialCount = useRef(restore?.messages.length ?? 0);
   const [run, setRun] = useState<WorkflowRunDto | null>(restore?.run ?? null);
   const [sessionId, setSessionId] = useState<string | null>(restore?.sessionId ?? null);
   const [input, setInput] = useState(restore || autoStart ? '' : (initialInput ?? ''));
@@ -166,9 +170,14 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
 
       {hasStarted && (
         <div className="chat-transcript">
-          {messages.map((m, i) => (
-            <div key={i} className={`chat-bubble ${m.role}`}>{m.content}</div>
-          ))}
+          {messages.map((m, i) => {
+            const animate = m.role === 'agent' && i >= initialCount.current && i === messages.length - 1;
+            return (
+              <div key={i} className={`chat-bubble ${m.role}`}>
+                {m.role === 'agent' ? <TypewriterText text={m.content} animate={animate} /> : m.content}
+              </div>
+            );
+          })}
           {pending && <div className="chat-bubble user">{pending}</div>}
           {busy && (
             <div className="chat-bubble agent thinking-bubble" role="status" aria-live="polite">
