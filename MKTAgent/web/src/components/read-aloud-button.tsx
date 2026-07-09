@@ -33,6 +33,9 @@ export function ReadAloudButton({ text, title = 'Đọc to', className = '' }: P
   const [status, setStatus] = useState<Status>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
+  // Synchronous guard: state updates are async, so two fast clicks both see status==='idle' and each
+  // fire a fetch (orphaning the first audio). A ref blocks the second click immediately.
+  const busyRef = useRef(false);
 
   // Free the blob URL + detach the shared handle on unmount so a scrolled-away bubble can't keep audio.
   useEffect(() => () => {
@@ -42,10 +45,11 @@ export function ReadAloudButton({ text, title = 'Đọc to', className = '' }: P
   }, []);
 
   const play = async () => {
-    if (status === 'loading') return;
     if (status === 'playing') { audioRef.current?.pause(); return; } // toggle off
+    if (busyRef.current || status === 'loading') return; // in-flight → ignore repeat clicks
     if (!text.trim()) return;
     if (currentAudio && currentAudio !== audioRef.current) currentAudio.pause(); // stop any other narration
+    busyRef.current = true;
     setStatus('loading');
     try {
       const url = await fetchTts(text);
@@ -60,6 +64,8 @@ export function ReadAloudButton({ text, title = 'Đọc to', className = '' }: P
       setStatus('playing');
     } catch {
       setStatus('idle');
+    } finally {
+      busyRef.current = false;
     }
   };
 

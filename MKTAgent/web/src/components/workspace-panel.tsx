@@ -52,7 +52,7 @@ export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBo
     try {
       const r = await api.grantPost(grantFor.postId, { confirmationToken: grantFor.token, scheduleConfirmed: true });
       if (!r.ok) { notify(`Grant: ${r.error.error}`, 'err'); return; }
-      notify('Đã cấp quyền — Atria sẽ tự chuẩn bị nội dung rồi dừng ở review.');
+      notify('Đã cấp quyền — Atria sẽ tự chuẩn bị và đăng tự động theo lịch.');
       setGrantFor(null);
       void load();
     } finally { setGranting(false); }
@@ -166,7 +166,7 @@ export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBo
                     <button
                       className="ws-grant-btn"
                       disabled={granting}
-                      title="Cấp quyền cho Atria tự chạy các bước rồi dừng ở review"
+                      title="Cấp quyền cho Atria tự chạy các bước và đăng tự động theo lịch"
                       onClick={() => void startGrant(p.postId)}
                     >⚡ Chuẩn bị</button>
                   )

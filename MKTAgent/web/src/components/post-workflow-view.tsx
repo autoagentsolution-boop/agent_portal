@@ -59,6 +59,9 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   // Step 1 surfaces the credit forecast + a token; Step 2 hands the run to Atria (approvalMode→atria).
   const [grantPending, setGrantPending] = useState<{ credits: number; token: string } | null>(null);
   const [granting, setGranting] = useState(false);
+  // Watchdog (F3): if a granted run sits in "preparing" too long (autonomy cron off/behind), stop
+  // pretending Atria is on it — reveal manual Execute + a hint so the post isn't a silent dead-end.
+  const [stalled, setStalled] = useState(false);
 
   const load = async () => {
     const r = await api.getRun(runId);
@@ -81,9 +84,11 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   // to advance the view when the cron claims it and again when it parks at review.
   const preparing = run?.approvalMode === 'atria' && (run.status === 'planned' || run.status === 'running');
   useEffect(() => {
-    if (!preparing) return;
-    const t = setInterval(() => void load(), 8000);
-    return () => clearInterval(t);
+    if (!preparing) { setStalled(false); return; }
+    const poll = setInterval(() => void load(), 8000);
+    // No progress after ~32s → assume the autonomy cron isn't running; surface manual control.
+    const watchdog = setTimeout(() => setStalled(true), 32000);
+    return () => { clearInterval(poll); clearTimeout(watchdog); };
   }, [preparing, runId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const execute = async () => {
@@ -162,7 +167,7 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
       const r = await api.grantPost(postId, { confirmationToken: grantPending.token, scheduleConfirmed: true });
       if (!r.ok) { notify(`Chuẩn bị: ${r.error.error}`, 'err'); return; }
       setGrantPending(null);
-      notify('Đã cấp quyền — Atria đang chuẩn bị nội dung rồi dừng ở review.');
+      notify('Đã cấp quyền — Atria sẽ tự chuẩn bị và đăng tự động theo lịch đã đặt.');
       await load();
     } finally { setGranting(false); }
   };
@@ -202,10 +207,14 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   // needs_connection with cards handled by the ConnectionRequired block (its own continue
   // re-resolves). requiredActions only rides the POST /execute response — a reloaded gated
   // run (GET) has none, so keep Execute available there to re-run the resolver server-side.
-  // An atria-granted run is driven by the autonomy cron, not the manual Execute button — suppress
-  // Execute/grant and show the "đang chuẩn bị" state instead (G2).
+  // An atria-granted run is driven by the autonomy cron, not the manual Execute button. Suppress
+  // Execute/grant only WHILE it is actively being prepared (planned/running) and the watchdog hasn't
+  // tripped. On an errored/parked atria run — failed, needs_connection, or a stalled prepare — the cron
+  // won't re-claim it (it claims only `planned`), so restore Execute so the operator can take over
+  // instead of a dead-ended post (F2/F3).
   const isAtriaGranted = run.approvalMode === 'atria';
-  const canExecute = !isAtriaGranted && (
+  const atriaDriving = isAtriaGranted && !stalled && (run.status === 'planned' || run.status === 'running');
+  const canExecute = !atriaDriving && (
     run.status === 'planned' || run.status === 'failed' ||
     (run.status === 'needs_connection' && requiredActions.length === 0));
   // Offer the grant ("⚡ Chuẩn bị") only on a fresh planned campaign post that still runs manually.
@@ -254,16 +263,21 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
               <button className="ws-grant-no" disabled={granting} onClick={() => setGrantPending(null)}>Huỷ</button>
             </span>
           ) : (
-            <button className="btn small" disabled={granting} title="Cấp quyền cho Atria tự chuẩn bị rồi dừng ở review" onClick={() => void startGrant(runPostId!)}>
+            <button className="btn small" disabled={granting} title="Cấp quyền cho Atria tự chuẩn bị và đăng tự động theo lịch" onClick={() => void startGrant(runPostId!)}>
               {granting ? 'Đang tính…' : '⚡ Chuẩn bị'}
             </button>
           )
         )}
       </div>
-      {preparing ? (
+      {preparing && !stalled ? (
         <div className="atria-preparing" role="status" aria-live="polite">
           <span className="atria-preparing-dot" aria-hidden="true" />
-          Atria đang chuẩn bị nội dung — sẽ dừng ở bước review để bạn duyệt.
+          Atria đang tự chuẩn bị nội dung và sẽ đăng tự động theo lịch đã đặt.
+        </div>
+      ) : preparing && stalled ? (
+        <div className="atria-preparing is-stalled" role="status" aria-live="polite">
+          <span className="atria-preparing-dot" aria-hidden="true" />
+          Chưa thấy tiến trình tự động — có thể tự động hoá đang tắt. Bấm ▶ Execute để chạy thủ công.
         </div>
       ) : (
         <p className="muted small">{isResume ? 'A step was re-run — later steps are stale. Click Continue to regenerate them, then approve to publish.' : statusHint}</p>

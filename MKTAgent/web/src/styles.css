@@ -562,6 +562,8 @@ a { color: var(--accent); }
 .atria-preparing { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; padding: 8px 12px;
   font-size: 12.5px; color: #6d4bd6; background: rgba(157,123,255,0.1); border: 1px solid rgba(157,123,255,0.32);
   border-radius: 10px; }
+.atria-preparing.is-stalled { color: #9a6a00; background: rgba(249,171,0,0.1); border-color: rgba(249,171,0,0.34); }
+.atria-preparing.is-stalled .atria-preparing-dot { background: #f9ab00; }
 .atria-preparing-dot { width: 8px; height: 8px; border-radius: 50%; background: #9d7bff; flex-shrink: 0;
   animation: atria-preparing-pulse 1.3s ease-in-out infinite; }
 @keyframes atria-preparing-pulse { 0%, 100% { opacity: 0.35; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.15); } }

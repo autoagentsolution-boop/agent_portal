@@ -15,6 +15,11 @@ export const voiceRouter: Router = Router();
 const MAX_TEXT = 4000; // bound latency + cost; longer narration is truncated at a sentence-ish edge
 const TTS_MODEL = 'gemini-2.5-flash-preview-tts';
 const TTS_COST_USD = 0.02; // mirrors node-cost.ts ttsCost() flat estimate — keep in lock-step
+const MIN_INTERVAL_MS = 1500; // per-owner throttle so varying text can't drive unbounded Gemini-TTS spend
+
+// Last-request timestamp per owner. In-process only (same constraint as the SSE bus); a multi-instance
+// deploy would move this to Redis. Enough to stop a hot loop hammering paid synthesis.
+const lastCallAt = new Map<string, number>();
 
 // Truncate to the last sentence break under the cap so narration doesn't cut mid-word.
 const clampNarration = (raw: string): string => {
@@ -32,6 +37,13 @@ voiceRouter.post(
     const text = typeof body.text === 'string' ? clampNarration(body.text) : '';
     if (!text) return fail(res, 400, 'text_required', 'provide non-empty text to narrate');
     const voice = typeof body.voice === 'string' && body.voice ? body.voice : undefined;
+
+    // Per-owner throttle — a hot loop of varying text would otherwise drive unbounded paid synthesis.
+    const owner = req.userId!;
+    const now = Date.now();
+    const prev = lastCallAt.get(owner);
+    if (prev !== undefined && now - prev < MIN_INTERVAL_MS) return fail(res, 429, 'rate_limited', 'slow down');
+    lastCallAt.set(owner, now);
 
     let result: { outputFile: string; cached: boolean };
     try {
