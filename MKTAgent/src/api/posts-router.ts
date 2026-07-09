@@ -30,7 +30,10 @@ import { publishPostStatus } from '../events/bus.ts';
 import { generateForPost, refineForPost } from '../copygen/service.ts';
 import { publishPostNow } from '../scheduler/tick.ts';
 import { getCampaign } from '../db/repos/campaign-repo.ts';
-import { cloneTemplateRun } from '../db/repos/workflow-run-repo.ts';
+import { cloneTemplateRun, grantAutonomy } from '../db/repos/workflow-run-repo.ts';
+import { estimatePostCost } from '../orchestration/master/campaign-grant.ts';
+import { issueGrantToken, verifyGrantToken } from './autonomy-grant-token.ts';
+import { logRun } from '../db/client.ts';
 import { requirementAnalyzer } from '../orchestration/master/requirement-analyzer.ts';
 import { goalToBrief, evaluateBriefClarification } from '../orchestration/master/goal-to-brief.ts';
 import {
@@ -427,5 +430,38 @@ postsRouter.post(
     if (!updated) return fail(res, 409, 'not_in_review', 'post is not in review state');
     publishPostStatus(req.userId!, { postId: updated.id, status: updated.status, campaignId: updated.campaignId });
     ok(res, toPostDto(updated));
+  }),
+);
+
+// Per-post autonomy grant (only for a campaign-plan post that has a backing run). Two-step, mirroring
+// the campaign grant: Step 1 (no token) returns THIS post's cost estimate + a confirmation token WITHOUT
+// granting; Step 2 (echo token) flips the run to 'atria' so the autonomy runner auto-prepares it (runs
+// pre-steps, then parks at review). Nothing publishes here — the scheduler publishes after approval.
+postsRouter.post(
+  '/:id/grant-autonomy',
+  asyncHandler(async (req, res) => {
+    const post = await getPostForOwner(req.params.id, req.userId!);
+    if (!post) return fail(res, 404, 'post_not_found');
+    if (!post.runId) return fail(res, 409, 'post_has_no_run');
+    if (!post.campaignId) return fail(res, 409, 'not_a_campaign_post', 'per-post grant is only for campaign-plan posts');
+    const body = (req.body ?? {}) as { confirmationToken?: unknown; scheduleConfirmed?: unknown };
+
+    const estimate = await estimatePostCost(post.runId, req.userId!);
+    // Step 1 — no valid token: surface the cost up front + issue the token, DO NOT grant.
+    if (!verifyGrantToken(post.runId, req.userId!, body.confirmationToken)) {
+      return ok(res, {
+        postId: post.id,
+        pendingConfirmation: true,
+        confirmationToken: issueGrantToken(post.runId, req.userId!),
+        estimate,
+      });
+    }
+
+    // Step 2 — token verified: grant this one run. null = not in a grantable state (already running/posted).
+    const scheduleConfirmed = body.scheduleConfirmed === true;
+    const granted = await grantAutonomy(post.runId, req.userId!, scheduleConfirmed);
+    if (!granted) return fail(res, 409, 'post_not_grantable', 'the post is already running or finished');
+    await logRun('info', 'atria_post_grant', { postId: post.id, runId: post.runId, scheduleConfirmed }, req.userId!);
+    ok(res, { postId: post.id, granted: true, scheduleConfirmed, estimate });
   }),
 );

@@ -297,6 +297,16 @@ export interface CampaignGrantResponse {
   status: CampaignStatusDto;
 }
 
+// Per-post autonomy grant (mirrors CampaignGrantResponse, scoped to one post's run).
+export interface PostGrantResponse {
+  postId: string;
+  pendingConfirmation?: boolean;
+  confirmationToken?: string;
+  granted?: boolean;
+  scheduleConfirmed?: boolean;
+  estimate: { totalTokens: number; costUsd: number; credits: number; agentCount: number };
+}
+
 export interface ImpactMetricsDto {
   postsPublished: number; postsTotal: number; platforms: string[]; mediaPieces: number;
   usdSpent: number; totalTokens: number; creditsSpent: number; leadsCaptured: number; runMinutes: number;
@@ -555,6 +565,8 @@ export const api = {
   deleteMemory: (id: string) => request<void>(`/memory/${id}`, { method: 'DELETE' }),
   grantCampaign: (id: string, body: { confirmationToken?: string; scheduleConfirmed?: boolean }) =>
     request<CampaignGrantResponse>(`/campaigns/${id}/grant-autonomy`, { method: 'POST', body }),
+  grantPost: (postId: string, body: { confirmationToken?: string; scheduleConfirmed?: boolean } = {}) =>
+    request<PostGrantResponse>(`/posts/${postId}/grant-autonomy`, { method: 'POST', body }),
 
   // ---- Atria: impact / value report (Phase 07) ----
   campaignImpact: (id: string) => request<ImpactReportDto>(`/campaigns/${id}/impact`),

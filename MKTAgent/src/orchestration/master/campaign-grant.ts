@@ -1,8 +1,15 @@
 // Campaign grant helpers (Atria Phase 05) — the whole-calendar cost estimate shown at the grant
 // handshake, and the campaign status rollup the command view renders. Pure aggregation over the
 // materialized posts' runs; the bulk grant itself lives in workflow-run-repo (grantAutonomyForCampaign).
-import { estimateAgents } from '../../cost/plan-estimate.ts';
-import { agentCostAverages, getCampaignRunPlans } from '../../db/repos/workflow-run-repo.ts';
+import { estimateAgents, type PlanEstimate } from '../../cost/plan-estimate.ts';
+import { agentCostAverages, getCampaignRunPlans, getRunPlanAgents } from '../../db/repos/workflow-run-repo.ts';
+
+// One post's run cost estimate (per-post autonomy grant). Same basis as the campaign estimate, scoped
+// to a single run's plan agents + the owner's per-agent history.
+export async function estimatePostCost(runId: string, ownerId: string): Promise<PlanEstimate> {
+  const [agentIds, history] = await Promise.all([getRunPlanAgents(runId, ownerId), agentCostAverages(ownerId)]);
+  return estimateAgents(agentIds, history);
+}
 
 export interface CampaignCostEstimate {
   posts: number;

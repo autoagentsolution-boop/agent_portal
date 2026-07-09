@@ -439,6 +439,13 @@ export const grantAutonomyForCampaign = async (
 
 // Per-run plan node agent ids for a campaign's posts (Phase 05 cost estimate). Reads each backing
 // run's frozen plan snapshot. Owner-scoped.
+// One run's plan agent ids (for the per-post autonomy-grant cost estimate). Owner-scoped; [] on miss.
+export const getRunPlanAgents = async (runId: string, ownerId: string): Promise<string[]> => {
+  const run = await prisma.workflowRun.findFirst({ where: { id: runId, ownerId }, select: { plan: true } });
+  const nodes = (run?.plan as { nodes?: Array<{ agentId: string }> } | null)?.nodes ?? [];
+  return nodes.map((n) => n.agentId);
+};
+
 export const getCampaignRunPlans = async (
   campaignId: string,
   ownerId: string,

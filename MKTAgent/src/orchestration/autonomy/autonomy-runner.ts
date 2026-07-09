@@ -48,9 +48,11 @@ export const runAutonomyOnce = async (maxPerTick = env.AUTONOMY_MAX_PER_TICK): P
         continue;
       }
       await logRun('info', 'autonomy_kickoff', { runId: run.id }, run.ownerId);
-      // Already claimed to `running`. atria mode + autoPublish → the policy clears each gate when
-      // guardrails hold; the DRY publishFn keeps the real post off the wire.
-      await runWorkflow(run.id, run.ownerId, goal, plan, { autoPublish: true, publishFn: dryAutonomyPublish });
+      // Already claimed to `running`. autoPublish:FALSE → run the pre-steps and PARK before the
+      // publisher (needs_approval) so the user reviews + applies tone, then approves → the scheduler
+      // publishes for real at scheduledAt. Nothing goes on the wire from here; the DRY publishFn is a
+      // belt-and-suspenders no-op that is never reached while we park pre-publish.
+      await runWorkflow(run.id, run.ownerId, goal, plan, { autoPublish: false, publishFn: dryAutonomyPublish });
       result.executed++;
     } catch (e) {
       await setRunStatus(run.id, 'failed').catch(() => {});

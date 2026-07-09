@@ -387,6 +387,16 @@ a { color: var(--accent); }
 .cc-chat-embed .prompt-chip { background: #171922; border: 1px solid #2c2f3d; color: #b6b8c8; }
 .cc-chat-embed .prompt-chip:hover { color: #fff; border-color: #40435a; }
 
+/* Per-post autonomy grant controls in the workspace post list (light drawer). */
+.ws-post-li { display: flex; align-items: center; gap: 8px; }
+.ws-post-li .ws-post-row { flex: 1 1 auto; }
+.ws-grant-btn { flex-shrink: 0; font-size: 11.5px; border: 1px solid var(--border); background: var(--panel);
+  color: var(--text); border-radius: 7px; padding: 4px 9px; cursor: pointer; white-space: nowrap; }
+.ws-grant-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.ws-grant-confirm { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+.ws-grant-yes { border: none; background: var(--accent); color: #fff; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+.ws-grant-no { border: 1px solid var(--border); background: none; color: var(--muted); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+
 /* P2.6 — "Open full board" in the workspace dashboard drawer (light drawer surface). */
 .ws-head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .ws-open-board { font-size: 12px; border: 1px solid var(--border); background: var(--panel); color: var(--text);

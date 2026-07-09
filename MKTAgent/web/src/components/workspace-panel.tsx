@@ -30,7 +30,33 @@ const fmtCredits = (n: number) => Math.round(n).toLocaleString();
 export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBoard }: Props) {
   const [ws, setWs] = useState<WorkspaceDetailDto | null>(null);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
+  // Per-post autonomy grant (2-step): clicking a planned post's "Chuẩn bị" fetches the cost (Step 1)
+  // into `grantFor`; confirming echoes the token (Step 2) so the autonomy runner prepares it.
+  const [grantFor, setGrantFor] = useState<{ postId: string; credits: number; token: string } | null>(null);
+  const [granting, setGranting] = useState(false);
   const debounce = useRef<number | undefined>(undefined);
+
+  // Step 1 — surface this post's cost + hold the confirmation token (nothing granted yet).
+  const startGrant = async (postId: string) => {
+    setGranting(true);
+    try {
+      const r = await api.grantPost(postId);
+      if (!r.ok) { notify(`Grant: ${r.error.error}`, 'err'); return; }
+      setGrantFor({ postId, credits: Math.round(r.data.estimate.credits), token: r.data.confirmationToken ?? '' });
+    } finally { setGranting(false); }
+  };
+  // Step 2 — confirm: grant the run to 'atria'; the autonomy cron then prepares it (parks at review).
+  const confirmGrant = async () => {
+    if (!grantFor) return;
+    setGranting(true);
+    try {
+      const r = await api.grantPost(grantFor.postId, { confirmationToken: grantFor.token, scheduleConfirmed: true });
+      if (!r.ok) { notify(`Grant: ${r.error.error}`, 'err'); return; }
+      notify('Đã cấp quyền — Atria sẽ tự chuẩn bị nội dung rồi dừng ở review.');
+      setGrantFor(null);
+      void load();
+    } finally { setGranting(false); }
+  };
 
   const load = useCallback(async () => {
     const r = await api.getWorkspace(campaignId);
@@ -121,13 +147,30 @@ export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBo
           <div className="ws-section-title">Posts</div>
           <ul className="ws-post-list">
             {ws.posts.map((p) => (
-              <li key={p.postId}>
+              <li key={p.postId} className="ws-post-li">
                 <button className="ws-post-row" onClick={() => setOpenRunId(p.runId)}>
                   <span className="ws-dot" style={{ background: DOT[p.status].color }} title={DOT[p.status].label} />
                   <span className="ws-post-when">{when(p.scheduledAt)}</span>
                   <span className="muted">{DOT[p.status].label}</span>
                   <span className="ws-post-open">Open →</span>
                 </button>
+                {/* A not-yet-run (planned/brief) post can be granted so Atria auto-prepares it. */}
+                {p.status === 'planned' && (
+                  grantFor?.postId === p.postId ? (
+                    <span className="ws-grant-confirm">
+                      ≈ {grantFor.credits.toLocaleString()} cr?
+                      <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant()}>Xác nhận</button>
+                      <button className="ws-grant-no" disabled={granting} onClick={() => setGrantFor(null)}>Huỷ</button>
+                    </span>
+                  ) : (
+                    <button
+                      className="ws-grant-btn"
+                      disabled={granting}
+                      title="Cấp quyền cho Atria tự chạy các bước rồi dừng ở review"
+                      onClick={() => void startGrant(p.postId)}
+                    >⚡ Chuẩn bị</button>
+                  )
+                )}
               </li>
             ))}
           </ul>
