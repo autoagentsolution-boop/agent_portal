@@ -3,6 +3,51 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-09
+
+### Feature: Command Center Unification — top nav, Atria chat merged into the CC, "alive" animation
+Big frontend re-architecture (`plans/260709-1359-command-center-unification/`). Commits `5c47904`
+(P1) → `019b92b` (P3), all on `pivot/video-content-farm`.
+- **P1 — global top nav, no left sidebar** (`top-nav.tsx`, `app-nav.ts`): all nav moved to a dark top
+  bar (page items + Workspace ▾ + Chats ▾ + credits/theme/user); `.app-root` became a rows grid with a
+  clamped column so wide children scroll internally.
+- **P2 — Atria chat hosted INSIDE the Command Center**: App builds `OrchestratePanel` once and passes
+  it to the CC as `chatSlot`; idle = neural graph + command bar + Atria suggestions/resume cards
+  (P2.0), chat active = graph collapses to just the Atria hero, transcript below (dark-restyled, scoped
+  to `.cc-chat-embed`). Retired the standalone `page:'orchestrate'`. Unified the "workspace" concept:
+  removed the Workspaces nav item; the Workspace ▾ dashboard drawer is the single entry with a
+  "Mở board" button to the deep PostBoard/DAG.
+- **P3 — "alive" animation (VISUAL only, no `generateContentStream`)**: `TypewriterText` reveals new
+  Atria replies char-by-char with a caret; the Atria core "breathes" while a chat is open.
+
+### Feature: per-post autonomy grant ("Chuẩn bị" — prepare + park at review)
+`POST /posts/:id/grant-autonomy` (2-step: Step-1 returns this post's cost estimate + token, Step-2
+flips the run to `atria`). The autonomy runner now runs granted runs with `autoPublish:false` so they
+run the pre-steps then PARK at `needs_approval` for the user to edit + apply tone; the scheduler
+publishes after approval. UI "⚡ Chuẩn bị" button (inline cost-confirm) on planned campaign posts in the
+Workspace dashboard AND the Scheduled list. Reuses `grantAutonomy`/`plan-estimate`/grant-token.
+Forecast is per-agent accurate (video 18cr = concept+storyboard+video+publisher; image 9cr =
+concept+infographic+publisher). Commits `66faf26`, `af2c6bc`.
+
+### Feature: measured Insights extended to Threads + X (`de6a7bb`)
+`threads-insights.ts` (views→impressions, likes/replies/reposts/quotes→engaged; reach null) +
+`x-insights.ts` (`public_metrics` via /2/tweets; degrades to null on free tier / rate limit). Merged
+null-aware into Impact (4-way FB+IG+TH+X). All four platforms live-verified.
+
+### Fix: token force-refresh + several CC-chat bugs
+- **`06c610a`** — a stale token (`needs_attention`/expired) with an untrustworthy far-future expiry
+  never attempted a refresh (the "X won't renew" bug). `refreshIfDue` gains a `force` flag; the stale
+  path forces one refresh and flips status back to active on success (self-heal).
+- **`8a2c9b2`** — the CC chat re-fired the LLM on every remount (tab switch / refresh) because the
+  prefill was never consumed. Explicit `ccChatOpen` state + `onAutoStarted` clears the prefill +
+  restore-on-return; no duplicate spend.
+- **`0096d48`** — an acted Atria suggestion reappeared on returning to the landing and could be
+  re-fired; the acted set now lives in `CommandCenterPage` (survives the chat toggle).
+- **`d4da71b`** — "repeat what worked" now names the completed product (`lastCompletedProduct`) so the
+  user knows which campaign and Atria gets concrete context instead of re-asking.
+- **`c1cfa87`, `c1f6426`** — embedded-chat transcript scroll + composer pinning; chat-mode graph
+  gathers to just the Atria hero.
+
 ## 2026-07-08
 
 ### Fix: WOW-audit tech-debt batch — 5 phases (P0/P1/P2, code green, uncommitted)
