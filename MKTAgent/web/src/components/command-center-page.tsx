@@ -13,6 +13,8 @@ import { MemoryPanel } from './memory-panel';
 import { ImpactReport } from './impact-report';
 import { LeadsPage } from './LeadsPage';
 import { EmailPanel } from './email-panel';
+import { AtriaSuggestionCards } from './atria-suggestion-cards';
+import { AtriaResumeWorkCards } from './atria-resume-work-cards';
 
 interface Props {
   // Hand off to the live Orchestrate chat (Atria core / command bar), optionally seeding the composer.
@@ -22,6 +24,12 @@ interface Props {
   onOpenWorkspaceConsumed?: () => void;
   // Open the Connections page (bubbled up from an embedded PostWorkflowView's connection gate).
   onOpenConnections?: () => void;
+  // Atria's proactive surface, promoted from the Orchestrate empty-state onto the CC home (P2.0):
+  // resume a hung chat/flow. Cards self-fetch their suggestions; these feed the "resume work" row.
+  resumeChats?: Array<{ id: string; title: string; updatedAt: string }>;
+  resumeFlows?: Array<{ id: string; name: string }>;
+  onResumeChat?: (id: string) => void;
+  onOpenFlow?: (id: string) => void;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
@@ -44,7 +52,7 @@ const nodePos = (i: number, total: number): { left: string; top: string } => {
   return { left: `${50 + Math.cos(ang) * 42}%`, top: `${50 + Math.sin(ang) * 40}%` };
 };
 
-export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, notify }: Props) {
+export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, resumeChats = [], resumeFlows = [], onResumeChat, onOpenFlow, notify }: Props) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [cmd, setCmd] = useState('');
@@ -151,6 +159,23 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
         </div>
         <div className="cc-hint">Atria tự nhận diện ngôn ngữ, xác nhận cách hiểu, rồi đề xuất phương án kèm chi phí.</div>
       </form>
+
+      {/* Atria's proactive surface on the home (P2.0) — reminders + resume hung work, promoted from the
+          old Orchestrate empty-state so the operator sees them without entering a chat. */}
+      <div className="cc-atria-surface">
+        <section className="cc-atria-block">
+          <h3 className="atria-section-title">Nhắc nhở từ Atria</h3>
+          <AtriaSuggestionCards notify={notify} onPlanCampaign={(t) => onLaunch(t)} />
+        </section>
+        {(resumeChats.length > 0 || resumeFlows.length > 0) && onResumeChat && onOpenFlow && (
+          <AtriaResumeWorkCards
+            chats={resumeChats.slice(0, 4)}
+            flows={resumeFlows.slice(0, 4)}
+            onResumeChat={onResumeChat}
+            onOpenFlow={onOpenFlow}
+          />
+        )}
+      </div>
 
       {panel && (
         <>

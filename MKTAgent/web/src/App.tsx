@@ -268,6 +268,10 @@ export function App() {
             openWorkspaceId={openWorkspaceId}
             onOpenWorkspaceConsumed={() => setOpenWorkspaceId(null)}
             onOpenConnections={() => { setSelectedRunId(null); setPage('connections'); }}
+            resumeChats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
+            resumeFlows={flowsWithoutStrategy}
+            onResumeChat={(id) => void selectChat(id)}
+            onOpenFlow={(id) => openSavedFlow(id)}
             notify={show}
           />
         ) : page === 'orchestrate' ? (

@@ -343,6 +343,11 @@ a { color: var(--accent); }
 .sidebar-user { margin-top: auto; color: var(--muted); font-size: 12px; padding: 12px 8px 4px; overflow-wrap: anywhere; }
 .app-main { min-height: 0; height: calc(100vh - var(--topnav-h, 52px)); overflow-y: auto; background: var(--bg); }
 
+/* Atria proactive surface on the Command Center home (P2.0). Constrained width, centered under the
+   command bar; the cards reuse their existing .atria-card styling. */
+.cc-atria-surface { max-width: 860px; margin: 8px auto 40px; padding: 0 20px; display: flex; flex-direction: column; gap: 18px; }
+.cc-atria-block .atria-section-title { color: #b6b8c8; }
+
 /* ── Global top navigation (Command Center Unification P1) ──────────────────────────────────────
    Dark-first bar that replaced the left sidebar. Holds brand, page items, Workspace ▾ + Chats ▾,
    credits, theme, user. Uses its own dark tokens so it reads the same on light and dark app themes. */
