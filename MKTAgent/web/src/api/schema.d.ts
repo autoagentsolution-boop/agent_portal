@@ -2638,7 +2638,7 @@ export interface components {
         /** @enum {string} */
         PostStatus: "brief" | "review" | "rework" | "ready" | "posting" | "posted" | "partial" | "error";
         /** @enum {string} */
-        AssetType: "image" | "carousel" | "video";
+        AssetType: "image" | "carousel" | "video" | "text";
         /** @enum {string} */
         SocialPlatform: "facebook" | "instagram" | "threads" | "linkedin" | "x";
         CopyBag: {
@@ -2675,7 +2675,7 @@ export interface components {
             /** @enum {string} */
             status: "brief" | "review" | "rework" | "ready" | "posting" | "posted" | "partial" | "error";
             /** @enum {string} */
-            assetType: "image" | "carousel" | "video";
+            assetType: "image" | "carousel" | "video" | "text";
             copy: {
                 body: string;
                 threads: string;
@@ -2691,24 +2691,32 @@ export interface components {
             platforms: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];
             platformAssets: {
                 /** @enum {string} */
-                facebook?: "image" | "carousel" | "video";
+                facebook?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                instagram?: "image" | "carousel" | "video";
+                instagram?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                threads?: "image" | "carousel" | "video";
+                threads?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                linkedin?: "image" | "carousel" | "video";
+                linkedin?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                x?: "image" | "carousel" | "video";
+                x?: "image" | "carousel" | "video" | "text";
             } | null;
             /** Format: uuid */
             productKnowledgeId: string | null;
             referenceImage: string | null;
             leadCaptureKeyword: string | null;
+            leadCollectorStatus: string | null;
+            leadCollectorExpiresAt: string | null;
+            versionCount: number | null;
             scheduledAt: string | null;
             postUrls: {
                 [key: string]: string;
             } | null;
+            linkStatus: {
+                platform: string;
+                url: string;
+                alive: boolean | null;
+            }[] | null;
             error: string | null;
             postedAt: string | null;
             createdAt: string;
@@ -2724,7 +2732,7 @@ export interface components {
             /** @enum {string} */
             status: "brief" | "review" | "rework" | "ready" | "posting" | "posted" | "partial" | "error";
             /** @enum {string} */
-            assetType: "image" | "carousel" | "video";
+            assetType: "image" | "carousel" | "video" | "text";
             copy: {
                 body: string;
                 threads: string;
@@ -2740,24 +2748,32 @@ export interface components {
             platforms: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];
             platformAssets: {
                 /** @enum {string} */
-                facebook?: "image" | "carousel" | "video";
+                facebook?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                instagram?: "image" | "carousel" | "video";
+                instagram?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                threads?: "image" | "carousel" | "video";
+                threads?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                linkedin?: "image" | "carousel" | "video";
+                linkedin?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                x?: "image" | "carousel" | "video";
+                x?: "image" | "carousel" | "video" | "text";
             } | null;
             /** Format: uuid */
             productKnowledgeId: string | null;
             referenceImage: string | null;
             leadCaptureKeyword: string | null;
+            leadCollectorStatus: string | null;
+            leadCollectorExpiresAt: string | null;
+            versionCount: number | null;
             scheduledAt: string | null;
             postUrls: {
                 [key: string]: string;
             } | null;
+            linkStatus: {
+                platform: string;
+                url: string;
+                alive: boolean | null;
+            }[] | null;
             error: string | null;
             postedAt: string | null;
             createdAt: string;
@@ -2832,7 +2848,7 @@ export interface components {
             /** Format: uuid */
             campaignId: string;
             /** @enum {string} */
-            assetType?: "image" | "carousel" | "video";
+            assetType?: "image" | "carousel" | "video" | "text";
             language?: string | null;
             lengthSpec?: string | null;
             angle?: string | null;
@@ -2849,6 +2865,8 @@ export interface components {
             answers?: {
                 [key: string]: string | string[];
             };
+            /** Format: uuid */
+            productKnowledgeId?: string | null;
         };
         PostFromAgentDto: {
             questions?: {
@@ -2868,7 +2886,7 @@ export interface components {
                 /** @enum {string} */
                 status: "brief" | "review" | "rework" | "ready" | "posting" | "posted" | "partial" | "error";
                 /** @enum {string} */
-                assetType: "image" | "carousel" | "video";
+                assetType: "image" | "carousel" | "video" | "text";
                 copy: {
                     body: string;
                     threads: string;
@@ -2884,24 +2902,32 @@ export interface components {
                 platforms: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];
                 platformAssets: {
                     /** @enum {string} */
-                    facebook?: "image" | "carousel" | "video";
+                    facebook?: "image" | "carousel" | "video" | "text";
                     /** @enum {string} */
-                    instagram?: "image" | "carousel" | "video";
+                    instagram?: "image" | "carousel" | "video" | "text";
                     /** @enum {string} */
-                    threads?: "image" | "carousel" | "video";
+                    threads?: "image" | "carousel" | "video" | "text";
                     /** @enum {string} */
-                    linkedin?: "image" | "carousel" | "video";
+                    linkedin?: "image" | "carousel" | "video" | "text";
                     /** @enum {string} */
-                    x?: "image" | "carousel" | "video";
+                    x?: "image" | "carousel" | "video" | "text";
                 } | null;
                 /** Format: uuid */
                 productKnowledgeId: string | null;
                 referenceImage: string | null;
                 leadCaptureKeyword: string | null;
+                leadCollectorStatus: string | null;
+                leadCollectorExpiresAt: string | null;
+                versionCount: number | null;
                 scheduledAt: string | null;
                 postUrls: {
                     [key: string]: string;
                 } | null;
+                linkStatus: {
+                    platform: string;
+                    url: string;
+                    alive: boolean | null;
+                }[] | null;
                 error: string | null;
                 postedAt: string | null;
                 createdAt: string;
@@ -2911,7 +2937,7 @@ export interface components {
         };
         UpdatePostBody: {
             /** @enum {string} */
-            assetType?: "image" | "carousel" | "video";
+            assetType?: "image" | "carousel" | "video" | "text";
             language?: string | null;
             lengthSpec?: string | null;
             angle?: string | null;
@@ -2921,19 +2947,20 @@ export interface components {
             platforms?: ("facebook" | "instagram" | "threads" | "linkedin" | "x")[];
             platformAssets?: {
                 /** @enum {string} */
-                facebook?: "image" | "carousel" | "video";
+                facebook?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                instagram?: "image" | "carousel" | "video";
+                instagram?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                threads?: "image" | "carousel" | "video";
+                threads?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                linkedin?: "image" | "carousel" | "video";
+                linkedin?: "image" | "carousel" | "video" | "text";
                 /** @enum {string} */
-                x?: "image" | "carousel" | "video";
+                x?: "image" | "carousel" | "video" | "text";
             } | null;
             /** Format: uuid */
             productKnowledgeId?: string | null;
             leadCaptureKeyword?: string | null;
+            versionCount?: number | null;
             scheduledAt?: string | null;
         };
         /** @enum {string} */
@@ -3015,6 +3042,8 @@ export interface components {
             createdCampaignId?: string;
             /** Format: uuid */
             createdPostId?: string;
+            /** @enum {string} */
+            approvalMode?: "human" | "atria";
             nodes: {
                 nodeId: string;
                 agentId: string;
@@ -3041,6 +3070,7 @@ export interface components {
                 outputTokens: number;
                 totalTokens: number;
                 costUsd: number;
+                credits?: number;
                 runs?: number;
             };
             flowCost?: {
@@ -3048,6 +3078,7 @@ export interface components {
                 outputTokens: number;
                 totalTokens: number;
                 costUsd: number;
+                credits?: number;
                 runs?: number;
             };
             createdAt: string;

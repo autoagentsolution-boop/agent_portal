@@ -342,6 +342,10 @@ export const workflowRunDto = z.object({
   campaignIntent: z.boolean().optional(),
   createdCampaignId: z.string().uuid().optional(),
   createdPostId: z.string().uuid().optional(),
+  // Autonomy grant state (per-post grant / "⚡ Chuẩn bị"): 'atria' = handed to the autonomy
+  // runner (auto-prepares + parks at review); 'human' = manual Execute. Lets the post view
+  // show the grant button (human) vs an "Atria đang chuẩn bị…" indicator (atria).
+  approvalMode: z.enum(['human', 'atria']).optional(),
   nodes: z.array(workflowNodeDto),
   artifacts: z.array(artifactDto),
   // This run's own token/cost total (sum of its nodes). Always present.
