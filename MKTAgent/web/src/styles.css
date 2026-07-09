@@ -361,7 +361,12 @@ a { color: var(--accent); }
 .cc-chat-back { align-self: flex-start; margin: 8px 0 2px 16px; background: none; border: 1px solid #2c2f3d;
   color: #b6b8c8; border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
 .cc-chat-back:hover { color: #fff; border-color: #40435a; }
-.cc-chat-embed > .master-chat-main { flex: 1 1 auto; min-height: 0; }
+/* Bound the embedded chat so the transcript scrolls internally and the composer pins at the bottom
+   (the standalone page relies on min-height:620px + a page-level scroll, which overflows the embed). */
+.cc-chat-embed > .master-chat-main { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.cc-chat-embed .chat-transcript { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 16px; }
+.cc-chat-embed .empty-chat-hero { overflow-y: auto; min-height: 0; }
+.cc-chat-embed .floating-composer { position: static; flex: 0 0 auto; margin: 8px auto 12px; }
 
 /* P2.4 — dark restyle of the embedded chat (scoped to .cc-chat-embed so the standalone page is
    untouched). Bubbles/composer/chips adopt the Command Center dark skin. */
