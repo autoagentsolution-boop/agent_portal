@@ -19,22 +19,26 @@ type TokenRecord = {
   meta: Record<string, unknown> | null;
 };
 
-// Refresh a token iff the provider supports it AND expiry is inside the window.
+// Refresh a token iff the provider supports it AND (expiry is inside the window OR force).
 // Persists the fresh token on success. Shared by runTokenMaintenance (cron) and
 // getActiveToken (lazy) so there's ONE refresh implementation. Throws only on an
 // actual refresh HTTP failure — callers decide how to treat that (cron logs, lazy
 // falls back to the existing token).
+// `force` bypasses the expiry-window gate: use it when the token is already known-bad
+// (needs_attention / expired) so the STORED expiry can't be trusted (a pasted token can carry a
+// bogus far-future expiry that would otherwise permanently skip refresh — the "X won't renew" bug).
 export const refreshIfDue = async (
   ownerId: string,
   platform: SocialPlatform,
   rec: TokenRecord,
   provider: PlatformTokenProvider,
+  force = false,
 ): Promise<{ token: string; refreshed: boolean }> => {
   if (!provider.refresh || !provider.refreshWhenWithinMs) return { token: rec.token, refreshed: false };
   const within = rec.expiresAt
     ? rec.expiresAt.getTime() - Date.now() <= provider.refreshWhenWithinMs
     : true; // unknown expiry → refresh to be safe
-  if (!within) return { token: rec.token, refreshed: false };
+  if (!force && !within) return { token: rec.token, refreshed: false };
   const r = await provider.refresh(rec.token, rec.refreshToken, rec.meta, ownerId);
   await upsertToken({
     ownerId,
@@ -74,12 +78,16 @@ export const getActiveToken = async (
     }
     // Stale token (needs_attention or past expiry) — NEVER publish on it blindly (Phase 06 / E-note:
     // getActiveToken used to return anything not `revoked`, so an expired/attention token still
-    // published; LinkedIn's no-refresh tier silently died this way). Attempt ONE refresh and return
-    // only if it actually produced a fresh token; otherwise fail closed (treat as not-connected).
+    // published; LinkedIn's no-refresh tier silently died this way). FORCE one refresh (bypass the
+    // expiry-window gate — a stale token's stored expiry is untrustworthy, e.g. a pasted token with a
+    // bogus far-future expiry) and return only if it produced a fresh token; else fail closed.
     if (provider) {
       try {
-        const { token, refreshed } = await refreshIfDue(ownerId, platform, rec, provider);
-        if (refreshed) return token;
+        const { token, refreshed } = await refreshIfDue(ownerId, platform, rec, provider, true);
+        if (refreshed) {
+          await markTokenStatus(ownerId, platform, 'active').catch(() => {});
+          return token;
+        }
       } catch (e) {
         logger.warn('token_stale_refresh_failed', { ownerId, platform, error: String(e).slice(0, 200) });
       }
