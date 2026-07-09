@@ -55,6 +55,10 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   const [refineText, setRefineText] = useState('');
   // Publish-gate schedule (Fix A): empty → publish now; a future time → park ready, scheduler fires it.
   const [publishAt, setPublishAt] = useState('');
+  // Per-post autonomy grant ("⚡ Chuẩn bị", G1): 2-step like the Scheduled/Workspace renderers —
+  // Step 1 surfaces the credit forecast + a token; Step 2 hands the run to Atria (approvalMode→atria).
+  const [grantPending, setGrantPending] = useState<{ credits: number; token: string } | null>(null);
+  const [granting, setGranting] = useState(false);
 
   const load = async () => {
     const r = await api.getRun(runId);
@@ -71,6 +75,16 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     if (ev.notice) setNotices((prev) => ({ ...prev, [ev.nodeId]: ev.notice! }));
     if (ev.status === 'completed' || ev.status === 'failed') void load();
   });
+
+  // Atria-granted run left `planned`/`running` is being auto-prepared by the autonomy cron (≤2 min
+  // cadence). SSE only connects once status is running/needs_approval, so poll while it "prepares"
+  // to advance the view when the cron claims it and again when it parks at review.
+  const preparing = run?.approvalMode === 'atria' && (run.status === 'planned' || run.status === 'running');
+  useEffect(() => {
+    if (!preparing) return;
+    const t = setInterval(() => void load(), 8000);
+    return () => clearInterval(t);
+  }, [preparing, runId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const execute = async () => {
     if (!run) return;
@@ -131,6 +145,28 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     } finally { setBusy(false); }
   };
 
+  // Step 1 — fetch this post's forecast + token (does NOT grant yet).
+  const startGrant = async (postId: string) => {
+    setGranting(true);
+    try {
+      const r = await api.grantPost(postId);
+      if (!r.ok) { notify(`Chuẩn bị: ${r.error.error}`, 'err'); return; }
+      setGrantPending({ credits: Math.round(r.data.estimate.credits), token: r.data.confirmationToken ?? '' });
+    } finally { setGranting(false); }
+  };
+  // Step 2 — confirm: flip the run to atria autonomy. The cron then prepares it + parks at review.
+  const confirmGrant = async (postId: string) => {
+    if (!grantPending) return;
+    setGranting(true);
+    try {
+      const r = await api.grantPost(postId, { confirmationToken: grantPending.token, scheduleConfirmed: true });
+      if (!r.ok) { notify(`Chuẩn bị: ${r.error.error}`, 'err'); return; }
+      setGrantPending(null);
+      notify('Đã cấp quyền — Atria đang chuẩn bị nội dung rồi dừng ở review.');
+      await load();
+    } finally { setGranting(false); }
+  };
+
   if (!run) return <div className="post-workflow"><p className="muted small">Loading workflow…</p></div>;
 
   const gateNode = run.nodes.find((n) => n.status === 'awaiting_approval');
@@ -166,9 +202,14 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   // needs_connection with cards handled by the ConnectionRequired block (its own continue
   // re-resolves). requiredActions only rides the POST /execute response — a reloaded gated
   // run (GET) has none, so keep Execute available there to re-run the resolver server-side.
-  const canExecute =
+  // An atria-granted run is driven by the autonomy cron, not the manual Execute button — suppress
+  // Execute/grant and show the "đang chuẩn bị" state instead (G2).
+  const isAtriaGranted = run.approvalMode === 'atria';
+  const canExecute = !isAtriaGranted && (
     run.status === 'planned' || run.status === 'failed' ||
-    (run.status === 'needs_connection' && requiredActions.length === 0);
+    (run.status === 'needs_connection' && requiredActions.length === 0));
+  // Offer the grant ("⚡ Chuẩn bị") only on a fresh planned campaign post that still runs manually.
+  const canGrant = !isAtriaGranted && run.status === 'planned' && Boolean(runPostId);
   // A `planned` run with some steps already completed is a RESUMED run (after a single-step
   // re-run): the button continues from the stale downstream rather than starting fresh.
   const isResume = run.status === 'planned' && run.nodes.some((n) => n.status === 'completed') && run.nodes.some((n) => n.status === 'pending');
@@ -205,8 +246,28 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
             {busy ? 'Starting…' : isResume ? '▶ Continue (run stale steps)' : run.status === 'failed' ? '↻ Re-run flow' : run.status === 'needs_connection' ? 'Check connection & run' : '▶ Execute'}
           </button>
         )}
+        {canGrant && (
+          grantPending ? (
+            <span className="ws-grant-confirm">
+              ≈ {grantPending.credits.toLocaleString()} cr?
+              <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant(runPostId!)}>Xác nhận</button>
+              <button className="ws-grant-no" disabled={granting} onClick={() => setGrantPending(null)}>Huỷ</button>
+            </span>
+          ) : (
+            <button className="btn small" disabled={granting} title="Cấp quyền cho Atria tự chuẩn bị rồi dừng ở review" onClick={() => void startGrant(runPostId!)}>
+              {granting ? 'Đang tính…' : '⚡ Chuẩn bị'}
+            </button>
+          )
+        )}
       </div>
-      <p className="muted small">{isResume ? 'A step was re-run — later steps are stale. Click Continue to regenerate them, then approve to publish.' : statusHint}</p>
+      {preparing ? (
+        <div className="atria-preparing" role="status" aria-live="polite">
+          <span className="atria-preparing-dot" aria-hidden="true" />
+          Atria đang chuẩn bị nội dung — sẽ dừng ở bước review để bạn duyệt.
+        </div>
+      ) : (
+        <p className="muted small">{isResume ? 'A step was re-run — later steps are stale. Click Continue to regenerate them, then approve to publish.' : statusHint}</p>
+      )}
 
       <div className="post-workflow-body">
         <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} notices={notices} />
