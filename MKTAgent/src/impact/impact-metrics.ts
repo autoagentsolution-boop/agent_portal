@@ -6,6 +6,8 @@ import { prisma } from '../db/client.ts';
 import { creditsFromTokens, creditsFromUsd } from '../cost/credits.ts';
 import { sumFbInsights } from '../analytics/fb-insights.ts';
 import { sumIgInsights } from '../analytics/ig-insights.ts';
+import { sumThreadsInsights } from '../analytics/threads-insights.ts';
+import { sumXInsights } from '../analytics/x-insights.ts';
 import { mergeInsights } from '../analytics/insights-types.ts';
 
 export interface ImpactMetrics {
@@ -33,17 +35,21 @@ const MEDIA_SURFACES = ['infographic', 'storyboard', 'video'];
 
 // Published posts → their per-platform post/media ids for the Insights lookup.
 type PublishedIdRow = { status: string; platformPostIds: unknown };
-const platformIdsOf = (posts: PublishedIdRow[], platform: 'facebook' | 'instagram'): string[] =>
+const platformIdsOf = (posts: PublishedIdRow[], platform: 'facebook' | 'instagram' | 'threads' | 'x'): string[] =>
   posts
     .filter((p) => LIVE.includes(p.status))
     .map((p) => (p.platformPostIds as Record<string, string> | null)?.[platform])
     .filter((id): id is string => Boolean(id));
 
-// FB Page + IG Media insights, merged per-field (null-aware). Parallel; each adapter is best-effort.
+// FB + IG + Threads + X insights, merged per-field (null-aware). Parallel; each adapter is
+// best-effort (Threads has no reach; X impressions/reach null on free tier) — a field stays null
+// only when NO platform measured it, so Impact keeps its labeled estimate there.
 const measuredInsightsFor = async (ownerId: string, posts: PublishedIdRow[]) =>
   mergeInsights(await Promise.all([
     sumFbInsights(ownerId, platformIdsOf(posts, 'facebook')),
     sumIgInsights(ownerId, platformIdsOf(posts, 'instagram')),
+    sumThreadsInsights(ownerId, platformIdsOf(posts, 'threads')),
+    sumXInsights(ownerId, platformIdsOf(posts, 'x')),
   ]));
 
 // Credits consistent with the Usage page: token passthrough PLUS credits from tokenless media USD.
