@@ -6,8 +6,9 @@
 // exits to the classic UI (onExit). Dark theme stays confined to `.command-center`; the drawer is
 // light so embedded post views keep native styling.
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { api, type AgentCatalog, type AgentNodeDto, type WorkspaceSummaryDto, type DerivedPostStatus } from '../api/client';
+import { api, type AgentCatalog, type AgentNodeDto, type WorkspaceSummaryDto } from '../api/client';
 import { WorkspacePanel } from './workspace-panel';
+import { WorkspaceMenu } from './workspace-menu';
 import { AgentSpotlight } from './agent-spotlight';
 import { MemoryPanel } from './memory-panel';
 import { ImpactReport } from './impact-report';
@@ -19,6 +20,8 @@ interface Props {
   onLaunch: (prefill?: string) => void;
   // Leave the command center for the normal workspace (current UI/UX).
   onExit: () => void;
+  // Reopen the master-agent chat that spawned a workspace (from the top-right Workspace menu).
+  onContinueChat: (chatSessionId: string) => void;
   // Open the Connections page (bubbled up from an embedded PostWorkflowView's connection gate).
   onOpenConnections?: () => void;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
@@ -29,10 +32,6 @@ type Panel =
   | { kind: 'workspace'; campaignId: string }
   | { kind: 'agent'; agent: AgentNodeDto }
   | { kind: 'surface'; surface: string; agent: AgentNodeDto };
-
-const STATUS_COLOR: Record<DerivedPostStatus, string> = {
-  planned: '#9aa0a6', running: '#1a73e8', held: '#f9ab00', posted: '#188038', failed: '#d93025',
-};
 
 const QUICK_CMDS = [
   'Tạo chiến dịch marketing cho sản phẩm mới',
@@ -47,7 +46,7 @@ const nodePos = (i: number, total: number): { left: string; top: string } => {
   return { left: `${50 + Math.cos(ang) * 42}%`, top: `${50 + Math.sin(ang) * 40}%` };
 };
 
-export function CommandCenterPage({ onLaunch, onExit, onOpenConnections, notify }: Props) {
+export function CommandCenterPage({ onLaunch, onExit, onContinueChat, onOpenConnections, notify }: Props) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceSummaryDto[]>([]);
@@ -75,6 +74,17 @@ export function CommandCenterPage({ onLaunch, onExit, onOpenConnections, notify 
     onLaunch(cmd.trim() || undefined);
   };
 
+  // Delete a workspace (campaign — cascades to its posts). Destructive → confirm. Refresh the list
+  // and close the drawer if it was showing the deleted workspace.
+  const deleteWorkspace = async (campaignId: string, name: string) => {
+    if (!window.confirm(`Xoá workspace "${name}"? Toàn bộ post trong đó sẽ bị xoá.`)) return;
+    const r = await api.deleteCampaign(campaignId);
+    if (!r.ok) { notify(`Xoá thất bại: ${r.error.error}`, 'err'); return; }
+    setWorkspaces((prev) => prev.filter((w) => w.campaignId !== campaignId));
+    setPanel((p) => (p?.kind === 'workspace' && p.campaignId === campaignId ? null : p));
+    notify('Đã xoá workspace', 'ok');
+  };
+
   return (
     <div className="command-center">
       <div className="cc-topbar">
@@ -85,7 +95,14 @@ export function CommandCenterPage({ onLaunch, onExit, onOpenConnections, notify 
           <span className="cc-credit" title="Tổng credit đã dùng (minh bạch token → credit)">
             ◈ {credits === null ? '—' : credits.toLocaleString()} credits
           </span>
-          <button className="cc-exit" onClick={onExit}>⌂ Workspace</button>
+          <WorkspaceMenu
+            workspaces={workspaces}
+            activeCampaignId={panel?.kind === 'workspace' ? panel.campaignId : null}
+            onOpenWorkspace={(campaignId) => setPanel({ kind: 'workspace', campaignId })}
+            onContinueChat={onContinueChat}
+            onDelete={(campaignId, name) => void deleteWorkspace(campaignId, name)}
+            onExit={onExit}
+          />
         </div>
       </div>
 
@@ -102,30 +119,6 @@ export function CommandCenterPage({ onLaunch, onExit, onOpenConnections, notify 
           ))}
         </div>
       </div>
-
-      {workspaces.length > 0 && (
-        <div className="cc-ws-strip">
-          <span className="cc-ws-strip-label">Workspaces</span>
-          {workspaces.map((w) => {
-            const dots = (['running', 'held', 'failed', 'posted', 'planned'] as DerivedPostStatus[]).filter((k) => w.counts[k] > 0);
-            return (
-              <button
-                key={w.campaignId}
-                className={`cc-ws-chip ${panel?.kind === 'workspace' && panel.campaignId === w.campaignId ? 'is-active' : ''}`}
-                onClick={() => setPanel({ kind: 'workspace', campaignId: w.campaignId })}
-                title={`${w.postCount} post(s) · ◈ ${Math.round(w.credits).toLocaleString()} cr`}
-              >
-                <span className="cc-ws-chip-dots">
-                  {dots.length === 0
-                    ? <span className="ws-dot" style={{ background: STATUS_COLOR.planned }} />
-                    : dots.map((k) => <span key={k} className="ws-dot" style={{ background: STATUS_COLOR[k] }} />)}
-                </span>
-                {w.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
 
       <div className="cc-network">
         <button className="cc-core" onClick={() => onLaunch()}>

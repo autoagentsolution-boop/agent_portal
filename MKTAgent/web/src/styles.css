@@ -823,14 +823,31 @@ a { color: var(--accent); }
 /* Atria v2 P1 — inline hub: workspace strip + node highlight. */
 .cc-node.is-active .cc-node-circle { box-shadow: 0 0 26px rgba(157,123,255,0.8); border-color: var(--cc-violet-glow); }
 .cc-node.is-active .cc-node-label { color: var(--cc-text); }
-.cc-ws-strip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
-  max-width: 860px; margin: 6px auto 0; padding: 0 20px; }
-.cc-ws-strip-label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--cc-text-faint); }
-.cc-ws-chip { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--cc-text-dim);
-  border: 1px solid var(--cc-border); background: var(--cc-panel); padding: 6px 12px; border-radius: 20px; transition: .2s; }
-.cc-ws-chip:hover { border-color: var(--cc-border-bright); color: var(--cc-text); transform: translateY(-1px); }
-.cc-ws-chip.is-active { border-color: var(--cc-violet-glow); color: var(--cc-text); background: rgba(157,123,255,0.14); }
-.cc-ws-chip-dots { display: inline-flex; gap: 3px; }
+/* Top-right Workspace switcher (replaces the old landing chip strip). */
+.cc-ws-menu { position: relative; }
+.cc-ws-menu-caret { font-size: 10px; opacity: .7; }
+.cc-ws-menu-panel { position: absolute; right: 0; top: calc(100% + 8px); width: 320px; z-index: 40;
+  background: var(--cc-panel); border: 1px solid var(--cc-border-bright); border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5); padding: 8px; }
+.cc-ws-menu-head { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--cc-text-faint);
+  padding: 4px 8px 8px; }
+.cc-ws-menu-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.cc-ws-menu-empty { font-size: 12px; color: var(--cc-text-faint); padding: 8px; text-align: center; }
+.cc-ws-menu-row { display: flex; align-items: center; gap: 4px; border-radius: 8px; padding: 2px; }
+.cc-ws-menu-row:hover { background: rgba(255,255,255,0.04); }
+.cc-ws-menu-row.is-active { background: rgba(157,123,255,0.14); }
+.cc-ws-menu-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px;
+  color: var(--cc-text-dim); background: none; border: none; padding: 6px 8px; cursor: pointer; text-align: left; }
+.cc-ws-menu-name:hover { color: var(--cc-text); }
+.cc-ws-menu-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-ws-menu-act { flex-shrink: 0; width: 26px; height: 26px; border-radius: 6px; border: 1px solid transparent;
+  background: none; color: var(--cc-text-dim); cursor: pointer; font-size: 13px; line-height: 1; }
+.cc-ws-menu-act:hover:not(:disabled) { border-color: var(--cc-border-bright); color: var(--cc-text); }
+.cc-ws-menu-act:disabled { opacity: .3; cursor: not-allowed; }
+.cc-ws-menu-del:hover { border-color: #d93025 !important; color: #ff6b5e !important; }
+.cc-ws-menu-exit { width: 100%; margin-top: 6px; font-size: 12px; color: var(--cc-text-dim);
+  border: none; border-top: 1px solid var(--cc-border); background: none; padding: 8px; cursor: pointer; text-align: left; }
+.cc-ws-menu-exit:hover { color: var(--cc-text); }
 
 /* Inline drawer — light surface (uses app theme vars, NOT the cc-* dark palette) so an embedded
    PostWorkflowView renders natively. Slides in from the right, scrim dims the network behind. */

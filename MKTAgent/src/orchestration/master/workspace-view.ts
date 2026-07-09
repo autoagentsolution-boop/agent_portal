@@ -7,6 +7,7 @@ import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { listCampaigns, getCampaign } from '../../db/repos/campaign-repo.ts';
 import {
   campaignAgentRollup,
+  chatSessionsForCampaigns,
   type CampaignAgentRollup,
 } from '../../db/repos/workflow-run-repo.ts';
 import { campaignStatusRollup, type CampaignStatusRollup } from './campaign-grant.ts';
@@ -30,6 +31,9 @@ export interface WorkspaceSummary {
   costUsd: number;
   credits: number;
   updatedAt: string;
+  // The master-agent chat that spawned this workspace, so the hub can "continue chat". null when no
+  // chat-linked run exists yet (e.g. an empty campaign) → continue-chat is disabled for that card.
+  chatSessionId: string | null;
 }
 
 export interface WorkspaceDetail extends WorkspaceSummary {
@@ -68,6 +72,7 @@ const costTotals = (agents: CampaignAgentRollup[]) =>
 // tenant grows large. Reads are owner-scoped inside each rollup.
 export const listWorkspaces = async (ownerId: string): Promise<WorkspaceSummary[]> => {
   const campaigns = await listCampaigns(ownerId);
+  const chatByCampaign = await chatSessionsForCampaigns(ownerId, campaigns.map((c) => c.id));
   return Promise.all(
     campaigns.map(async (c) => {
       const [status, agents] = await Promise.all([
@@ -86,6 +91,7 @@ export const listWorkspaces = async (ownerId: string): Promise<WorkspaceSummary[
         costUsd: cost.costUsd,
         credits: cost.credits,
         updatedAt: c.updatedAt.toISOString(),
+        chatSessionId: chatByCampaign.get(c.id) ?? null,
       };
     }),
   );
@@ -105,6 +111,7 @@ export const getWorkspace = async (
   ]);
   const agents = rollup.map(enrichAgent);
   const cost = costTotals(rollup);
+  const chatByCampaign = await chatSessionsForCampaigns(ownerId, [campaign.id]);
   return {
     campaignId: campaign.id,
     name: campaignTitle(campaign.product, campaign.angle),
@@ -117,6 +124,7 @@ export const getWorkspace = async (
     credits: cost.credits,
     totalTokens: cost.totalTokens,
     updatedAt: campaign.updatedAt.toISOString(),
+    chatSessionId: chatByCampaign.get(campaign.id) ?? null,
     posts: status.posts,
     agents,
   };

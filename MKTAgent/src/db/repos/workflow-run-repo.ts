@@ -135,6 +135,37 @@ export const cloneTemplateRun = async (
 export const getRunForOwner = (id: string, ownerId: string): Promise<WorkflowRun | null> =>
   prisma.workflowRun.findFirst({ where: { id, ownerId } });
 
+// Resolve each campaign to the chat session that spawned its work, so a "Workspace" can reopen the
+// originating master-agent conversation (v2 "continue chat"). Link is indirect — campaign → its most
+// recent post's run → run.chatSessionId. Batched (2 queries total, not N+1). A campaign with no
+// posts / no chat-linked run maps to null (continue-chat disabled for it).
+export const chatSessionsForCampaigns = async (
+  ownerId: string,
+  campaignIds: string[],
+): Promise<Map<string, string>> => {
+  const out = new Map<string, string>();
+  if (campaignIds.length === 0) return out;
+  const posts = await prisma.post.findMany({
+    where: { ownerId, campaignId: { in: campaignIds }, runId: { not: null } },
+    orderBy: { updatedAt: 'desc' },
+    select: { campaignId: true, runId: true },
+  });
+  const runIdByCampaign = new Map<string, string>();
+  for (const p of posts) if (p.runId && !runIdByCampaign.has(p.campaignId)) runIdByCampaign.set(p.campaignId, p.runId);
+  const runIds = [...new Set(runIdByCampaign.values())];
+  if (runIds.length === 0) return out;
+  const runs = await prisma.workflowRun.findMany({
+    where: { ownerId, id: { in: runIds }, chatSessionId: { not: null } },
+    select: { id: true, chatSessionId: true },
+  });
+  const chatByRun = new Map(runs.map((r) => [r.id, r.chatSessionId!]));
+  for (const [campaignId, runId] of runIdByCampaign) {
+    const chat = chatByRun.get(runId);
+    if (chat) out.set(campaignId, chat);
+  }
+  return out;
+};
+
 // Scoped delete (cascades to child nodes + artifacts via FK onDelete: Cascade).
 // Refuses a run that is mid-execution (running) so a detached executor can't write to
 // Cheap run-status read for the detached executor's between-node abort check (§kill switch).

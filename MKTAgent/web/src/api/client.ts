@@ -269,6 +269,7 @@ export interface WorkspaceSummaryDto {
   costUsd: number;
   credits: number;
   updatedAt: string;
+  chatSessionId: string | null;
 }
 export interface WorkspaceDetailDto extends WorkspaceSummaryDto {
   totalTokens: number;

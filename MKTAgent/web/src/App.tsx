@@ -364,6 +364,7 @@ export function App() {
           <CommandCenterPage
             onLaunch={launchFromCommandCenter}
             onExit={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('flows'); }}
+            onContinueChat={(id) => void selectChat(id)}
             onOpenConnections={() => { setSelectedRunId(null); setPage('connections'); }}
             notify={show}
           />
