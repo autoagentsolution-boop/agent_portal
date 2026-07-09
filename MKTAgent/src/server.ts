@@ -32,6 +32,7 @@ import { memoryRouter } from './api/memory-router.ts';
 import { emailRouter } from './api/email-router.ts';
 import { atriaRouter } from './api/atria-router.ts';
 import { impactRouter } from './api/impact-router.ts';
+import { voiceRouter } from './api/voice-router.ts';
 import { IMAGE_OUTPUT_DIR } from './imagegen/nano-banana.ts';
 import { VIDEO_OUTPUT_DIR } from './video/veo.ts';
 
@@ -127,6 +128,9 @@ app.use('/connections', requireAuth, connectionsRouter);
 // Per-user SSE stream (T5). Self-authenticates (Bearer header OR ?token= for the
 // browser EventSource API) so it is NOT behind requireAuth's header-only gate.
 app.use('/events', eventsRouter);
+
+// Voice / read-aloud (P3). Owner-scoped Gemini TTS; on-demand + cost-tracked.
+app.use('/voice', requireAuth, voiceRouter);
 
 // Leads (T6). Mixed auth: POST intake routes are secret-gated (external funnels
 // have no JWT); GET /leads self-guards with requireAuth. So NOT behind a blanket

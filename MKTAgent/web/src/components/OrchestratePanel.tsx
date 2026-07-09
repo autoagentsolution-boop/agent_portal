@@ -11,6 +11,7 @@ import { PlanCard, SaveOfferCard } from './orchestrate-run-cards';
 import { AtriaSuggestionCards } from './atria-suggestion-cards';
 import { AtriaResumeWorkCards } from './atria-resume-work-cards';
 import { TypewriterText } from './typewriter-text';
+import { ReadAloudButton } from './read-aloud-button';
 
 export interface OrchestrateRestore {
   sessionId: string;
@@ -179,6 +180,9 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
             return (
               <div key={i} className={`chat-bubble ${m.role}`}>
                 {m.role === 'agent' ? <TypewriterText text={m.content} animate={animate} /> : m.content}
+                {m.role === 'agent' && m.content.trim().length > 0 && (
+                  <ReadAloudButton text={m.content} className="bubble-tts" />
+                )}
               </div>
             );
           })}

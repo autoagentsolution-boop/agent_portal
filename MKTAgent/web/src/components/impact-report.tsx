@@ -3,6 +3,7 @@
 // per-period (pass period). Real numbers and estimates are visually separated — honesty by design.
 import { useEffect, useState } from 'react';
 import { api, type ImpactReportDto } from '../api/client';
+import { ReadAloudButton } from './read-aloud-button';
 
 interface Props {
   campaignId?: string; // one campaign
@@ -39,9 +40,23 @@ export function ImpactReport({ campaignId, period = '30d' }: Props) {
     ? metrics.insightsPlatforms.map((p) => ABBR[p] ?? p.toUpperCase()).join('+')
     : 'measured';
 
+  // Spoken summary (V2): the headline + the money-shot measured/estimated numbers, so Atria can read
+  // the report aloud. Kept short (a few sentences) to bound TTS latency + cost.
+  const narration = [
+    report.headline,
+    `Đã chi ${money(metrics.usdSpent)}, khoảng ${metrics.creditsSpent} credit.`,
+    `${metrics.postsPublished} bài đăng trên ${metrics.platforms.length} nền tảng.`,
+    metrics.leadsCaptured > 0 ? `Thu được ${metrics.leadsCaptured} lead.` : '',
+    metrics.measuredReach !== null ? `Tiếp cận đo được ${metrics.measuredReach.toLocaleString()}.` : '',
+    `Ước tính tiết kiệm ${money(value.savedUsd)} và ${value.savedDays} ngày so với thuê agency.`,
+  ].filter(Boolean).join(' ');
+
   return (
     <section style={{ maxWidth: 820 }}>
-      <h3>Impact {campaignId ? '(this campaign)' : `(last ${period})`}</h3>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        Impact {campaignId ? '(this campaign)' : `(last ${period})`}
+        <ReadAloudButton text={narration} title="Atria đọc báo cáo" className="impact-tts" />
+      </h3>
       <p style={{ fontSize: 17, fontWeight: 600, margin: '6px 0 16px' }}>{report.headline}</p>
 
       <h4 style={{ margin: '0 0 8px' }}>Measured</h4>

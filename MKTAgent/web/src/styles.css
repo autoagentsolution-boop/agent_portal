@@ -1114,6 +1114,17 @@ a { color: var(--accent); }
 }
 .command-center .atria-suggestion .btn-primary:hover { background: var(--cc-violet-glow); }
 
+/* Read-aloud / voice (P3 V2) — speaker button on Atria bubbles + the Impact headline. */
+.read-aloud-btn { border: none; background: transparent; cursor: pointer; padding: 2px 5px; border-radius: 6px;
+  font-size: 13px; line-height: 1; opacity: 0.55; transition: opacity .15s, background .15s; color: inherit; }
+.read-aloud-btn:hover { opacity: 1; background: rgba(157,123,255,0.14); }
+.read-aloud-btn.is-loading { opacity: 0.9; cursor: progress; }
+.read-aloud-btn.is-playing { opacity: 1; background: rgba(157,123,255,0.2); animation: read-aloud-pulse 1.2s ease-in-out infinite; }
+@keyframes read-aloud-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(157,123,255,0.5); } 50% { box-shadow: 0 0 0 4px rgba(157,123,255,0); } }
+/* On a chat bubble: sit the speaker at the end of the reply, subtle until hover. */
+.chat-bubble .read-aloud-btn.bubble-tts { display: inline-flex; vertical-align: middle; margin-left: 6px; }
+.impact-tts { font-size: 14px; }
+
 /* Scheduled view (◷ Scheduled) — queued + recently published posts. */
 .scheduled-view { max-width: 900px; }
 .sched-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
