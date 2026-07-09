@@ -16,6 +16,7 @@ export interface AtriaSignals {
   editedPostCount: number;
   editedPostRatio: number; // copyEdited / totalPosts — the "you keep rewriting my copy" signal
   completedCampaignCount: number; // multi-post campaigns fully posted — the "repeat what worked" signal
+  lastCompletedProduct: string | null; // the product of a completed campaign, so "repeat what worked" can NAME it
   leadCount: number; // captured leads — the "nurture these" signal
   // The product attracting the most leads, and how many — the "leads are spiking on X, ride it with a
   // campaign" signal. null when no lead carries a sourceProduct. Excludes products that already run a
@@ -58,10 +59,11 @@ export function deriveSignals(input: SignalInput): AtriaSignals {
     statusesByCampaign.set(p.campaignId, arr);
   }
   let completedCampaignCount = 0;
+  let lastCompletedProduct: string | null = null;
   for (const c of input.campaigns) {
     if (c.postCount < 2) continue;
     const st = statusesByCampaign.get(c.id) ?? [];
-    if (st.length > 0 && st.every((s) => LIVE_POST.has(s))) completedCampaignCount++;
+    if (st.length > 0 && st.every((s) => LIVE_POST.has(s))) { completedCampaignCount++; lastCompletedProduct = c.product; }
   }
 
   // Lead spike per product: the product with the most leads that does NOT already run a campaign.
@@ -80,6 +82,7 @@ export function deriveSignals(input: SignalInput): AtriaSignals {
     editedPostCount,
     editedPostRatio: totalPosts > 0 ? editedPostCount / totalPosts : 0,
     completedCampaignCount,
+    lastCompletedProduct,
     leadCount: input.leadCount,
     leadTopProduct,
     leadTopProductCount,

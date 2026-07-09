@@ -54,14 +54,21 @@ export function suggestFor(signals: AtriaSignals): Suggestion[] {
     });
   }
 
-  // R2 — a campaign fully posted → repeat what worked (Phase 07 impact enriches the rationale).
+  // R2 — a campaign fully posted → repeat what worked. NAME the campaign's product so the user knows
+  // WHICH one, and so the prefilled intent carries concrete context (Atria won't have to re-ask "what
+  // product?" — which was making every "Plan it" a wasted clarification round).
   if (signals.completedCampaignCount >= 1) {
+    const prod = signals.lastCompletedProduct;
     out.push({
       kind: 'repeat_winner',
-      headline: 'Repeat what worked?',
-      rationale: `You've completed ${signals.completedCampaignCount} full campaign${signals.completedCampaignCount > 1 ? 's' : ''}. I can plan the next month building on the pillars that performed best.`,
+      headline: prod ? `Repeat what worked on ${prod}?` : 'Repeat what worked?',
+      rationale: prod
+        ? `Your ${prod} campaign is fully posted. I can plan a follow-up month for ${prod}, building on the pillars that performed best.`
+        : `You've completed ${signals.completedCampaignCount} full campaign${signals.completedCampaignCount > 1 ? 's' : ''}. I can plan the next month building on the pillars that performed best.`,
       rank: 80,
-      prefill: { intent: 'Plan a follow-up month building on my last campaign' },
+      prefill: prod
+        ? { intent: `Plan a follow-up month for ${prod}, building on what performed best in the last campaign`, product: prod }
+        : { intent: 'Plan a follow-up month building on my last campaign' },
     });
   }
 
