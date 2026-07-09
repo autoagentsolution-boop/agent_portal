@@ -3,6 +3,14 @@
 Branch: `pivot/video-content-farm` · 2026-07-09 · Priority: **SAFETY FIRST** (don't break what works),
 then the demo flows, then WOW, then voice. Scope confirmed by user.
 
+## Implementation status (2026-07-09, commits d6dcf30..b99630e)
+P1/P2/P3 CODE COMPLETE — typecheck + web build green; Gemini TTS live-verified (206KB WAV, ~5s, cached).
+- P1 G1/G2/G3 ✅ (29826f7) · P2 W1 ✅ (25cb9b8) · W2/W3 ✅ (2f55683) · P3 V1/V2 ✅ (b99630e); V3 auto-narrate DEFERRED (stretch).
+- DTO seam: `approvalMode` exposed on WorkflowRunDto (d6dcf30).
+- P0 R1–R4 = verification items (browser click-through + grant e2e): NOT yet browser-verified here —
+  covered by the QA swarm (e2e test plan + verify-matrix + red-team) then the merged fix pass.
+- P4/P5 DEFERRED per user → folded into the post-QA merged fix plan.
+
 ## Demo must SHOW (all four + forecast + voice)
 1. Plan campaign via Atria chat (works) — 2. Auto-prepare via per-post grant (needs e2e verify) —
 3. Neural network "alive" (node light-up during real runs) — 4. Insights + Impact measured (works) —
@@ -23,24 +31,24 @@ then the demo flows, then WOW, then voice. Scope confirmed by user.
   → approve → publish gate; Impact shows measured insights. (Spot-check, no new real burst posts.)
 
 ### P1 — Close functional gaps (small, high-value)
-- [ ] **G1 — Grant on the post view (PostWorkflowView).** Add the "⚡ Chuẩn bị" grant next to Execute for a
+- [x] **G1 — Grant on the post view (PostWorkflowView).** Add the "⚡ Chuẩn bị" grant next to Execute for a
   planned campaign post (thread postId in). The user opens Scheduled→post and expects it there.
-- [ ] **G2 — "Đang chuẩn bị…" state.** After grant, show a clear "Atria đang chuẩn bị" indicator on the
+- [x] **G2 — "Đang chuẩn bị…" state.** After grant, show a clear "Atria đang chuẩn bị" indicator on the
   post (planned + approvalMode atria) until it parks at review. (F2.)
-- [ ] **G3 — Forecast surfaced at plan time.** Confirm the whole-plan credit estimate is visible on the
+- [x] **G3 — Forecast surfaced at plan time.** Confirm the whole-plan credit estimate is visible on the
   Atria plan card / grant confirm; make the per-post cost basis (video vs image) legible in the demo.
 
 ### P2 — WOW polish (high visibility for the demo)
-- [ ] **W1 — Node light-up during REAL runs (SSE-driven).** When a run executes, light/pulse the agent
+- [x] **W1 — Node light-up during REAL runs (SSE-driven).** When a run executes, light/pulse the agent
   node whose SSE `node.status=running` fires; dim on complete. Reuse the run-event bus. This is the
   "agents gather + work" moment on the neural graph. (Decorative core pulse already exists.)
-- [ ] **W2 — Dark-restyle the CC-landing suggestion + resume cards** (currently light on dark).
-- [ ] **W3 — Workspace drawer discoverability** — a clearer affordance so the dashboard is findable.
+- [x] **W2 — Dark-restyle the CC-landing suggestion + resume cards** (currently light on dark).
+- [x] **W3 — Workspace drawer discoverability** — a clearer affordance so the dashboard is findable.
 
 ### P3 — VOICE (biggest new build — from the existing P4 Arch-A pipeline spec)
-- [ ] **V1 — TTS backend seam.** Endpoint/service that turns an Atria reply or an Impact report into audio
+- [x] **V1 — TTS backend seam.** Endpoint/service that turns an Atria reply or an Impact report into audio
   (reuse `ai-multimodal` TTS / Azure TTS per research). Owner-scoped, cost-tracked. Cache per message.
-- [ ] **V2 — "Read aloud" on Atria replies + Impact report.** A speaker button on each agent bubble and on
+- [x] **V2 — "Read aloud" on Atria replies + Impact report.** A speaker button on each agent bubble and on
   the Impact report → plays the TTS. The typewriter reveal seam (P3) drives the cadence.
 - [ ] **V3 — (stretch) auto-narrate** the report when opened. Gate behind a toggle; demo-only if time.
 
