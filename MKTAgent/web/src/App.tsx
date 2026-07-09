@@ -81,19 +81,23 @@ export function App() {
       messages: r.data.messages.map((m) => ({ role: m.role, content: m.content })),
       run: runRes.ok ? runRes.data : null,
     });
-    setPage('orchestrate');
+    setPage('command-center'); // chat now hosted INSIDE the Command Center (P2.3)
   };
 
-  const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setOrchestratePrefill(null); setPage('orchestrate'); };
+  const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setOrchestratePrefill(null); setPage('command-center'); };
 
-  // Command Center / Atria → jump into the live Orchestrate surface. A non-empty
-  // prefill (a typed command or an accepted Atria suggestion) is a SEND — the panel
-  // auto-submits it so the plan appears immediately instead of parking in the composer.
+  // Command bar / Atria core → open the chat, now hosted INSIDE the Command Center (P2.2). A non-empty
+  // prefill (a typed command or an accepted Atria suggestion) is a SEND — the panel auto-submits it so
+  // the plan appears immediately. The graph collapses to a mini-hero while the transcript is active.
   const launchFromCommandCenter = (prefill?: string) => {
     setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null);
     setOrchestratePrefill(prefill ?? null);
-    setPage('orchestrate');
+    setPage('command-center');
   };
+
+  // A chat is "active in the CC" once a prefill (fresh send) or a restore (reopened chat) exists.
+  const ccChatActive = Boolean(orchestratePrefill || orchestrateRestore);
+  const closeCcChat = () => { setOrchestratePrefill(null); setOrchestrateRestore(null); setActiveChatId(null); };
 
   const loadSavedRuns = async () => {
     const r = await api.listSavedRuns();
@@ -240,8 +244,27 @@ export function App() {
     campaign: crumbCampaign?.product ?? null,
   };
 
-  // One campaign row + its posts (level-3) under it, with create/delete controls.
-  // Reused for both flow-nested campaigns and the Ungrouped section.
+  // The live chat panel — built once, then hosted INSIDE the Command Center (chatSlot). The same
+  // element also backs the legacy `page:'orchestrate'` branch (dead fallback until P2.5) so there is
+  // one source of truth for all its wiring (restore/prefill/run cards/SSE/connection gate).
+  const orchestratePanelEl = (
+    <OrchestratePanel
+      key={orchestrateRestore?.sessionId ?? 'new'}
+      restore={orchestrateRestore}
+      initialInput={orchestratePrefill ?? undefined}
+      autoStart={Boolean(orchestratePrefill)}
+      flowsWithoutStrategy={flowsWithoutStrategy}
+      chats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
+      notify={show}
+      onRunActivity={(sessionId) => { void loadChats(); if (!activeChatId) setActiveChatId(sessionId); bump(); }}
+      onSaved={() => { void loadSavedRuns(); }}
+      onSetupCampaign={(runId) => { void loadSavedRuns().then(() => setupFirstCampaign(runId)); }}
+      onOpenFlow={(runId) => { void loadSavedRuns().then(() => openSavedFlow(runId)); }}
+      onResumeChat={(id) => void selectChat(id)}
+      onCampaignCreated={(campaignId, postId) => { void openCreatedCampaign(campaignId, postId); }}
+    />
+  );
+
   return (
     <div className={`app-root theme-${theme}`}>
       <TopNav
@@ -272,26 +295,13 @@ export function App() {
             resumeFlows={flowsWithoutStrategy}
             onResumeChat={(id) => void selectChat(id)}
             onOpenFlow={(id) => openSavedFlow(id)}
+            chatActive={ccChatActive}
+            chatSlot={orchestratePanelEl}
+            onCloseChat={closeCcChat}
             notify={show}
           />
         ) : page === 'orchestrate' ? (
-          <div className="master-home">
-            <OrchestratePanel
-              key={orchestrateRestore?.sessionId ?? 'new'}
-              restore={orchestrateRestore}
-              initialInput={orchestratePrefill ?? undefined}
-              autoStart={Boolean(orchestratePrefill)}
-              flowsWithoutStrategy={flowsWithoutStrategy}
-              chats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
-              notify={show}
-              onRunActivity={(sessionId) => { void loadChats(); if (!activeChatId) setActiveChatId(sessionId); bump(); }}
-              onSaved={() => { void loadSavedRuns(); }}
-              onSetupCampaign={(runId) => { void loadSavedRuns().then(() => setupFirstCampaign(runId)); }}
-              onOpenFlow={(runId) => { void loadSavedRuns().then(() => openSavedFlow(runId)); }}
-              onResumeChat={(id) => void selectChat(id)}
-              onCampaignCreated={(campaignId, postId) => { void openCreatedCampaign(campaignId, postId); }}
-            />
-          </div>
+          <div className="master-home">{orchestratePanelEl}</div>
         ) : page === 'connections' ? (
           <div className="master-home">
             <ConnectionsPanel notify={show} />

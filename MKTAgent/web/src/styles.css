@@ -343,6 +343,18 @@ a { color: var(--accent); }
 .sidebar-user { margin-top: auto; color: var(--muted); font-size: 12px; padding: 12px 8px 4px; overflow-wrap: anywhere; }
 .app-main { min-height: 0; height: calc(100vh - var(--topnav-h, 52px)); overflow-y: auto; background: var(--bg); }
 
+/* Command Center CHAT MODE (P2.1-2.3): graph collapses to a mini-hero at the top, the embedded
+   OrchestratePanel takes the rest. Keeps the neural identity while the conversation is front+center. */
+.command-center.is-chat { display: flex; flex-direction: column; height: 100%; }
+.command-center.is-chat .cc-network { flex: 0 0 200px; height: 200px; min-height: 200px; margin: 4px 0 0; transform: scale(0.9); opacity: 0.85; }
+.command-center.is-chat .cc-core { transform: translate(-50%, -50%) scale(0.7); }
+.cc-chat-embed { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid #23252f;
+  margin-top: 6px; overflow: hidden; }
+.cc-chat-back { align-self: flex-start; margin: 8px 0 2px 16px; background: none; border: 1px solid #2c2f3d;
+  color: #b6b8c8; border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+.cc-chat-back:hover { color: #fff; border-color: #40435a; }
+.cc-chat-embed > .master-chat-main { flex: 1 1 auto; min-height: 0; }
+
 /* Atria proactive surface on the Command Center home (P2.0). Constrained width, centered under the
    command bar; the cards reuse their existing .atria-card styling. */
 .cc-atria-surface { max-width: 860px; margin: 8px auto 40px; padding: 0 20px; display: flex; flex-direction: column; gap: 18px; }

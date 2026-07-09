@@ -5,7 +5,7 @@
 // Only the Atria core + the command bar hand off to the Orchestrate chat (onLaunch); ⌂ Workspace
 // exits to the classic UI (onExit). Dark theme stays confined to `.command-center`; the drawer is
 // light so embedded post views keep native styling.
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { api, type AgentCatalog, type AgentNodeDto } from '../api/client';
 import { WorkspacePanel } from './workspace-panel';
 import { AgentSpotlight } from './agent-spotlight';
@@ -30,6 +30,11 @@ interface Props {
   resumeFlows?: Array<{ id: string; name: string }>;
   onResumeChat?: (id: string) => void;
   onOpenFlow?: (id: string) => void;
+  // The live chat, hosted inside the CC (P2.1-2.3). When chatActive, the graph collapses to a
+  // mini-hero and chatSlot (the OrchestratePanel, wired in App) renders below. onCloseChat returns home.
+  chatActive?: boolean;
+  chatSlot?: ReactNode;
+  onCloseChat?: () => void;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
@@ -52,7 +57,7 @@ const nodePos = (i: number, total: number): { left: string; top: string } => {
   return { left: `${50 + Math.cos(ang) * 42}%`, top: `${50 + Math.sin(ang) * 40}%` };
 };
 
-export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, resumeChats = [], resumeFlows = [], onResumeChat, onOpenFlow, notify }: Props) {
+export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, resumeChats = [], resumeFlows = [], onResumeChat, onOpenFlow, chatActive = false, chatSlot, onCloseChat, notify }: Props) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [cmd, setCmd] = useState('');
@@ -85,7 +90,8 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
 
 
   return (
-    <div className="command-center">
+    <div className={`command-center ${chatActive ? 'is-chat' : ''}`}>
+      {!chatActive && (
       <div className="cc-head">
         <div className="cc-eyebrow">Neural Network</div>
         <h1>Trung tâm điều hành AI của bạn</h1>
@@ -99,6 +105,7 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
           ))}
         </div>
       </div>
+      )}
 
       <div className="cc-network">
         <button className="cc-core" onClick={() => onLaunch()}>
@@ -143,6 +150,13 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
         {agents.length === 0 && <div className="cc-network-empty">Đang tải mạng lưới agent…</div>}
       </div>
 
+      {chatActive ? (
+        <div className="cc-chat-embed">
+          <button className="cc-chat-back" onClick={onCloseChat}>← Trung tâm điều hành</button>
+          {chatSlot}
+        </div>
+      ) : (
+      <>
       <form className="cc-cmdbar-wrap" onSubmit={submit}>
         <div className="cc-cmdbar">
           <input
@@ -176,6 +190,8 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
           />
         )}
       </div>
+      </>
+      )}
 
       {panel && (
         <>
