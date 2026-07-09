@@ -346,8 +346,12 @@ a { color: var(--accent); }
 /* Command Center CHAT MODE (P2.1-2.3): graph collapses to a mini-hero at the top, the embedded
    OrchestratePanel takes the rest. Keeps the neural identity while the conversation is front+center. */
 .command-center.is-chat { display: flex; flex-direction: column; height: 100%; }
-.command-center.is-chat .cc-network { flex: 0 0 200px; height: 200px; min-height: 200px; margin: 4px 0 0; transform: scale(0.9); opacity: 0.85; }
-.command-center.is-chat .cc-core { transform: translate(-50%, -50%) scale(0.7); animation: cc-core-breathe 3.2s ease-in-out infinite; }
+/* In chat mode the graph GATHERS into just the Atria hero — the orbiting agent nodes + links hide. */
+.command-center.is-chat .cc-network { flex: 0 0 132px; height: 132px; min-height: 132px; margin: 6px 0 0; }
+.command-center.is-chat .cc-node,
+.command-center.is-chat .cc-links,
+.command-center.is-chat .cc-network-empty { display: none; }
+.command-center.is-chat .cc-core { transform: translate(-50%, -50%) scale(0.82); animation: cc-core-breathe 3.2s ease-in-out infinite; }
 /* "Alive" breathing on the Atria core while a chat is open (P3, decorative — no data binding). */
 @keyframes cc-core-breathe {
   0%, 100% { filter: drop-shadow(0 0 14px rgba(157,123,255,0.45)); }
