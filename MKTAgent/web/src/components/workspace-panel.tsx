@@ -12,6 +12,8 @@ interface Props {
   campaignId: string;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
   onOpenConnections?: () => void;
+  // P2.6 — "Open full board": jump from this dashboard drawer to the deep board (PostBoard + DAG).
+  onOpenBoard?: () => void;
 }
 
 const DOT: Record<DerivedPostStatus, { color: string; label: string }> = {
@@ -25,7 +27,7 @@ const ORDER: DerivedPostStatus[] = ['planned', 'running', 'held', 'posted', 'fai
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : 'unscheduled');
 const fmtCredits = (n: number) => Math.round(n).toLocaleString();
 
-export function WorkspacePanel({ campaignId, notify, onOpenConnections }: Props) {
+export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBoard }: Props) {
   const [ws, setWs] = useState<WorkspaceDetailDto | null>(null);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
   const debounce = useRef<number | undefined>(undefined);
@@ -72,9 +74,14 @@ export function WorkspacePanel({ campaignId, notify, onOpenConnections }: Props)
           <h3>{ws.name}</h3>
           <span className="muted">{ws.postCount} post{ws.postCount === 1 ? '' : 's'} · {ws.platforms.join(', ') || 'no platforms'}</span>
         </div>
-        <span className="ws-cost" title="Total credits spent by this workspace">
-          ◈ {fmtCredits(ws.credits)} cr {live && <span className="ws-live" title="Live">●</span>}
-        </span>
+        <div className="ws-head-right">
+          <span className="ws-cost" title="Total credits spent by this workspace">
+            ◈ {fmtCredits(ws.credits)} cr {live && <span className="ws-live" title="Live">●</span>}
+          </span>
+          {onOpenBoard && (
+            <button className="ws-open-board" onClick={onOpenBoard} title="Mở board đầy đủ (posts + DAG)">▦ Mở board</button>
+          )}
+        </div>
       </div>
 
       <div className="ws-status-row">

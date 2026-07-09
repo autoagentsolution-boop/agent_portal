@@ -26,7 +26,6 @@ interface Props {
 
 const NAV: Array<{ page: Page; label: string; icon: string }> = [
   { page: 'command-center', label: 'Command Center', icon: '◈' },
-  { page: 'flows', label: 'Workspaces', icon: '▦' },
   { page: 'impact', label: 'Impact', icon: '📈' },
   { page: 'instructions', label: 'Instructions', icon: '⚙' },
   { page: 'connections', label: 'Connections', icon: '🔌' },

@@ -24,6 +24,8 @@ interface Props {
   onOpenWorkspaceConsumed?: () => void;
   // Open the Connections page (bubbled up from an embedded PostWorkflowView's connection gate).
   onOpenConnections?: () => void;
+  // P2.6 — open the deep board (PostBoard + DAG) for a workspace from its dashboard drawer.
+  onOpenBoard?: (campaignId: string) => void;
   // Atria's proactive surface, promoted from the Orchestrate empty-state onto the CC home (P2.0):
   // resume a hung chat/flow. Cards self-fetch their suggestions; these feed the "resume work" row.
   resumeChats?: Array<{ id: string; title: string; updatedAt: string }>;
@@ -57,7 +59,7 @@ const nodePos = (i: number, total: number): { left: string; top: string } => {
   return { left: `${50 + Math.cos(ang) * 42}%`, top: `${50 + Math.sin(ang) * 40}%` };
 };
 
-export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, resumeChats = [], resumeFlows = [], onResumeChat, onOpenFlow, chatActive = false, chatSlot, onCloseChat, notify }: Props) {
+export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], onResumeChat, onOpenFlow, chatActive = false, chatSlot, onCloseChat, notify }: Props) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [cmd, setCmd] = useState('');
@@ -202,7 +204,7 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
               <button className="cc-drawer-close" aria-label="Close panel" onClick={() => setPanel(null)}>✕</button>
             </div>
             {panel.kind === 'workspace' ? (
-              <WorkspacePanel campaignId={panel.campaignId} notify={notify} onOpenConnections={onOpenConnections} />
+              <WorkspacePanel campaignId={panel.campaignId} notify={notify} onOpenConnections={onOpenConnections} onOpenBoard={onOpenBoard ? () => onOpenBoard(panel.campaignId) : undefined} />
             ) : panel.kind === 'surface' && panel.surface === 'memory' ? (
               <MemoryPanel notify={notify} />
             ) : panel.kind === 'surface' && panel.surface === 'impact' ? (

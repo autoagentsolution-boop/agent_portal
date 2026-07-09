@@ -244,9 +244,9 @@ export function App() {
     campaign: crumbCampaign?.product ?? null,
   };
 
-  // The live chat panel — built once, then hosted INSIDE the Command Center (chatSlot). The same
-  // element also backs the legacy `page:'orchestrate'` branch (dead fallback until P2.5) so there is
-  // one source of truth for all its wiring (restore/prefill/run cards/SSE/connection gate).
+  // The live chat panel — built once, hosted INSIDE the Command Center via chatSlot (P2.5: the
+  // standalone orchestrate page is gone). One source of truth for all its wiring
+  // (restore/prefill/run cards/SSE/connection gate).
   const orchestratePanelEl = (
     <OrchestratePanel
       key={orchestrateRestore?.sessionId ?? 'new'}
@@ -291,6 +291,7 @@ export function App() {
             openWorkspaceId={openWorkspaceId}
             onOpenWorkspaceConsumed={() => setOpenWorkspaceId(null)}
             onOpenConnections={() => { setSelectedRunId(null); setPage('connections'); }}
+            onOpenBoard={(id) => { setActiveCampaign(id); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}
             resumeChats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
             resumeFlows={flowsWithoutStrategy}
             onResumeChat={(id) => void selectChat(id)}
@@ -300,8 +301,6 @@ export function App() {
             onCloseChat={closeCcChat}
             notify={show}
           />
-        ) : page === 'orchestrate' ? (
-          <div className="master-home">{orchestratePanelEl}</div>
         ) : page === 'connections' ? (
           <div className="master-home">
             <ConnectionsPanel notify={show} />
