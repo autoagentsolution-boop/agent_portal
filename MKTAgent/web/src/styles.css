@@ -872,6 +872,11 @@ a { color: var(--accent); }
 .cc-exit { font-size: 12px; color: var(--cc-text-dim); border: 1px solid var(--cc-border);
   padding: 7px 14px; border-radius: 20px; background: transparent; transition: .2s; }
 .cc-exit:hover { border-color: var(--cc-border-bright); color: var(--cc-text); }
+/* W3 — make the Workspace switcher (the dashboard entry) read as populated + findable. */
+.cc-ws-menu-btn { display: inline-flex; align-items: center; gap: 7px; }
+.cc-ws-menu-btn.has-ws { color: var(--cc-text); border-color: var(--cc-border-bright); }
+.cc-ws-menu-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
+  padding: 0 5px; border-radius: 9px; background: var(--cc-violet); color: #0a0b1e; font-size: 11px; font-weight: 700; }
 
 .cc-head { text-align: center; padding: 34px 20px 4px; }
 .cc-eyebrow { font-size: 11px; letter-spacing: 4px; color: #4fd8e8; text-transform: uppercase; font-weight: 600; }
@@ -1087,6 +1092,27 @@ a { color: var(--accent); }
 .atria-suggestion-head { display: flex; align-items: center; gap: 8px; }
 .atria-suggestion-head strong { flex: 1; font-size: 14px; }
 .atria-suggestion p { margin: 8px 0 12px; font-size: 13px; line-height: 1.5; }
+
+/* W2 — these proactive cards render INSIDE the dark Command Center, where the default light-theme
+   tokens (var(--panel)/--border/--text/--muted) read washed-out. Re-skin them for the dark surface. */
+.command-center .atria-card,
+.command-center .atria-suggestion {
+  background: var(--cc-panel); border-color: var(--cc-border); color: var(--cc-text); backdrop-filter: blur(6px);
+}
+.command-center .atria-card:hover { border-color: var(--cc-border-bright); }
+.command-center .atria-card-body strong,
+.command-center .atria-suggestion-head strong { color: var(--cc-text); }
+.command-center .atria-section-title,
+.command-center .atria-card-cta,
+.command-center .atria-card .muted,
+.command-center .atria-suggestion p,
+.command-center .atria-suggestion .muted { color: var(--cc-text-dim); }
+.command-center .atria-suggestion .icon-btn { color: var(--cc-text-faint); }
+.command-center .atria-suggestion .icon-btn:hover { color: var(--cc-text); }
+.command-center .atria-suggestion .btn-primary {
+  background: var(--cc-violet); border: none; color: #0a0b1e; font-weight: 600;
+}
+.command-center .atria-suggestion .btn-primary:hover { background: var(--cc-violet-glow); }
 
 /* Scheduled view (◷ Scheduled) — queued + recently published posts. */
 .scheduled-view { max-width: 900px; }

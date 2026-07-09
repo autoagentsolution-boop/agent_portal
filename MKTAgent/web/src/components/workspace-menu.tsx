@@ -37,8 +37,10 @@ export function WorkspaceMenu({ workspaces, activeCampaignId, onOpenWorkspace, o
 
   return (
     <div className="cc-ws-menu" ref={ref}>
-      <button className="cc-exit" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open}>
-        ⌂ Workspace <span className="cc-ws-menu-caret">▾</span>
+      <button className={`cc-exit cc-ws-menu-btn ${workspaces.length ? 'has-ws' : ''}`} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} title="Bảng điều khiển các workspace của bạn">
+        ⌂ Workspace
+        {workspaces.length > 0 && <span className="cc-ws-menu-count">{workspaces.length}</span>}
+        <span className="cc-ws-menu-caret">▾</span>
       </button>
       {open && (
         <div className="cc-ws-menu-panel" role="menu">
