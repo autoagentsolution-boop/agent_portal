@@ -63,6 +63,9 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [cmd, setCmd] = useState('');
+  // Suggestions already acted on — held HERE (CommandCenterPage survives the chat open/close toggle)
+  // so a card doesn't reappear after you leave+return the chat and let you re-fire the same plan.
+  const [actedSuggestions, setActedSuggestions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     void api.getAgents().then((r) => {
@@ -181,7 +184,12 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
       <div className="cc-atria-surface">
         <section className="cc-atria-block">
           <h3 className="atria-section-title">Nhắc nhở từ Atria</h3>
-          <AtriaSuggestionCards notify={notify} onPlanCampaign={(t) => onLaunch(t)} />
+          <AtriaSuggestionCards
+            notify={notify}
+            onPlanCampaign={(t) => onLaunch(t)}
+            acted={actedSuggestions}
+            onAct={(kind) => setActedSuggestions((s) => new Set(s).add(kind))}
+          />
         </section>
         {(resumeChats.length > 0 || resumeFlows.length > 0) && onResumeChat && onOpenFlow && (
           <AtriaResumeWorkCards

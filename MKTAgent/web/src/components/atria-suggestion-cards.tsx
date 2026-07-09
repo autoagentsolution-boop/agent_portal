@@ -9,13 +9,18 @@ interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
   // Accepting a campaign-plan suggestion hands the prefilled intent to the Orchestrate flow.
   onPlanCampaign?: (intent: string) => void;
+  // Suggestions already acted on THIS session — kept by the parent so they don't reappear when this
+  // card list remounts (e.g. after leaving/returning to the chat), which let the user re-fire the same
+  // "Plan it" over and over → a fresh LLM plan each time. onAct records a newly-acted suggestion.
+  acted?: ReadonlySet<string>;
+  onAct?: (kind: string) => void;
 }
 
 const ICON: Record<AtriaSuggestion['kind'], string> = {
   plan_campaign: '🗓️', repeat_winner: '🔁', roadmap_email: '📧', roadmap_memory: '🧠',
 };
 
-export function AtriaSuggestionCards({ notify, onPlanCampaign }: Props) {
+export function AtriaSuggestionCards({ notify, onPlanCampaign, acted, onAct }: Props) {
   const [items, setItems] = useState<AtriaSuggestion[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [loaded, setLoaded] = useState(false);
@@ -34,9 +39,10 @@ export function AtriaSuggestionCards({ notify, onPlanCampaign }: Props) {
       notify('Asked Atria to draft the plan — review and approve before anything runs.');
     }
     setDismissed((d) => new Set(d).add(s.kind));
+    onAct?.(s.kind); // persist at the parent so this suggestion won't reappear + get re-fired
   };
 
-  const visible = items.filter((s) => !dismissed.has(s.kind));
+  const visible = items.filter((s) => !dismissed.has(s.kind) && !(acted?.has(s.kind)));
   if (!loaded) return null;
   if (visible.length === 0) {
     return <p className="muted small">Nothing urgent right now — Atria will nudge you here when it spots an opportunity.</p>;
