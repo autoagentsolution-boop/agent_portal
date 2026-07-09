@@ -1055,6 +1055,9 @@ a { color: var(--accent); }
 /* Scheduled view (◷ Scheduled) — queued + recently published posts. */
 .scheduled-view { max-width: 900px; }
 .sched-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.sched-row-wrap { display: flex; align-items: center; gap: 8px; }
+.sched-row-wrap .sched-row { flex: 1 1 auto; }
+.sched-row-wrap.due .sched-row { border-left: 3px solid var(--accent, #3b82f6); }
 .sched-row {
   display: grid; grid-template-columns: 84px 170px 130px 1fr; gap: 10px; align-items: center;
   width: 100%; text-align: left; padding: 8px 12px; border: 1px solid var(--border, #2a2a2a);

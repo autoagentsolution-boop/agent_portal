@@ -15,6 +15,10 @@ const dueClass = (iso: string | null): string => (iso && new Date(iso).getTime()
 export function ScheduledView({ notify, onOpenPost }: Props) {
   const [posts, setPosts] = useState<PostDto[]>([]);
   const [loading, setLoading] = useState(true);
+  // Per-post autonomy grant (2-step) for planned/brief posts, right here in the Scheduled list so the
+  // fanned-out posts can be handed to Atria without hunting for the Workspace dashboard.
+  const [grantFor, setGrantFor] = useState<{ postId: string; credits: number; token: string } | null>(null);
+  const [granting, setGranting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -24,6 +28,26 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
     setLoading(false);
   };
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startGrant = async (postId: string) => {
+    setGranting(true);
+    try {
+      const r = await api.grantPost(postId);
+      if (!r.ok) { notify(`Grant: ${r.error.error}`, 'err'); return; }
+      setGrantFor({ postId, credits: Math.round(r.data.estimate.credits), token: r.data.confirmationToken ?? '' });
+    } finally { setGranting(false); }
+  };
+  const confirmGrant = async () => {
+    if (!grantFor) return;
+    setGranting(true);
+    try {
+      const r = await api.grantPost(grantFor.postId, { confirmationToken: grantFor.token, scheduleConfirmed: true });
+      if (!r.ok) { notify(`Grant: ${r.error.error}`, 'err'); return; }
+      notify('Đã cấp quyền — Atria sẽ tự chuẩn bị nội dung rồi dừng ở review.');
+      setGrantFor(null);
+      void load();
+    } finally { setGranting(false); }
+  };
 
   // Upcoming = anything with a scheduledAt that hasn't gone out yet. `ready` posts are in the
   // scheduler's live queue; `brief`/`review` posts are planned (e.g. a materialized weekly calendar)
@@ -38,12 +62,26 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
     .slice(0, 10);
 
   const Row = ({ p, when }: { p: PostDto; when: string | null }) => (
-    <button className={`sched-row ${dueClass(when)}`} onClick={() => onOpenPost(p.campaignId, p.id)}>
-      <span className={`badge ${p.status}`}>{p.status}</span>
-      <span className="sched-when">{fmt(when)}</span>
-      <span className="sched-platforms">{p.platforms.join(', ') || 'no platforms'}</span>
-      <span className="sched-copy muted">{(p.copy?.body ?? '').replace(/\n/g, ' ').slice(0, 70) || p.id.slice(0, 8)}</span>
-    </button>
+    <div className={`sched-row-wrap ${dueClass(when)}`}>
+      <button className="sched-row" onClick={() => onOpenPost(p.campaignId, p.id)}>
+        <span className={`badge ${p.status}`}>{p.status}</span>
+        <span className="sched-when">{fmt(when)}</span>
+        <span className="sched-platforms">{p.platforms.join(', ') || 'no platforms'}</span>
+        <span className="sched-copy muted">{(p.copy?.body ?? '').replace(/\n/g, ' ').slice(0, 70) || p.id.slice(0, 8)}</span>
+      </button>
+      {/* A not-yet-generated (brief) campaign post → grant so Atria auto-prepares it (parks at review). */}
+      {p.status === 'brief' && p.campaignId && (
+        grantFor?.postId === p.id ? (
+          <span className="ws-grant-confirm">
+            ≈ {grantFor.credits.toLocaleString()} cr?
+            <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant()}>Xác nhận</button>
+            <button className="ws-grant-no" disabled={granting} onClick={() => setGrantFor(null)}>Huỷ</button>
+          </span>
+        ) : (
+          <button className="ws-grant-btn" disabled={granting} title="Cấp quyền cho Atria tự chuẩn bị rồi dừng ở review" onClick={() => void startGrant(p.id)}>⚡ Chuẩn bị</button>
+        )
+      )}
+    </div>
   );
 
   return (
