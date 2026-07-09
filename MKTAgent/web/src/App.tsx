@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from './hooks/use-auth';
 import { useToast } from './hooks/use-toast';
 import { api, loginUrl, type AgentChatSessionDto, type CampaignDto, type PostDto, type SavedRunDto } from './api/client';
@@ -13,16 +13,12 @@ import { InstructionEditor } from './components/instruction-editor';
 import { ImpactReport } from './components/impact-report';
 import { CampaignCommandView } from './components/campaign-command-view';
 import { CommandCenterPage } from './components/command-center-page';
+import { TopNav } from './components/top-nav';
+import type { Page } from './app-nav';
+import type { WorkspaceSummaryDto } from './api/client';
 import type { DemoMode } from './flow/demo-flow';
 
-type Page = 'flows' | 'orchestrate' | 'connections' | 'product-knowledge' | 'leads' | 'usage' | 'command-center' | 'instructions' | 'impact' | 'scheduled';
 type Theme = 'light' | 'dark';
-
-const postTitle = (post: PostDto, index: number): string => {
-  const firstLine = post.copy?.body?.split('\n').find((line) => line.trim())?.trim();
-  if (firstLine) return firstLine.slice(0, 42);
-  return `Post ${index + 1} · ${post.status}`;
-};
 
 export function App() {
   const auth = useAuth();
@@ -43,6 +39,11 @@ export function App() {
   const [orchestrateRestore, setOrchestrateRestore] = useState<OrchestrateRestore | null>(null);
   // Command typed on the Command Center, carried once into a fresh Orchestrate composer.
   const [orchestratePrefill, setOrchestratePrefill] = useState<string | null>(null);
+  // Top-nav-owned state (Command Center Unification P1): credits + workspaces feed the global top bar;
+  // a workspace picked in the top-nav Workspace menu opens on the Command Center via openWorkspaceId.
+  const [credits, setCredits] = useState<number | null>(null);
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummaryDto[]>([]);
+  const [openWorkspaceId, setOpenWorkspaceId] = useState<string | null>(null);
   // Sidebar "+" on a campaign requests the SAME create-post modal the board shows (Manual |
   // Master Agent), rather than silently creating an empty brief — unifies the two entry
   // points. Set the target campaign, navigate to its board, and let PostBoard auto-open the
@@ -155,55 +156,36 @@ export function App() {
     setPage('flows');
   };
 
-  const deleteChat = async (event: MouseEvent<HTMLButtonElement>, chat: AgentChatSessionDto) => {
-    event.stopPropagation();
-    if (!confirm(`Delete “${chat.title}”?`)) return;
+  // ── Top-nav data + actions (P1) ────────────────────────────────────────────────────────────────
+  const loadCredits = async () => { const r = await api.getUsage(); if (r.ok) setCredits(r.data.credits ?? null); };
+  const loadWorkspaces = async () => { const r = await api.listWorkspaces(); if (r.ok) setWorkspaces(r.data); };
 
-    const r = await api.deleteAgentChat(chat.id);
-    if (!r.ok) {
-      show(`Delete failed: ${r.error.error}`, 'err');
-      return;
-    }
-
-    setChatSessions((prev) => prev.filter((item) => item.id !== chat.id));
-    setActiveChatId((current) => current === chat.id ? null : current);
-    // Clear the consumed prefill too — remounting the panel fresh with a stale prefill
-    // would auto-submit the old intent again (duplicate run + LLM spend).
-    if (activeChatId === chat.id) { setOrchestrateRestore(null); setOrchestratePrefill(null); setPage('orchestrate'); }
+  // Delete a chat by id (top-nav Chats menu → no event object like the old sidebar row).
+  const deleteChatById = async (id: string) => {
+    const chat = chatSessions.find((c) => c.id === id);
+    if (!chat || !confirm(`Delete “${chat.title}”?`)) return;
+    const r = await api.deleteAgentChat(id);
+    if (!r.ok) { show(`Delete failed: ${r.error.error}`, 'err'); return; }
+    setChatSessions((prev) => prev.filter((c) => c.id !== id));
+    setActiveChatId((cur) => (cur === id ? null : cur));
     show('Chat deleted');
   };
 
-  // Delete a Saved Flow (run) from the sidebar. Refuses while executing (backend 409).
-  const deleteSavedFlow = async (event: MouseEvent<HTMLButtonElement>, flow: SavedRunDto) => {
-    event.stopPropagation();
-    if (!confirm(`Delete flow “${flow.name ?? 'Untitled'}”? This removes its steps and outputs.`)) return;
-    const r = await api.deleteRun(flow.id);
-    if (!r.ok) { show(r.error.error === 'run_in_flight' ? 'Flow is running — stop it first' : `Delete failed: ${r.error.error}`, 'err'); return; }
-    setSavedRuns((prev) => prev.filter((x) => x.id !== flow.id));
-    if (selectedRunId === flow.id) { setSelectedRunId(null); setPage('flows'); }
-    show('Flow deleted');
+  // Delete a workspace (campaign) from the top-nav Workspace menu.
+  const deleteWorkspaceFromNav = async (campaignId: string, name: string) => {
+    if (!confirm(`Xoá workspace “${name}”? Toàn bộ post trong đó sẽ bị xoá.`)) return;
+    const r = await api.deleteCampaign(campaignId);
+    if (!r.ok) { show(`Xoá thất bại: ${r.error.error}`, 'err'); return; }
+    setWorkspaces((prev) => prev.filter((w) => w.campaignId !== campaignId));
+    setCampaigns((prev) => prev.filter((c) => c.id !== campaignId));
+    if (openWorkspaceId === campaignId) setOpenWorkspaceId(null);
+    show('Đã xoá workspace');
   };
 
-  // Delete a campaign from the sidebar (cascades to its posts/briefs).
-  const deleteCampaignRow = async (event: MouseEvent<HTMLButtonElement>, campaign: CampaignDto) => {
-    event.stopPropagation();
-    if (!confirm(`Delete campaign “${campaign.product}”? This removes its posts too.`)) return;
-    const r = await api.deleteCampaign(campaign.id);
-    if (!r.ok) { show(`Delete failed: ${r.error.error}`, 'err'); return; }
-    setCampaigns((prev) => prev.filter((x) => x.id !== campaign.id));
-    setFlowPosts((prev) => prev.filter((p) => p.campaignId !== campaign.id));
-    if (activeCampaign === campaign.id) { setActiveCampaign(null); setSelectedPostId(null); }
-    show('Campaign deleted');
-  };
+  // Open a workspace from the top-nav: land on the Command Center and let it open the drawer.
+  const openWorkspaceFromNav = (campaignId: string) => { setOpenWorkspaceId(campaignId); setPage('command-center'); };
 
-  // Create a campaign, optionally under a flow (sidebar +). A lightweight prompt for
-  // the product name keeps this a quick management action (full config is editable later).
-  const createCampaignUnder = async (event: MouseEvent<HTMLButtonElement>, flowId: string | null) => {
-    event.stopPropagation();
-    return createCampaignForFlow(flowId);
-  };
-
-  // Same create, invoked without an event (blueprint CTA "New campaign from this flow").
+  // Create a campaign under a flow (blueprint CTA "New campaign from this flow").
   const createCampaignForFlow = async (flowId: string | null) => {
     const product = prompt('New campaign — strategy or offer name (e.g. "Product launch", "Competitor comparison"):')?.trim();
     if (!product) return;
@@ -214,25 +196,6 @@ export function App() {
     show(`Campaign “${product}” created`);
   };
 
-  // Add a post under a campaign (sidebar +). Same UX as the board's "+ New full brief":
-  // open the campaign board and request the create-mode modal (Manual | Master Agent).
-  const createPostUnder = (event: MouseEvent<HTMLButtonElement>, campaignId: string) => {
-    event.stopPropagation();
-    setActiveCampaign(campaignId); setSelectedPostId(null); setSelectedRunId(null); setPage('flows');
-    setPendingCreateCampaign(campaignId);
-  };
-
-  // Delete a post/brief from the sidebar (level-4 ×). Refuses while publishing (backend 409).
-  const deletePostRow = async (event: MouseEvent<HTMLButtonElement>, post: PostDto) => {
-    event.stopPropagation();
-    if (!confirm('Delete this post? This removes its brief and outputs.')) return;
-    const r = await api.deletePost(post.id);
-    if (!r.ok) { show(r.error.error === 'post_in_flight' ? 'Post is publishing — cannot delete' : `Delete failed: ${r.error.error}`, 'err'); return; }
-    setFlowPosts((prev) => prev.filter((p) => p.id !== post.id));
-    if (selectedPostId === post.id) setSelectedPostId(null);
-    bump();
-    show('Post deleted');
-  };
 
   useEffect(() => {
     if (!auth.user) return;
@@ -240,6 +203,8 @@ export function App() {
     void loadChats();
     void loadSavedRuns();
     void loadAllPosts();
+    void loadCredits();
+    void loadWorkspaces();
   }, [auth.user, refreshKey]);
 
   if (auth.loading) return <div className="center"><div className="muted">Loading…</div></div>;
@@ -277,94 +242,31 @@ export function App() {
 
   // One campaign row + its posts (level-3) under it, with create/delete controls.
   // Reused for both flow-nested campaigns and the Ungrouped section.
-  const renderCampaign = (campaign: CampaignDto) => {
-    const campaignPosts = flowPosts.filter((post) => post.campaignId === campaign.id);
-    return (
-      <div key={campaign.id}>
-        <div className={`tree-row-wrap level-3 ${activeCampaign === campaign.id && !selectedPostId && !selectedRunId ? 'active' : ''}`}>
-          <button className="tree-row-main" onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>📁 {campaign.product}</button>
-          <button className="tree-row-add" aria-label={`New post in ${campaign.product}`} title="New post" onClick={(e) => void createPostUnder(e, campaign.id)}>+</button>
-          <button className="tree-row-delete" aria-label={`Delete campaign ${campaign.product}`} onClick={(e) => void deleteCampaignRow(e, campaign)}>×</button>
-        </div>
-        {campaignPosts.slice(0, 8).map((post, index) => (
-          <div className={`tree-row-wrap level-4 ${selectedPostId === post.id ? 'active' : ''}`} key={post.id}>
-            <button className="tree-row-main" onClick={() => { setActiveCampaign(campaign.id); setSelectedPostId(post.id); setSelectedRunId(null); setPage('flows'); }}>{postTitle(post, index)}</button>
-            <button className="tree-row-delete" aria-label="Delete post" onClick={(e) => void deletePostRow(e, post)}>×</button>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
   return (
     <div className={`app-root theme-${theme}`}>
-      <aside className="app-sidebar">
-        <div className="sidebar-brand">
-          <strong>AgentPortal</strong>
-          <button className="icon-btn" aria-label="Toggle theme" onClick={() => setTheme((t) => t === 'light' ? 'dark' : 'light')}>{theme === 'light' ? '◐' : '☼'}</button>
-        </div>
-        <button className={`sidebar-item ${page === 'command-center' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('command-center'); }}>◈ Command Center</button>
-        <button className={`sidebar-item ${page === 'orchestrate' && !activeChatId ? 'active' : ''}`} onClick={openOrchestrate}>✦ Atria</button>
-        <button className={`sidebar-item ${page === 'instructions' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('instructions'); }}>⚙ Instructions</button>
-        <button className={`sidebar-item ${page === 'impact' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('impact'); }}>📈 Impact</button>
-        <button className={`sidebar-item ${page === 'connections' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('connections'); }}>🔌 Connections</button>
-        <button className={`sidebar-item ${page === 'usage' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setPage('usage'); }}>📊 Usage</button>
-        <div className="flow-sidebar-tree">
-          {/* Product Knowledge, Leads and Flows are peer top-level workspaces — same head level. */}
-          <div className="tree-section-head">
-            <button className={`tree-row level-1 tree-label flow-head ${page === 'product-knowledge' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('product-knowledge'); }}>📚 Product Knowledge</button>
-          </div>
-          <div className="tree-section-head">
-            <button className={`tree-row level-1 tree-label flow-head ${page === 'leads' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('leads'); }}>🎯 Leads</button>
-          </div>
-          <div className="tree-section-head">
-            <button className={`tree-row level-1 tree-label flow-head ${page === 'flows' && !selectedRunId && !activeCampaign ? 'active' : ''}`} onClick={() => { setActiveCampaign(null); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}>▦ Workspaces</button>
-            <button className="tree-row-add" aria-label="New workspace" title="New workspace — describe it to Atria" onClick={(e) => { e.stopPropagation(); openOrchestrate(); }}>+</button>
-          </div>
-          {savedRuns.length === 0 && campaigns.length === 0 && (
-            <div className="tree-empty">No workspaces yet — start one to begin</div>
-          )}
-          {savedRuns.map((flow) => {
-            const flowCampaigns = campaigns.filter((c) => c.flowId === flow.id);
-            return (
-              <div key={flow.id}>
-                <div className={`tree-row-wrap level-2 ${selectedRunId === flow.id ? 'active' : ''}`}>
-                  <button className="tree-row-main" onClick={() => openSavedFlow(flow.id)}>⚡ {flow.name ?? 'Untitled flow'} <span className="tree-badge">{flow.nodeCount}</span></button>
-                  <button className="tree-row-add" aria-label={`New campaign in ${flow.name ?? 'flow'}`} title="New campaign" onClick={(e) => void createCampaignUnder(e, flow.id)}>+</button>
-                  <button className="tree-row-delete" aria-label={`Delete flow ${flow.name ?? 'Untitled'}`} onClick={(e) => void deleteSavedFlow(e, flow)}>×</button>
-                </div>
-                {flowCampaigns.map(renderCampaign)}
-              </div>
-            );
-          })}
-          {campaigns.some((c) => !c.flowId) && (
-            <>
-              <div className="tree-row level-2 tree-label">Workspaces</div>
-              {campaigns.filter((c) => !c.flowId).map(renderCampaign)}
-            </>
-          )}
-        </div>
-        <button className="sidebar-item muted-action">⌕ Search chats</button>
-        <button className={`sidebar-item ${page === 'scheduled' ? 'active' : ''}`} onClick={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('scheduled'); }}>◷ Scheduled</button>
-
-        <div className="sidebar-section">Chats</div>
-        {chatSessions.length === 0 ? (
-          <div className="sidebar-empty">No chats yet — start one with New chat</div>
-        ) : chatSessions.map((chat) => (
-          <div className={`sidebar-chat-row ${activeChatId === chat.id ? 'active' : ''}`} key={chat.id}>
-            <button className="sidebar-link" onClick={() => void selectChat(chat.id)}>{chat.title}</button>
-            <button className="sidebar-chat-delete" aria-label={`Delete ${chat.title}`} onClick={(event) => void deleteChat(event, chat)}>×</button>
-          </div>
-        ))}
-        <div className="sidebar-user">{auth.user.email}</div>
-      </aside>
+      <TopNav
+        page={page}
+        onNavigate={(p) => { setSelectedRunId(null); if (p !== 'flows') { setActiveCampaign(null); setSelectedPostId(null); } setPage(p); }}
+        credits={credits}
+        theme={theme}
+        onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+        userEmail={auth.user.email}
+        workspaces={workspaces}
+        onOpenWorkspace={openWorkspaceFromNav}
+        onContinueChat={(id) => void selectChat(id)}
+        onDeleteWorkspace={(id, name) => void deleteWorkspaceFromNav(id, name)}
+        chats={chatSessions}
+        activeChatId={activeChatId}
+        onSelectChat={(id) => void selectChat(id)}
+        onDeleteChat={(id) => void deleteChatById(id)}
+      />
 
       <main className="app-main">
         {page === 'command-center' ? (
           <CommandCenterPage
             onLaunch={launchFromCommandCenter}
-            onExit={() => { setSelectedRunId(null); setActiveCampaign(null); setSelectedPostId(null); setPage('flows'); }}
-            onContinueChat={(id) => void selectChat(id)}
+            openWorkspaceId={openWorkspaceId}
+            onOpenWorkspaceConsumed={() => setOpenWorkspaceId(null)}
             onOpenConnections={() => { setSelectedRunId(null); setPage('connections'); }}
             notify={show}
           />

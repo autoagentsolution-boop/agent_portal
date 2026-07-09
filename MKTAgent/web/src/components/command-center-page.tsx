@@ -6,9 +6,8 @@
 // exits to the classic UI (onExit). Dark theme stays confined to `.command-center`; the drawer is
 // light so embedded post views keep native styling.
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { api, type AgentCatalog, type AgentNodeDto, type WorkspaceSummaryDto } from '../api/client';
+import { api, type AgentCatalog, type AgentNodeDto } from '../api/client';
 import { WorkspacePanel } from './workspace-panel';
-import { WorkspaceMenu } from './workspace-menu';
 import { AgentSpotlight } from './agent-spotlight';
 import { MemoryPanel } from './memory-panel';
 import { ImpactReport } from './impact-report';
@@ -18,10 +17,9 @@ import { EmailPanel } from './email-panel';
 interface Props {
   // Hand off to the live Orchestrate chat (Atria core / command bar), optionally seeding the composer.
   onLaunch: (prefill?: string) => void;
-  // Leave the command center for the normal workspace (current UI/UX).
-  onExit: () => void;
-  // Reopen the master-agent chat that spawned a workspace (from the top-right Workspace menu).
-  onContinueChat: (chatSessionId: string) => void;
+  // A workspace picked in the global top-nav Workspace menu opens its drawer here (P1). Null = none.
+  openWorkspaceId?: string | null;
+  onOpenWorkspaceConsumed?: () => void;
   // Open the Connections page (bubbled up from an embedded PostWorkflowView's connection gate).
   onOpenConnections?: () => void;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
@@ -46,10 +44,8 @@ const nodePos = (i: number, total: number): { left: string; top: string } => {
   return { left: `${50 + Math.cos(ang) * 42}%`, top: `${50 + Math.sin(ang) * 40}%` };
 };
 
-export function CommandCenterPage({ onLaunch, onExit, onContinueChat, onOpenConnections, notify }: Props) {
+export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, notify }: Props) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
-  const [credits, setCredits] = useState<number | null>(null);
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummaryDto[]>([]);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [cmd, setCmd] = useState('');
 
@@ -58,9 +54,14 @@ export function CommandCenterPage({ onLaunch, onExit, onContinueChat, onOpenConn
       if (r.ok) setCatalog(r.data);
       else notify(`Agents: ${r.error.error}`, 'err');
     });
-    void api.getUsage().then((r) => { if (r.ok) setCredits(r.data.credits); });
-    void api.listWorkspaces().then((r) => { if (r.ok) setWorkspaces(r.data); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A workspace selected in the global top-nav opens its drawer here, then clears the request.
+  useEffect(() => {
+    if (!openWorkspaceId) return;
+    setPanel({ kind: 'workspace', campaignId: openWorkspaceId });
+    onOpenWorkspaceConsumed?.();
+  }, [openWorkspaceId, onOpenWorkspaceConsumed]);
 
   const colorOf = useMemo(() => {
     const map = new Map((catalog?.groups ?? []).map((g) => [g.id, g.color]));
@@ -74,38 +75,9 @@ export function CommandCenterPage({ onLaunch, onExit, onContinueChat, onOpenConn
     onLaunch(cmd.trim() || undefined);
   };
 
-  // Delete a workspace (campaign — cascades to its posts). Destructive → confirm. Refresh the list
-  // and close the drawer if it was showing the deleted workspace.
-  const deleteWorkspace = async (campaignId: string, name: string) => {
-    if (!window.confirm(`Xoá workspace "${name}"? Toàn bộ post trong đó sẽ bị xoá.`)) return;
-    const r = await api.deleteCampaign(campaignId);
-    if (!r.ok) { notify(`Xoá thất bại: ${r.error.error}`, 'err'); return; }
-    setWorkspaces((prev) => prev.filter((w) => w.campaignId !== campaignId));
-    setPanel((p) => (p?.kind === 'workspace' && p.campaignId === campaignId ? null : p));
-    notify('Đã xoá workspace', 'ok');
-  };
 
   return (
     <div className="command-center">
-      <div className="cc-topbar">
-        <span className="cc-logo" />
-        <span className="cc-brand">Atria</span>
-        <span className="cc-tag">Command Center</span>
-        <div className="cc-topbar-right">
-          <span className="cc-credit" title="Tổng credit đã dùng (minh bạch token → credit)">
-            ◈ {credits === null ? '—' : credits.toLocaleString()} credits
-          </span>
-          <WorkspaceMenu
-            workspaces={workspaces}
-            activeCampaignId={panel?.kind === 'workspace' ? panel.campaignId : null}
-            onOpenWorkspace={(campaignId) => setPanel({ kind: 'workspace', campaignId })}
-            onContinueChat={onContinueChat}
-            onDelete={(campaignId, name) => void deleteWorkspace(campaignId, name)}
-            onExit={onExit}
-          />
-        </div>
-      </div>
-
       <div className="cc-head">
         <div className="cc-eyebrow">Neural Network</div>
         <h1>Trung tâm điều hành AI của bạn</h1>

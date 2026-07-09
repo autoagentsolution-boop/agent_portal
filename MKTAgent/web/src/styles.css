@@ -270,7 +270,8 @@ a { color: var(--accent); }
   --accent: #10a37f;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 244px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   background: var(--bg);
   color: var(--text);
 }
@@ -340,8 +341,51 @@ a { color: var(--accent); }
 .tree-empty { color: var(--muted); font-size: 12px; padding: 5px 8px 5px 30px; }
 .tree-empty.nested { padding-left: 42px; }
 .sidebar-user { margin-top: auto; color: var(--muted); font-size: 12px; padding: 12px 8px 4px; overflow-wrap: anywhere; }
-.app-main { height: 100vh; overflow-y: auto; background: var(--bg); }
-.master-home { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+.app-main { min-height: 0; height: calc(100vh - var(--topnav-h, 52px)); overflow-y: auto; background: var(--bg); }
+
+/* ── Global top navigation (Command Center Unification P1) ──────────────────────────────────────
+   Dark-first bar that replaced the left sidebar. Holds brand, page items, Workspace ▾ + Chats ▾,
+   credits, theme, user. Uses its own dark tokens so it reads the same on light and dark app themes. */
+.app-topnav {
+  --topnav-h: 52px;
+  height: 52px; display: flex; align-items: center; gap: 14px; padding: 0 14px;
+  background: #0f1017; border-bottom: 1px solid #23252f; color: #e7e8f0; overflow: visible;
+}
+.topnav-brand { display: flex; align-items: center; gap: 8px; background: none; border: none; cursor: pointer; color: inherit; padding: 0; }
+.topnav-logo { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, #9d7bff, #4b7bff); box-shadow: 0 0 12px rgba(157,123,255,0.5); }
+.topnav-brand-name { font-weight: 700; font-size: 15px; }
+.topnav-brand-tag { font-size: 9px; letter-spacing: 2px; color: #8a8ca0; border: 1px solid #2c2f3d; padding: 2px 6px; border-radius: 5px; }
+.topnav-items { display: flex; align-items: center; gap: 2px; overflow-x: auto; flex: 1 1 0; min-width: 0; scrollbar-width: none; }
+.topnav-items::-webkit-scrollbar { display: none; }
+.topnav-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #b6b8c8;
+  background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; cursor: pointer; white-space: nowrap; transition: .15s; }
+.topnav-item:hover { color: #fff; background: rgba(255,255,255,0.05); }
+.topnav-item.is-active { color: #fff; background: rgba(157,123,255,0.16); border-color: rgba(157,123,255,0.4); }
+.topnav-item-icon { font-size: 13px; }
+.topnav-caret { font-size: 10px; opacity: .7; }
+.topnav-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.topnav-credit { font-size: 12px; color: #cdd0e0; border: 1px solid #2c2f3d; border-radius: 20px; padding: 4px 10px; white-space: nowrap; }
+.topnav-icon-btn { background: none; border: 1px solid #2c2f3d; border-radius: 7px; color: #b6b8c8; width: 28px; height: 28px; cursor: pointer; }
+.topnav-icon-btn:hover { color: #fff; border-color: #40435a; }
+.topnav-user { font-size: 11px; color: #8a8ca0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Chats ▾ dropdown */
+.topnav-chats { position: relative; }
+.topnav-chats-panel { position: absolute; right: 0; top: calc(100% + 8px); width: 300px; z-index: 50;
+  background: #14151d; border: 1px solid #2c2f3d; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.55); padding: 8px; }
+.topnav-chats-search { width: 100%; box-sizing: border-box; background: #0f1017; border: 1px solid #2c2f3d; border-radius: 8px;
+  color: #e7e8f0; font-size: 12px; padding: 7px 9px; margin-bottom: 6px; }
+.topnav-chats-list { max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.topnav-chats-empty { font-size: 12px; color: #8a8ca0; padding: 8px; text-align: center; }
+.topnav-chats-row { display: flex; align-items: center; gap: 4px; border-radius: 8px; padding: 1px; }
+.topnav-chats-row:hover { background: rgba(255,255,255,0.04); }
+.topnav-chats-row.is-active { background: rgba(157,123,255,0.14); }
+.topnav-chats-name { flex: 1; min-width: 0; background: none; border: none; color: #c6c8d6; font-size: 12.5px;
+  padding: 7px 8px; cursor: pointer; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topnav-chats-name:hover { color: #fff; }
+.topnav-chats-del { flex-shrink: 0; width: 24px; height: 24px; border-radius: 6px; border: 1px solid transparent;
+  background: none; color: #8a8ca0; cursor: pointer; }
+.topnav-chats-del:hover { border-color: #d93025; color: #ff6b5e; }
+.master-home { min-height: 100%; display: grid; grid-template-rows: auto 1fr; }
 .master-chat-main {
   min-height: calc(100vh - 62px);
   max-width: 980px;
@@ -469,8 +513,8 @@ a { color: var(--accent); }
 .stage-line.st-error { border-color: var(--red); color: var(--red); }
 
 @media (max-width: 900px) {
-  .app-root { grid-template-columns: 1fr; }
-  .app-sidebar { height: auto; max-height: 260px; }
+  .topnav-item-label { display: none; }
+  .topnav-user { display: none; }
   .setup-summary-grid { grid-template-columns: 1fr; }
 }
 
