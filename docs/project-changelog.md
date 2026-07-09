@@ -5,6 +5,30 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-09
 
+### Feature: Demo-readiness P1/P2/P3 + post-QA fixes (`d6dcf30`→ latest, `pivot/video-content-farm`)
+Plans `plans/260709-1947-demo-readiness-refine/` (build) + `plans/260709-2128-demo-fixes-p4-p5/` (QA fixes).
+- **DTO seam** (`d6dcf30`): `approvalMode` (`human|atria`) exposed on `WorkflowRunDto` (schema + mapper + regen web types).
+- **P1 — per-post grant on the post view** (`29826f7`): "⚡ Chuẩn bị" 2-step grant next to Execute on
+  `PostWorkflowView` (forecast → confirm), an "Atria đang chuẩn bị" state + 8s auto-advance poll while
+  `approvalMode==='atria'`, and the per-post credit forecast on the confirm chip.
+- **P2 W1 — neural-graph node light-up** (`25cb9b8`): new `use-agent-activity` hook subscribes to the
+  shared `/events` SSE and lights the working agent node (`node.status=running`), flows energy along its
+  edge, and pulses a "conducting" core; lit nodes surface even in the collapsed chat hero.
+- **P2 W2/W3** (`2f55683`): dark-restyle of the Atria suggestion/resume cards inside the CC; workspace
+  count badge on the Workspace ▾ switcher.
+- **P3 VOICE V1/V2** (`b99630e`): `POST /voice/tts` (Gemini TTS via `src/video/tts.ts`; owner-scoped,
+  cost-tracked, filesystem-cached, 4000-char clamp) + read-aloud speaker buttons on Atria reply bubbles
+  and the Impact headline (single-narration-at-a-time). TTS live-verified (206KB WAV, ~5s, cached). V3
+  auto-narrate deferred.
+- **Post-QA fixes** (latest commit): a 4-agent QA swarm (reviewer/red-team/tester/QA-planner; reports in
+  `plans/reports/*260709-2100*`) found one real safety-consent gap — a granted **scheduled** post
+  auto-publishes for real while the UI said "dừng ở review." Resolved via **Option B** (copy now reads
+  "Atria tự đăng theo lịch" across all 4 grant surfaces; behavior unchanged). Also: atria dead-end
+  recovery (Execute restored on failed/needs_connection since the cron only re-claims `planned`), a 32s
+  "preparing" watchdog, read-aloud double-click ref-guard, and a per-owner `/voice/tts` throttle.
+  DEFERRED to a follow-up plan: SSE-stream multiplex (3rd standing connection), hide-grant-on-non-campaign,
+  strict env boolean parse, reconciling 2 stale verify assertions, and all of P4/P5.
+
 ### Feature: Command Center Unification — top nav, Atria chat merged into the CC, "alive" animation
 Big frontend re-architecture (`plans/260709-1359-command-center-unification/`). Commits `5c47904`
 (P1) → `019b92b` (P3), all on `pivot/video-content-farm`.

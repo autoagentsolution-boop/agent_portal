@@ -1,8 +1,19 @@
 # Demo Fixes + P4 + P5 — merged plan (post-QA)
 
 Branch: `pivot/video-content-farm` · 2026-07-09 · Proposed AFTER the QA swarm (Reviewer, Red-team,
-Tester, QA-planner) on the P1/P2/P3 build (commits `d6dcf30..b99630e`). **Nothing here is applied yet —
-awaiting approval per "trước khi sửa thì propose plan".** Source reports in `plans/reports/*260709-2100*`.
+Tester, QA-planner) on the P1/P2/P3 build (commits `d6dcf30..b99630e`). Source reports in
+`plans/reports/*260709-2100*`.
+
+## Progress (2026-07-09 EOD — user chose F1 Option B; stopping here, big plan tomorrow)
+DONE this session (commit after b99630e): **F1** (Option B — grant copy now says "tự đăng theo lịch",
+matches auto-publish, across all 4 grant surfaces) · **F2** (atria dead-end recovery — Execute restored on
+failed/needs_connection) · **F3 watchdog** (32s stall → manual Execute + hint) · **F6** (read-aloud
+double-click ref-guard + `/voice/tts` 1.5s per-owner throttle). Backend tsc + web build green;
+verify-campaign-grant re-run PASS.
+DEFERRED to tomorrow's big plan: **F3 env** (strict boolean parse — latent; all ENABLE_* are `true` now so
+harmless) · **F4** (SSE multiplex — 3rd standing stream; riskiest, touches working hooks) · **F5** (hide
+grant on non-campaign posts — WorkflowRun has no direct campaignId, needs DTO plumbing) · **F7** (reconcile
+2 stale verify assertions) · all of **P4** (D1 delete-real-posts needs explicit sign-off) and **P5**.
 
 ## Reconciliation note (important)
 Tester headline "publisher never resumes / nothing posts" = **misdiagnosis**. Re-ran directly: publisher
