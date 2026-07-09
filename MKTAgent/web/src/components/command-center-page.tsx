@@ -15,6 +15,7 @@ import { LeadsPage } from './LeadsPage';
 import { EmailPanel } from './email-panel';
 import { AtriaSuggestionCards } from './atria-suggestion-cards';
 import { AtriaResumeWorkCards } from './atria-resume-work-cards';
+import { useAgentActivity } from '../hooks/use-agent-activity';
 
 interface Props {
   // Hand off to the live Orchestrate chat (Atria core / command bar), optionally seeding the composer.
@@ -88,6 +89,11 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
 
   const agents = catalog?.agents ?? [];
 
+  // W1 — live node light-up: the set of agents whose node is `running` right now (any run). Drives
+  // the "agents gather + work" moment. Only subscribe once the graph has nodes to light.
+  const activeAgents = useAgentActivity(agents.length > 0);
+  const anyRunning = activeAgents.size > 0;
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     onLaunch(cmd.trim() || undefined);
@@ -112,8 +118,8 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
       </div>
       )}
 
-      <div className="cc-network">
-        <button className="cc-core" onClick={() => onLaunch()}>
+      <div className={`cc-network ${anyRunning ? 'is-conducting' : ''}`}>
+        <button className={`cc-core ${anyRunning ? 'is-conducting' : ''}`} onClick={() => onLaunch()}>
           <span className="cc-core-label">Master Agent</span>
           <span className="cc-core-name">Atria</span>
           <span className="cc-core-sub">Nhạc trưởng</span>
@@ -121,22 +127,25 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
         <svg className="cc-links" viewBox="0 0 100 100" preserveAspectRatio="none">
           {agents.map((a, i) => {
             const ang = (i / agents.length) * Math.PI * 2 - Math.PI / 2;
+            const on = activeAgents.has(a.id); // energy flows along an edge whose agent is working
             return (
               <line
                 key={a.id}
+                className={on ? 'cc-link-live' : ''}
                 x1={50} y1={50}
                 x2={50 + Math.cos(ang) * 42} y2={50 + Math.sin(ang) * 40}
-                stroke={colorOf(a)} strokeOpacity={0.22} strokeWidth={0.3} strokeDasharray="1 1.3"
+                stroke={colorOf(a)} strokeOpacity={on ? 0.85 : 0.22} strokeWidth={on ? 0.7 : 0.3} strokeDasharray="1 1.3"
               />
             );
           })}
         </svg>
         {agents.map((a, i) => {
           const planned = a.implStatus === 'planned';
+          const running = activeAgents.has(a.id);
           return (
             <button
               key={a.id}
-              className={`cc-node ${a.implStatus === 'stub' ? 'is-stub' : ''} ${planned ? 'is-planned' : ''} ${(panel?.kind === 'agent' || panel?.kind === 'surface') && panel.agent.id === a.id ? 'is-active' : ''}`}
+              className={`cc-node ${a.implStatus === 'stub' ? 'is-stub' : ''} ${planned ? 'is-planned' : ''} ${running ? 'is-running' : ''} ${(panel?.kind === 'agent' || panel?.kind === 'surface') && panel.agent.id === a.id ? 'is-active' : ''}`}
               style={nodePos(i, agents.length)}
               onClick={() =>
                 planned ? notify(`${a.name} — sắp ra mắt`)

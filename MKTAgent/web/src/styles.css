@@ -939,6 +939,35 @@ a { color: var(--accent); }
 /* Atria v2 P1 — inline hub: workspace strip + node highlight. */
 .cc-node.is-active .cc-node-circle { box-shadow: 0 0 26px rgba(157,123,255,0.8); border-color: var(--cc-violet-glow); }
 .cc-node.is-active .cc-node-label { color: var(--cc-text); }
+
+/* W1 — live node light-up during REAL runs (SSE node.status=running). The agent whose node is
+   working glows + pulses a ring; its edge to the core carries flowing energy; the core "conducts". */
+.cc-node.is-running { opacity: 1; z-index: 3; }
+.cc-node.is-running .cc-node-circle {
+  border-color: #fff;
+  box-shadow: 0 0 12px 2px rgba(157,123,255,0.55), 0 0 34px 8px rgba(157,123,255,0.45);
+  animation: cc-node-work 1.15s ease-in-out infinite;
+}
+.cc-node.is-running .cc-node-label { color: #fff; text-shadow: 0 0 8px rgba(157,123,255,0.7); }
+@keyframes cc-node-work {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 12px 2px rgba(157,123,255,0.5), 0 0 26px 6px rgba(157,123,255,0.35); }
+  50% { transform: scale(1.14); box-shadow: 0 0 18px 4px rgba(157,123,255,0.7), 0 0 46px 12px rgba(157,123,255,0.55); }
+}
+.cc-links .cc-link-live { animation: cc-link-flow 0.9s linear infinite; }
+@keyframes cc-link-flow { to { stroke-dashoffset: -6; } }
+/* Core reads as an active conductor while any agent works. */
+.cc-core.is-conducting { animation: cc-core-conduct 1.4s ease-in-out infinite; }
+@keyframes cc-core-conduct {
+  0%, 100% { box-shadow: 0 0 46px rgba(157,123,255,0.5), inset 0 0 40px rgba(255,255,255,0.12); }
+  50% { box-shadow: 0 0 74px 10px rgba(157,123,255,0.85), inset 0 0 48px rgba(255,255,255,0.2); }
+}
+/* In the collapsed chat hero, nodes are hidden — but a WORKING node surfaces (circle only, no
+   label) so the "agents gathering around Atria" moment is visible during a chat-driven run too. */
+.command-center.is-chat .cc-node.is-running { display: block; transform: translate(-50%, -50%) scale(0.62); }
+.command-center.is-chat .cc-node.is-running .cc-node-label { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .cc-node.is-running .cc-node-circle, .cc-core.is-conducting, .cc-links .cc-link-live { animation: none; }
+}
 /* Top-right Workspace switcher (replaces the old landing chip strip). */
 .cc-ws-menu { position: relative; }
 .cc-ws-menu-caret { font-size: 10px; opacity: .7; }
