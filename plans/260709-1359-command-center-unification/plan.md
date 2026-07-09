@@ -30,34 +30,36 @@ thinking animation + agent nodes lighting up. Voice = future seam only.
   standalone `Atria` nav + `page:'orchestrate'` (or make it an alias of command-center). Preserve run cards,
   restore, suggestion/resume-work cards, connection gate, SSE multiplex.
 
+  **✅ P2 DONE + browser-verified (all sub-steps). P3 DONE. Commits after 5c47904.**
+
   **P2 is the highest-risk phase (R2). Rule: EMBED, don't rewrite. Each sub-step keeps the app green
   (typecheck + browser) and is a SEPARATE commit; the old `page:'orchestrate'` chat stays fully working
   until the very last step, so no capability is ever lost mid-refactor. Any step reverts on its own.**
-  - [ ] **P2.0 — Surface Atria suggestions on the CC landing.** Render `AtriaSuggestionCards` +
+  - [x] **P2.0 — Surface Atria suggestions on the CC landing.** Render `AtriaSuggestionCards` +
     `AtriaResumeWorkCards` on the CC idle view (near the command bar), reusing the components as-is
     (they self-fetch). FIXES the misplacement (they only showed inside an empty chat). Decoupled from the
     merge → ship first, ~zero risk. Verify cards appear + "plan campaign"/"resume" actions still work.
-  - [ ] **P2.1 — CC can HOST the chat (additive).** Add an in-CC dark chat container that mounts the SAME
+  - [x] **P2.1 — CC can HOST the chat (additive).** Add an in-CC dark chat container that mounts the SAME
     `OrchestratePanel` (same props App already wires: restore/prefill/onRunActivity/…). Keep
     `page:'orchestrate'` intact as fallback. No logic change — a second mount point. Verify a chat renders
     inside CC (run cards, restore, connection gate, SSE all still work because it's the same component).
-  - [ ] **P2.2 — Command bar + Atria core drive the in-CC chat.** Change CC `onLaunch` to open the in-CC
+  - [x] **P2.2 — Command bar + Atria core drive the in-CC chat.** Change CC `onLaunch` to open the in-CC
     chat instead of switching pages; graph shrinks to a mini-hero (CSS state). Verify send → reply in CC.
-  - [ ] **P2.3 — Chats ▾ + continue-chat open in-CC.** Point `selectChat` at the in-CC host (was
+  - [x] **P2.3 — Chats ▾ + continue-chat open in-CC.** Point `selectChat` at the in-CC host (was
     `page:'orchestrate'`). Verify restoring a past chat lands in CC with its run card.
-  - [ ] **P2.4 — Dark restyle of the embedded chat.** Add a `variant="dark"` class path on OrchestratePanel
+  - [x] **P2.4 — Dark restyle of the embedded chat.** Add a `variant="dark"` class path on OrchestratePanel
     so the transcript/bubbles/composer match the CC skin. CSS/class only, no logic. Verify visuals.
-  - [ ] **P2.5 — Retire the standalone path (last, only after 2.1–2.4 proven).** Remove the
+  - [x] **P2.5 — Retire the standalone path (last, only after 2.1–2.4 proven).** Remove the
     `page:'orchestrate'` branch + `openOrchestrate`; make any remaining callers use the in-CC host. Separate
     commit → trivially revertible. Verify nothing routes to a dead page.
 
-  - [ ] **P2.6 — Unify the "workspace" concept (IA decision: LOCKED = merge).** ONE workspace concept:
+  - [x] **P2.6 — Unify the "workspace" concept (IA decision: LOCKED = merge).** ONE workspace concept:
     remove the "Workspaces" nav item (drop `flows` from TopNav NAV). The **Workspace ▾ dropdown → dashboard
     drawer (WorkspacePanel)** is the single entry. Add an **"Mở board đầy đủ / Open full board"** button
     inside the drawer that navigates to the deep board (`page:'flows'` + `activeCampaign`=that campaign =
     PostBoard + DAG). `ActiveFlowsPage` stays as the deep board, just reached from the drawer instead of a
     top-nav item. Verify: dropdown → dashboard → open board → back.
-- [ ] **P3 — "Alive" animation.** Typewriter token reveal on Atria replies + thinking state (VISUAL only —
+- [x] **P3 — "Alive" animation.** Typewriter token reveal on Atria replies + thinking state (VISUAL only —
   no `generateContentStream`); node light-up (SSE-driven during runs, decorative pulse during chat).
   Design the reveal as a stream seam so voice/TTS can subscribe later.
 - [ ] **P4 (future)** — voice sync. Deferred; only keep the P3 reveal seam compatible.
