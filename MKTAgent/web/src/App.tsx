@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from './hooks/use-auth';
 import { useToast } from './hooks/use-toast';
 import { api, loginUrl, type AgentChatSessionDto, type CampaignDto, type PostDto, type SavedRunDto } from './api/client';
@@ -44,6 +44,10 @@ export function App() {
   const [credits, setCredits] = useState<number | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceSummaryDto[]>([]);
   const [openWorkspaceId, setOpenWorkspaceId] = useState<string | null>(null);
+  // Explicit "chat is open in the CC" flag (NOT derived from prefill) so consuming the prefill after
+  // the first auto-send doesn't close the chat — and, crucially, a remount (tab switch / refresh) no
+  // longer re-fires the auto-send (was: duplicate LLM call every time you returned to the CC).
+  const [ccChatOpen, setCcChatOpen] = useState(false);
   // Sidebar "+" on a campaign requests the SAME create-post modal the board shows (Manual |
   // Master Agent), rather than silently creating an empty brief — unifies the two entry
   // points. Set the target campaign, navigate to its board, and let PostBoard auto-open the
@@ -81,10 +85,11 @@ export function App() {
       messages: r.data.messages.map((m) => ({ role: m.role, content: m.content })),
       run: runRes.ok ? runRes.data : null,
     });
+    setCcChatOpen(true);
     setPage('command-center'); // chat now hosted INSIDE the Command Center (P2.3)
   };
 
-  const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setOrchestratePrefill(null); setPage('command-center'); };
+  const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setOrchestratePrefill(null); setCcChatOpen(true); setPage('command-center'); };
 
   // Command bar / Atria core → open the chat, now hosted INSIDE the Command Center (P2.2). A non-empty
   // prefill (a typed command or an accepted Atria suggestion) is a SEND — the panel auto-submits it so
@@ -92,12 +97,24 @@ export function App() {
   const launchFromCommandCenter = (prefill?: string) => {
     setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null);
     setOrchestratePrefill(prefill ?? null);
+    setCcChatOpen(true);
     setPage('command-center');
   };
 
-  // A chat is "active in the CC" once a prefill (fresh send) or a restore (reopened chat) exists.
-  const ccChatActive = Boolean(orchestratePrefill || orchestrateRestore);
-  const closeCcChat = () => { setOrchestratePrefill(null); setOrchestrateRestore(null); setActiveChatId(null); };
+  const ccChatActive = ccChatOpen;
+  const closeCcChat = () => { setCcChatOpen(false); setOrchestratePrefill(null); setOrchestrateRestore(null); setActiveChatId(null); };
+
+  // Returning to the CC (tab switch / back) with an open chat but no live restore → re-hydrate it from
+  // the active session so the conversation reappears WITHOUT re-sending. Only runs on a page transition
+  // INTO command-center (not during the live send, where the panel already holds the conversation).
+  const prevPage = useRef<Page>('command-center');
+  useEffect(() => {
+    const entered = prevPage.current !== 'command-center' && page === 'command-center';
+    prevPage.current = page;
+    if (entered && ccChatOpen && activeChatId && !orchestratePrefill && !orchestrateRestore) {
+      void selectChat(activeChatId);
+    }
+  }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadSavedRuns = async () => {
     const r = await api.listSavedRuns();
@@ -253,6 +270,7 @@ export function App() {
       restore={orchestrateRestore}
       initialInput={orchestratePrefill ?? undefined}
       autoStart={Boolean(orchestratePrefill)}
+      onAutoStarted={() => setOrchestratePrefill(null)}
       flowsWithoutStrategy={flowsWithoutStrategy}
       chats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
       notify={show}

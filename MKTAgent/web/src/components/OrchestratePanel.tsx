@@ -42,6 +42,9 @@ interface Props {
   // "Plan it" on Atria and the Command Center bar are SENDS, not drafts — landing the
   // user on an idle composer reads as the intent being swallowed.
   autoStart?: boolean;
+  // Fired once, right after the auto-start send is dispatched, so the parent can CLEAR the prefill —
+  // otherwise a remount (tab switch / refresh) would re-run autoStart and re-send (duplicate LLM call).
+  onAutoStarted?: () => void;
   // Empty-state "Continue where you left off" — recent chats + saved flows with no
   // campaign. Atria IS this surface, so the strategist home lives here, not on a hub page.
   chats: Array<{ id: string; title: string; updatedAt: string }>;
@@ -56,7 +59,7 @@ const starters = [
   'Write a short LinkedIn post about our new feature',
 ];
 
-export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, chats, onResumeChat }: Props) {
+export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, onAutoStarted, chats, onResumeChat }: Props) {
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   // Messages present at mount (restored history) render instantly; only messages added afterwards get
   // the typewriter reveal, and only the newest one (P3 — "alive" feel without re-typing old replies).
@@ -105,6 +108,7 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
     const seed = (initialInput ?? '').trim();
     if (!seed) return;
     autoStarted.current = true;
+    onAutoStarted?.(); // tell the parent to consume the prefill so a remount can't re-send it
     // A seed too short to be a goal parks in the composer instead of bouncing off the
     // length guard in start() (which would drop the intent entirely).
     if (seed.length < 3) { setInput(seed); return; }
