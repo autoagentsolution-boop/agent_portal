@@ -44,6 +44,21 @@ then the demo flows, then WOW, then voice. Scope confirmed by user.
   the Impact report → plays the TTS. The typewriter reveal seam (P3) drives the cadence.
 - [ ] **V3 — (stretch) auto-narrate** the report when opened. Gate behind a toggle; demo-only if time.
 
+### P5 — Design consistency + "alive" amplification (MULTI-AGENT, scheduled AFTER safety — "sau này")
+Current problem (user): design is INCONSISTENT across pages (light legacy pages vs the dark Command
+Center skin), and Atria's "live" feel (typewriter + core breathing) is NOT WOW enough yet.
+- [ ] **DC1 — Orchestrate a design team.** Spawn in sequence/parallel: (a) `ui-ux-designer` agent — audit
+  every surface, produce ONE design system (tokens, spacing, type, color, dark/light strategy) that
+  unifies the app; (b) a **senior design reviewer** pass — critique the audit, raise the bar, kill AI-slop;
+  (c) a **senior dev** (`fullstack-developer`) — implement the unified tokens/components across pages.
+  Deliver as a design-tokens layer + per-page migration, each page shipped + verified separately.
+- [ ] **DC2 — Decide the app-wide theme direction.** Either commit the whole app to the dark neural skin
+  (matches CC + demo vibe) OR a deliberate light/dark split with shared tokens. Lock ONE, apply everywhere.
+- [ ] **DC3 — Amplify Atria "alive" beyond WOW-min.** Layer motion so Atria reads as a living conductor:
+  node choreography (agents activate in sequence as the plan runs), reactive links/energy flow along the
+  graph edges during a run, richer core states (idle → thinking → speaking), micro-interactions, and later
+  sync with VOICE (P3) so the graph pulses to the narration. Goal: the neural network visibly "works".
+
 ### P4 — Demo prep
 - [ ] **D1 — Clean demo data.** Delete the 4 test posts + Drive test image; seed/curate a clean campaign
   with nice measured Impact numbers for the show.
