@@ -41,16 +41,18 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
     check('≤5 questions', r.questions.length <= 5, r.questions.length);
   }
 
-  // RICHNESS GATE: product + a single platform but no audience/angle is too thin to
-  // plan well — the old engine jumped straight to a bare DAG ("it's dumb"). Now it
-  // must ask the high-impact targeting questions first.
+  // MARKETING DEPTH IS OPTIONAL (fix: "6 rounds to plan a simple video"). audience/angle/accountType
+  // are offered but NEVER required — they must not block a request that already has a subject.
   const thin = analyzeDeterministic('Post about our AI automation product on facebook');
   const rThin = evaluateClarification(thin);
-  check('thin (product+platform only) → needs_clarification', rThin.status === 'needs_clarification', rThin);
   if (rThin.status === 'needs_clarification') {
-    check('thin asks audience (required)', rThin.questions.some((q) => q.slot === 'targetAudience' && q.required), rThin.questions);
-    check('thin asks angle (required)', rThin.questions.some((q) => q.slot === 'angle' && q.required), rThin.questions);
+    check('audience is OPTIONAL (not required)', !rThin.questions.some((q) => q.slot === 'targetAudience' && q.required), rThin.questions);
+    check('angle is OPTIONAL (not required)', !rThin.questions.some((q) => q.slot === 'angle' && q.required), rThin.questions);
+    check('accountType is OPTIONAL (not required)', !rThin.questions.some((q) => q.slot === 'accountType' && q.required), rThin.questions);
   }
+  // A clearly-scoped creative request (subject + output + platform) plans immediately — no interrogation.
+  const creative = analyzeDeterministic('Make a short video about English vocabulary for kids on facebook');
+  check('creative subject+video+platform → ready', evaluateClarification(creative).status === 'ready', creative.slots);
 
   // No platform either → also thin, and the platforms question becomes required.
   const noPlatform = analyzeDeterministic('Post about our AI automation product');
@@ -69,10 +71,11 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   console.log('MasterAgent.planFromGoal');
   const agent = new MasterAgent();
 
-  // The FB-post example from the screenshot: now asks before planning.
+  // The FB-post example: with marketing depth now optional, a subject+output+platform request PLANS
+  // straight away instead of interrogating (the "too strict / too slow" fix).
   const thin = analyzeDeterministic('Post about our AI automation product on facebook with an infographic');
   const outThin = agent.planFromGoal(thin);
-  check('thin FB example → awaiting_clarification', outThin.status === 'awaiting_clarification', outThin.status);
+  check('subject+output+platform → planned (no interrogation)', outThin.status === 'planned', outThin.status);
 
   // Richly specified → plans the full DAG.
   const rich = analyzeDeterministic('Post about our AI automation product on facebook with an infographic, target audience is small business owners, angle is saving operational time');
@@ -150,15 +153,16 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
 {
   console.log('Product knowledge + persona gate');
 
-  // Thin: a placeholder product with no details → must ask productDetails (required) +
-  // accountType (required). This is the exact screenshot bug.
+  // Thin: a placeholder product with NO subject at all ("sản phẩm của tôi") → still asks for the one
+  // thing we truly can't invent: what the content is about (productDetails, required). accountType is
+  // now OPTIONAL (inferred → personal default), no longer part of the block.
   const thin = analyzeDeterministic('tôi muốn quảng cáo sản phẩm của tôi trên facebook');
   check('placeholder product yields no productDetails', !thin.slots.productDetails, thin.slots.productDetails);
   const rThin = evaluateClarification(thin);
   check('thin product → needs_clarification', rThin.status === 'needs_clarification', rThin.status);
   if (rThin.status === 'needs_clarification') {
     check('asks productDetails (required)', rThin.questions.some((q) => q.slot === 'productDetails' && q.required), rThin.questions);
-    check('asks accountType (required)', rThin.questions.some((q) => q.slot === 'accountType' && q.required), rThin.questions);
+    check('accountType is OPTIONAL (not required)', !rThin.questions.some((q) => q.slot === 'accountType' && q.required), rThin.questions);
   }
 
   // Rich product knowledge → productDetails filled, gate cleared, NOT re-asked.

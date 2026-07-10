@@ -70,11 +70,15 @@ export const evaluateClarification = (
 ): ClarificationResult => {
   const q: ClarificationQuestion[] = [];
 
-  // A PERSONAL post shares an experience/topic, not a product. When the account is personal
-  // and a topic/angle is given, THAT is the subject — so we don't loop forever asking for a
-  // "product" the user will never have (the never-ending clarification bug).
-  const personalTopic = goal.slots.accountType === 'personal' && Boolean((goal.slots.angle ?? '').trim());
-  const thinProduct = !personalTopic && isThinProduct(goal.slots.product, goal.slots.productDetails);
+  // A creative/topic request ("make a short video about English vocabulary for kids") is NOT a
+  // product sell — the TOPIC is the subject, so we must not interrogate for product depth
+  // (differentiator/proof/audience) it will never have. Treat the goal as subject-sufficient when
+  // ANY of these is present: a real (non-thin) product, an angle/topic, product knowledge, or a
+  // personal account with a subject. This collapses the old 6-round marketing interrogation.
+  const hasTopic = Boolean((goal.slots.angle ?? '').trim());
+  const hasSubject = hasTopic || !isThinProduct(goal.slots.product, goal.slots.productDetails);
+  const personalTopic = hasSubject; // (name kept for the branch below; broadened from personal-only)
+  const thinProduct = !hasSubject && isThinProduct(goal.slots.product, goal.slots.productDetails);
 
   if (!goal.slots.product && !personalTopic) {
     q.push({
@@ -160,24 +164,23 @@ export const evaluateClarification = (
   // the product is thin (then the agent is already reasoning hard before planning);
   // otherwise high-impact-but-optional, like audience/angle, so a rich request isn't
   // gated on it. Multiple-choice so the answer maps cleanly to the accountType enum.
+  // accountType / audience / angle materially improve copy but are NEVER blockers now — they are
+  // inferred/defaulted and refinable. Gating a simple creative request on them was the "too strict,
+  // 6 rounds to plan" bug. `thin` is retained only as a signal (unused for required-ness here).
+  void thin;
   if (!goal.slots.accountType) {
     q.push({
       slot: 'accountType',
-      // Neutral seed (P2-5) — English fallback; the LLM path translates. Choices stay as-is: they map
-      // to the accountType enum via parseAccountType, which is tuned for both VN and EN answers.
       question: 'Who are you marketing as — an individual, a brand/shop, or a company?',
-      required: thinProduct,
+      required: false,
       choices: ['cá nhân', 'thương hiệu', 'công ty'],
     });
   }
-
-  // Context that materially improves copy quality. Required when the request is thin,
-  // optional once enough high-impact slots are already filled.
   if (!goal.slots.targetAudience) {
-    q.push({ slot: 'targetAudience', question: 'Who is the target audience?', required: thin });
+    q.push({ slot: 'targetAudience', question: 'Who is the target audience?', required: false });
   }
   if (!goal.slots.angle) {
-    q.push({ slot: 'angle', question: 'Any specific angle or key message to emphasize?', required: thin });
+    q.push({ slot: 'angle', question: 'Any specific angle or key message to emphasize?', required: false });
   }
 
   // Autonomy bypass: keep only the hard-blocking questions as required; the rest proceed on
