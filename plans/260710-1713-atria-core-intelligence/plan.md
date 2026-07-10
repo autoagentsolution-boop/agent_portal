@@ -22,8 +22,18 @@ memory, and is hardwired to Gemini. This plan turns Atria into a genuine reasoni
    NL `headline`), `conversation-author` (authors replies, deterministic fallback), read-aloud + voice-viz
    (so any answer can be spoken with the core reacting).
 
+## Status
+- **P1 — DONE (2026-07-10, commit `4019111`).** `intent-router.ts` (regex vi+en; creation verbs win on
+  ambiguity) + `report-answer.ts` (real `metricsForPeriod`→`buildImpactReport`, Gemini-authored answer in
+  the user's language, deterministic vi/en fallback). Router answers a data-query on a reply-only
+  `answered` run (no nodes/plan card) before marketing analysis; `recordAnswerTurn` persists the Q+A.
+  Verified e2e in the UI: "how are my campaigns going?" → real numbers (13 posts FB/IG/TH/LI/X, no plan
+  detour) + read-aloud offer (→ with voice mode, auto-spoken, core reacting).
+- **P2/P3/P4 — NOT STARTED.** Each is a broad, independent effort (provider abstraction across ~10 sites;
+  memory architecture; node de-marketing audit) — pending go-ahead + scope decisions.
+
 ## Phases
-### P1 — Intent Router + Data-Query answers (the "come back to" item; DO FIRST)
+### P1 — Intent Router + Data-Query answers (the "come back to" item; DO FIRST) ✅ DONE
 Insert a lightweight **intent classifier** at the front of the message flow (before marketing analysis):
 `create-content | data-query | general-question | refine`. For **data-query** ("how are my campaigns
 going?", "how did X do?", "tình hình chiến dịch", "impact tháng này"):

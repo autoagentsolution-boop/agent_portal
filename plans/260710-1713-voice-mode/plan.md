@@ -1,5 +1,11 @@
 # Voice Mode — hands-free voice conversation with Atria
 
+> **STATUS: DONE (2026-07-10, commit `6c4ca4b`).** All 4 phases shipped. Verified via agent-browser:
+> composer mic+voice buttons render, toggle→listening state+status line, Esc exits, read-aloud intact,
+> no runtime errors. STT/TTS live round-trip needs a manual mic pass (headless can't drive the mic).
+> New: `hooks/use-speech-recognition.ts`, `lib/tts-player.ts`; extended `voice-viz.ts` (mic input),
+> `OrchestratePanel.tsx` (state machine + composer), `read-aloud-button.tsx` (uses tts-player).
+
 Branch `pivot/video-content-farm` · 2026-07-10 · standalone plan (requested).
 Goal: talk to Atria like Claude/ChatGPT voice mode — **speak a command → Atria hears it, thinks,
 and replies in voice**, with the neural core reacting to BOTH your voice (input) and Atria's (output).
