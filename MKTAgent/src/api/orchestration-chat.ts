@@ -70,6 +70,19 @@ export const recordTurn = async (
   return assistantMessage;
 };
 
+// Record a DATA-QUERY answer turn (Core-Intelligence P1). The intent router answered a performance
+// question directly (no plan), so persist the user's question + Atria's authored answer and bump the
+// session. No MasterAgentOutcome, no plan — this is a reply-only turn on an `answered` run.
+export const recordAnswerTurn = async (
+  sessionId: string,
+  userMessage: string,
+  answer: string,
+): Promise<void> => {
+  await prisma.agentChatMessage.create({ data: { sessionId, role: 'user', content: userMessage } });
+  await prisma.agentChatMessage.create({ data: { sessionId, role: 'agent', content: answer } });
+  await prisma.agentChatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+};
+
 // Record the "flow saved — what next?" agent turn (P6). Unlike recordTurn there is no
 // user message: saving is a UI action, so we persist only the agent's guiding offer so
 // it shows in the transcript + survives history restore. Language mirrors the saved

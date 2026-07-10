@@ -59,7 +59,9 @@ import { VISION_AGENTS } from '../orchestration/registry/vision-agents.ts';
 import { logger } from '../lib/logger.ts';
 import { mergeAnswers, toRunDto, type ClarifyQuestions } from './orchestration-mappers.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
-import { ensureChatSession, recordTurn, recordSaveOffer, recordCampaignCreated, summarizeAnswers } from './orchestration-chat.ts';
+import { ensureChatSession, recordTurn, recordAnswerTurn, recordSaveOffer, recordCampaignCreated, summarizeAnswers } from './orchestration-chat.ts';
+import { classifyIntent } from '../orchestration/master/intent-router.ts';
+import { answerDataQuery } from '../orchestration/master/report-answer.ts';
 import { detectCampaignIntent } from '../orchestration/master/campaign-intent.ts';
 import { createCampaignFromFlow } from '../orchestration/master/campaign-from-flow.ts';
 import { parsePlatforms } from '../orchestration/master/deterministic-analyzer.ts';
@@ -172,6 +174,24 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
         createdPostId: post?.id ?? undefined,
       });
     }
+  }
+
+  // Intent router (Core-Intelligence P1): a performance QUESTION ("how are my campaigns going?") is
+  // answered with the user's REAL Impact numbers — no content plan. Reply-only `answered` run: no
+  // nodes, no plan card. Front of the flow so a data-query never gets forced into the marketing DAG.
+  // (Read-intent on the frontend already offers to read this answer aloud → spoken, core reacting.)
+  if (classifyIntent(body.message) === 'data-query') {
+    const { answer, report, periodLabel } = await answerDataQuery(req.userId!, body.message);
+    await recordAnswerTurn(sessionId, body.message, answer);
+    const run = await createRun({
+      ownerId: req.userId!,
+      chatSessionId: sessionId,
+      goal: { intent: 'data-query', question: body.message, period: periodLabel },
+      status: 'answered',
+    });
+    await logRun('info', 'atria_data_query', { runId: run.id, period: periodLabel, posts: report.metrics.postsPublished, leads: report.metrics.leadsCaptured }, req.userId!).catch(() => {});
+    res.status(201);
+    return respondRun(res, run.id, req.userId!, { assistantMessage: answer });
   }
 
   const refine = existing && existing.kind !== 'template' && PRE_EXEC.has(existing.status);
