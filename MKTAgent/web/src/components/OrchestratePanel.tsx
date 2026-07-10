@@ -12,6 +12,7 @@ import { AtriaSuggestionCards } from './atria-suggestion-cards';
 import { AtriaResumeWorkCards } from './atria-resume-work-cards';
 import { TypewriterText } from './typewriter-text';
 import { ReadAloudButton } from './read-aloud-button';
+import { wantsSpokenReply } from '../lib/read-intent';
 
 export interface OrchestrateRestore {
   sessionId: string;
@@ -52,7 +53,9 @@ interface Props {
   onResumeChat: (id: string) => void;
 }
 
-interface Msg { role: 'user' | 'agent'; content: string }
+// `offerRead` marks an Atria reply the user implicitly asked to hear (read-intent in their message):
+// its bubble shows a prominent "read the result aloud" confirm instead of the small speaker icon.
+interface Msg { role: 'user' | 'agent'; content: string; offerRead?: boolean }
 
 const starters = [
   'Launch a Facebook + Instagram post for our AI automation course',
@@ -77,10 +80,10 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
 
   // Apply a run response: update the card, thread the chat session, surface the
   // authored assistant reply as a bubble, and tell App to refresh the sidebar.
-  const applyRun = (data: WorkflowRunDto) => {
+  const applyRun = (data: WorkflowRunDto, offerRead = false) => {
     setRun(data);
     if (data.chatSessionId) { setSessionId(data.chatSessionId); onRunActivity(data.chatSessionId); }
-    if (data.assistantMessage) push({ role: 'agent', content: data.assistantMessage });
+    if (data.assistantMessage) push({ role: 'agent', content: data.assistantMessage, offerRead });
     // Item 2 (Option A): the backend created a campaign under the saved flow — show the
     // confirmation bubble, then navigate to the new campaign board (with the post if any).
     if (data.createdCampaignId) onCampaignCreated(data.createdCampaignId, data.createdPostId);
@@ -97,7 +100,9 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
       const r = await api.createRun(trimmed, sessionId ?? undefined);
       if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
       push({ role: 'user', content: trimmed });
-      applyRun(r.data);
+      // Read-intent ("read the report", "how are campaigns going?") → offer to read Atria's reply
+      // aloud (a confirm, never auto-play). Reads the RESULT text, not what the user typed.
+      applyRun(r.data, wantsSpokenReply(trimmed));
     } finally { setPending(null); setBusy(false); }
   };
 
@@ -181,7 +186,9 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
               <div key={i} className={`chat-bubble ${m.role}`}>
                 {m.role === 'agent' ? <TypewriterText text={m.content} animate={animate} /> : m.content}
                 {m.role === 'agent' && m.content.trim().length > 0 && (
-                  <ReadAloudButton text={m.content} className="bubble-tts" />
+                  m.offerRead
+                    ? <ReadAloudButton text={m.content} className="bubble-tts tts-offer" label="Đọc kết quả cho bạn" />
+                    : <ReadAloudButton text={m.content} className="bubble-tts" />
                 )}
               </div>
             );

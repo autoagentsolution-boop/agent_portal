@@ -28,9 +28,12 @@ interface Props {
   text: string;
   title?: string;
   className?: string;
+  // When set, the button renders as a prominent labeled CTA (icon + this text) instead of an
+  // icon-only speaker — used for the intent-detected "read the result aloud" confirm on a reply.
+  label?: string;
 }
 
-export function ReadAloudButton({ text, title = 'Đọc to', className = '' }: Props) {
+export function ReadAloudButton({ text, title = 'Đọc to', className = '', label }: Props) {
   const [status, setStatus] = useState<Status>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
@@ -59,10 +62,10 @@ export function ReadAloudButton({ text, title = 'Đọc to', className = '' }: P
       const audio = new Audio(url);
       audioRef.current = audio;
       currentAudio = audio;
-      attachVoiceAnalyser(audio); // route through Web Audio so the Atria core rides the narration
       audio.onended = () => setStatus('idle');
       audio.onpause = () => setStatus((s) => (s === 'playing' ? 'idle' : s));
-      await audio.play();
+      await audio.play(); // play a clean element first (best autoplay-policy outcome)
+      attachVoiceAnalyser(audio); // only once it's actually playing: route through Web Audio so the core rides the narration
       setStatus('playing');
     } catch {
       setStatus('idle');
@@ -72,15 +75,19 @@ export function ReadAloudButton({ text, title = 'Đọc to', className = '' }: P
   };
 
   const icon = status === 'loading' ? '…' : status === 'playing' ? '⏸' : '🔊';
+  const shownLabel = label
+    ? status === 'loading' ? 'Đang chuẩn bị…' : status === 'playing' ? 'Đang đọc — chạm để dừng' : label
+    : undefined;
   return (
     <button
       type="button"
-      className={`read-aloud-btn is-${status} ${className}`}
+      className={`read-aloud-btn is-${status} ${label ? 'has-label' : ''} ${className}`}
       title={status === 'playing' ? 'Dừng' : title}
-      aria-label={status === 'playing' ? 'Dừng đọc' : title}
+      aria-label={status === 'playing' ? 'Dừng đọc' : (label ?? title)}
       onClick={() => void play()}
     >
-      {icon}
+      <span aria-hidden="true">{icon}</span>
+      {shownLabel && <span className="read-aloud-label">{shownLabel}</span>}
     </button>
   );
 }

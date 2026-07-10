@@ -1248,6 +1248,13 @@ a { color: var(--accent); }
 /* On a chat bubble: sit the speaker at the end of the reply, subtle until hover. */
 .chat-bubble .read-aloud-btn.bubble-tts { display: inline-flex; vertical-align: middle; margin-left: 6px; }
 .impact-tts { font-size: 14px; }
+.read-aloud-btn .read-aloud-label { font-size: 12px; font-weight: 600; letter-spacing: 0.2px; }
+/* Intent-detected "read the result aloud" confirm: a prominent violet CTA (not the subtle icon),
+   so the user KNOWS Atria is offering to read + clicks to confirm (that click also unlocks audio). */
+.read-aloud-btn.has-label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; }
+.chat-bubble .read-aloud-btn.tts-offer { display: inline-flex; margin: 8px 0 0; opacity: 1;
+  background: var(--accent-grad); color: #fff; box-shadow: var(--glow-accent); border-radius: 999px; }
+.chat-bubble .read-aloud-btn.tts-offer:hover { box-shadow: var(--glow-accent), var(--shadow-2); }
 
 /* Scheduled view (◷ Scheduled) — queued + recently published posts. */
 .scheduled-view { max-width: 900px; }
