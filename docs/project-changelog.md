@@ -3,6 +3,30 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-10
+
+### Fix: strict bool env parse, grant visibility, SSE multiplex, verify reconciliation (demo-ready polish)
+`pivot/video-content-farm`, commits `21f5d73..11a152c`.
+- **F3 — strict boolean env parsing** (`21f5d73`): `boolEnv()` replaces `z.coerce.boolean()` so
+  `ENABLE_*` flags respect literal "false"/"0" (coerce.boolean made every non-empty string true,
+  breaking the ability to disable autonomy/scheduler/leads crons). File: `src/config/env.ts`.
+- **F5 — grant-eligibility filtering** (`11a152c`): threaded `campaignId` through `WorkflowRunDto`
+  (schema + mapper + regen web types); per-post autonomy grant ("⚡ Chuẩn bị") now hides on
+  standalone (non-campaign) posts (previously 409 "not_a_campaign_post"). Files:
+  `workflow-run-repo.ts`, `orchestration-mappers.ts`, `schemas.ts`, `post-workflow-view.tsx`.
+- **F4 — SSE multiplex onto one stream** (`11a152c`): all live-update hooks (`use-post-events`,
+  `use-run-events`, `use-workspace-events`, `use-agent-activity`) previously each opened an
+  EventSource to `/events` → 3+ standing streams/tab, hitting the HTTP/1.1 ~6-connection cap,
+  stalling fetch(). New ref-counted singleton `events-bus.ts` opens ONE /events connection, fans
+  frames to all subscribers. Browser-verified: 1 EventSource with multiple hooks. File:
+  `MKTAgent/web/src/hooks/events-bus.ts`.
+- **F7 — verify reconciliation (test, not executor)** — product decision locked: (1) text-only posts
+  ARE allowed to publish (no media) — X/Threads/LinkedIn/FB accept text. `verify-executor`
+  reconciled to assert text-only reaches `posted` (was stale "fail-loud"). (2) Manual flow keeps
+  TWO gates: concept selection parks at the publisher gate (does NOT auto-publish); only
+  autonomy runs auto-publish via the scheduler. `verify-concept-gate` reconciled; no executor
+  code changed, only stale test assertions.
+
 ## 2026-07-09
 
 ### Feature: Demo-readiness P1/P2/P3 + post-QA fixes (`d6dcf30`→ latest, `pivot/video-content-farm`)
