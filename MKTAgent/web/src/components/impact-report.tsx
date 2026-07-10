@@ -83,7 +83,7 @@ export function ImpactReport({ campaignId, period = '30d' }: Props) {
       </div>
 
       <h4 style={{ margin: '18px 0 8px' }}>
-        Estimated <span className="tree-badge" title="Derived from configurable market assumptions — not measured">estimate</span>
+        Estimated <span className="tree-badge" title="Derived from configurable market assumptions — not measured">derived</span>
       </h4>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         <Stat label="cost saved vs agency" value={money(value.savedUsd)} hint={`baseline ~${money(value.baselineUsd)}`} />
