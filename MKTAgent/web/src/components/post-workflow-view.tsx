@@ -218,7 +218,8 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     run.status === 'planned' || run.status === 'failed' ||
     (run.status === 'needs_connection' && requiredActions.length === 0));
   // Offer the grant ("⚡ Chuẩn bị") only on a fresh planned campaign post that still runs manually.
-  const canGrant = !isAtriaGranted && run.status === 'planned' && Boolean(runPostId);
+  // The grant endpoint 409s (`not_a_campaign_post`) on a standalone post, so require a campaignId.
+  const canGrant = !isAtriaGranted && run.status === 'planned' && Boolean(runPostId) && Boolean(run.campaignId);
   // A `planned` run with some steps already completed is a RESUMED run (after a single-step
   // re-run): the button continues from the stale downstream rather than starting fresh.
   const isResume = run.status === 'planned' && run.nodes.some((n) => n.status === 'completed') && run.nodes.some((n) => n.status === 'pending');

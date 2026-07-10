@@ -14,8 +14,14 @@ import type {
 } from '../../../prisma/generated/prisma/client.ts';
 
 export type RunWithNodes = Prisma.WorkflowRunGetPayload<{
-  include: { nodes: true; artifacts: true };
+  include: { nodes: true; artifacts: true; posts: { select: { id: true; campaignId: true } } };
 }>;
+
+// The post backing a run carries the campaignId (WorkflowRun has no direct column). A run has at
+// most one real post; return its campaignId so the DTO can gate campaign-only actions (per-post
+// autonomy grant). null when the run has no post or the post isn't under a campaign.
+export const runCampaignId = (run: RunWithNodes): string | null =>
+  run.posts.find((p) => p.campaignId)?.campaignId ?? null;
 
 export interface CreateRunArgs {
   ownerId: string;
@@ -219,7 +225,11 @@ export const deleteRun = async (
 export const getRunWithNodes = (id: string, ownerId: string): Promise<RunWithNodes | null> =>
   prisma.workflowRun.findFirst({
     where: { id, ownerId },
-    include: { nodes: { orderBy: { nodeId: 'asc' } }, artifacts: { orderBy: { createdAt: 'asc' } } },
+    include: {
+      nodes: { orderBy: { nodeId: 'asc' } },
+      artifacts: { orderBy: { createdAt: 'asc' } },
+      posts: { select: { id: true, campaignId: true } },
+    },
   });
 
 // Token/cost rollup for a flow TEMPLATE: sum every node of every instance run spawned
@@ -397,7 +407,11 @@ export const getLatestRunWithNodesForChat = (
   prisma.workflowRun.findFirst({
     where: { chatSessionId, ownerId, templateId: null },
     orderBy: { updatedAt: 'desc' },
-    include: { nodes: { orderBy: { nodeId: 'asc' } }, artifacts: { orderBy: { createdAt: 'asc' } } },
+    include: {
+      nodes: { orderBy: { nodeId: 'asc' } },
+      artifacts: { orderBy: { createdAt: 'asc' } },
+      posts: { select: { id: true, campaignId: true } },
+    },
   });
 
 // Atria autonomy grant (Phase 01): flip a run into 'atria' approval mode after the user

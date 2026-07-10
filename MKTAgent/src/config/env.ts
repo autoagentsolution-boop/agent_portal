@@ -8,6 +8,22 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+// Strict boolean env parse. `z.coerce.boolean()` is truthy for ANY non-empty string, so
+// `ENABLE_X=false` / `"0"` coerced to `true` — a flag you literally cannot turn off. Map the
+// conventional string forms explicitly; unrecognized/blank falls back to the declared default.
+const boolEnv = (def: boolean) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return def;
+      const s = v.trim().toLowerCase();
+      if (s === '') return def;
+      if (['true', '1', 'yes', 'on'].includes(s)) return true;
+      if (['false', '0', 'no', 'off'].includes(s)) return false;
+      return def;
+    });
+
 const schema = z.object({
   // Core
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -16,8 +32,8 @@ const schema = z.object({
   // Internal API auth (REST + webhooks). Comma-separated keys allowed.
   MKT_API_KEYS: z.string().default(''),
   // Background workers (off by default so dev/CLI runs don't auto-post).
-  ENABLE_SCHEDULER_CRON: z.coerce.boolean().default(false),
-  ENABLE_TOKEN_CRON: z.coerce.boolean().default(false),
+  ENABLE_SCHEDULER_CRON: boolEnv(false),
+  ENABLE_TOKEN_CRON: boolEnv(false),
   // Token encryption (32 bytes hex). Required once tokens module is used; we
   // validate format here but allow empty in dev so scaffold boots.
   TOKEN_ENC_KEY: z
@@ -51,9 +67,9 @@ const schema = z.object({
   // Veo image-to-video model (video agent). Empty → veo-3.1-lite (cheapest i2v tier).
   VEO_MODEL: z.string().default(''),
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
-  ENABLE_COPYGEN_CRON: z.coerce.boolean().default(false),
+  ENABLE_COPYGEN_CRON: boolEnv(false),
   // Auto-run the lead collector (comment-keyword poll) every 30 min across all tenants.
-  ENABLE_LEADS_CRON: z.coerce.boolean().default(false),
+  ENABLE_LEADS_CRON: boolEnv(false),
   // Throttle for the proactive liveness sweep (Phase 07 / M3): a watched post is re-checked only
   // when its last sweep is older than this many hours (default 6), instead of every 30-min tick.
   LEADS_LIVENESS_THROTTLE_HOURS: z.coerce.number().positive().default(6),
@@ -65,7 +81,7 @@ const schema = z.object({
   // crash/redeploy — no row may sit `posting`/`running` forever. OFF by default (like the other
   // workers). Timeouts are minutes and set GENEROUSLY above real max durations to avoid false
   // reaping; the video node gets a bigger budget (Veo render is minutes × N clips).
-  ENABLE_REAPER_CRON: z.coerce.boolean().default(false),
+  ENABLE_REAPER_CRON: boolEnv(false),
   REAPER_POSTING_TIMEOUT_MIN: z.coerce.number().positive().default(10), // post stuck `posting`
   REAPER_RUN_TIMEOUT_MIN: z.coerce.number().positive().default(20),     // run stuck `running`
   REAPER_NODE_TIMEOUT_MIN: z.coerce.number().positive().default(10),    // non-video node `running`
@@ -77,7 +93,7 @@ const schema = z.object({
   // gate — nothing runs the DAG. OFF by default (like the other workers). Publishing on this path is
   // forced DRY-RUN in the runner (demo decision "tự chạy nhưng DRY") — the loop completes end-to-end
   // without a real external post. MAX_PER_TICK bounds fan-out so one tick can't stampede the executor.
-  ENABLE_AUTONOMY_CRON: z.coerce.boolean().default(false),
+  ENABLE_AUTONOMY_CRON: boolEnv(false),
   AUTONOMY_MAX_PER_TICK: z.coerce.number().int().positive().default(3),
 
   // Impact / value report (Atria Phase 07). The CONFIGURABLE market baseline the Impact report

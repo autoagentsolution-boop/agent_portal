@@ -1,7 +1,7 @@
 // Orchestration mappers — DB row → DTO + clarification answer merge. Kept separate
 // from the router (decoupling boundary, like api/mappers.ts) and the GoalSpec
 // internal schema.
-import type { RunWithNodes } from '../db/repos/workflow-run-repo.ts';
+import { runCampaignId, type RunWithNodes } from '../db/repos/workflow-run-repo.ts';
 import { goalSpec, type GoalSpec } from '../orchestration/schemas/goal-spec.ts';
 import type { ClarificationQuestion } from '../orchestration/master/clarification-engine.ts';
 import { parseAccountType } from '../orchestration/master/deterministic-analyzer.ts';
@@ -46,6 +46,9 @@ export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): Workflow
   goal: run.goal,
   plan: run.plan ?? null,
   chatSessionId: run.chatSessionId ?? null,
+  // campaignId of the backing post (null when standalone) — gates campaign-only UI like the
+  // per-post autonomy grant, which 409s on a non-campaign post.
+  campaignId: runCampaignId(run),
   ...(extras.questions ? { questions: extras.questions } : {}),
   ...(extras.assistantMessage ? { assistantMessage: extras.assistantMessage } : {}),
   ...(extras.requiredActions ? { requiredActions: extras.requiredActions } : {}),

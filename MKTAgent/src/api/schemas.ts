@@ -332,6 +332,9 @@ export const workflowRunDto = z.object({
   // natural-language reply for this turn. Both optional for forward-compat with rows
   // created before the conversational layer.
   chatSessionId: z.string().uuid().nullable().optional(),
+  // campaignId of the backing post (null when the run isn't a campaign post). Gates the per-post
+  // autonomy grant so the button never shows on a post that would 409 (`not_a_campaign_post`).
+  campaignId: z.string().uuid().nullable().optional(),
   assistantMessage: z.string().optional(),
   questions: z.array(clarificationQuestionDto).optional(),
   // Set when status==='needs_connection' — platforms to connect before /execute.

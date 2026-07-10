@@ -3019,6 +3019,8 @@ export interface components {
             plan?: unknown;
             /** Format: uuid */
             chatSessionId?: string | null;
+            /** Format: uuid */
+            campaignId?: string | null;
             assistantMessage?: string;
             questions?: {
                 slot: string;

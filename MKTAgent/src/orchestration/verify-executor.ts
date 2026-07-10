@@ -119,8 +119,9 @@ async function main(): Promise<void> {
     const runTotal = (full?.nodes ?? []).reduce((s, n) => s + (n.costUsd ?? 0), 0);
     check('run total cost > 0', runTotal > 0, runTotal);
 
-    // Faithfulness: a goal WITHOUT media must fail-loud at the live publish path
-    // (the executor does not bypass resolvePublishInput validation).
+    // Text-only faithfulness (product decision 2026-07-10): a goal WITHOUT media is a valid text
+    // post — X/Threads/LinkedIn (and FB) accept text-only — so the live publish path PUBLISHES it
+    // rather than fail-loud. Asserts the text post reaches `posted` through the real publish path.
     const goal2 = analyzeDeterministic('Post about our AI automation product on facebook');
     const planned2 = planWorkflow(goal2);
     if (planned2.ok) {
@@ -131,12 +132,9 @@ async function main(): Promise<void> {
       const r2b = await runWorkflow(run2.id, user.id, goal2, planned2.plan, { geminiFn: stubGemini, publishFn: stubPublish, approveNodeId: pub2.nodeId });
       const full2 = await getRunWithNodes(run2.id, user.id);
       const pr2 = full2?.artifacts.find((a) => a.type === 'publish_result');
-      // Phase 02 (H1): a publish that didn't really happen now FAILS LOUD — the publisher node +
-      // run end `failed` with an error, and NO publish_result artifact is stored (never a silent
-      // `completed`). Previously this stored an artifact with status='error' and completed the run.
-      check('no-media publish → run FAILED loud (not silent completed)', r2b.status === 'failed', r2b);
-      check('no-media publish → publisher node failed', full2?.nodes.find((n) => n.agentId === 'publisher')?.status === 'failed', full2?.nodes.find((n) => n.agentId === 'publisher')?.status);
-      check('no-media publish → NO publish_result artifact', !pr2, pr2?.data);
+      check('text-only publish → run completes', r2b.status === 'completed', r2b);
+      check('text-only publish → publisher node completed', full2?.nodes.find((n) => n.agentId === 'publisher')?.status === 'completed', full2?.nodes.find((n) => n.agentId === 'publisher')?.status);
+      check('text-only publish → publish_result posted', (pr2?.data as { status?: string })?.status === 'posted', pr2?.data);
     }
 
     // ── Atria autonomy grant (Phase 02): with the publisher-boundary re-read (C1 fixed), a GRANTED

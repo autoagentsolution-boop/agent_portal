@@ -80,14 +80,26 @@ async function main(): Promise<void> {
     // 2b) Upload a reference image at the gate → infographic must generate FROM it (edit mode).
     await setPostReferenceImage(postId, user.id, 'local:/tmp/my-reference.png');
 
-    // 3) Resume via approve-node(concept) → post approved, downstream runs.
+    // 3) Resume via approve-node(concept) → concept confirmed + media runs, then PARKS at the
+    // publisher gate. Manual flow keeps TWO human gates (product decision 2026-07-10): selecting a
+    // concept is NOT consent to publish — only granted/autonomy runs auto-publish (via the scheduler).
     const r2 = await runWorkflow(run.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, approveNodeId: conceptNode.nodeId });
-    check('resume completes (auto-publish after selection)', r2.status === 'completed', r2);
+    const publisherNode = planned.plan.nodes.find((n) => n.agentId === 'publisher')!;
+    check('resume PARKS at publisher gate (2nd human gate, not auto-publish)', r2.status === 'needs_approval' && r2.nodeId === publisherNode.nodeId, r2);
     full = await getRunWithNodes(run.id, user.id);
     check('concept completed after confirm', full?.nodes.find((n) => n.agentId === 'concept_writer')?.status === 'completed');
     check('infographic ran after selection', full?.nodes.find((n) => n.agentId === 'infographic')?.status === 'completed');
     check('infographic generated FROM the reference image (edit mode)', lastImageReq?.mode === 'edit' && lastImageReq?.referenceImagePath === '/tmp/my-reference.png', lastImageReq);
-    check('publisher completed', full?.nodes.find((n) => n.agentId === 'publisher')?.status === 'completed');
+    check('publisher parked awaiting_approval (not auto-published)', full?.nodes.find((n) => n.agentId === 'publisher')?.status === 'awaiting_approval', full?.nodes.find((n) => n.agentId === 'publisher')?.status);
+    const parkedForPublish = await prisma.post.findFirst({ where: { id: postId, ownerId: user.id } });
+    check('post parked ready (awaiting publish approval, NOT posted)', parkedForPublish?.status === 'ready', parkedForPublish?.status);
+
+    // 4) Approve the publisher gate → NOW it publishes (dry) and the post posts. Proves the 2nd gate
+    // resolves the full manual flow: concept select → publish approve → posted.
+    const r3 = await runWorkflow(run.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, approveNodeId: publisherNode.nodeId });
+    check('resume completes after publisher approval', r3.status === 'completed', r3);
+    full = await getRunWithNodes(run.id, user.id);
+    check('publisher completed after 2nd gate', full?.nodes.find((n) => n.agentId === 'publisher')?.status === 'completed');
     const finalPost = await prisma.post.findFirst({ where: { id: postId, ownerId: user.id } });
     check('post reached posted (dry)', finalPost?.status === 'posted', finalPost?.status);
     check('final copy is the SELECTED v2', (finalPost?.copy as { body?: string })?.body === 'Version TWO body.', finalPost?.copy);
