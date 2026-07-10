@@ -4530,15 +4530,37 @@
         "tags": [
           "leads"
         ],
-        "summary": "List the current user's captured leads",
+        "summary": "List the current user's captured leads (keyset-paginated, most recent first)",
         "security": [
           {
             "bearerAuth": []
           }
         ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Leads (most recent first)",
+            "description": "Page of leads",
             "content": {
               "application/json": {
                 "schema": {
@@ -4580,6 +4602,16 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid query params",
             "content": {
               "application/json": {
                 "schema": {

@@ -22,7 +22,7 @@ emailRouter.get('/status', asyncHandler(async (req, res) => {
 // Leads that can be nurtured: have an email address. Highest intent + never-contacted first, so the
 // user works the best leads. Returns the fields the panel needs (no message body — kept lean).
 emailRouter.get('/leads', asyncHandler(async (req, res) => {
-  const leads = await listLeads(req.userId!);
+  const leads = await listLeads({ ownerId: req.userId!, limit: 100 });
   const rows = leads
     .filter((l) => l.email)
     .sort((a, b) => Number(Boolean(a.nurturedAt)) - Number(Boolean(b.nurturedAt)) || (b.score ?? 0) - (a.score ?? 0))

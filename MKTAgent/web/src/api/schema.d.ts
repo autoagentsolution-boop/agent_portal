@@ -1772,17 +1772,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the current user's captured leads */
+        /** List the current user's captured leads (keyset-paginated, most recent first) */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    limit?: number;
+                    cursor?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description Leads (most recent first) */
+                /** @description Page of leads */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1800,6 +1803,15 @@ export interface paths {
                 };
                 /** @description Unauthorized */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Invalid query params */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };

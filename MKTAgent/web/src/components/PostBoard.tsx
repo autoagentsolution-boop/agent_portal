@@ -8,6 +8,8 @@ import { ProductKnowledgeUpload } from './product-knowledge-upload';
 
 import type { DemoMode } from '../flow/demo-flow';
 
+const POSTS_PAGE_SIZE = 30;
+
 interface Props {
   campaignId: string | null;
   demoMode: DemoMode;
@@ -41,6 +43,8 @@ const summaryStage = (status: PostDto['status']): string => {
 
 export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visiblePostId, onPostsChange, autoCreate, onCreateConsumed, onOpenConnections, onSelectPost, onBack }: Props) {
   const [posts, setPosts] = useState<PostDto[]>([]);
+  const [postsCursor, setPostsCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<PostDto | null>(null);
@@ -57,13 +61,29 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await api.listPosts(campaignId ? { campaignId, limit: 100 } : { limit: 100 });
-    if (r.ok) setVisiblePosts(r.data);
+    const r = await api.listPosts(campaignId ? { campaignId, limit: POSTS_PAGE_SIZE } : { limit: POSTS_PAGE_SIZE });
+    if (r.ok) { setVisiblePosts(r.data); setPostsCursor(r.meta?.nextCursor ?? null); }
     else notify(`Load failed: ${r.error.error}`, 'err');
     setLoading(false);
   }, [campaignId, notify, setVisiblePosts]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Appends the next keyset page — the campaign filter travels with it so paging never
+  // leaks a different campaign's posts into a scoped board.
+  const loadMore = async () => {
+    if (!postsCursor) return;
+    setLoadingMore(true);
+    const r = await api.listPosts(
+      campaignId
+        ? { campaignId, limit: POSTS_PAGE_SIZE, cursor: postsCursor }
+        : { limit: POSTS_PAGE_SIZE, cursor: postsCursor },
+    );
+    setLoadingMore(false);
+    if (!r.ok) { notify(`Load more failed: ${r.error.error}`, 'err'); return; }
+    setVisiblePosts((prev) => [...prev, ...r.data]);
+    setPostsCursor(r.meta?.nextCursor ?? null);
+  };
 
   // Honor a sidebar-requested create: open the modal once, then tell App to clear the flag
   // so it doesn't reopen on later renders.
@@ -189,23 +209,32 @@ export function PostBoard({ campaignId, demoMode, notify, selectedPostId, visibl
         </>
       ) : (
         // SUMMARY: compact rows only — click drills into the post's detail (no wall of cards).
-        <div className="post-summary-list">
-          {posts.map((p) => (
-            <button
-              key={p.id}
-              id={`post-${p.id}`}
-              className={`post-summary-row ${localSelectedId === p.id ? 'selected' : ''}`}
-              onClick={() => onSelectPost?.(p.id)}
-            >
-              <span className={`badge ${p.status}`}>{p.status}</span>
-              <span className="post-summary-main">
-                <span className="post-summary-stage">{summaryStage(p.status)}</span>
-                <span className="post-summary-meta">{p.assetType} · {p.platforms.join(', ') || 'no platforms'}</span>
-              </span>
-              <span className="post-summary-id muted">{p.id.slice(0, 8)} ›</span>
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="post-summary-list">
+            {posts.map((p) => (
+              <button
+                key={p.id}
+                id={`post-${p.id}`}
+                className={`post-summary-row ${localSelectedId === p.id ? 'selected' : ''}`}
+                onClick={() => onSelectPost?.(p.id)}
+              >
+                <span className={`badge ${p.status}`}>{p.status}</span>
+                <span className="post-summary-main">
+                  <span className="post-summary-stage">{summaryStage(p.status)}</span>
+                  <span className="post-summary-meta">{p.assetType} · {p.platforms.join(', ') || 'no platforms'}</span>
+                </span>
+                <span className="post-summary-id muted">{p.id.slice(0, 8)} ›</span>
+              </button>
+            ))}
+          </div>
+          {postsCursor && (
+            <div className="row" style={{ justifyContent: 'center', marginTop: 12 }}>
+              <button className="btn" disabled={loadingMore} onClick={() => void loadMore()}>
+                {loadingMore ? 'Đang tải…' : 'Tải thêm'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

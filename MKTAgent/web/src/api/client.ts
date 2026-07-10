@@ -193,7 +193,15 @@ export interface ApiError {
   details?: unknown;
 }
 
-export type Result<T> = { ok: true; data: T; meta?: unknown } | { ok: false; error: ApiError };
+// Keyset-pagination envelope meta (mirrors backend ListMeta — src/api/schemas.ts). Callers that
+// list a keyset-paginated endpoint (posts, leads) type `Result<T[], ListMeta>` to get `nextCursor`
+// without every other `request<T>` call site having to know about pagination.
+export interface ListMeta {
+  count: number;
+  nextCursor: string | null;
+}
+
+export type Result<T, M = unknown> = { ok: true; data: T; meta?: M } | { ok: false; error: ApiError };
 
 // ---- Atria campaign-intelligence DTOs (Phases 02–07) --------------------------------------------
 export type InstructionScope = 'workspace' | 'campaign' | 'post';
@@ -342,7 +350,7 @@ export class UnauthorizedError extends Error {
   }
 }
 
-async function request<T>(path: string, opts: RequestOpts = {}): Promise<Result<T>> {
+async function request<T, M = unknown>(path: string, opts: RequestOpts = {}): Promise<Result<T, M>> {
   const url = new URL(BASE + path, window.location.origin);
   for (const [k, v] of Object.entries(opts.query ?? {})) {
     if (v !== undefined) url.searchParams.set(k, String(v));
@@ -364,7 +372,7 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<Result<
   if (res.status === 204) return { ok: true, data: undefined as T };
 
   const json = await res.json().catch(() => ({}));
-  if (res.ok) return { ok: true, data: (json as { data: T }).data, meta: (json as { meta?: unknown }).meta };
+  if (res.ok) return { ok: true, data: (json as { data: T }).data, meta: (json as { meta?: M }).meta };
   return { ok: false, error: { status: res.status, error: (json as { error?: string }).error ?? 'error', details: (json as { details?: unknown }).details } };
 }
 
@@ -398,8 +406,10 @@ export const api = {
   deleteProductKnowledge: (id: string) => request<void>(`/product-knowledge/${id}`, { method: 'DELETE' }),
   listCampaigns: () => request<CampaignDto[]>('/campaigns'),
   getCampaign: (id: string) => request<CampaignDto>(`/campaigns/${id}`),
-  // Lead Collector (§01)
-  listLeads: () => request<LeadRow[]>('/leads'),
+  // Lead Collector (§01) — keyset-paginated (mirrors listPosts); pass cursor=meta.nextCursor
+  // from the previous page to fetch the next one.
+  listLeads: (query?: { limit?: number; cursor?: string }) =>
+    request<LeadRow[], ListMeta>('/leads', { query }),
   rescoreLead: (id: string) => request<LeadRow>(`/leads/${id}/rescore`, { method: 'POST' }),
   pollComments: () => request<{ postsPolled: number; commentsScanned: number; leadsCaptured: number; duplicates: number }>('/leads/poll-comments', { method: 'POST' }),
   listIntakeTokens: () => request<IntakeTokenRow[]>('/leads/intake-tokens'),
@@ -420,7 +430,7 @@ export const api = {
   deleteCampaign: (id: string) => request<void>(`/campaigns/${id}`, { method: 'DELETE' }),
 
   listPosts: (query?: { status?: string; campaignId?: string; limit?: number; cursor?: string }) =>
-    request<PostDto[]>('/posts', { query }),
+    request<PostDto[], ListMeta>('/posts', { query }),
   getPost: (id: string) => request<PostDetailDto>(`/posts/${id}`),
   getPostability: (id: string) => request<PostabilityDto>(`/posts/${id}/postability`),
   createPost: (body: Dto['CreatePostBody']) => request<PostDto>('/posts', { method: 'POST', body }),

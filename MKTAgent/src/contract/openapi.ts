@@ -18,6 +18,7 @@ import {
   assetType,
   socialPlatform,
   listPostsQuery,
+  listLeadsQuery,
   approvePostBody,
   rejectPostBody,
   refinePostBody,
@@ -568,11 +569,13 @@ registry.registerPath({
   method: 'get',
   path: '/leads',
   tags: ['leads'],
-  summary: 'List the current user\'s captured leads',
+  summary: 'List the current user\'s captured leads (keyset-paginated, most recent first)',
   security: [{ [bearer.name]: [] }],
+  request: { query: listLeadsQuery },
   responses: {
-    200: { description: 'Leads (most recent first)', content: json(listEnvelope(LeadDto)) },
+    200: { description: 'Page of leads', content: json(listEnvelope(LeadDto)) },
     401: errorResponse('Unauthorized'),
+    422: errorResponse('Invalid query params'),
   },
 });
 

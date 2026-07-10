@@ -28,6 +28,12 @@ export const listPostsQuery = z.object({
 });
 export type ListPostsQuery = z.infer<typeof listPostsQuery>;
 
+export const listLeadsQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  cursor: z.string().uuid().optional(), // keyset pagination by id
+});
+export type ListLeadsQuery = z.infer<typeof listLeadsQuery>;
+
 // ---- Mutations (the review gate) ----
 export const approvePostBody = z.object({
   // ISO 8601; UI sends an absolute instant. Optional → post immediately (now).

@@ -30,8 +30,12 @@ const expiryText = (iso: string | null | undefined): { text: string; expired: bo
   return { text: `expires in ${days} day${days === 1 ? '' : 's'}`, expired: false };
 };
 
+const LEADS_PAGE_SIZE = 30;
+
 export function LeadsPage({ notify }: Props) {
   const [leads, setLeads] = useState<LeadRow[]>([]);
+  const [leadsCursor, setLeadsCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [tokens, setTokens] = useState<IntakeTokenRow[]>([]);
   // Published posts (posted/partial) — candidates for a comment-keyword lead collector,
   // whether or not one is active yet.
@@ -47,8 +51,12 @@ export function LeadsPage({ notify }: Props) {
 
   const load = async () => {
     setLoading(true);
-    const [l, t, p] = await Promise.all([api.listLeads(), api.listIntakeTokens(), api.listPosts({ limit: 100 })]);
-    if (l.ok) setLeads(l.data); else notify(`Leads: ${l.error.error}`, 'err');
+    const [l, t, p] = await Promise.all([
+      api.listLeads({ limit: LEADS_PAGE_SIZE }),
+      api.listIntakeTokens(),
+      api.listPosts({ limit: 100 }),
+    ]);
+    if (l.ok) { setLeads(l.data); setLeadsCursor(l.meta?.nextCursor ?? null); } else notify(`Leads: ${l.error.error}`, 'err');
     if (t.ok) setTokens(t.data);
     // Published posts can have comments — show them all as potential/active lead collectors.
     // Published posts only; a deleted post (collector stopped) is hidden — but any leads it already
@@ -98,6 +106,16 @@ export function LeadsPage({ notify }: Props) {
     if (!r.ok) { notify(`Rescore: ${r.error.error}`, 'err'); return; }
     setLeads((prev) => prev.map((l) => (l.id === id ? r.data : l)));
     notify(`AI re-scored: ${r.data.score}`);
+  };
+  // Appends the next keyset page onto the existing list (does not disturb rows already rendered).
+  const loadMoreLeads = async () => {
+    if (!leadsCursor) return;
+    setLoadingMore(true);
+    const r = await api.listLeads({ limit: LEADS_PAGE_SIZE, cursor: leadsCursor });
+    setLoadingMore(false);
+    if (!r.ok) { notify(`Leads: ${r.error.error}`, 'err'); return; }
+    setLeads((prev) => [...prev, ...r.data]);
+    setLeadsCursor(r.meta?.nextCursor ?? null);
   };
   const startCollector = async (postId: string) => {
     const keyword = (keywordInputs[postId] ?? '').trim();
@@ -270,21 +288,30 @@ export function LeadsPage({ notify }: Props) {
       {loading ? <div className="muted">Loading…</div> : leads.length === 0 ? (
         <p className="muted">No leads yet. {collectors.length > 0 ? 'Your posts are watching comments — Poll to pull opt-ins, or wire an intake token into a form/Cal.com/webhook.' : <>Open <strong>Intake setup</strong>, mint a token, and wire it into your form/Cal.com/webhook — or set a lead-capture keyword on a post.</>}</p>
       ) : (
-        <div className="lead-table">
-          {leads.map((l) => (
-            <div key={l.id} className="lead-row card">
-              <div className={`lead-score ${scoreClass(l.score)}`} title={l.scoreReasons.map((r) => `${r.reason} (${r.delta >= 0 ? '+' : ''}${r.delta})`).join('\n')}>
-                {l.score ?? '—'}
+        <>
+          <div className="lead-table">
+            {leads.map((l) => (
+              <div key={l.id} className="lead-row card">
+                <div className={`lead-score ${scoreClass(l.score)}`} title={l.scoreReasons.map((r) => `${r.reason} (${r.delta >= 0 ? '+' : ''}${r.delta})`).join('\n')}>
+                  {l.score ?? '—'}
+                </div>
+                <div className="lead-main">
+                  <div className="lead-head"><strong>{l.name ?? l.email}</strong> <span className="muted small">{l.email}</span></div>
+                  <div className="muted small">{l.source}{l.phone ? ` · ${l.phone}` : ''} · {new Date(l.receivedAt).toLocaleString()}</div>
+                  {l.message && <div className="small" style={{ marginTop: 4 }}>{l.message}</div>}
+                </div>
+                <button className="btn small" disabled={busy === l.id} onClick={() => void rescore(l.id)}>{busy === l.id ? '…' : '✨ AI score'}</button>
               </div>
-              <div className="lead-main">
-                <div className="lead-head"><strong>{l.name ?? l.email}</strong> <span className="muted small">{l.email}</span></div>
-                <div className="muted small">{l.source}{l.phone ? ` · ${l.phone}` : ''} · {new Date(l.receivedAt).toLocaleString()}</div>
-                {l.message && <div className="small" style={{ marginTop: 4 }}>{l.message}</div>}
-              </div>
-              <button className="btn small" disabled={busy === l.id} onClick={() => void rescore(l.id)}>{busy === l.id ? '…' : '✨ AI score'}</button>
+            ))}
+          </div>
+          {leadsCursor && (
+            <div className="row" style={{ justifyContent: 'center', marginTop: 12 }}>
+              <button className="btn" disabled={loadingMore} onClick={() => void loadMoreLeads()}>
+                {loadingMore ? 'Đang tải…' : 'Tải thêm'}
+              </button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   );

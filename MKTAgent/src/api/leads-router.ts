@@ -15,6 +15,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ok, fail, parseOr422, asyncHandler } from './http.ts';
+import { listLeadsQuery } from './schemas.ts';
 import { safeEqual } from '../lib/crypto.ts';
 import { env } from '../config/env.ts';
 import { requireAuth } from './middleware-auth.ts';
@@ -189,8 +190,15 @@ leadsRouter.get(
   '/',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const leads = await listLeads(req.userId!);
-    logger.info('leads_listed', { ownerId: req.userId, count: leads.length });
-    ok(res, leads.map(toLeadDto), { count: leads.length });
+    const q = parseOr422(res, listLeadsQuery, req.query);
+    if (!q) return;
+    const rows = await listLeads({ ownerId: req.userId!, limit: q.limit, cursor: q.cursor });
+    const hasMore = rows.length > q.limit;
+    const page = hasMore ? rows.slice(0, q.limit) : rows;
+    logger.info('leads_listed', { ownerId: req.userId, count: page.length });
+    ok(res, page.map(toLeadDto), {
+      count: page.length,
+      nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+    });
   }),
 );

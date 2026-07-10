@@ -103,8 +103,21 @@ export const isDuplicateByBookingUid = async (ownerId: string, uid: string): Pro
   return hit !== null;
 };
 
-export const listLeads = async (ownerId: string, limit = 100): Promise<DecryptedLead[]> => {
-  const rows = await prisma.lead.findMany({ where: { ownerId }, orderBy: { receivedAt: 'desc' }, take: limit });
+// REST list: tenant-scoped + keyset pagination by id. Fetches limit+1 rows so the
+// router can compute nextCursor without a second count query (mirrors listPosts).
+export interface ListLeadsArgs {
+  ownerId: string;
+  limit: number;
+  cursor?: string;
+}
+
+export const listLeads = async (args: ListLeadsArgs): Promise<DecryptedLead[]> => {
+  const rows = await prisma.lead.findMany({
+    where: { ownerId: args.ownerId },
+    orderBy: { receivedAt: 'desc' },
+    take: args.limit + 1,
+    ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
+  });
   return rows.map(decryptLead);
 };
 
