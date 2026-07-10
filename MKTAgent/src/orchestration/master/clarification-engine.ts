@@ -123,7 +123,7 @@ export const evaluateClarification = (
   // brief's §4 output_format menu as a required multiple-choice.
   const anyOutput =
     goal.outputs.needsTextPost || goal.outputs.needsInfographic ||
-    goal.outputs.needsStoryboard || goal.outputs.needsVideo;
+    goal.outputs.needsStoryboard || goal.outputs.needsVideo || goal.outputs.needsEmail;
   if (!anyOutput) {
     q.push({
       slot: 'output_format',
@@ -146,6 +146,12 @@ export const evaluateClarification = (
     (goal.platforms.length > 0 ? 1 : 0);
   const thin =
     Boolean(goal.slots.product) && anyOutput && highImpactFilled < RICHNESS_THRESHOLD;
+
+  // Email goal with no recipient → ask (we can't send without an address). Required so the run
+  // doesn't reach the writer/sender with nowhere to go.
+  if (goal.outputs.needsEmail && !(goal.slots.emailTo ?? '').trim()) {
+    q.push({ slot: 'emailTo', question: 'What email address should I send this to?', required: true });
+  }
 
   // Publishing with no platform named → ALWAYS ask (mandatory brief field). We must never
   // silently default the publish targets (the "defaulted to Facebook" bug): the user has to

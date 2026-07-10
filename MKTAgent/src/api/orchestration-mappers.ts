@@ -134,6 +134,9 @@ export const mergeAnswers = (
       case 'angle':
         goal.slots.angle = first(value);
         break;
+      case 'emailTo':
+        goal.slots.emailTo = first(value);
+        break;
       case 'platforms': {
         const arr = (Array.isArray(value) ? value : [value]).filter(Boolean);
         const valid = arr.filter((p) => ['facebook', 'instagram', 'threads', 'linkedin', 'x'].includes(p)) as GoalSpec['platforms'];

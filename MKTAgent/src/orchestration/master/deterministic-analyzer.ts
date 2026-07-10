@@ -126,6 +126,44 @@ const parseAutoPublish = (t: string): boolean =>
   /\b(auto.?publish|publish automatically|post automatically|no review|without review)\b/i.test(t)
   || /(đăng luôn|dang luon|tự động đăng|tu dong dang|đăng tự động|dang tu dong|khỏi duyệt|khoi duyet|không cần duyệt|khong can duyet|không cần duyệt gì|tự đăng|tu dang)/i.test(t);
 
+// Email intent (P4-lite): the user wants Atria to WRITE + SEND an email, not a social post. Fires on
+// an explicit email send/write phrasing (vi+en) so a marketing message that merely mentions an address
+// doesn't misroute. Extracts recipient address(es) + an optional explicit subject.
+const EMAIL_SEND_EN = /\b(send|write|draft|compose|shoot|fire off)\s+(a |an |the |out\s+)?(e-?mail|mail)\b/i;
+const EMAIL_SEND_VI = /(gửi|gui|soạn|soan|viết|viet)\s+(một\s+|mot\s+|cái\s+|cai\s+)?(email|mail|e-?mail|thư điện tử|thu dien tu|thư|thu)\b/i;
+const EMAIL_TO = /\b(e-?mail)\b[^.\n]{0,40}\b(to|cho|đến|den|gửi cho|gui cho)\b/i;
+const EMAIL_ADDR = /([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/gi;
+
+// `purpose` = what the email should say (occasion/message), the raw request minus the address plumbing,
+// so the email_writer has the actual intent to write ("happy birthday", "follow-up after our call").
+export interface EmailIntent { isEmail: boolean; to: string | null; subject: string | null; purpose: string | null }
+
+export const parseEmailIntent = (message: string): EmailIntent => {
+  const t = message;
+  const isEmail = EMAIL_SEND_EN.test(t) || EMAIL_SEND_VI.test(t) || EMAIL_TO.test(t);
+  if (!isEmail) return { isEmail: false, to: null, subject: null, purpose: null };
+  const addrs = Array.from(t.matchAll(EMAIL_ADDR)).map((m) => m[1]!);
+  const to = addrs.length ? Array.from(new Set(addrs)).join(', ') : null;
+  const subject = sentenceAfter(t, ['subject', 'chủ đề', 'chu de', 'tiêu đề', 'tieu de']);
+  // Strip email addresses + the "email:" label so the purpose reads as the actual message intent.
+  const purpose = t.replace(EMAIL_ADDR, '').replace(/\b(e-?mail)\s*[:=]/gi, '').replace(/\s{2,}/g, ' ').trim().slice(0, 500) || null;
+  return { isEmail: true, to, subject, purpose };
+};
+
+// Force the social pipeline OFF when the goal is an email — the email_writer→email_agent path owns it.
+export const emailOutputs = (base: GoalSpec['outputs']): GoalSpec['outputs'] => ({
+  ...base,
+  needsEmail: true,
+  needsTextPost: false,
+  needsIdeation: false,
+  needsStrategy: false,
+  needsResearch: false,
+  needsInfographic: false,
+  needsStoryboard: false,
+  needsVideo: false,
+  needsPublishing: false,
+});
+
 const inferOutputs = (t: string): GoalSpec['outputs'] => {
   const campaign = isCampaign(t);
   // A carousel / multiple images → the storyboard produces the slides (NOT a single
@@ -146,6 +184,7 @@ const inferOutputs = (t: string): GoalSpec['outputs'] => {
     needsStoryboard: carousel || /\b(video|reel|clip|short|tiktok|storyboard|kịch bản|kich ban|phân cảnh|phan canh)\b/i.test(t),
     needsVideo: /\b(video|reel|clip|short|tiktok)\b/i.test(t),
     needsPublishing: !/\b(draft only|chỉ nháp|chi nhap|don't publish|do not publish|không đăng|khong dang)\b/i.test(t),
+    needsEmail: false, // email intent is detected separately (parseEmailIntent) and OR'd in via emailOutputs()
   };
 };
 
@@ -190,22 +229,30 @@ export const parseRemovals = (message: string): Removals => {
 
 export const analyzeDeterministic = (message: string): GoalSpec => {
   const m = message.trim();
-  const platforms = parsePlatforms(m);
+  const email = parseEmailIntent(m);
+  // Email goal → the email path owns the plan: no social platforms, and the recipient/subject go to
+  // the email slots. Otherwise the normal social parse runs unchanged.
+  const platforms = email.isEmail ? [] : parsePlatforms(m);
   const slots = {
     product: parseProduct(m) ?? undefined,
     productDetails: parseProductDetails(m) ?? undefined,
     accountType: parseAccountType(m) ?? undefined,
-    angle: sentenceAfter(m, ['angle', 'góc', 'goc', 'brief', 'nhấn mạnh', 'nhan manh']) ?? undefined,
+    // Email path: fall back to the email purpose so the writer knows WHAT to say when there's no
+    // explicit "angle:" clause.
+    angle: (sentenceAfter(m, ['angle', 'góc', 'goc', 'brief', 'nhấn mạnh', 'nhan manh']) ?? (email.isEmail ? email.purpose : null)) ?? undefined,
     brandVoice: sentenceAfter(m, ['tone', 'voice', 'brand voice', 'giọng', 'giong']) ?? undefined,
     targetAudience: sentenceAfter(m, ['audience', 'khách hàng', 'khach hang', 'target', 'đối tượng']) ?? undefined,
     language: parseLanguage(m) ?? undefined,
     lengthSpec: parseLength(m) ?? undefined,
+    emailTo: email.to ?? undefined,
+    emailSubject: email.subject ?? undefined,
   };
   const filled = Object.values(slots).filter(Boolean).length + platforms.length;
-  const campaign = inferCampaign(m);
+  const outputs = email.isEmail ? emailOutputs(inferOutputs(m)) : inferOutputs(m);
+  const campaign = email.isEmail ? { campaignScope: 'single' as const, duration: null, cadence: null } : inferCampaign(m);
 
   return goalSpec.parse({
-    outputs: inferOutputs(m),
+    outputs,
     platforms,
     slots,
     ...campaign,

@@ -5,7 +5,7 @@
 import { env } from '../../config/env.ts';
 import { z } from 'zod';
 import { goalSpec, type GoalSpec } from '../schemas/goal-spec.ts';
-import { analyzeDeterministic, parseRemovals, parsePlatforms, type Removals } from './deterministic-analyzer.ts';
+import { analyzeDeterministic, parseRemovals, parsePlatforms, parseEmailIntent, emailOutputs, type Removals } from './deterministic-analyzer.ts';
 import { requirementSystemPrompt } from '../prompts/requirement-prompt.ts';
 import { recordGeminiCall } from '../../cost/llm-usage.ts';
 
@@ -118,7 +118,16 @@ export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
       // Auto-publish is a regex-detectable command ("đăng luôn", "auto-publish") the LLM may miss;
       // OR the two so an explicit hands-off ask is never lost. Default stays false (gated).
       const autoPublish = parsed.data.autoPublish || det.autoPublish;
-      return { goal: { ...parsed.data, platforms, ...campaign, autoPublish, provider: `gemini:${env.GEMINI_MODEL}` }, removals };
+      const base = { ...parsed.data, platforms, ...campaign, autoPublish, provider: `gemini:${env.GEMINI_MODEL}` };
+      // Email intent (P4-lite) is a regex-detectable command ("gửi email cho…") the marketing-only
+      // LLM prompt doesn't model — OR it in so an email goal routes to the email path, not a social
+      // post. Forces the social flags off + recipient/subject into the email slots.
+      const email = parseEmailIntent(message);
+      const goal = email.isEmail
+        ? { ...base, outputs: emailOutputs(base.outputs), platforms: [] as GoalSpec['platforms'], campaignScope: 'single' as const, duration: null, cadence: null,
+            slots: { ...base.slots, angle: base.slots.angle ?? email.purpose ?? null, emailTo: base.slots.emailTo ?? email.to ?? null, emailSubject: base.slots.emailSubject ?? email.subject ?? null } }
+        : base;
+      return { goal, removals };
     } catch {
       return fallback();
     }

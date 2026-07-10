@@ -20,6 +20,13 @@ const selectAgents = (goal: GoalSpec): RunnableAgentId[] => {
   const ids: RunnableAgentId[] = [];
   const { outputs } = goal;
 
+  // Email goal (P4-lite): write + send an email — a self-contained path, NOT the social pipeline.
+  // The analyzer forces the social flags off when needsEmail is set, so this branch owns the plan.
+  // email_writer optionally grounds on a content_concept, but a standalone email needs no upstream.
+  if (outputs.needsEmail) {
+    return ['email_writer', 'email_agent'];
+  }
+
   // Campaign scope (Atria Phase 03): a multi-post plan routes to the campaign_strategist and STOPS
   // at the editable content calendar — per-post copy/media/publish belong to the posts materialized
   // from the approved calendar (Phase 04), NOT to this planning run. `single` falls through to the

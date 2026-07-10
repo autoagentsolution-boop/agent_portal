@@ -22,6 +22,10 @@ export const outputFlags = z.object({
   needsStoryboard: z.boolean().default(false),
   needsVideo: z.boolean().default(false),
   needsPublishing: z.boolean().default(true),
+  // Email goal (P4-lite): the user wants Atria to WRITE + SEND an email (a happy-birthday note, a
+  // one-off nurture). Routes to the email_writer → email_agent path INSTEAD of the social pipeline —
+  // the analyzer forces the social flags off when this is set. Default false → unchanged for everyone.
+  needsEmail: z.boolean().default(false),
 });
 export type OutputFlags = z.infer<typeof outputFlags>;
 
@@ -48,6 +52,11 @@ export const goalSlots = z.object({
   // node materializes a Post with this heroFile; an empty heroFile makes the live
   // publish path fail-loud (correct: no media = nothing to post).
   heroFile: z.string().max(2000).nullish(),
+  // Email goal slots (P4-lite). `emailTo` = recipient address(es), comma/semicolon separated; the
+  // email_agent splits + validates them. `emailSubject` is an optional explicit subject (else the
+  // writer proposes one). Only meaningful when outputs.needsEmail is true.
+  emailTo: z.string().max(400).nullish(),
+  emailSubject: z.string().max(200).nullish(),
 });
 export type GoalSlots = z.infer<typeof goalSlots>;
 

@@ -262,6 +262,43 @@ export const AGENTS: AgentDefinition[] = [
       ],
     },
   },
+  {
+    id: 'email_writer',
+    name: 'Email Writer',
+    description: 'Draft a ready-to-send email (subject + body) from the goal or an upstream concept.',
+    implStatus: 'live',
+    requires: [],
+    // Grounds on a content_concept when one exists upstream (a nurture flow); a standalone email
+    // (e.g. a birthday note) has none → drafts from the goal directly. Optional = no edge when absent.
+    optional: ['content_concept'],
+    produces: ['email_draft'],
+    requiresConnection: false,
+    requiresApproval: false,
+    emoji: '✍️',
+    group: 'action',
+    vibe: 'Warm, concise correspondent: writes a personal email that sounds human, not templated.',
+    successMetrics: ['a clear subject + a warm, on-purpose body', 'right tone for the recipient/occasion', 'no spammy phrasing'],
+    decisionFramework: 'Read the purpose (occasion, recipient, tone). Write one short email with a clear subject and a natural body in the user\'s language. Ground in any provided context; invent no facts.',
+  },
+  {
+    id: 'email_agent',
+    name: 'Email Agent',
+    description: 'Send the drafted email to its recipients via the owner\'s Gmail (after review).',
+    implStatus: 'live',
+    requires: ['email_draft'],
+    optional: [],
+    produces: ['email_result'],
+    // Gmail connectivity is checked inside the runner (fail-loud) rather than via the social
+    // connection-resolver, which is keyed by social platforms the email path doesn't use.
+    requiresConnection: false,
+    requiresApproval: true, // external-write gate: the user reviews the draft, then approves the send
+    gate: 'publish',
+    emoji: '📧',
+    group: 'action',
+    vibe: 'Careful sender: never blasts — one reviewed email, to the right people, only after approval.',
+    successMetrics: ['sends only after explicit approval', 'delivers to every valid recipient', 'clear per-recipient outcome'],
+    decisionFramework: 'Treat a send as an external write. Present the draft for review; on approval, send via the owner\'s Gmail to each recipient and report per-recipient status. Never auto-blast.',
+  },
 ];
 
 const byId = new Map<RunnableAgentId, AgentDefinition>(AGENTS.map((a) => [a.id, a]));

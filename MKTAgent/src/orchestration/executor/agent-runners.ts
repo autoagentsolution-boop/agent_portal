@@ -15,6 +15,7 @@ import { resolveCopyConfig, DEFAULT_LANGUAGE } from '../../copygen/resolve-confi
 import { getUserById } from '../../db/repos/user-repo.ts';
 import { generateVariantsForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
+import { sendGmailAs, type GmailSendFn } from '../../email/gmail-send.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
 import { buildAgentPrompt } from '../prompts/build-agent-prompt.ts';
 import { resolveInstructions } from '../prompts/resolve-instructions.ts';
@@ -70,6 +71,9 @@ export interface RunnerContext {
   // the researcher falls back to its own default grounded call (real API) then to a
   // knowledge-only summary if that call is unavailable.
   researchFn?: GroundedSearchFn;
+  // Gmail send seam (email_agent). Stubbed in DRY-RUN verification so no real email is sent;
+  // unset → the real owner-Gmail send.
+  gmailSendFn?: GmailSendFn;
   // The Post row id materialized by concept_writer, reused by publisher.
   postId?: string;
 }
@@ -746,6 +750,73 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   return { type: 'video_prompt', data: parsed.data, cost: sumCost(videoClipCost(rendered), ttsRendered ? ttsCost() : undefined) };
 };
 
+// ── Email path (P4-lite): email_writer drafts, email_agent sends (approval-gated) ──────────────────
+const EMAIL_ADDR_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+const parseRecipients = (raw?: string | null): string[] =>
+  Array.from(new Set((raw ?? '').match(EMAIL_ADDR_RE) ?? [])).slice(0, 20);
+
+const EMAIL_WRITER_PROMPT = [
+  "You are Atria's Email Writer. Write ONE complete, ready-to-send email based on the user's purpose.",
+  'Warm, natural, human — not templated or spammy. Plain text only (no HTML, no markdown). Keep it concise',
+  '(a birthday note is 3-5 lines; a nurture email under ~150 words). One clear point. Address the recipient by',
+  'first name if the purpose names them. Ground in any provided context; invent no facts. Sign off warmly with',
+  "no fake corporate signature. Write ENTIRELY in the requested language. Respond ONLY as JSON:",
+  '{"subject":"<=120 chars","body":"plain-text email"}.',
+].join(' ');
+
+const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const to = parseRecipients(ctx.goal.slots.emailTo);
+  if (!to.length) throw new Error('email_writer: no recipient email address — tell me who to send it to (an @ address).');
+  const call = ctx.llmJsonFn ?? callGeminiJson;
+  const language = await resolveRunLanguage(ctx);
+  const concept = ctx.upstream['content_concept']; // optional grounding (a nurture flow); usually absent
+  const purpose = ctx.goal.slots.angle?.trim() || ctx.goal.slots.product?.trim() || ctx.goal.slots.emailSubject?.trim() || 'a short, friendly note';
+  const input = [
+    `Purpose / what to say: ${purpose}`,
+    ctx.goal.slots.emailSubject ? `Requested subject: ${ctx.goal.slots.emailSubject}` : '',
+    ctx.goal.slots.brandVoice ? `Tone: ${ctx.goal.slots.brandVoice}` : '',
+    `Recipient(s): ${to.join(', ')}`,
+    concept ? `Context to ground in: ${JSON.stringify(concept).slice(0, 1200)}` : '',
+    `Write the email entirely in this language: ${language}.`,
+  ].filter(Boolean).join('\n');
+
+  let usage: GeminiUsage | null = null;
+  const raw = await call(EMAIL_WRITER_PROMPT, input, (u) => { usage = u; });
+  const o = (raw ?? {}) as { subject?: unknown; body?: unknown };
+  const subject = (String(o.subject ?? '').trim() || ctx.goal.slots.emailSubject?.trim() || 'A note for you').slice(0, 200);
+  const body = String(o.body ?? '').trim().slice(0, 8000);
+  if (!body) throw new Error('email_writer: the draft came back empty — try rephrasing what the email should say.');
+  if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'email', model: env.GEMINI_MODEL, usage, runId: ctx.runId });
+  return {
+    type: 'email_draft',
+    data: { to, subject, body, groundedOn: concept ? 'content_concept' : 'goal' },
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(EMAIL_WRITER_PROMPT + input, body),
+  };
+};
+
+// email_agent: send the reviewed draft via the owner's Gmail. Gated upstream (requiresApproval) so this
+// only runs AFTER the user approved the draft — the no-burst rule applies to email too. Per-recipient
+// outcome; a partial send (some ok, some failed) surfaces as 'partial', a total failure fails the node.
+const runEmailAgent = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const draft = ctx.upstream['email_draft'] as { to?: string[]; subject?: string; body?: string } | undefined;
+  const to = draft?.to?.length ? draft.to : parseRecipients(ctx.goal.slots.emailTo);
+  if (!draft?.body || !to.length) throw new Error('email_agent: no reviewed draft to send.');
+  const subject = draft.subject ?? 'A note for you';
+
+  const sentIds: Record<string, string> = {};
+  let lastErr: string | null = null;
+  for (const addr of to) {
+    const res = await sendGmailAs(ctx.ownerId, { to: addr, subject, body: draft.body }, ctx.gmailSendFn);
+    if (res.ok) sentIds[addr] = res.id ?? 'sent';
+    else lastErr = res.error ?? 'send_failed';
+  }
+  const okCount = Object.keys(sentIds).length;
+  if (okCount === 0) throw new Error(`email_agent: send failed (${lastErr ?? 'unknown'})`);
+  const status = okCount < to.length ? 'partial' : 'sent';
+  logger.info('wf_email_sent', { runId: ctx.runId, recipients: to.length, sent: okCount, status });
+  return { type: 'email_result', data: { to, subject, status, sentIds, error: status === 'partial' ? lastErr : null } };
+};
+
 const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOutput>> = {
   ideation: runIdeation,
   strategy: runStrategy,
@@ -756,6 +827,8 @@ const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOut
   storyboard: runStoryboard,
   video: runVideo,
   publisher: runPublisher,
+  email_writer: runEmailWriter,
+  email_agent: runEmailAgent,
 };
 
 export const getRunner = (agentId: RunnableAgentId) => runners[agentId];

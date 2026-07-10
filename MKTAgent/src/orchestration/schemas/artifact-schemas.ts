@@ -19,6 +19,8 @@ export const artifactType = z.enum([
   'video_prompt',
   'publish_result',
   'content_calendar',
+  'email_draft',
+  'email_result',
 ]);
 export type ArtifactType = z.infer<typeof artifactType>;
 
@@ -136,6 +138,25 @@ export const contentCalendar = z.object({
   slots: z.array(calendarSlot).min(1),
 });
 
+// email_writer → email_draft. A ready-to-review email: recipients + subject + plain-text body.
+// `groundedOn` notes what the draft was built from (a content_concept, or the goal) for transparency.
+export const emailDraft = z.object({
+  to: z.array(z.string()).min(1),
+  subject: z.string().min(1).max(200),
+  body: z.string().min(1).max(8000),
+  groundedOn: z.string().nullable().default(null),
+});
+
+// email_agent → email_result. Per-recipient send outcome (mirrors publish_result's shape). `dry_run`
+// = the DRY verification/test seam (no real send). `sentIds` maps recipient → Gmail message id.
+export const emailResult = z.object({
+  to: z.array(z.string()).min(1),
+  subject: z.string(),
+  status: z.enum(['sent', 'partial', 'error', 'dry_run']),
+  sentIds: z.record(z.string()).nullable().default(null),
+  error: z.string().nullable().default(null),
+});
+
 // Lookup: artifactType → its payload schema. The executor uses this to validate
 // an agent's output by its declared `produces` type.
 export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
@@ -148,4 +169,6 @@ export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
   video_prompt: videoPrompt,
   publish_result: publishResult,
   content_calendar: contentCalendar,
+  email_draft: emailDraft,
+  email_result: emailResult,
 };

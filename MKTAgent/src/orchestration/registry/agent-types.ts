@@ -13,9 +13,11 @@ export type AgentId =
   | 'concept_writer'
   | 'infographic'
   | 'storyboard'
-  | 'video';
+  | 'video'
+  // Email path (P4-lite): write an email, then send it (Gmail). Separate from the social pipeline.
+  | 'email_writer';
 
-export type RunnableAgentId = AgentId | 'publisher';
+export type RunnableAgentId = AgentId | 'publisher' | 'email_agent';
 
 // M1 status: live = wraps an existing production seam; stub = emits a schema-valid
 // placeholder artifact so the DAG runs end-to-end now. Wiring stubs→live is later.
