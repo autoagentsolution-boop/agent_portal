@@ -13,6 +13,8 @@ import { AtriaResumeWorkCards } from './atria-resume-work-cards';
 import { TypewriterText } from './typewriter-text';
 import { ReadAloudButton } from './read-aloud-button';
 import { wantsSpokenReply } from '../lib/read-intent';
+import { useSpeechRecognition } from '../hooks/use-speech-recognition';
+import { speak, stopSpeaking } from '../lib/tts-player';
 
 export interface OrchestrateRestore {
   sessionId: string;
@@ -75,6 +77,66 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
   const [pending, setPending] = useState<string | null>(null);
   const autoStarted = useRef(false);
 
+  // ── Voice mode ────────────────────────────────────────────────────────────────────────────────────
+  // `voiceMode` = hands-free round-trip: mic STT in, auto-TTS out, and (continuous) re-listen after
+  // Atria speaks. The mic button works as push-to-talk even with the toggle off. State machine:
+  // idle → listening → thinking → speaking → (voiceMode ? listening : idle).
+  const [voiceMode, setVoiceMode] = useState(false);
+  const voiceModeRef = useRef(false); voiceModeRef.current = voiceMode;
+  const [speaking, setSpeaking] = useState(false);
+  const startRef = useRef<(t: string) => void>(() => {}); // set after start() is defined (avoids TDZ cycle)
+
+  const sr = useSpeechRecognition({
+    lang: 'vi-VN', // VN-first app; Web Speech still handles common English. Server STT is the upgrade path.
+    visualize: true, // core rides mic amplitude while listening
+    onInterim: (t) => setInput(t), // live transcript into the composer
+    onFinal: (t) => { setInput(''); startRef.current(t); }, // silence-end → auto-send
+  });
+
+  // Speak Atria's reply; in continuous voice mode, re-open the mic once narration ends naturally
+  // (an interrupted clip means the user barged in — don't fight them by re-listening here).
+  const speakReply = async (text: string) => {
+    if (!text.trim()) return;
+    setSpeaking(true);
+    try {
+      const h = await speak(text, {
+        onEnd: (interrupted) => {
+          setSpeaking(false);
+          if (voiceModeRef.current && !interrupted) sr.start();
+        },
+      });
+      await h.done;
+    } catch { setSpeaking(false); }
+  };
+
+  const micClick = () => {
+    if (sr.listening) { sr.stop(); return; }
+    stopSpeaking(); // barge-in: talking over Atria pauses her narration
+    sr.start();
+  };
+
+  const toggleVoiceMode = () => {
+    setVoiceMode((on) => {
+      const next = !on;
+      if (next) { stopSpeaking(); sr.start(); } // enter → start listening immediately
+      else { sr.stop(); stopSpeaking(); setSpeaking(false); } // exit → stop everything
+      return next;
+    });
+  };
+
+  const voiceState: 'idle' | 'listening' | 'thinking' | 'speaking' =
+    sr.listening ? 'listening' : busy ? 'thinking' : speaking ? 'speaking' : 'idle';
+
+  // Esc exits voice mode / stops the round-trip (P3).
+  useEffect(() => {
+    if (!voiceMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setVoiceMode(false); sr.stop(); stopSpeaking(); setSpeaking(false); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [voiceMode, sr]);
+
   const hasStarted = messages.length > 0 || Boolean(pending) || busy;
   const push = (m: Msg) => setMessages((prev) => [...prev, m]);
 
@@ -103,8 +165,11 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
       // Read-intent ("read the report", "how are campaigns going?") → offer to read Atria's reply
       // aloud (a confirm, never auto-play). Reads the RESULT text, not what the user typed.
       applyRun(r.data, wantsSpokenReply(trimmed));
+      // Voice mode → speak the reply hands-free (the toggle IS the standing autoplay gesture).
+      if (voiceModeRef.current && r.data.assistantMessage) void speakReply(r.data.assistantMessage);
     } finally { setPending(null); setBusy(false); }
   };
+  startRef.current = start;
 
   // Auto-submit the seeded intent exactly once on a fresh mount (never on restore).
   // Ref guard instead of effect deps: StrictMode double-invoke or a re-render must not
@@ -222,14 +287,47 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
       )}
 
       <div className="floating-composer">
-        <div className="composer-box">
+        {sr.supported && (voiceMode || voiceState !== 'idle') && (
+          <div className={`voice-status is-${voiceState}`} role="status" aria-live="polite">
+            <span className="voice-status-dot" aria-hidden="true" />
+            {voiceState === 'listening' && 'Đang nghe…'}
+            {voiceState === 'thinking' && 'Atria đang suy nghĩ…'}
+            {voiceState === 'speaking' && 'Atria đang nói — chạm mic để ngắt lời'}
+            {voiceState === 'idle' && 'Chế độ giọng nói bật — chạm mic để nói'}
+            {voiceMode && <span className="voice-status-exit"> · Esc để thoát</span>}
+          </div>
+        )}
+        <div className={`composer-box ${voiceState === 'listening' ? 'is-listening' : ''}`}>
           <button className="composer-plus" aria-label="Add context">+</button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void start(input); } }}
-            placeholder={showPlan ? 'Refine the plan — e.g. “thêm video” or “bỏ infographic”…' : 'Describe a marketing goal to orchestrate…'}
+            placeholder={
+              voiceState === 'listening' ? 'Nói đi — Atria đang nghe…'
+              : showPlan ? 'Refine the plan — e.g. “thêm video” or “bỏ infographic”…'
+              : 'Describe a marketing goal to orchestrate…'
+            }
           />
+          {sr.supported && (
+            <>
+              <button
+                type="button"
+                className={`composer-voice ${voiceMode ? 'is-on' : ''}`}
+                onClick={toggleVoiceMode}
+                title={voiceMode ? 'Tắt chế độ giọng nói' : 'Bật chế độ giọng nói (rảnh tay)'}
+                aria-pressed={voiceMode}
+                aria-label="Voice mode"
+              >🎙</button>
+              <button
+                type="button"
+                className={`composer-mic ${sr.listening ? 'is-listening' : ''}`}
+                onClick={micClick}
+                title={sr.listening ? 'Dừng nghe' : 'Nói với Atria'}
+                aria-label={sr.listening ? 'Stop listening' : 'Speak'}
+              >{sr.listening ? '■' : '🎤'}</button>
+            </>
+          )}
           <button
             className={`composer-send ${busy ? 'loading' : ''}`}
             disabled={busy}

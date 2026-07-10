@@ -1,26 +1,9 @@
-// Read-aloud (P3 V2) — a speaker button that plays TTS for a chunk of text (an Atria reply or the
-// Impact headline). Fetches audio/wav bytes from POST /voice/tts and plays a Blob URL. A module-level
-// `currentAudio` guarantees only ONE narration plays at a time: starting a new one pauses the prior.
-// Server-side the WAV is cached by text hash, so a repeat read is instant + free.
+// Read-aloud — a speaker button that plays TTS for a chunk of text (an Atria reply or the Impact
+// headline). Delegates to the shared tts-player (lib/tts-player.ts), which owns the single-narration
+// guard, blob lifecycle, 502 retry, and voice-viz routing — so a click and voice-mode auto-read never
+// double-play and barge-in works uniformly.
 import { useEffect, useRef, useState } from 'react';
-import { attachVoiceAnalyser } from './voice-viz.ts';
-
-const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
-
-// The single audio element allowed to play across all buttons. Pausing it fires each button's
-// `onpause`, which resets that button to idle — so state stays consistent without a shared store.
-let currentAudio: HTMLAudioElement | null = null;
-
-async function fetchTts(text: string): Promise<string> {
-  const res = await fetch(`${BASE}/voice/tts`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text }),
-  });
-  if (!res.ok) throw new Error(`tts_${res.status}`);
-  return URL.createObjectURL(await res.blob());
-}
+import { speak, stopSpeaking } from '../lib/tts-player.ts';
 
 type Status = 'idle' | 'loading' | 'playing';
 
@@ -35,38 +18,25 @@ interface Props {
 
 export function ReadAloudButton({ text, title = 'Đọc to', className = '', label }: Props) {
   const [status, setStatus] = useState<Status>('idle');
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const urlRef = useRef<string | null>(null);
-  // Synchronous guard: state updates are async, so two fast clicks both see status==='idle' and each
-  // fire a fetch (orphaning the first audio). A ref blocks the second click immediately.
+  const playingRef = useRef(false); // this button owns the current narration
+  // Synchronous guard: state is async, so two fast clicks both see 'idle' and each fetch. A ref blocks
+  // the second click immediately.
   const busyRef = useRef(false);
 
-  // Free the blob URL + detach the shared handle on unmount so a scrolled-away bubble can't keep audio.
-  useEffect(() => () => {
-    audioRef.current?.pause();
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-    if (currentAudio && currentAudio === audioRef.current) currentAudio = null;
-  }, []);
+  // If this bubble scrolls away mid-narration, stop it (it's the current audio) so it doesn't play on.
+  useEffect(() => () => { if (playingRef.current) stopSpeaking(); }, []);
 
   const play = async () => {
-    if (status === 'playing') { audioRef.current?.pause(); return; } // toggle off
-    if (busyRef.current || status === 'loading') return; // in-flight → ignore repeat clicks
+    if (status === 'playing') { stopSpeaking(); return; } // toggle off
+    if (busyRef.current || status === 'loading') return;
     if (!text.trim()) return;
-    if (currentAudio && currentAudio !== audioRef.current) currentAudio.pause(); // stop any other narration
     busyRef.current = true;
     setStatus('loading');
     try {
-      const url = await fetchTts(text);
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-      urlRef.current = url;
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      currentAudio = audio;
-      audio.onended = () => setStatus('idle');
-      audio.onpause = () => setStatus((s) => (s === 'playing' ? 'idle' : s));
-      await audio.play(); // play a clean element first (best autoplay-policy outcome)
-      attachVoiceAnalyser(audio); // only once it's actually playing: route through Web Audio so the core rides the narration
-      setStatus('playing');
+      await speak(text, {
+        onStart: () => { playingRef.current = true; setStatus('playing'); },
+        onEnd: () => { playingRef.current = false; setStatus('idle'); },
+      });
     } catch {
       setStatus('idle');
     } finally {
