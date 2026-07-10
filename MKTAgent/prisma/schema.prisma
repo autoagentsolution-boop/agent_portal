@@ -137,8 +137,32 @@ model User {
   leadIntakeTokens   LeadIntakeToken[]
   instructions       Instruction[]
   roadmapDemands     RoadmapDemand[]
+  memories           UserMemory[]
 
   @@map("mkt_user")
+}
+
+// Per-user long-term memory (Atria Core-Intelligence P3) — durable facts Atria recalls across
+// sessions so it stops re-asking (product, brand, audience, preferences, contacts). Keyword-first
+// (no embeddings yet — YAGNI): a short `content` fact tagged by `kind`, optionally `key`ed for
+// upsert-dedup within (owner,kind) (e.g. a product name or a contact name). Freeform facts leave
+// key null. Owner-scoped + cascade-deleted with the user.
+model UserMemory {
+  id              String   @id @default(uuid()) @db.Uuid
+  ownerId         String   @map("owner_id") @db.Uuid
+  kind            String   // product | brand | audience | preference | contact | fact
+  key             String?  // dedup key within (owner,kind); null = freeform
+  content         String   // the remembered fact (short natural-language line)
+  sourceSessionId String?  @map("source_session_id") @db.Uuid
+  usedCount       Int      @default(0) @map("used_count")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, kind, key], name: "uq_memory_owner_kind_key")
+  @@index([ownerId])
+  @@map("mkt_memory")
 }
 
 // Roadmap-agent demand log (Atria Phase 06). Each time Atria PITCHES a not-yet-built roadmap agent

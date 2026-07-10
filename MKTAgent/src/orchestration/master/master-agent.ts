@@ -36,8 +36,9 @@ export class MasterAgent {
 
   // Full pass from a raw message. ownerId (optional) threads through to the analyzer so a
   // REAL Gemini call bills the usage ledger to the requesting tenant (surface 'intake').
-  async handle(message: string, ownerId?: string | null): Promise<MasterAgentOutcome> {
-    const goal = await this.analyzer.analyze(message, ownerId);
+  // memoryContext (P3): recalled durable facts so a fresh goal pre-fills what Atria already knows.
+  async handle(message: string, ownerId?: string | null, memoryContext?: string | null): Promise<MasterAgentOutcome> {
+    const goal = await this.analyzer.analyze(message, ownerId, memoryContext);
     return this.planFromGoal(goal);
   }
 
@@ -46,8 +47,8 @@ export class MasterAgent {
   // merge it additively onto the prior goal so nothing already gathered is lost,
   // then re-plan. This is what keeps the conversation cumulative instead of each
   // turn re-asking everything.
-  async refine(prior: GoalSpec, message: string, ownerId?: string | null): Promise<MasterAgentOutcome> {
-    const { goal: delta, removals } = await this.analyzer.analyzeWithRemovals(message, prior, ownerId);
+  async refine(prior: GoalSpec, message: string, ownerId?: string | null, memoryContext?: string | null): Promise<MasterAgentOutcome> {
+    const { goal: delta, removals } = await this.analyzer.analyzeWithRemovals(message, prior, ownerId, memoryContext);
     // Additive merge first (keep everything gathered + add new), THEN subtract any
     // removals the turn expressed ("bỏ video"). Order matters: a turn that both adds
     // and removes resolves to add-then-remove.

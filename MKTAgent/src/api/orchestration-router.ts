@@ -62,6 +62,7 @@ import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts
 import { ensureChatSession, recordTurn, recordAnswerTurn, recordSaveOffer, recordCampaignCreated, summarizeAnswers } from './orchestration-chat.ts';
 import { classifyIntent } from '../orchestration/master/intent-router.ts';
 import { answerDataQuery } from '../orchestration/master/report-answer.ts';
+import { recallForMessage, captureFromGoal } from '../memory/user-memory.ts';
 import { detectCampaignIntent } from '../orchestration/master/campaign-intent.ts';
 import { createCampaignFromFlow } from '../orchestration/master/campaign-from-flow.ts';
 import { parsePlatforms } from '../orchestration/master/deterministic-analyzer.ts';
@@ -196,10 +197,18 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
 
   const refine = existing && existing.kind !== 'template' && PRE_EXEC.has(existing.status);
 
+  // Recall (P3): load durable facts about this user so a fresh goal pre-fills known product/brand/
+  // audience instead of re-asking. Best-effort — a recall failure never blocks the turn.
+  const memory = await recallForMessage(req.userId!, body.message).catch(() => ({ context: null, usedIds: [] }));
+
   const outcome = refine
-    ? await masterAgent.refine(goalSpec.parse(existing!.goal), body.message, req.userId!)
-    : await masterAgent.handle(body.message, req.userId!);
+    ? await masterAgent.refine(goalSpec.parse(existing!.goal), body.message, req.userId!, memory.context)
+    : await masterAgent.handle(body.message, req.userId!, memory.context);
   const assistantMessage = await recordTurn(sessionId, body.message, outcome, req.userId!);
+
+  // Capture (P3): once a goal is understood, remember its durable slots for next time. Fire-and-forget
+  // so the response isn't delayed; only meaningful once we actually have a product/audience/voice.
+  void captureFromGoal(req.userId!, outcome.goal, sessionId).catch(() => {});
 
   if (refine) {
     const { questions } = await applyOutcomeToRun(existing!.id, req.userId!, outcome.goal, outcome);

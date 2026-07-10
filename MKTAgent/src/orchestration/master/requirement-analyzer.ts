@@ -34,13 +34,15 @@ export interface AnalysisWithRemovals {
 export interface RequirementAnalyzer {
   // ownerId (optional): the authenticated tenant, threaded so a REAL Gemini call bills the
   // usage ledger to the right owner (surface 'intake'). Missing/null records a system row.
-  analyze(message: string, ownerId?: string | null): Promise<GoalSpec>;
+  // memoryContext (P3): recalled durable facts about this user, injected so known product/
+  // brand/audience pre-fill the goal instead of being re-asked.
+  analyze(message: string, ownerId?: string | null, memoryContext?: string | null): Promise<GoalSpec>;
   // Refinement variant: also surfaces removal intent (subtractive edits) so the
   // refine path can un-set outputs/platforms. `handle` (fresh goal) ignores removals.
   // `prior` (the goal gathered so far) gives the model conversation context so a short
   // reply ("đi làm với đồng nghiệp", "for everyone") maps to the RIGHT slot instead of
   // extracting nothing — the fix for the never-ending clarification loop.
-  analyzeWithRemovals(message: string, prior?: GoalSpec, ownerId?: string | null): Promise<AnalysisWithRemovals>;
+  analyzeWithRemovals(message: string, prior?: GoalSpec, ownerId?: string | null, memoryContext?: string | null): Promise<AnalysisWithRemovals>;
 }
 
 // Compact prior goal for the context prompt — only the fields the analyzer fills.
@@ -57,11 +59,11 @@ const priorContext = (g: GoalSpec): unknown => ({
 });
 
 export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
-  async analyze(message: string, ownerId?: string | null): Promise<GoalSpec> {
-    return (await this.analyzeWithRemovals(message, undefined, ownerId)).goal;
+  async analyze(message: string, ownerId?: string | null, memoryContext?: string | null): Promise<GoalSpec> {
+    return (await this.analyzeWithRemovals(message, undefined, ownerId, memoryContext)).goal;
   }
 
-  async analyzeWithRemovals(message: string, prior?: GoalSpec, ownerId?: string | null): Promise<AnalysisWithRemovals> {
+  async analyzeWithRemovals(message: string, prior?: GoalSpec, ownerId?: string | null, memoryContext?: string | null): Promise<AnalysisWithRemovals> {
     const fallback = (): AnalysisWithRemovals => ({
       // Even the deterministic fallback keeps prior context: merge is additive downstream,
       // but seed the message's platforms so nothing is lost when the LLM is unavailable.
@@ -70,11 +72,15 @@ export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
     });
     if (!env.GEMINI_API_KEY) return fallback();
     try {
+      // Recalled memory (P3) leads the prompt so the model fills known product/brand/audience
+      // from what Atria already knows instead of leaving them blank (→ fewer re-asks). Empty when
+      // nothing is known, so behavior is unchanged for a brand-new user.
+      const memoryBlock = memoryContext?.trim() ? `${memoryContext.trim()}\n\n` : '';
       // On a refinement turn, hand the model the known goal + the new reply, and tell it to
       // return the UPDATED goal (map a topic→product, an audience→targetAudience, etc.).
       const userText = prior
-        ? `Known goal so far (JSON): ${JSON.stringify(priorContext(prior))}\n\nThe user just replied: "${message}"\n\nThis reply is usually a short answer to a clarification. Return the UPDATED full goal: carry over every field already known and fill the ones this reply provides. Map a topic/subject → "product" (for a personal life/experience post the topic IS the product), an audience → "targetAudience", a tone/style → "brandVoice", a specific message → "angle". Never blank out a field that is already known.`
-        : message;
+        ? `${memoryBlock}Known goal so far (JSON): ${JSON.stringify(priorContext(prior))}\n\nThe user just replied: "${message}"\n\nThis reply is usually a short answer to a clarification. Return the UPDATED full goal: carry over every field already known and fill the ones this reply provides. Map a topic/subject → "product" (for a personal life/experience post the topic IS the product), an audience → "targetAudience", a tone/style → "brandVoice", a specific message → "angle". Never blank out a field that is already known.`
+        : `${memoryBlock}${message}`;
       const res = await fetch(endpoint(env.GEMINI_MODEL), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
