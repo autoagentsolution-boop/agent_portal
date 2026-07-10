@@ -1,10 +1,8 @@
-// Subscribe to per-user `node.status` SSE events for a single workflow run, so the
-// Orchestrate panel animates node states live as the executor advances (mirrors
-// use-post-events.ts). The EventSource carries the HttpOnly session cookie via
-// withCredentials — no token in the URL. Pass runId=null to stay disconnected.
+// Subscribe to per-user `node.status` SSE events (shared events bus) for a single workflow run, so
+// the Orchestrate panel animates node states live as the executor advances. Pass runId=null to stay
+// disconnected (still no dedicated connection — the bus filters by runId here).
 import { useEffect, useRef, useState } from 'react';
-
-const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
+import { subscribeEvents } from './events-bus.ts';
 
 export interface NodeStatusEvent {
   type: 'node.status';
@@ -29,16 +27,11 @@ export function useRunEvents(runId: string | null, onEvent: (e: NodeStatusEvent)
 
   useEffect(() => {
     if (!runId) { setLive(false); return; }
-    const es = new EventSource(`${BASE}/events`, { withCredentials: true });
-    es.addEventListener('ready', () => setLive(true));
-    es.addEventListener('node.status', (ev) => {
-      try {
-        const data = JSON.parse((ev as MessageEvent).data) as NodeStatusEvent;
-        if (data.runId === runId) cb.current(data);
-      } catch { /* ignore malformed frame */ }
+    return subscribeEvents({
+      onReady: () => setLive(true),
+      onError: () => setLive(false),
+      on: { 'node.status': (d) => { if ((d as { runId?: string }).runId === runId) cb.current(d as unknown as NodeStatusEvent); } },
     });
-    es.onerror = () => setLive(false);
-    return () => es.close();
   }, [runId]);
 
   return live;

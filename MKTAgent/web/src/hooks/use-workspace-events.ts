@@ -4,11 +4,10 @@
 // getWorkspace (SSE as a "something moved" signal, not a per-field patch — the rollup is cheap and
 // always consistent). EventSource carries the session cookie via withCredentials; no token in URL.
 import { useEffect, useRef, useState } from 'react';
-
-const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
+import { subscribeEvents } from './events-bus.ts';
 
 // `key` resets the subscription (e.g. the open workspace's campaignId). `runIds` is read through a
-// ref so the panel reloading its run set does NOT churn the EventSource — only `key` re-subscribes.
+// ref so the panel reloading its run set does NOT churn the subscription — only `key` re-subscribes.
 export function useWorkspaceEvents(
   key: string | null,
   runIds: string[],
@@ -22,16 +21,11 @@ export function useWorkspaceEvents(
 
   useEffect(() => {
     if (!key) { setLive(false); return; }
-    const es = new EventSource(`${BASE}/events`, { withCredentials: true });
-    es.addEventListener('ready', () => setLive(true));
-    es.addEventListener('node.status', (ev) => {
-      try {
-        const data = JSON.parse((ev as MessageEvent).data) as { runId?: string };
-        if (data.runId && ids.current.has(data.runId)) cb.current();
-      } catch { /* ignore malformed frame */ }
+    return subscribeEvents({
+      onReady: () => setLive(true),
+      onError: () => setLive(false),
+      on: { 'node.status': (d) => { const rid = (d as { runId?: string }).runId; if (rid && ids.current.has(rid)) cb.current(); } },
     });
-    es.onerror = () => setLive(false);
-    return () => es.close();
   }, [key]);
 
   return live;
