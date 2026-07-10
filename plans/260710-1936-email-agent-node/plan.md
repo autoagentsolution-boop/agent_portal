@@ -1,5 +1,9 @@
 # Email Agent node + lead-collector awareness (P4-lite)
 
+> **STATUS: Email Agent node DONE (commit `271fee4`), verified live + verify-email-node green.**
+> Lead-collector awareness = deferred light follow-up (needs an honest connected-sources check, not a
+> blind "enabled" claim). Scheduled auto-send = the email node's next increment.
+
 Branch `pivot/video-content-farm` · 2026-07-10. Scoped down per user: NO lead→nurture DAG composition
 (too much cron to manage). Instead: (1) a general **Email Agent node** = write + review + send an email;
 (2) lead-collector stays the existing cron default, just surfaced so the user KNOWS Atria enabled it.
