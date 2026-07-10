@@ -29,8 +29,22 @@ memory, and is hardwired to Gemini. This plan turns Atria into a genuine reasoni
   `answered` run (no nodes/plan card) before marketing analysis; `recordAnswerTurn` persists the Q+A.
   Verified e2e in the UI: "how are my campaigns going?" → real numbers (13 posts FB/IG/TH/LI/X, no plan
   detour) + read-aloud offer (→ with voice mode, auto-spoken, core reacting).
-- **P2/P3/P4 — NOT STARTED.** Each is a broad, independent effort (provider abstraction across ~10 sites;
-  memory architecture; node de-marketing audit) — pending go-ahead + scope decisions.
+- **P3 — DONE (2026-07-10, commit `783f081`).** Per-user long-term memory. `UserMemory` model
+  (`mkt_memory`; migration `20260710121927`), `user-memory-repo.ts` (keyed upsert / freeform dedup),
+  `user-memory.ts` service: `recallForMessage` (ranks captured facts + product library + brand defaults
+  by keyword overlap → compact block, truncated) + `captureFromGoal` (deterministic slot capture). Wired
+  into requirement-analyzer (recalled facts pre-fill product/brand/audience), master-agent handle/refine,
+  and orchestration-router (recall before, capture after each turn — best-effort). Keyword-first, no
+  embeddings (YAGNI). **Verified live e2e:** planned a GreenLeaf campaign → a NEW chat saying only "video
+  về GreenLeaf" recalled "GreenLeaf, your organic tea brand, targeting busy young professionals" and
+  planned with ZERO re-asking.
+- **P2 — DEFERRED** (user 2026-07-10: Claude/GPT provider layer only AFTER demo success).
+- **P4 — NOT STARTED** (next candidate). E2e test of 4 diverse flows (2026-07-10) surfaced exactly the P4
+  gaps: (1)✅ marketing campaign plans; (2)✅ video→publish FB (memory recall excellent); (2b)✅ video→Drive
+  (publisher correctly omitted); (3)❌ "email a friend happy birthday" forced into marketing "which
+  platform?" framing — NO email-send node; (4)⚠️ full funnel understood + content planned, but
+  lead-collector + email-nurture are separate cron SURFACES, not composable DAG nodes. → P4 = add a
+  general email-send agent node + compose lead/nurture into the planner + general/task modes per node.
 
 ## Phases
 ### P1 — Intent Router + Data-Query answers (the "come back to" item; DO FIRST) ✅ DONE
