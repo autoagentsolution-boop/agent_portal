@@ -45,6 +45,15 @@
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
+
+/* Thin, subtle, neural scrollbars app-wide (the default OS bar reads as unprofessional in a modern
+   chat). Overlay-style: transparent track, violet thumb that brightens on hover. */
+* { scrollbar-width: thin; scrollbar-color: rgba(157,123,255,0.28) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(157,123,255,0.28); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(157,123,255,0.5); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
 body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans);
   background-image: var(--bg-gradient); background-attachment: fixed; }
 button { font: inherit; cursor: pointer; }
