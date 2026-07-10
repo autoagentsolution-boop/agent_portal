@@ -120,6 +120,14 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
 
       <div className={`cc-network ${anyRunning ? 'is-conducting' : ''}`}>
         <button className={`cc-core ${anyRunning ? 'is-conducting' : ''}`} onClick={() => onLaunch()}>
+          <span className="cc-core-fx" aria-hidden="true">
+            <span className="cc-ring cc-ring-1" />
+            <span className="cc-ring cc-ring-2" />
+            <span className="cc-ring cc-ring-3" />
+            <span className="cc-reticle cc-reticle-out" />
+            <span className="cc-reticle cc-reticle-in" />
+            <span className="cc-core-orb" />
+          </span>
           <span className="cc-core-label">Master Agent</span>
           <span className="cc-core-name">Atria</span>
           <span className="cc-core-sub">Nhạc trưởng</span>
