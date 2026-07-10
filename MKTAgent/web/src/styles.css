@@ -998,6 +998,25 @@ a { color: var(--accent); }
 .cc-core.is-conducting .cc-core-orb { animation-duration: 1.1s; }
 .cc-core-fx > span { z-index: 0; }
 
+/* Voice-reactive state (P5.4 chunk 3): while a read-aloud clip plays, voice-viz.ts sets
+   data-atria-speaking + a per-frame --voice-level (0..1) on :root. The core glow + inner orb ride
+   the narration amplitude so Atria visibly "speaks". Overrides the idle breathe with a live signal. */
+:root[data-atria-speaking] .cc-core {
+  animation: none;
+  box-shadow: 0 0 calc(48px + var(--voice-level, 0) * 80px) rgba(157,123,255, calc(0.45 + var(--voice-level, 0) * 0.5)),
+              inset 0 0 44px rgba(255,255,255, calc(0.12 + var(--voice-level, 0) * 0.18));
+}
+:root[data-atria-speaking] .cc-core-orb {
+  animation: none;
+  transform: translate(-50%, -50%) scale(calc(0.82 + var(--voice-level, 0) * 0.55));
+  opacity: calc(0.55 + var(--voice-level, 0) * 0.45);
+}
+:root[data-atria-speaking] .cc-reticle-out { animation-duration: 6s; }
+:root[data-atria-speaking] .cc-reticle-in { animation-duration: 3.4s; }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-atria-speaking] .cc-core-orb { transform: translate(-50%, -50%) scale(1); }
+}
+
 .cc-core-label { font-size: 9px; letter-spacing: 3px; color: rgba(255,255,255,0.6); text-transform: uppercase; position: relative; z-index: 1; }
 .cc-core-name { font-size: 23px; font-weight: 700; text-shadow: 0 0 20px rgba(255,255,255,0.5); position: relative; z-index: 1; }
 .cc-core-sub { font-size: 9px; color: rgba(255,255,255,0.7); margin-top: 2px; position: relative; z-index: 1; }

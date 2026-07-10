@@ -3,6 +3,7 @@
 // `currentAudio` guarantees only ONE narration plays at a time: starting a new one pauses the prior.
 // Server-side the WAV is cached by text hash, so a repeat read is instant + free.
 import { useEffect, useRef, useState } from 'react';
+import { attachVoiceAnalyser } from './voice-viz.ts';
 
 const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
@@ -58,6 +59,7 @@ export function ReadAloudButton({ text, title = 'Đọc to', className = '' }: P
       const audio = new Audio(url);
       audioRef.current = audio;
       currentAudio = audio;
+      attachVoiceAnalyser(audio); // route through Web Audio so the Atria core rides the narration
       audio.onended = () => setStatus('idle');
       audio.onpause = () => setStatus((s) => (s === 'playing' ? 'idle' : s));
       await audio.play();
