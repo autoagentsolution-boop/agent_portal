@@ -63,6 +63,7 @@ import { ensureChatSession, recordTurn, recordAnswerTurn, recordSaveOffer, recor
 import { classifyIntent } from '../orchestration/master/intent-router.ts';
 import { answerDataQuery } from '../orchestration/master/report-answer.ts';
 import { recallForMessage, captureFromGoal } from '../memory/user-memory.ts';
+import { buildLeadAwarenessNote } from '../leads/lead-readiness.ts';
 import { detectCampaignIntent } from '../orchestration/master/campaign-intent.ts';
 import { createCampaignFromFlow } from '../orchestration/master/campaign-from-flow.ts';
 import { parsePlatforms } from '../orchestration/master/deterministic-analyzer.ts';
@@ -204,7 +205,13 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   const outcome = refine
     ? await masterAgent.refine(goalSpec.parse(existing!.goal), body.message, req.userId!, memory.context)
     : await masterAgent.handle(body.message, req.userId!, memory.context);
-  const assistantMessage = await recordTurn(sessionId, body.message, outcome, req.userId!);
+  // Lead-collection awareness (P4-lite): on a FRESH marketing plan, tell the user — honestly — that
+  // lead collection will run, but ONLY when the cron is on and a target platform is actually connected.
+  // Fresh-plan only (not every refine turn) so it isn't repeated. Best-effort; never blocks the turn.
+  const leadNote = !refine && outcome.status === 'planned'
+    ? await buildLeadAwarenessNote(req.userId!, outcome.goal, body.message).catch(() => null)
+    : null;
+  const assistantMessage = await recordTurn(sessionId, body.message, outcome, req.userId!, leadNote);
 
   // Capture (P3): once a goal is understood, remember its durable slots for next time. Fire-and-forget
   // so the response isn't delayed; only meaningful once we actually have a product/audience/voice.

@@ -46,6 +46,9 @@ export const recordTurn = async (
   userMessage: string,
   outcome: MasterAgentOutcome,
   ownerId?: string | null,
+  // Optional factual note appended to the authored reply BEFORE persisting (e.g. the lead-collection
+  // awareness line) — kept out of the LLM author so it's deterministic + only shown when truly true.
+  appendNote?: string | null,
 ): Promise<string> => {
   await prisma.agentChatMessage.create({ data: { sessionId, role: 'user', content: userMessage } });
   const prior = await priorMessages(sessionId);
@@ -62,7 +65,8 @@ export const recordTurn = async (
     ? await readWorkspaceReport(ownerId).catch(() => null)
     : null;
   // ownerId threads through so a REAL Gemini call bills the usage ledger to this tenant.
-  const assistantMessage = await conversationAuthor.author(outcome, prior, { userMessage, language, ownerId, workspaceReport });
+  const authored = await conversationAuthor.author(outcome, prior, { userMessage, language, ownerId, workspaceReport });
+  const assistantMessage = appendNote?.trim() ? `${authored}\n\n${appendNote.trim()}` : authored;
   await prisma.agentChatMessage.create({ data: { sessionId, role: 'agent', content: assistantMessage } });
   // Touch the session so it sorts to the top of the sidebar (child message inserts
   // don't bump the parent's @updatedAt on their own).
