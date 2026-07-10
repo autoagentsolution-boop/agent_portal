@@ -7,11 +7,11 @@ import { api, type CampaignStatusDto, type DerivedPostStatus } from '../api/clie
 interface Props { campaignId: string }
 
 const DOT: Record<DerivedPostStatus, { color: string; label: string }> = {
-  planned: { color: '#9aa0a6', label: 'Planned' },
-  running: { color: '#1a73e8', label: 'Running' },
-  held: { color: '#f9ab00', label: 'Needs you' },
-  posted: { color: '#188038', label: 'Posted' },
-  failed: { color: '#d93025', label: 'Failed' },
+  planned: { color: 'var(--muted)', label: 'Planned' },
+  running: { color: 'var(--blue)', label: 'Running' },
+  held: { color: 'var(--amber)', label: 'Needs you' },
+  posted: { color: 'var(--green)', label: 'Posted' },
+  failed: { color: 'var(--red)', label: 'Failed' },
 };
 const ORDER: DerivedPostStatus[] = ['planned', 'running', 'held', 'posted', 'failed'];
 

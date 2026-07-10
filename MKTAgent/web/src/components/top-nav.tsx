@@ -11,8 +11,6 @@ interface Props {
   page: Page;
   onNavigate: (page: Page) => void;
   credits: number | null;
-  theme: 'light' | 'dark';
-  onToggleTheme: () => void;
   userEmail: string;
   workspaces: WorkspaceSummaryDto[];
   onOpenWorkspace: (campaignId: string) => void;
@@ -36,7 +34,7 @@ const NAV: Array<{ page: Page; label: string; icon: string }> = [
 ];
 
 export function TopNav(props: Props) {
-  const { page, onNavigate, credits, theme, onToggleTheme, userEmail, chats, activeChatId, onSelectChat, onDeleteChat } = props;
+  const { page, onNavigate, credits, userEmail, chats, activeChatId, onSelectChat, onDeleteChat } = props;
   const [chatsOpen, setChatsOpen] = useState(false);
   const [q, setQ] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -105,7 +103,6 @@ export function TopNav(props: Props) {
         />
 
         <span className="topnav-credit" title="Tổng credit đã dùng">◈ {credits === null ? '—' : credits.toLocaleString()}</span>
-        <button className="topnav-icon-btn" aria-label="Đổi giao diện" onClick={onToggleTheme}>{theme === 'light' ? '◐' : '☼'}</button>
         <span className="topnav-user" title={userEmail}>{userEmail}</span>
       </div>
     </header>

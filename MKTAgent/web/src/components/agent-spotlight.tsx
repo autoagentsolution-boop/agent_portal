@@ -68,8 +68,8 @@ export function AgentSpotlight({ agent, notify, onOpenWorkspace }: Props) {
           <div className="ws-status-row">
             <span className="ws-status-chip">Active in <strong>{rows.length}</strong> workspace{rows.length === 1 ? '' : 's'}</span>
             <span className="ws-status-chip"><strong>{agg.runs}</strong> total runs</span>
-            {agg.running > 0 && <span className="ws-status-chip" style={{ color: '#1a73e8' }}><strong>{agg.running}</strong> running</span>}
-            {agg.failed > 0 && <span className="ws-status-chip" style={{ color: '#d93025' }}><strong>{agg.failed}</strong> failed</span>}
+            {agg.running > 0 && <span className="ws-status-chip" style={{ color: 'var(--blue)' }}><strong>{agg.running}</strong> running</span>}
+            {agg.failed > 0 && <span className="ws-status-chip" style={{ color: 'var(--red)' }}><strong>{agg.failed}</strong> failed</span>}
           </div>
           <div className="ws-section-title">Workspaces</div>
           <ul className="ws-post-list">

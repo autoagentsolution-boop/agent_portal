@@ -18,14 +18,12 @@ import type { Page } from './app-nav';
 import type { WorkspaceSummaryDto } from './api/client';
 import type { DemoMode } from './flow/demo-flow';
 
-type Theme = 'light' | 'dark';
 
 export function App() {
   const auth = useAuth();
   const { toast, show } = useToast();
   // Command Center is the default landing (Atria v2 P1) — the operating hub, not the chat.
   const [page, setPage] = useState<Page>('command-center');
-  const [theme, setTheme] = useState<Theme>('light');
   const [activeCampaign, setActiveCampaign] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState<DemoMode>('safe');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -284,13 +282,11 @@ export function App() {
   );
 
   return (
-    <div className={`app-root theme-${theme}`}>
+    <div className="app-root">
       <TopNav
         page={page}
         onNavigate={(p) => { setSelectedRunId(null); if (p !== 'flows') { setActiveCampaign(null); setSelectedPostId(null); } setPage(p); }}
         credits={credits}
-        theme={theme}
-        onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
         userEmail={auth.user.email}
         workspaces={workspaces}
         onOpenWorkspace={openWorkspaceFromNav}

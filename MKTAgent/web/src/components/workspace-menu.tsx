@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceSummaryDto, DerivedPostStatus } from '../api/client';
 
 const STATUS_COLOR: Record<DerivedPostStatus, string> = {
-  planned: '#9aa0a6', running: '#1a73e8', held: '#f9ab00', posted: '#188038', failed: '#d93025',
+  planned: 'var(--muted)', running: 'var(--blue)', held: 'var(--amber)', posted: 'var(--green)', failed: 'var(--red)',
 };
 
 interface Props {
