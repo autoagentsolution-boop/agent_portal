@@ -628,8 +628,26 @@ a { color: var(--accent); }
 .chip:hover { border-color: var(--accent); }
 .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .dag-block .eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 8px; }
-.dag-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.dag-node { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius); background: var(--panel2); border: 1px solid var(--border); font-size: 14px; }
+.dag-list { list-style: none; margin: 0; padding: 0 0 0 22px; display: flex; flex-direction: column; gap: 6px; position: relative; }
+/* Pipeline spine (P5.4): a rail down the left with a status marker per step + a glowing dot that
+   flows INTO the running step — the DAG reads as work moving through the pipeline, not a checklist. */
+.dag-list::before { content: ''; position: absolute; left: 9px; top: 16px; bottom: 16px; width: 2px;
+  background: var(--border); border-radius: 2px; }
+.dag-node { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius); background: var(--panel2); border: 1px solid var(--border); font-size: 14px; position: relative; }
+.dag-node::before { content: ''; position: absolute; left: -17px; top: 50%; transform: translateY(-50%);
+  width: 9px; height: 9px; border-radius: 50%; background: var(--panel2); border: 1.5px solid var(--border); z-index: 1; }
+.dag-node.st-completed::before { background: var(--green); border-color: var(--green); box-shadow: 0 0 6px rgba(63,185,80,0.6); }
+.dag-node.st-awaiting_approval::before { background: var(--amber); border-color: var(--amber); }
+.dag-node.st-failed::before { background: var(--red); border-color: var(--red); }
+.dag-node.st-running::before { background: var(--accent); border-color: var(--accent-glow);
+  animation: dag-marker-pulse 1.2s ease-in-out infinite; }
+@keyframes dag-marker-pulse { 0%,100% { box-shadow: 0 0 5px var(--accent); } 50% { box-shadow: 0 0 14px 2px var(--accent-glow); } }
+.dag-node.st-running::after { content: ''; position: absolute; left: -15.5px; width: 6px; height: 6px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 15%, var(--accent-glow) 60%, transparent 75%);
+  box-shadow: 0 0 8px 1px var(--accent-glow); z-index: 2;
+  animation: dag-flow-in 1.15s linear infinite; }
+@keyframes dag-flow-in { 0% { top: -8px; opacity: 0; } 18% { opacity: 1; } 82% { opacity: 1; } 100% { top: 50%; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .dag-node.st-running::before, .dag-node.st-running::after { animation: none; } .dag-node.st-running::after { display: none; } }
 .dag-node.st-running { border-color: var(--accent); }
 .dag-node.st-completed { border-color: var(--green); }
 .dag-node.st-awaiting_approval { border-color: var(--amber); }
@@ -902,6 +920,36 @@ a { color: var(--accent); }
 
 .cc-network { position: relative; width: 100%; max-width: 760px; height: 560px; margin: 0 auto; }
 .cc-links { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+
+/* ── Data-flow dots (P5.4): glowing dot travels Atria→agent (dispatch, violet) and, while an agent
+   is running, an agent-coloured dot returns agent→Atria (ack). left/top % are container-relative
+   (== nodePos), so the dot rides straight down each edge with no SVG stretch distortion. ── */
+.cc-flows { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.cc-flow { display: contents; --peak: 0.5; }
+.cc-flow.is-active { --peak: 0.95; }
+.cc-flow-out, .cc-flow-ret { position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; opacity: 0; }
+.cc-flow-out { left: 50%; top: 50%;
+  background: radial-gradient(circle, #fff 12%, var(--accent-glow) 55%, transparent 72%);
+  box-shadow: 0 0 9px 1px var(--accent-glow);
+  animation: cc-flow-out 4.4s linear infinite; animation-delay: calc(var(--i) * -0.34s); }
+.cc-flow-ret { left: var(--x2); top: var(--y2); display: none;
+  background: radial-gradient(circle, #fff 12%, var(--ret) 55%, transparent 72%);
+  box-shadow: 0 0 8px 1px var(--ret);
+  animation: cc-flow-ret 1.15s linear infinite; animation-delay: calc(var(--i) * -0.1s - 0.57s); }
+.cc-flow.is-active .cc-flow-ret { display: block; }
+.cc-flow.is-active .cc-flow-out { width: 8px; height: 8px; margin: -4px 0 0 -4px;
+  animation-duration: 1.15s; animation-delay: calc(var(--i) * -0.1s); }
+@keyframes cc-flow-out {
+  0%   { left: 50%; top: 50%; opacity: 0; }
+  10%  { opacity: var(--peak); }
+  68%  { opacity: var(--peak); }
+  100% { left: var(--x2); top: var(--y2); opacity: 0; } }
+@keyframes cc-flow-ret {
+  0%   { left: var(--x2); top: var(--y2); opacity: 0; }
+  12%  { opacity: 0.85; }
+  70%  { opacity: 0.85; }
+  100% { left: 50%; top: 50%; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cc-flow-out, .cc-flow-ret { animation: none; opacity: 0; } }
 .cc-core { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
   width: 150px; height: 150px; border-radius: 50%; border: none; z-index: 3;
   background: radial-gradient(circle at 50% 45%, var(--cc-violet-glow) 0%, #6d4fd6 40%, rgba(60,40,140,0.15) 75%);

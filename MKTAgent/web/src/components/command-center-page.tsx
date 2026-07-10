@@ -5,7 +5,7 @@
 // Only the Atria core + the command bar hand off to the Orchestrate chat (onLaunch); ⌂ Workspace
 // exits to the classic UI (onExit). Dark theme stays confined to `.command-center`; the drawer is
 // light so embedded post views keep native styling.
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode, type CSSProperties } from 'react';
 import { api, type AgentCatalog, type AgentNodeDto } from '../api/client';
 import { WorkspacePanel } from './workspace-panel';
 import { AgentSpotlight } from './agent-spotlight';
@@ -147,6 +147,24 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
             );
           })}
         </svg>
+        {/* Data-flow dots: a violet dot dispatches Atria→agent (ambient at idle). When SSE says an
+            agent is running, it bursts fast AND an agent-coloured "ack" dot returns agent→Atria.
+            Positions mirror nodePos(); pure CSS motion (prefers-reduced-motion calms it). */}
+        <div className="cc-flows" aria-hidden="true">
+          {agents.map((a, i) => {
+            const pos = nodePos(i, agents.length);
+            return (
+              <span
+                key={`flow-${a.id}`}
+                className={`cc-flow ${activeAgents.has(a.id) ? 'is-active' : ''}`}
+                style={{ '--x2': pos.left, '--y2': pos.top, '--i': i, '--ret': colorOf(a) } as CSSProperties}
+              >
+                <span className="cc-flow-out" />
+                <span className="cc-flow-ret" />
+              </span>
+            );
+          })}
+        </div>
         {agents.map((a, i) => {
           const planned = a.implStatus === 'planned';
           const running = activeAgents.has(a.id);
