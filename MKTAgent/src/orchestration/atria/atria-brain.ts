@@ -12,6 +12,7 @@ import { env } from '../../config/env.ts';
 import { recordGeminiCall } from '../../cost/llm-usage.ts';
 import { atriaBrainSystemPrompt } from '../prompts/atria-brain-prompt.ts';
 import { TOOL_DECLARATIONS, dispatchTool, type ToolContext } from './atria-tools.ts';
+import { getBrainCache, invalidateBrainCache } from './atria-brain-cache.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
 import { detectLanguage } from '../master/detect-language.ts';
 import type { PriorMessage } from '../master/conversation-author.ts';
@@ -55,18 +56,36 @@ const textOf = (parts: Part[]): string => parts.map((p) => p.text ?? '').join(''
 const historyContents = (prior: PriorMessage[]): GeminiContent[] =>
   prior.slice(-8).map((m) => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.content }] }));
 
-const callGemini = (contents: GeminiContent[]): Promise<Response> =>
-  fetch(endpoint(env.GEMINI_MODEL), {
+// One generateContent call. With a cache name the static prefix (system prompt + tools) comes from the
+// server-side CachedContent — billed at the cached rate — so we omit it from the body; without one we
+// send it inline (unchanged behavior).
+const doCall = (contents: GeminiContent[], cache: string | null): Promise<Response> => {
+  const body: Record<string, unknown> = { contents, generationConfig: { temperature: 0.5 } };
+  if (cache) {
+    body.cachedContent = cache;
+  } else {
+    body.systemInstruction = { parts: [{ text: atriaBrainSystemPrompt }] };
+    body.tools = [{ functionDeclarations: TOOL_DECLARATIONS }];
+  }
+  return fetch(endpoint(env.GEMINI_MODEL), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: atriaBrainSystemPrompt }] },
-      contents,
-      tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
-      generationConfig: { temperature: 0.5 },
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
   });
+};
+
+const callGemini = async (contents: GeminiContent[]): Promise<Response> => {
+  const cache = await getBrainCache(); // best-effort — null → inline prefix
+  const res = await doCall(contents, cache);
+  // A cached call can 4xx if the cache expired/was evicted between the check and the call — invalidate
+  // and retry once inline so a stale cache never degrades a turn.
+  if (!res.ok && cache) {
+    invalidateBrainCache();
+    return doCall(contents, null);
+  }
+  return res;
+};
 
 // No-key degradation ONLY: use the deterministic marketing planner so the surface still works without an
 // LLM (returns a proposal outcome, exactly like the old handle path).
