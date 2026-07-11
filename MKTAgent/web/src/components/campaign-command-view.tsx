@@ -47,7 +47,7 @@ export function CampaignCommandView({ campaignId }: Props) {
       </div>
       <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: 6 }}>
         {status.posts.map((p) => (
-          <li key={p.postId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', border: '1px solid var(--border, #eee)', borderRadius: 6 }}>
+          <li key={p.postId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: DOT[p.status].color }} title={DOT[p.status].label} />
             <span style={{ flex: 1 }}>{when(p.scheduledAt)}</span>
             <span className="muted">{DOT[p.status].label}</span>

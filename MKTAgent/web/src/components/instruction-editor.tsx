@@ -67,7 +67,7 @@ export function InstructionEditor({ scope = 'workspace', refId, notify }: Props)
       ) : (
         <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: 8 }}>
           {rows.map((row) => (
-            <li key={row.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: 10, border: '1px solid var(--border, #ddd)', borderRadius: 8, opacity: row.enabled ? 1 : 0.5 }}>
+            <li key={row.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: 10, border: '1px solid var(--border)', borderRadius: 8, opacity: row.enabled ? 1 : 0.5 }}>
               <input type="checkbox" checked={row.enabled} onChange={() => void toggle(row)} title="Enabled" />
               <span style={{ flex: 1 }}>
                 {row.content}

@@ -14,7 +14,7 @@ const money = (n: number) => `$${(Math.round(n * 100) / 100).toFixed(2)}`;
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div style={{ padding: 12, border: '1px solid var(--border, #ddd)', borderRadius: 8, minWidth: 120 }}>
+    <div style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 8, minWidth: 120 }}>
       <div style={{ fontSize: 22, fontWeight: 700 }}>{value}</div>
       <div className="muted" style={{ fontSize: 13 }}>{label}</div>
       {hint && <div className="muted" style={{ fontSize: 11 }}>{hint}</div>}

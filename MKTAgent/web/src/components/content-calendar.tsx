@@ -77,7 +77,7 @@ export function ContentCalendar({ runId, slots: initial, notify, onDone }: Props
       <p className="muted">Edit anything before scheduling. Approving creates the posts and asks you to confirm once more.</p>
       <div style={{ display: 'grid', gap: 8, margin: '12px 0' }}>
         {slots.map((s, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '40px 1fr 1fr 110px 90px 70px 28px', gap: 6, alignItems: 'center', padding: 6, border: '1px solid var(--border, #eee)', borderRadius: 6 }}>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '40px 1fr 1fr 110px 90px 70px 28px', gap: 6, alignItems: 'center', padding: 6, border: '1px solid var(--border)', borderRadius: 6 }}>
             <span className="muted">#{i + 1}</span>
             <input value={s.pillar} onChange={(e) => patch(i, { pillar: e.target.value })} placeholder="pillar" />
             <input value={s.angle} onChange={(e) => patch(i, { angle: e.target.value })} placeholder="angle" />
