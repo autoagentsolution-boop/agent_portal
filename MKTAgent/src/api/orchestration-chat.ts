@@ -37,6 +37,10 @@ const priorMessages = async (sessionId: string): Promise<PriorMessage[]> => {
   return rows.map((m) => ({ role: m.role === 'user' ? 'user' : 'agent', content: m.content }));
 };
 
+// Public accessor for the Atria brain: the conversation so far (excludes the current, not-yet-persisted
+// user message) so the reasoning loop deep-dives with full multi-turn context.
+export const getChatHistory = (sessionId: string): Promise<PriorMessage[]> => priorMessages(sessionId);
+
 // Record one turn: persist the user's message, author the assistant reply from the
 // outcome (with prior context), persist it, and bump the session so it sorts to the
 // top of the sidebar. Returns the assistant message for the DTO. Author never throws

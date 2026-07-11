@@ -59,9 +59,8 @@ import { VISION_AGENTS } from '../orchestration/registry/vision-agents.ts';
 import { logger } from '../lib/logger.ts';
 import { mergeAnswers, toRunDto, type ClarifyQuestions } from './orchestration-mappers.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
-import { ensureChatSession, recordTurn, recordAnswerTurn, recordSaveOffer, recordCampaignCreated, summarizeAnswers } from './orchestration-chat.ts';
-import { classifyIntent } from '../orchestration/master/intent-router.ts';
-import { answerDataQuery } from '../orchestration/master/report-answer.ts';
+import { ensureChatSession, recordTurn, recordAnswerTurn, recordSaveOffer, recordCampaignCreated, summarizeAnswers, getChatHistory } from './orchestration-chat.ts';
+import { runAtriaBrain } from '../orchestration/atria/atria-brain.ts';
 import { recallForMessage, captureFromGoal } from '../memory/user-memory.ts';
 import { buildLeadAwarenessNote } from '../leads/lead-readiness.ts';
 import { detectCampaignIntent } from '../orchestration/master/campaign-intent.ts';
@@ -178,55 +177,59 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
     }
   }
 
-  // Intent router (Core-Intelligence P1): a performance QUESTION ("how are my campaigns going?") is
-  // answered with the user's REAL Impact numbers — no content plan. Reply-only `answered` run: no
-  // nodes, no plan card. Front of the flow so a data-query never gets forced into the marketing DAG.
-  // (Read-intent on the frontend already offers to read this answer aloud → spoken, core reacting.)
-  if (classifyIntent(body.message) === 'data-query') {
-    const { answer, report, periodLabel } = await answerDataQuery(req.userId!, body.message);
-    await recordAnswerTurn(sessionId, body.message, answer);
-    const run = await createRun({
-      ownerId: req.userId!,
-      chatSessionId: sessionId,
-      goal: { intent: 'data-query', question: body.message, period: periodLabel },
-      status: 'answered',
-    });
-    await logRun('info', 'atria_data_query', { runId: run.id, period: periodLabel, posts: report.metrics.postsPublished, leads: report.metrics.leadsCaptured }, req.userId!).catch(() => {});
+  // Atria reasoning brain (P1a) — replaces the regex intent classifier + immediate marketing extraction.
+  // The brain reasons over the conversation, calls tools (web search, workspace data, memory) as needed,
+  // and returns EITHER a conversational reply (answer directly — the DEFAULT) or a workflow proposal
+  // (planned/clarification outcome → flow card + approval gate). Marketing is no longer the default
+  // frame; it's one tool the brain invokes only when a task actually needs a capability.
+  const existingPreExec = existing && existing.kind !== 'template' && PRE_EXEC.has(existing.status) ? existing : null;
+
+  // Recall (P3): durable facts about this user — fed to the brain's memory tool AND the marketing
+  // analyzer inside propose_workflow so a known product/brand/audience pre-fills instead of re-asking.
+  const memory = await recallForMessage(req.userId!, body.message).catch(() => ({ context: null, usedIds: [] }));
+  // Conversation so far (excludes the current, not-yet-persisted message) so the brain deep-dives with
+  // full multi-turn context.
+  const prior = await getChatHistory(sessionId).catch(() => []);
+
+  const turn = await runAtriaBrain({ message: body.message, ownerId: req.userId!, memoryContext: memory.context, sessionId, prior });
+
+  // Conversational / general-reasoning / data-query answer — no plan. Reply-only `answered` run (no
+  // nodes, no plan card), with a transparent "searched" footnote when the brain grounded the reply.
+  if (turn.kind === 'reply') {
+    const text = appendSources(turn.text?.trim() || '…', turn.searched);
+    await recordAnswerTurn(sessionId, body.message, text);
+    const run = await createRun({ ownerId: req.userId!, chatSessionId: sessionId, goal: { intent: 'converse', message: body.message }, status: 'answered' });
+    await logRun('info', 'atria_reply', { runId: run.id, searched: turn.searched.length }, req.userId!).catch(() => {});
     res.status(201);
-    return respondRun(res, run.id, req.userId!, { assistantMessage: answer });
+    return respondRun(res, run.id, req.userId!, { assistantMessage: text });
   }
 
-  const refine = existing && existing.kind !== 'template' && PRE_EXEC.has(existing.status);
-
-  // Recall (P3): load durable facts about this user so a fresh goal pre-fills known product/brand/
-  // audience instead of re-asking. Best-effort — a recall failure never blocks the turn.
-  const memory = await recallForMessage(req.userId!, body.message).catch(() => ({ context: null, usedIds: [] }));
-
-  const outcome = refine
-    ? await masterAgent.refine(goalSpec.parse(existing!.goal), body.message, req.userId!, memory.context)
-    : await masterAgent.handle(body.message, req.userId!, memory.context);
-  // Lead-collection awareness (P4-lite): on a FRESH marketing plan, tell the user — honestly — that
-  // lead collection will run, but ONLY when the cron is on and a target platform is actually connected.
-  // Fresh-plan only (not every refine turn) so it isn't repeated. Best-effort; never blocks the turn.
-  const leadNote = !refine && outcome.status === 'planned'
+  // Workflow proposal — the brain assembled a DAG. Voice it via the existing conversation-author (keeps
+  // the tuned plan-presentation + approval-ask copy), with lead-awareness on a FRESH marketing plan.
+  const outcome = turn.outcome;
+  const leadNote = !existingPreExec && outcome.status === 'planned'
     ? await buildLeadAwarenessNote(req.userId!, outcome.goal, body.message).catch(() => null)
     : null;
   const assistantMessage = await recordTurn(sessionId, body.message, outcome, req.userId!, leadNote);
-
-  // Capture (P3): once a goal is understood, remember its durable slots for next time. Fire-and-forget
-  // so the response isn't delayed; only meaningful once we actually have a product/audience/voice.
+  // Capture (P3): remember the goal's durable slots for next time. Fire-and-forget.
   void captureFromGoal(req.userId!, outcome.goal, sessionId).catch(() => {});
 
-  if (refine) {
-    const { questions } = await applyOutcomeToRun(existing!.id, req.userId!, outcome.goal, outcome);
+  // In-place when the chat already has a pre-execution run (the flow card evolves on ONE run as setup
+  // progresses); a fresh proposal creates a new run.
+  if (existingPreExec) {
+    const { questions } = await applyOutcomeToRun(existingPreExec.id, req.userId!, outcome.goal, outcome);
     res.status(201);
-    return respondRun(res, existing!.id, req.userId!, { questions, assistantMessage });
+    return respondRun(res, existingPreExec.id, req.userId!, { questions, assistantMessage });
   }
-
   const { id, questions } = await persistOutcome(req.userId!, sessionId, outcome.goal, outcome);
   res.status(201);
   await respondRun(res, id, req.userId!, { questions, assistantMessage });
 }));
+
+// Transparency footnote: when the brain grounded a reply with web search, name the sources it used so
+// the answer reads like ChatGPT/Claude ("🔎 Sources: …") rather than an unattributed claim.
+const appendSources = (text: string, searched: string[]): string =>
+  searched.length ? `${text}\n\n🔎 ${searched.slice(0, 5).join(' · ')}` : text;
 
 orchestrationRouter.post('/runs/:id/clarify', asyncHandler(async (req, res) => {
   const body = parseOr422(res, clarifyRunBody, req.body ?? {});
