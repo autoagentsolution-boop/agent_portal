@@ -4,11 +4,11 @@
   /* Elevation / surfaces (darkest → raised) */
   --bg:            #0a0b1e;
   --bg-gradient:   radial-gradient(ellipse at 50% 30%, #16183a 0%, #0a0b1e 60%);
-  --panel:         #14162e;
-  --panel2:        #1b1e3d;
+  --panel:         #191c38; /* raised from #14162e → clearer separation from --bg so cards don't read as "plain on the void" */
+  --panel2:        #22264c; /* raised from #1b1e3d for a real 2nd elevation step (inputs, nested rows) */
   --panel-glass:   rgba(20,22,48,0.6); /* glass hero chrome only (needs backdrop-filter) */
-  --border:        rgba(120,110,220,0.18);
-  --border-bright: rgba(150,130,255,0.40);
+  --border:        rgba(150,140,235,0.30); /* stronger than 0.18 so card/tile edges are actually visible */
+  --border-bright: rgba(160,140,255,0.48);
   /* Text (all AA on --bg/--panel) */
   --text:  #e8e6ff;
   --muted: #8b88b8;

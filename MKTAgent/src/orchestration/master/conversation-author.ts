@@ -43,11 +43,14 @@ const extractText = (raw: unknown): string =>
     .join('')
     .trim() ?? '';
 
-// Resolve a language NAME hint, or null when we can't confidently name one (Latin-
-// script message). Explicit analyzer goal.slots.language wins, else the caller's
-// detected code. Null → the model mirrors the user's message language directly.
-const resolveLanguage = (outcome: MasterAgentOutcome, opts: AuthorOptions): string | null =>
-  languageName(outcome.goal.slots.language ?? opts.language ?? null);
+// Resolve a language NAME hint, or null when we can't confidently name one (Latin-script message → the
+// model mirrors the user's actual message + prior history). We follow the CURRENT message's detected
+// language and deliberately do NOT use the persisted goal.slots.language: a stale 'vi' (from an earlier
+// turn or recalled memory) was overriding an English message and flipping Atria's plan reply to
+// Vietnamese even though the user just wrote in English. Mirroring the message keeps reply + proposal
+// turns in the same language.
+const resolveLanguage = (_outcome: MasterAgentOutcome, opts: AuthorOptions): string | null =>
+  languageName(opts.language ?? null);
 
 // Compact, model-agnostic context describing the turn. Slot names + flags only —
 // the prompt forbids restating them verbatim, so this stays a hint, not the output.
