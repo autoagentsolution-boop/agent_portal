@@ -190,16 +190,27 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   // Conversation so far (excludes the current, not-yet-persisted message) so the brain deep-dives with
   // full multi-turn context.
   const prior = await getChatHistory(sessionId).catch(() => []);
+  // Mid-setup: hand the in-progress run's goal to the brain so propose_workflow MERGES onto it (earlier
+  // slots survive) instead of re-analyzing this turn's message in isolation.
+  const priorGoal = existingPreExec ? goalSpec.parse(existingPreExec.goal) : null;
 
-  const turn = await runAtriaBrain({ message: body.message, ownerId: req.userId!, memoryContext: memory.context, sessionId, prior });
+  const turn = await runAtriaBrain({ message: body.message, ownerId: req.userId!, memoryContext: memory.context, sessionId, prior, priorGoal });
 
-  // Conversational / general-reasoning / data-query answer — no plan. Reply-only `answered` run (no
-  // nodes, no plan card), with a transparent "searched" footnote when the brain grounded the reply.
+  // Conversational / general-reasoning / data-query answer — no plan.
   if (turn.kind === 'reply') {
     const text = appendSources(turn.text?.trim() || '…', turn.searched);
     await recordAnswerTurn(sessionId, body.message, text);
+    await logRun('info', 'atria_reply', { searched: turn.searched.length, tools: turn.tools, rounds: turn.rounds, midSetup: Boolean(existingPreExec) }, req.userId!).catch(() => {});
+    // Side-question DURING setup: keep the in-progress plan run + its flow card visible — do NOT fork an
+    // `answered` run that would become "latest" and shadow the plan (getLatestRunWithNodesForChat orders
+    // by updatedAt desc). Answer inline, return the existing run so the card stays and the next turn
+    // still refines it.
+    if (existingPreExec) {
+      res.status(201);
+      return respondRun(res, existingPreExec.id, req.userId!, { assistantMessage: text });
+    }
+    // Standalone conversation: a reply-only `answered` run (no nodes, no plan card).
     const run = await createRun({ ownerId: req.userId!, chatSessionId: sessionId, goal: { intent: 'converse', message: body.message }, status: 'answered' });
-    await logRun('info', 'atria_reply', { runId: run.id, searched: turn.searched.length }, req.userId!).catch(() => {});
     res.status(201);
     return respondRun(res, run.id, req.userId!, { assistantMessage: text });
   }
@@ -207,6 +218,7 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   // Workflow proposal — the brain assembled a DAG. Voice it via the existing conversation-author (keeps
   // the tuned plan-presentation + approval-ask copy), with lead-awareness on a FRESH marketing plan.
   const outcome = turn.outcome;
+  await logRun('info', 'atria_proposal', { status: outcome.status, tools: turn.tools, rounds: turn.rounds, inPlace: Boolean(existingPreExec) }, req.userId!).catch(() => {});
   const leadNote = !existingPreExec && outcome.status === 'planned'
     ? await buildLeadAwarenessNote(req.userId!, outcome.goal, body.message).catch(() => null)
     : null;

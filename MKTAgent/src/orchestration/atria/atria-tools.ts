@@ -2,12 +2,15 @@
 // Each tool WRAPS code that already exists (grounded search, data-query, memory, marketing planner) so
 // the brain adds reasoning without new engines. Declarations use Gemini's functionDeclarations schema
 // (OpenAPI subset). dispatchTool runs one call and returns a plain JSON result the model reads next round.
+import { env } from '../../config/env.ts';
 import { groundedSearch } from '../../agents/researcher/grounded-search.ts';
 import { answerDataQuery } from '../master/report-answer.ts';
 import { recallForMessage } from '../../memory/user-memory.ts';
 import { rememberFreeform, type MemoryKind } from '../../db/repos/user-memory-repo.ts';
 import { requirementAnalyzer } from '../master/requirement-analyzer.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
+import { mergeGoals } from '../master/goal-merge.ts';
+import { recordLlmUsage } from '../../cost/llm-usage.ts';
 import type { GoalSpec } from '../schemas/goal-spec.ts';
 
 // Per-turn state threaded through every tool call. `searched` accumulates citation labels (surfaced to
@@ -18,6 +21,8 @@ export interface ToolContext {
   message: string; // the raw user message — fallback subject for search/data/recall
   memoryContext: string | null; // recalled memory block (passed into the marketing analyzer)
   sessionId: string | null;
+  // The existing pre-exec run's goal (mid-setup), merged in propose_workflow so earlier slots survive.
+  priorGoal: GoalSpec | null;
   searched: string[];
   proposal: { goal: GoalSpec; outcome: MasterAgentOutcome } | null;
 }
@@ -94,9 +99,14 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
   try {
     switch (name) {
       case 'web_search': {
-        const { text, citations } = await groundedSearch(str(args.query) || ctx.message);
+        const { text, citations, usage } = await groundedSearch(str(args.query) || ctx.message);
+        // Ledger the REAL grounded Gemini call (was dropped → un-billed). Surface 'research' so it bills
+        // honestly per-surface, not lumped into 'chat'. Best-effort.
+        if (usage) void recordLlmUsage({ ownerId: ctx.ownerId, surface: 'research', model: env.GEMINI_MODEL, usage }).catch(() => {});
         for (const c of citations) if (!ctx.searched.includes(c)) ctx.searched.push(c);
-        return { summary: text, sources: citations.slice(0, 8) };
+        // Truncate the summary re-fed into the loop's contents so a long grounded answer doesn't bloat
+        // every subsequent round's prompt tokens (the model still gets the gist + sources).
+        return { summary: text.slice(0, 1500), sources: citations.slice(0, 8) };
       }
       case 'get_workspace_data': {
         const { answer, report } = await answerDataQuery(ctx.ownerId, str(args.period) || ctx.message);
@@ -113,7 +123,11 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         return { saved: Boolean(content) };
       }
       case 'propose_workflow': {
-        const goal = await requirementAnalyzer.analyze(str(args.goal_description) || ctx.message, ctx.ownerId, ctx.memoryContext);
+        const analyzed = await requirementAnalyzer.analyze(str(args.goal_description) || ctx.message, ctx.ownerId, ctx.memoryContext);
+        // Multi-turn: merge onto the prior goal (additive — same semantics as the old refine path) so a
+        // description that restates only this turn's delta never drops product/audience/platforms
+        // gathered earlier. First turn (no priorGoal) uses the analyzed goal as-is.
+        const goal = ctx.priorGoal ? mergeGoals(ctx.priorGoal, analyzed) : analyzed;
         const outcome = masterAgent.planFromGoal(goal);
         ctx.proposal = { goal, outcome };
         if (outcome.status === 'planned') return { status: 'planned', agents: outcome.plan.nodes.map((n) => n.agentId), steps: outcome.plan.nodes.length };
