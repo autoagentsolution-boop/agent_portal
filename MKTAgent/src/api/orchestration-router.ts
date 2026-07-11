@@ -229,7 +229,7 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   const priorGoal = existingPreExec ? goalSpec.parse(existingPreExec.goal) : null;
   const existingRunId = existingPreExec && existingPreExec.status === 'planned' ? existingPreExec.id : null;
 
-  const turn = await runAtriaBrain({ message: body.message, ownerId: req.userId!, memoryContext: memory.context, sessionId, prior, priorGoal, existingRunId });
+  const turn = await runAtriaBrain({ message: body.message, ownerId: req.userId!, memoryContext: memory.context, sessionId, prior, priorGoal, existingRunId, voice: body.voice });
 
   // Conversational / general-reasoning / data-query answer — no plan.
   if (turn.kind === 'reply') {

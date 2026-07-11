@@ -237,6 +237,9 @@ export type SaveAgentCredentialBody = z.infer<typeof saveAgentCredentialBody>;
 export const createRunBody = z.object({
   message: z.string().min(3).max(8000),
   chatSessionId: z.string().uuid().optional(),
+  // Voice mode: the reply will be read aloud, so the brain keeps it to 1-2 short spoken sentences
+  // (shorter reply → faster TTS → less perceived delay).
+  voice: z.boolean().optional(),
 });
 export type CreateRunBody = z.infer<typeof createRunBody>;
 

@@ -39,6 +39,8 @@ export interface AtriaBrainInput {
   priorGoal?: GoalSpec | null;
   // The existing PLANNED run's id, so execute_workflow ("chạy đi") can run the plan on screen.
   existingRunId?: string | null;
+  // Voice mode: the reply is spoken, so keep it to 1-2 short sentences (faster TTS, less delay).
+  voice?: boolean;
 }
 
 const MAX_ROUNDS = 3; // tool-call rounds before we force a final answer (runaway guard)
@@ -121,7 +123,11 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
     proposal: null,
     executeRunId: null,
   };
-  const contents: GeminiContent[] = [...historyContents(input.prior ?? []), { role: 'user', parts: [{ text: input.message }] }];
+  // Voice hint rides the user turn (NOT the system prompt — that's context-cached and must stay stable).
+  const userParts = input.voice
+    ? [{ text: '(The user is speaking by voice — reply in 1–2 short, natural spoken sentences. No lists or markdown.)' }, { text: input.message }]
+    : [{ text: input.message }];
+  const contents: GeminiContent[] = [...historyContents(input.prior ?? []), { role: 'user', parts: userParts }];
   const tools: string[] = [];
   const deadline = Date.now() + TURN_BUDGET_MS;
   // A workflow proposal (planned or needs-more-info) wins the turn; plan_error stays conversational.

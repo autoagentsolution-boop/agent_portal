@@ -1189,7 +1189,9 @@ a { color: var(--accent); }
 .cc-ws-menu-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px;
   color: var(--cc-text-dim); background: none; border: none; padding: 6px 8px; cursor: pointer; text-align: left; }
 .cc-ws-menu-name:hover { color: var(--cc-text); }
+.cc-ws-menu-name-col { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
 .cc-ws-menu-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-ws-menu-sub { font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-ws-menu-act { flex-shrink: 0; width: 26px; height: 26px; border-radius: 6px; border: 1px solid transparent;
   background: none; color: var(--cc-text-dim); cursor: pointer; font-size: 13px; line-height: 1; }
 .cc-ws-menu-act:hover:not(:disabled) { border-color: var(--cc-border-bright); color: var(--cc-text); }

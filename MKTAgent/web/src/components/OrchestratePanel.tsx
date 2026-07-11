@@ -159,7 +159,8 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
     if (trimmed.length < 3) { notify('Describe your goal first', 'err'); return; }
     setInput(''); setPending(trimmed); setBusy(true);
     try {
-      const r = await api.createRun(trimmed, sessionId ?? undefined);
+      // Voice mode → tell the backend so Atria keeps the (spoken) reply short (faster TTS, less delay).
+      const r = await api.createRun(trimmed, sessionId ?? undefined, { voice: voiceModeRef.current });
       if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
       push({ role: 'user', content: trimmed });
       // Read-intent ("read the report", "how are campaigns going?") → offer to read Atria's reply

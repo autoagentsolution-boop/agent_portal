@@ -35,6 +35,15 @@ export function WorkspaceMenu({ workspaces, activeCampaignId, onOpenWorkspace, o
     return STATUS_COLOR[first ?? 'planned'];
   };
 
+  // Disambiguating subtitle — many workspaces share the same product name, so the name alone is
+  // useless. Show post count + platforms + last-activity date so each row is distinguishable.
+  const subtitle = (w: WorkspaceSummaryDto): string => {
+    const d = new Date(w.updatedAt);
+    const date = `${d.getMonth() + 1}/${d.getDate()}`;
+    const plats = w.platforms.length ? w.platforms.slice(0, 3).join(', ') : 'chưa có nền tảng';
+    return `${w.postCount} bài · ${plats} · ${date}`;
+  };
+
   return (
     <div className="cc-ws-menu" ref={ref}>
       <button className={`cc-exit cc-ws-menu-btn ${workspaces.length ? 'has-ws' : ''}`} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} title="Bảng điều khiển các workspace của bạn">
@@ -55,7 +64,10 @@ export function WorkspaceMenu({ workspaces, activeCampaignId, onOpenWorkspace, o
                   onClick={() => { onOpenWorkspace(w.campaignId); setOpen(false); }}
                 >
                   <span className="ws-dot" style={{ background: statusDot(w) }} />
-                  <span className="cc-ws-menu-name-text">{w.name}</span>
+                  <span className="cc-ws-menu-name-col">
+                    <span className="cc-ws-menu-name-text">{w.name}</span>
+                    <span className="cc-ws-menu-sub">{subtitle(w)}</span>
+                  </span>
                 </button>
                 <button
                   className="cc-ws-menu-act"
