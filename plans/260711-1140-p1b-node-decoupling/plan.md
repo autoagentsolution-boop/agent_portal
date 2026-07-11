@@ -24,7 +24,7 @@ A non-marketing goal ("translate this doc", "summarize these 3 URLs") has nowher
 - **Target:** either a general `TaskSpec` alongside GoalSpec, or a capability-tagged goal. Likely couples with C2. Defer detail until C1/C2 shape is settled.
 
 ## Phases (proposed — get user greenlight before core changes)
-- [ ] **P1b.0 — this plan + a golden-master test** of `planWorkflow` over a goal matrix (single post, campaign, video, email, research, media-only, publish-only) capturing current node lists. The safety net for C1.
+- [x] **P1b.0 — golden-master test** `src/orchestration/verify-planner-golden.ts` (+ `planner-golden-snapshot.json`): 15 cases across every selectAgents branch (single/multi/no-publish post, ideation+strategy, research, media-only, video chain, storyboard-only, full-stack, campaign×2, spotlight, email, publish-only edge). Captures node lists + derived deps + gates. `--update` to re-baseline; exits 1 on any diff. Baseline captured + PASS. **The safety net for C1** — run before/after the refactor, any diff must be explained.
 - [ ] **P1b.1 — C1 backward-chaining selection** behind the golden master (must diff-clean on all marketing goals). Add ONE non-marketing node (e.g. `summarize`) + runner to prove drop-in composition.
 - [ ] **P1b.2 — C2 general WorkflowProposal + adapter** (wrap MasterAgentOutcome first, no downstream break), then route a non-marketing proposal end-to-end.
 - [ ] **P1b.3 — C3 TaskSpec/general goal** for non-marketing intents; brain's propose_workflow can target it.

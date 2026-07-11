@@ -1,0 +1,379 @@
+[
+  {
+    "name": "single-text-post",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "single-post-multi-platform",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "text-post-no-publish",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      }
+    ]
+  },
+  {
+    "name": "ideation-strategy-post",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "ideation",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "strategy",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n3"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "research-post",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "content_search",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "infographic-media-only",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "infographic",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n1",
+          "n2"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "video-post",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "storyboard",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "video",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": true
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n1",
+          "n2",
+          "n3"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "video-no-publish",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "storyboard",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "video",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "storyboard-only",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "storyboard",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      }
+    ]
+  },
+  {
+    "name": "full-stack-post",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "content_search",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "ideation",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "strategy",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [
+          "n1",
+          "n3"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "infographic",
+        "dependsOn": [
+          "n4"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "storyboard",
+        "dependsOn": [
+          "n4"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "video",
+        "dependsOn": [
+          "n6"
+        ],
+        "requiresApproval": true
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n4",
+          "n5",
+          "n6",
+          "n7"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "campaign-with-research",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "content_search",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "ideation",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "strategy",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "campaign_strategist",
+        "dependsOn": [
+          "n1",
+          "n3"
+        ],
+        "requiresApproval": false
+      }
+    ]
+  },
+  {
+    "name": "campaign-no-research",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "ideation",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "strategy",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "campaign_strategist",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": false
+      }
+    ]
+  },
+  {
+    "name": "spotlight",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "ideation",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "strategy",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "campaign_strategist",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": false
+      }
+    ]
+  },
+  {
+    "name": "email",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "email_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "email_agent",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "publish-only-edge",
+    "ok": false,
+    "error": "publish_only_no_content"
+  }
+]
