@@ -4,7 +4,7 @@
 // (OpenAPI subset). dispatchTool runs one call and returns a plain JSON result the model reads next round.
 import { env } from '../../config/env.ts';
 import { groundedSearch } from '../../agents/researcher/grounded-search.ts';
-import { answerDataQuery } from '../master/report-answer.ts';
+import { workspaceMetrics } from '../master/report-answer.ts';
 import { recallForMessage } from '../../memory/user-memory.ts';
 import { rememberFreeform, type MemoryKind } from '../../db/repos/user-memory-repo.ts';
 import { requirementAnalyzer } from '../master/requirement-analyzer.ts';
@@ -109,9 +109,20 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         return { summary: text.slice(0, 1500), sources: citations.slice(0, 8) };
       }
       case 'get_workspace_data': {
-        const { answer, report } = await answerDataQuery(ctx.ownerId, str(args.period) || ctx.message);
+        // Return RAW numbers only — the brain voices them in its reply (no second LLM voicing here,
+        // which was the redundant Gemini call per data-query). Measured vs estimated stay labeled.
+        const { report, periodLabel } = await workspaceMetrics(ctx.ownerId, str(args.period) || ctx.message);
         const m = report.metrics;
-        return { answer, postsPublished: m.postsPublished, platforms: m.platforms, leadsCaptured: m.leadsCaptured, usdSpent: m.usdSpent, creditsSpent: m.creditsSpent };
+        return {
+          period: periodLabel,
+          postsPublished: m.postsPublished,
+          platforms: m.platforms,
+          leadsCaptured: m.leadsCaptured,
+          measuredReach: m.measuredReach,
+          estimatedReach: report.value.estimatedReach,
+          usdSpent: m.usdSpent,
+          creditsSpent: m.creditsSpent,
+        };
       }
       case 'recall_memory': {
         const { context } = await recallForMessage(ctx.ownerId, str(args.topic) || ctx.message);
