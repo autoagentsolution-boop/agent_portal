@@ -203,6 +203,24 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
     } finally { setBusy(false); }
   };
 
+  // "▶ Duyệt & Chạy ngay" — approve + execute the PLANNED run directly (no save-as-template detour),
+  // then jump to Active Flows where SSE drives the live DAG. The run generates content and halts at the
+  // approval gate before any publish/send. needs_connection parks the run + tells the user to connect.
+  const execute = async () => {
+    if (!run) return;
+    setBusy(true);
+    try {
+      const r = await api.executeRun(run.id);
+      if (!r.ok) { notify(`Chạy flow: ${r.error.error}`, 'err'); return; }
+      if (r.data.status === 'needs_connection') {
+        applyRun(r.data);
+        notify('Cần kết nối nền tảng trước khi chạy — mở tab Connections để kết nối rồi chạy lại.', 'err');
+        return;
+      }
+      onOpenFlow(run.id); // running → live DAG in Active Flows
+    } finally { setBusy(false); }
+  };
+
   // P6 "Run a test post" — execute the saved flow, then hand off to Active Flows where
   // SSE drives the live DAG (and needs_connection degrades to the connect card there).
   const runTest = async () => {
@@ -272,6 +290,7 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
               busy={busy}
               defaultName={(run!.goal as { slots?: { product?: string } } | null)?.slots?.product ?? ''}
               onSave={(name) => void save(name)}
+              onExecute={() => void execute()}
             />
           )}
 

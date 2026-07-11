@@ -24,7 +24,7 @@ import type { GoalSpec } from '../schemas/goal-spec.ts';
 // existing plan card + approval gate drive execution. `searched`/`tools`/`rounds` are surfaced for the
 // source footnote + observability logging.
 export type AtriaTurn =
-  | { kind: 'reply'; text: string; searched: string[]; tools: string[]; rounds: number }
+  | { kind: 'reply'; text: string; searched: string[]; tools: string[]; rounds: number; executeRunId?: string | null }
   | { kind: 'proposal'; outcome: MasterAgentOutcome; searched: string[]; tools: string[]; rounds: number };
 
 export interface AtriaBrainInput {
@@ -37,6 +37,8 @@ export interface AtriaBrainInput {
   // propose_workflow and merged (additive) so slots gathered on earlier turns (product/audience/
   // platforms) are never lost when the model's goal_description restates only the delta.
   priorGoal?: GoalSpec | null;
+  // The existing PLANNED run's id, so execute_workflow ("chạy đi") can run the plan on screen.
+  existingRunId?: string | null;
 }
 
 const MAX_ROUNDS = 3; // tool-call rounds before we force a final answer (runaway guard)
@@ -114,8 +116,10 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
     memoryContext: input.memoryContext,
     sessionId: input.sessionId,
     priorGoal: input.priorGoal ?? null,
+    existingRunId: input.existingRunId ?? null,
     searched: [],
     proposal: null,
+    executeRunId: null,
   };
   const contents: GeminiContent[] = [...historyContents(input.prior ?? []), { role: 'user', parts: [{ text: input.message }] }];
   const tools: string[] = [];
@@ -146,7 +150,7 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
         if (proposal) return proposal;
         const text = textOf(parts);
         return text
-          ? { kind: 'reply', text, searched: ctx.searched, tools, rounds: round + 1 }
+          ? { kind: 'reply', text, searched: ctx.searched, tools, rounds: round + 1, executeRunId: ctx.executeRunId }
           : gracefulReply(input.message, ctx.searched, tools, round + 1); // empty text (5xx/safety block) → no junk "…" turn
       }
 

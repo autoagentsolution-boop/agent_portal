@@ -12,6 +12,10 @@ interface PlanProps {
   busy: boolean;
   defaultName: string;
   onSave: (name: string) => void;
+  // Approve & run this plan NOW — executes the planned run directly (content is generated, then the run
+  // halts at the approval gate before anything publishes/sends). The primary path for a non-technical
+  // user who just wants to proceed; saving as a reusable flow is the secondary option.
+  onExecute: () => void;
 }
 
 // Selected publish targets, read off the goal so the plan card shows WHERE this will
@@ -25,7 +29,7 @@ const PLATFORM_LABEL: Record<string, string> = {
   facebook: 'Facebook', instagram: 'Instagram', threads: 'Threads', linkedin: 'LinkedIn', x: 'X',
 };
 
-export function PlanCard({ run, busy, defaultName, onSave }: PlanProps) {
+export function PlanCard({ run, busy, defaultName, onSave, onExecute }: PlanProps) {
   const [name, setName] = useState('');
   // Already saved → show its name as a confirmation, not the form again.
   const savedName = run.name ?? null;
@@ -46,16 +50,22 @@ export function PlanCard({ run, busy, defaultName, onSave }: PlanProps) {
 
       {run.status === 'planned' && !savedName && (
         <div className="save-flow">
-          <p className="muted small">Looks right? Name this flow to save it — you'll run it from Active Flows. You can still add or remove steps by typing below (e.g. “thêm video”, “bỏ infographic”).</p>
+          <div className="plan-run-row">
+            <button className="btn primary plan-run-btn" disabled={busy} onClick={onExecute}>
+              {busy ? 'Đang chạy…' : '▶ Duyệt & Chạy ngay'}
+            </button>
+            <span className="muted small">Atria tạo nội dung, rồi <b>dừng ở bước duyệt</b> trước khi đăng/gửi.</span>
+          </div>
+          <p className="muted small plan-refine-hint">Muốn chỉnh? Gõ bên dưới (vd “thêm video”, “bỏ infographic”). Hoặc lưu thành flow tái dùng:</p>
           <div className="save-flow-row">
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={defaultName ? `e.g. ${defaultName} campaign` : 'Name this flow'}
+              placeholder={defaultName ? `e.g. ${defaultName} campaign` : 'Đặt tên flow để lưu'}
               onKeyDown={(e) => { if (e.key === 'Enter' && (name.trim() || defaultName)) onSave((name.trim() || defaultName)); }}
             />
-            <button className="btn primary" disabled={busy} onClick={() => onSave(name.trim() || defaultName || 'Untitled flow')}>
-              {busy ? 'Saving…' : 'Save & open in Active Flows'}
+            <button className="btn" disabled={busy} onClick={() => onSave(name.trim() || defaultName || 'Untitled flow')}>
+              {busy ? 'Saving…' : 'Lưu thành flow'}
             </button>
           </div>
         </div>

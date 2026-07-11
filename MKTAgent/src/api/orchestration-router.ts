@@ -121,6 +121,39 @@ const respondRun = async (res: Parameters<typeof ok>[0], id: string, ownerId: st
   ok(res, toRunDto(full, extras));
 };
 
+// Execute a PLANNED (or re-runnable) instance run: resolve connections, then launch the executor. Shared
+// by POST /runs/:id/execute (the "Duyệt & Chạy" button) AND the Atria brain's execute_workflow tool
+// ("chạy đi"), so both trigger execution identically. Pure control — the caller renders the run.
+type ExecResult =
+  | { status: 'running' }
+  | { status: 'needs_connection'; requiredActions: RequiredActionDto[] }
+  | { status: 'error'; code: 404 | 409; error: string; detail?: string };
+
+const executePlannedRun = async (
+  runId: string,
+  ownerId: string,
+  opts: { autoPublish?: boolean; conceptGate?: boolean } = {},
+): Promise<ExecResult> => {
+  const run = await getRunForOwner(runId, ownerId);
+  if (!run) return { status: 'error', code: 404, error: 'run_not_found' };
+  if (run.kind === 'template') return { status: 'error', code: 409, error: 'template_not_executable', detail: 'this flow is a template — create a post to run it' };
+  if (run.status === 'running' || run.status === 'needs_approval') return { status: 'error', code: 409, error: 'run_in_flight' };
+  if (run.status !== 'planned' && run.status !== 'failed' && run.status !== 'needs_connection') return { status: 'error', code: 409, error: 'run_not_executable' };
+  const goal = goalSpec.parse(run.goal);
+  const plan: WorkflowPlan = workflowPlan.parse(run.plan);
+  // Connection gate (§11.6/11.11): resolve every requiresConnection agent's platforms BEFORE spending.
+  const resolution = await resolveConnections(ownerId, goal, plan);
+  if (resolution.status !== 'resolved') {
+    await setRunStatus(run.id, 'needs_connection');
+    logger.info('wf_execute_gated_needs_connection', { runId: run.id, count: resolution.required.length });
+    return { status: 'needs_connection', requiredActions: resolution.required };
+  }
+  // Claim into running before responding so a double-click / double-call can't spawn two executors.
+  await setRunStatus(run.id, 'running');
+  launchWorkflow(run.id, ownerId, goal, plan, opts);
+  return { status: 'running' };
+};
+
 // A run is still in the conversational pre-execution phase (so a follow-up message
 // refines it) until it has been approved/executed. needs_approval/running/completed
 // are live executions — a new message there starts a fresh run instead.
@@ -191,16 +224,28 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   // full multi-turn context.
   const prior = await getChatHistory(sessionId).catch(() => []);
   // Mid-setup: hand the in-progress run's goal to the brain so propose_workflow MERGES onto it (earlier
-  // slots survive) instead of re-analyzing this turn's message in isolation.
+  // slots survive) instead of re-analyzing this turn's message in isolation. A PLANNED run's id lets the
+  // brain's execute_workflow tool run the plan on screen when the user says "chạy đi".
   const priorGoal = existingPreExec ? goalSpec.parse(existingPreExec.goal) : null;
+  const existingRunId = existingPreExec && existingPreExec.status === 'planned' ? existingPreExec.id : null;
 
-  const turn = await runAtriaBrain({ message: body.message, ownerId: req.userId!, memoryContext: memory.context, sessionId, prior, priorGoal });
+  const turn = await runAtriaBrain({ message: body.message, ownerId: req.userId!, memoryContext: memory.context, sessionId, prior, priorGoal, existingRunId });
 
   // Conversational / general-reasoning / data-query answer — no plan.
   if (turn.kind === 'reply') {
     const text = appendSources(turn.text?.trim() || '…', turn.searched);
     await recordAnswerTurn(sessionId, body.message, text);
-    await logRun('info', 'atria_reply', { searched: turn.searched.length, tools: turn.tools, rounds: turn.rounds, midSetup: Boolean(existingPreExec) }, req.userId!).catch(() => {});
+    await logRun('info', 'atria_reply', { searched: turn.searched.length, tools: turn.tools, rounds: turn.rounds, midSetup: Boolean(existingPreExec), execute: Boolean(turn.executeRunId) }, req.userId!).catch(() => {});
+    // "chạy đi" — the brain's execute_workflow ran the plan already on screen. Trigger execution and
+    // return THAT run (now running / needs_connection) so the UI reflects it, with the brain's reply.
+    if (turn.executeRunId) {
+      const exec = await executePlannedRun(turn.executeRunId, req.userId!);
+      res.status(201);
+      return respondRun(res, turn.executeRunId, req.userId!, {
+        assistantMessage: text,
+        requiredActions: exec.status === 'needs_connection' ? exec.requiredActions : undefined,
+      });
+    }
     // Side-question DURING setup: keep the in-progress plan run + its flow card visible — do NOT fork an
     // `answered` run that would become "latest" and shadow the plan (getLatestRunWithNodesForChat orders
     // by updatedAt desc). Answer inline, return the existing run so the card stays and the next turn
@@ -327,30 +372,6 @@ const launchWorkflow = (
 };
 
 orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
-  const run = await getRunForOwner(req.params.id, req.userId!);
-  if (!run) return fail(res, 404, 'run_not_found');
-  // A Flow template is an immutable blueprint — it is never executed directly. The user
-  // creates a Post (which clones the template into an instance run) and executes that.
-  if (run.kind === 'template') return fail(res, 409, 'template_not_executable', 'this flow is a template — create a post to run it');
-  // Allow execute from planned, a re-run of a failed flow, OR a re-resolve after the
-  // user connected a platform (needs_connection). Reject if already in flight.
-  if (run.status === 'running' || run.status === 'needs_approval') return fail(res, 409, 'run_in_flight');
-  if (run.status !== 'planned' && run.status !== 'failed' && run.status !== 'needs_connection') {
-    return fail(res, 409, 'run_not_executable');
-  }
-  const goal = goalSpec.parse(run.goal);
-  const plan: WorkflowPlan = workflowPlan.parse(run.plan);
-
-  // Connection gate (§11.6/11.11): resolve every requiresConnection agent's platforms
-  // against the user's connections BEFORE spending money. A gap stops the run here
-  // ($0 — no executor, no image-gen) with the connect actions the UI needs.
-  const resolution = await resolveConnections(req.userId!, goal, plan);
-  if (resolution.status !== 'resolved') {
-    await setRunStatus(run.id, 'needs_connection');
-    logger.info('wf_execute_gated_needs_connection', { runId: run.id, count: resolution.required.length });
-    return respondRun(res, run.id, req.userId!, { requiredActions: resolution.required });
-  }
-
   // Auto-publish (decision 2026-07-08): default OFF — a post halts at the approval gate for review.
   // Only pass an explicit body toggle through (UI switch); when the body omits it, leave undefined so
   // the executor falls back to the goal's NL flag (Atria honoring "đăng luôn") and otherwise the gate.
@@ -359,10 +380,10 @@ orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
   // Concept selection gate default ON: pause after concept for the user to pick a version.
   const conceptGate = (req.body as { conceptGate?: unknown } | undefined)?.conceptGate !== false;
 
-  // Claim into running before responding so a double-click can't spawn two executors.
-  await setRunStatus(run.id, 'running');
-  launchWorkflow(run.id, req.userId!, goal, plan, { autoPublish, conceptGate });
-  return respondRun(res, run.id, req.userId!);
+  const result = await executePlannedRun(req.params.id, req.userId!, { autoPublish, conceptGate });
+  if (result.status === 'error') return fail(res, result.code, result.error, result.detail);
+  if (result.status === 'needs_connection') return respondRun(res, req.params.id, req.userId!, { requiredActions: result.requiredActions });
+  return respondRun(res, req.params.id, req.userId!);
 }));
 
 // Test-run a saved flow ("Run a test post"). A saved flow is a TEMPLATE (not directly executable —

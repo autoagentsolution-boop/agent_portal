@@ -23,8 +23,12 @@ export interface ToolContext {
   sessionId: string | null;
   // The existing pre-exec run's goal (mid-setup), merged in propose_workflow so earlier slots survive.
   priorGoal: GoalSpec | null;
+  // The existing PLANNED run's id (a proposal already on screen), so execute_workflow can run it.
+  existingRunId: string | null;
   searched: string[];
   proposal: { goal: GoalSpec; outcome: MasterAgentOutcome } | null;
+  // Set by execute_workflow when the user asks to run the plan → the router triggers execution.
+  executeRunId: string | null;
 }
 
 const MEMORY_KINDS = new Set<MemoryKind>(['product', 'brand', 'audience', 'preference', 'contact', 'fact']);
@@ -91,6 +95,12 @@ export const TOOL_DECLARATIONS = [
       required: ['goal_description'],
     },
   },
+  {
+    name: 'execute_workflow',
+    description:
+      'Run the workflow you ALREADY proposed (the flow card currently on screen). Use ONLY when the user explicitly says to run / proceed / execute / "chạy đi" AND a plan is already on the table. Atria generates the content, then the run HALTS at the approval gate before anything is published or sent — so this is safe. Do NOT use this to make a new plan (use propose_workflow), and do not call it if no workflow has been proposed yet.',
+    parameters: { type: 'object', properties: {} },
+  },
 ] as const;
 
 // Dispatch one tool call. Returns a plain JSON-serializable result (never throws — a thrown tool
@@ -132,6 +142,13 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         const content = str(args.content).slice(0, 500).trim();
         if (content) await rememberFreeform(ctx.ownerId, asKind(args.kind), content, ctx.sessionId);
         return { saved: Boolean(content) };
+      }
+      case 'execute_workflow': {
+        // Signal the router to run the plan already on screen. Never executes here — keeps the async
+        // launch + connection gate in the router (the /execute path), so this stays a pure signal.
+        if (!ctx.existingRunId) return { status: 'no_plan', note: 'There is no proposed workflow to run yet — propose one first.' };
+        ctx.executeRunId = ctx.existingRunId;
+        return { status: 'executing', note: 'The workflow is now running; it will pause at the approval gate before anything is published or sent.' };
       }
       case 'propose_workflow': {
         const analyzed = await requirementAnalyzer.analyze(str(args.goal_description) || ctx.message, ctx.ownerId, ctx.memoryContext);
