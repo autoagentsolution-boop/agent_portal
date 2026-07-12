@@ -39,6 +39,12 @@ Generalizes the brain fix above into a per-node policy: one module maps each reg
 - **Deliberately NOT touched:** node SELECTION (golden 23/23 unchanged — `qualityPref`/budget never change which nodes run) and copygen (`concept_writer` keeps `thinkingBudget:0`, the hard-won JSON-truncation fix), so the creative tier effectively lands on `email_writer`. `memory`/`analytics` seams are outside the runner map (default budget; dynamic growth deferred).
 - **Guarded by:** `verify-thinking-budget` (25 checks: policy math + `callGeminiJson` body + real executor run proving the budget reaches the wire per node + DRY-RUN pass-through); golden 23/23 + summarize regression green.
 
+### Task-seam hardening across refine/clarify (`81d4d86`)
+Closes the one real gap found when rescanning whether P3/P4 (general `WorkflowProposal`/`TaskSpec`) were needed — they are not; the shipped `taskTargets` seam just had two marketing-shaped leaks on a follow-up turn.
+- **Strengthens:** the `summarize` task seam (P5) and the P6 `qualityPref` field. `goal-merge.mergeGoals` now preserves `taskTargets`, `slots.sourceText`, and `qualityPref` (the last was a deterministic P6 regression — a stated "high quality" reset to 'standard' on the next marketing refine). `clarification-engine.evaluateClarification` early-returns `ready` for any `taskTargets` goal (it carries its own inputs; the runner enforces sufficiency), so a task never gets marketing questions even on the LLM-misroute path — making `propose_task`'s `skipClarification` defense-in-depth.
+- **Blast radius:** none for marketing (goals never set `taskTargets` → golden 23/23 byte-identical). **Defers:** P3/P4 remain YAGNI; revive trigger = a 2nd `TASK_CAPABILITIES` entry or real multi-turn task refinement.
+- **Guarded by:** `verify-master` (task-goal survives merge + still selects `summarize`; `qualityPref` survives refine; a new stated pref wins).
+
 ## Commit ledger
 
 - **fix(orchestration): preserve email intent + recipient name across refine/confirm turns** (0733288)
@@ -109,3 +115,10 @@ Generalizes the brain fix above into a per-node policy: one module maps each reg
   - `plans/260712-1649-atria-composable-planner/phase-06-thinking-budget-policy.md`
 - **docs(feature-map): describe P6 thinking-budget policy relationships** (a9aac26)
   - `docs/feature-map.md`
+- **docs(feature-map): move P6 relationships into curated section** (cec3b83)
+  - `docs/feature-map.md`
+- **fix(orchestration): harden non-marketing task seam across refine/clarify** (81d4d86)
+  - `MKTAgent/src/orchestration/master/clarification-engine.ts`
+  - `MKTAgent/src/orchestration/master/goal-merge.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
+  - `plans/260712-1649-atria-composable-planner/plan.md`
