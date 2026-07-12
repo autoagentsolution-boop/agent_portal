@@ -122,6 +122,12 @@ export const goalSpec = z.object({
   // the message explicitly asks to publish without review ("đăng luôn", "auto publish", "no review")
   // so Atria honors a natural-language command; the /execute body toggle (UI) overrides it per-run.
   autoPublish: z.boolean().default(false),
+  // Creative-quality preference (Phase 06 thinking-budget policy). Scales the per-node thinking-budget
+  // CEILING for creative runners (concept_writer copy, email_writer) — NEVER node selection, so the
+  // marketing golden is unaffected. Captured conversationally by the analyzer ("chất lượng cao"/"high
+  // quality" → 'high'; "nhanh"/"tiết kiệm" → 'economy'). Default 'standard'. Nullish-safe on old persisted
+  // wf_run.goal rows (the Zod default fills a missing field).
+  qualityPref: z.enum(['economy', 'standard', 'high']).default('standard'),
   // Analyzer's self-reported confidence (mirrors the existing intake draft).
   confidence: z.number().min(0).max(1).default(0.5),
   // Which analyzer produced this (gemini | deterministic-v1) — for debugging.

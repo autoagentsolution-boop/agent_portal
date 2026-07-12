@@ -31,7 +31,15 @@ const extractJson = (raw: unknown): unknown => {
   return JSON.parse(cleaned);
 };
 
-export const callGeminiJson: LlmJsonFn = async (systemPrompt, userText, onUsage) => {
+// Not annotated `: LlmJsonFn` — the 4th `opts` arg (per-node thinking budget, Phase 06) is beyond that
+// 3-arg seam type. It stays structurally assignable to LlmJsonFn (extra optional arg), so runners can still
+// do `ctx.llmJsonFn ?? callGeminiJson`, while the executor calls it with the budget explicitly.
+export const callGeminiJson = async (
+  systemPrompt: string,
+  userText: string,
+  onUsage?: UsageSink,
+  opts?: { thinkingBudget?: number },
+): Promise<unknown> => {
   if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured');
   const res = await withRetry(
     () =>
@@ -41,7 +49,13 @@ export const callGeminiJson: LlmJsonFn = async (systemPrompt, userText, onUsage)
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: [{ role: 'user', parts: [{ text: userText }] }],
-          generationConfig: { temperature: 0.6, responseMimeType: 'application/json' },
+          generationConfig: {
+            temperature: 0.6,
+            responseMimeType: 'application/json',
+            // Explicit budget when provided (executor binds it per node); omitted → Gemini default (unchanged
+            // for any direct caller that doesn't pass opts).
+            ...(opts?.thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget: opts.thinkingBudget } } : {}),
+          },
         }),
         signal: AbortSignal.timeout(60_000),
       }),

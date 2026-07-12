@@ -1,7 +1,14 @@
 # Phase 06 — Per-agent-group thinking-budget policy
 
-**Priority:** P1 · **Status:** design LOCKED, implementation PENDING · **Branch:** `pivot/video-content-farm`
+**Priority:** P1 · **Status:** ✅ IMPLEMENTED (verified) · **Branch:** `pivot/video-content-farm`
 **Brain baseline already SHIPPED** (`b5c4f9c`): `atria-brain.ts` `doCall` sets `thinkingConfig.thinkingBudget: 4096`.
+
+## Implementation notes (as-built)
+Landed exactly per the mechanism below, with two deliberate deferrals:
+- **`concept_writer` budget is DORMANT (copygen stays `thinkingBudget: 0`).** `thinkingBudgetFor('concept_writer')` returns the creative ceiling, but concept_writer's LLM call goes through copygen's own body builder (`copygen/prompt.ts`), which HARD-DISABLES thinking (`thinkingBudget: 0`) — a hard-won fix: gemini-2.5 thinking tokens count against `maxOutputTokens` and truncated the copy JSON ("Unterminated string"). The executor binds budgets onto the `llmJsonFn` seam only, so concept_writer never reads a budget → the fix is preserved. Threading a creative budget into copygen requires ALSO raising `maxOutputTokens` headroom + re-validating no truncation; deferred (one-line change later). Net: the creative tier meaningfully applies to **`email_writer`** (llm-json seam, no `responseSchema`/output cap → thinking is safe).
+- **`memory`/`analytics` LLM seams are OUTSIDE the runner map** → not covered by the executor binding; left at Gemini defaults for now (plan already deferred their dynamic dataset-size growth). Follow-up if their calls need an explicit budget.
+
+**As-built files:** `thinking-budget.ts` (new policy), `goal-spec.ts` (`qualityPref`), `llm-json.ts` (`opts.thinkingBudget`), `agent-executor.ts` (per-node bind), `atria-brain.ts` (reads `BRAIN_THINKING_BUDGET`), `deterministic-analyzer.ts` + `requirement-analyzer.ts` (conversational `qualityPref` keyword detection). **Verify:** `verify-thinking-budget.ts` (25 checks incl. e2e wire proof + DRY-RUN pass-through); golden 23/23; summarize regression green.
 
 ## Why
 `gemini-2.5-flash` default (dynamic) thinking misbehaves **with tools** → intermittently returns `finishReason=STOP` with EMPTY parts (the brain read it as failure → spurious apology). Fix = an EXPLICIT budget. Measured: default→empty every time; explicit 512/2048/4096→clean every time WITH real thinking (th≈43-61 on easy turns). **Budget is a CEILING — the model self-limits below it**, so a generous ceiling is ~free on easy turns and only spends on hard ones. Runners do NOT attach tools, so they don't hit the empty-bug — their budget is purely a quality/cost lever.

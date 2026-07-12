@@ -15,6 +15,7 @@ import { TOOL_DECLARATIONS, dispatchTool, type ToolContext } from './atria-tools
 import { getBrainCache, invalidateBrainCache } from './atria-brain-cache.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
 import { detectLanguage } from '../master/detect-language.ts';
+import { BRAIN_THINKING_BUDGET } from '../thinking-budget.ts';
 import type { PriorMessage } from '../master/conversation-author.ts';
 import type { GoalSpec } from '../schemas/goal-spec.ts';
 
@@ -70,7 +71,7 @@ const doCall = (contents: GeminiContent[], cache: string | null): Promise<Respon
   // apology. An explicit thinkingBudget avoids that failure mode while preserving real reasoning headroom
   // for deep-dive replies (the model still only spends what a turn needs). Measured: default → EMPTY every
   // time; budget 512/2048 → a clean tool-call/reply every time with genuine thinking tokens used.
-  const body: Record<string, unknown> = { contents, generationConfig: { temperature: 0.5, thinkingConfig: { thinkingBudget: 4096 } } };
+  const body: Record<string, unknown> = { contents, generationConfig: { temperature: 0.5, thinkingConfig: { thinkingBudget: BRAIN_THINKING_BUDGET } } };
   if (cache) {
     body.cachedContent = cache;
   } else {

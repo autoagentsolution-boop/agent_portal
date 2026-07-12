@@ -85,3 +85,6 @@ Fixes spurious "sorry, I ran into a problem" replies. `gemini-2.5-flash`'s **def
 - **fix(orchestration): explicit brain thinking budget — stop spurious empty-reply apologies** (b5c4f9c)
   - `MKTAgent/src/orchestration/atria/atria-brain.ts`
   - `docs/feature-map.md`
+- **docs(plan): phase-06 per-agent-group thinking-budget policy (design locked)** (0c8c883)
+  - `docs/feature-map.md`
+  - `plans/260712-1649-atria-composable-planner/phase-06-thinking-budget-policy.md`

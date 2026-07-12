@@ -118,7 +118,11 @@ export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
       // Auto-publish is a regex-detectable command ("đăng luôn", "auto-publish") the LLM may miss;
       // OR the two so an explicit hands-off ask is never lost. Default stays false (gated).
       const autoPublish = parsed.data.autoPublish || det.autoPublish;
-      const base = { ...parsed.data, platforms, ...campaign, autoPublish, provider: `gemini:${env.GEMINI_MODEL}` };
+      // qualityPref (Phase 06): the marketing LLM prompt doesn't model it, so its value is the Zod default
+      // ('standard'). Adopt the deterministic keyword detection when the message states a preference — same
+      // "regex-detectable intent the LLM may miss" pattern as autoPublish/campaign above.
+      const qualityPref = parsed.data.qualityPref !== 'standard' ? parsed.data.qualityPref : det.qualityPref;
+      const base = { ...parsed.data, platforms, ...campaign, autoPublish, qualityPref, provider: `gemini:${env.GEMINI_MODEL}` };
       // Email intent (P4-lite) is a regex-detectable command ("gửi email cho…") the marketing-only
       // LLM prompt doesn't model — OR it in so an email goal routes to the email path, not a social
       // post. Forces the social flags off + recipient/subject into the email slots.

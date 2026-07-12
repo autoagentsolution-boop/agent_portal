@@ -126,6 +126,17 @@ const parseAutoPublish = (t: string): boolean =>
   /\b(auto.?publish|publish automatically|post automatically|no review|without review)\b/i.test(t)
   || /(đăng luôn|dang luon|tự động đăng|tu dong dang|đăng tự động|dang tu dong|khỏi duyệt|khoi duyet|không cần duyệt|khong can duyet|không cần duyệt gì|tự đăng|tu dang)/i.test(t);
 
+// Creative-quality preference (Phase 06) — a regex-detectable stated intent. "high quality"/"chất lượng
+// cao"/"chi tiết" → 'high'; "nhanh"/"tiết kiệm"/"economy" → 'economy'; unstated → 'standard'. Only scales
+// the creative thinking-budget ceiling downstream, never node selection (golden unaffected).
+const parseQualityPref = (t: string): GoalSpec['qualityPref'] => {
+  if (/\b(high|highest|best|top|maximum|premium)\s+quality\b/i.test(t) || /\b(very detailed|in-?depth|premium)\b/i.test(t)
+    || /(chất lượng cao|chat luong cao|chất lượng tốt nhất|chat luong tot nhat|kỹ lưỡng|ky luong|chi tiết|chi tiet|cao cấp|cao cap|tốt nhất|tot nhat)/i.test(t)) return 'high';
+  if (/\b(economy|quick|fast|cheap|rough|draft quality|low quality)\b/i.test(t)
+    || /(nhanh|tiết kiệm|tiet kiem|qua loa|sơ sài|so sai|đơn giản thôi|don gian thoi)/i.test(t)) return 'economy';
+  return 'standard';
+};
+
 // Email intent (P4-lite): the user wants Atria to WRITE + SEND an email, not a social post. Fires on
 // an explicit email send/write phrasing (vi+en) so a marketing message that merely mentions an address
 // doesn't misroute. Extracts recipient address(es) + an optional explicit subject.
@@ -257,6 +268,7 @@ export const analyzeDeterministic = (message: string): GoalSpec => {
     slots,
     ...campaign,
     autoPublish: parseAutoPublish(m),
+    qualityPref: parseQualityPref(m),
     confidence: Math.min(0.9, 0.3 + filled * 0.08),
     provider: 'deterministic-v1',
   });
