@@ -58,6 +58,11 @@ export const mergeGoals = (prior: GoalSpec, delta: GoalSpec): GoalSpec => {
       // (the user adding media still wants to publish). Keep prior unless prior was
       // explicitly draft-only and the delta re-enables it.
       needsPublishing: prior.outputs.needsPublishing || delta.outputs.needsPublishing,
+      // Email intent MUST survive a refine/confirm turn. A bare delta ("đúng vậy", a schedule
+      // confirm) analyzes as needsEmail=false, so without this OR the goal silently reverts from
+      // the email path to the social pipeline (dropping recipient + schedule → the scheduler node
+      // never splices). The planner's email branch short-circuits, so co-set social flags are inert.
+      needsEmail: prior.outputs.needsEmail || delta.outputs.needsEmail,
     },
     platforms,
     slots: {
@@ -70,6 +75,10 @@ export const mergeGoals = (prior: GoalSpec, delta: GoalSpec): GoalSpec => {
       language: fillIfEmpty(prior.slots.language, delta.slots.language),
       lengthSpec: fillIfEmpty(prior.slots.lengthSpec, delta.slots.lengthSpec),
       heroFile: fillIfEmpty(prior.slots.heroFile, delta.slots.heroFile),
+      // Email recipient/subject: carry across turns so a later confirm/schedule turn (whose delta
+      // has no address) keeps who the email is for. Paired with needsEmail above.
+      emailTo: fillIfEmpty(prior.slots.emailTo, delta.slots.emailTo),
+      emailSubject: fillIfEmpty(prior.slots.emailSubject, delta.slots.emailSubject),
     },
     schedule: mergeSchedule(prior.schedule, delta.schedule),
     confidence: Math.max(prior.confidence, delta.confidence),

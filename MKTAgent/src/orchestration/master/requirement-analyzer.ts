@@ -125,7 +125,10 @@ export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
       const email = parseEmailIntent(message);
       const goal = email.isEmail
         ? { ...base, outputs: emailOutputs(base.outputs), platforms: [] as GoalSpec['platforms'], campaignScope: 'single' as const, duration: null, cadence: null,
-            slots: { ...base.slots, angle: base.slots.angle ?? email.purpose ?? null, emailTo: base.slots.emailTo ?? email.to ?? null, emailSubject: base.slots.emailSubject ?? email.subject ?? null } }
+            // Email angle = what the email should SAY. Prefer the raw purpose (retains the recipient's
+            // name + occasion, e.g. "birthday note for Nghiep") over the LLM's marketing-cleaned angle,
+            // which strips the name → the writer would otherwise fabricate one from the @-local-part.
+            slots: { ...base.slots, angle: email.purpose ?? base.slots.angle ?? null, emailTo: base.slots.emailTo ?? email.to ?? null, emailSubject: base.slots.emailSubject ?? email.subject ?? null } }
         : base;
       return { goal, removals };
     } catch {
