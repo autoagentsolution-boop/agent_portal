@@ -96,6 +96,15 @@
             "command": "node .claude/hooks/privacy-block.cjs"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/test-integrity-guard.cjs"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -104,6 +113,11 @@
           {
             "type": "command",
             "command": "node .claude/hooks/session-state.cjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/test-integrity-stop.cjs",
+            "timeout": 130
           }
         ]
       }
@@ -129,6 +143,15 @@
             "type": "command",
             "command": "node .claude/hooks/usage-context-awareness.cjs",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/feature-ledger.cjs"
           }
         ]
       }
