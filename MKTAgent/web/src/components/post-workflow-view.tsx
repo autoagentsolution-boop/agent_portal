@@ -157,7 +157,7 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     setGranting(true);
     try {
       const r = await api.grantPost(postId);
-      if (!r.ok) { notify(`Chuẩn bị: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(`Prepare: ${r.error.error}`, 'err'); return; }
       setGrantPending({ credits: Math.round(r.data.estimate.credits), token: r.data.confirmationToken ?? '' });
     } finally { setGranting(false); }
   };
@@ -167,9 +167,9 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     setGranting(true);
     try {
       const r = await api.grantPost(postId, { confirmationToken: grantPending.token, scheduleConfirmed: true });
-      if (!r.ok) { notify(`Chuẩn bị: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(`Prepare: ${r.error.error}`, 'err'); return; }
       setGrantPending(null);
-      notify('Đã cấp quyền — Atria sẽ tự chuẩn bị và đăng tự động theo lịch đã đặt.');
+      notify('Autonomy granted — Atria will prepare and auto-publish on the set schedule.');
       await load();
     } finally { setGranting(false); }
   };
@@ -266,8 +266,8 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
               <button className="ws-grant-no" disabled={granting} onClick={() => setGrantPending(null)}>Huỷ</button>
             </span>
           ) : (
-            <button className="btn small" disabled={granting} title="Cấp quyền cho Atria tự chuẩn bị và đăng tự động theo lịch" onClick={() => void startGrant(runPostId!)}>
-              {granting ? 'Đang tính…' : '⚡ Chuẩn bị'}
+            <button className="btn small" disabled={granting} title="Grant Atria autonomy to prepare and auto-publish on schedule" onClick={() => void startGrant(runPostId!)}>
+              {granting ? 'Calculating…' : '⚡ Prepare'}
             </button>
           )
         )}
@@ -275,12 +275,12 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
       {preparing && !stalled ? (
         <div className="atria-preparing" role="status" aria-live="polite">
           <span className="atria-preparing-dot" aria-hidden="true" />
-          Atria đang tự chuẩn bị nội dung và sẽ đăng tự động theo lịch đã đặt.
+          Atria is preparing the content and will auto-publish on the set schedule.
         </div>
       ) : preparing && stalled ? (
         <div className="atria-preparing is-stalled" role="status" aria-live="polite">
           <span className="atria-preparing-dot" aria-hidden="true" />
-          Chưa thấy tiến trình tự động — có thể tự động hoá đang tắt. Bấm ▶ Execute để chạy thủ công.
+          No automation progress yet — automation may be off. Click ▶ Execute to run manually.
         </div>
       ) : (
         <p className="muted small">{isResume ? 'A step was re-run — later steps are stale. Click Continue to regenerate them, then approve to publish.' : statusHint}</p>

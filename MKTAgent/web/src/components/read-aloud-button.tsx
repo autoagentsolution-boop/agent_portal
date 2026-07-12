@@ -16,7 +16,7 @@ interface Props {
   label?: string;
 }
 
-export function ReadAloudButton({ text, title = 'Đọc to', className = '', label }: Props) {
+export function ReadAloudButton({ text, title = 'Read aloud', className = '', label }: Props) {
   const [status, setStatus] = useState<Status>('idle');
   const playingRef = useRef(false); // this button owns the current narration
   // Synchronous guard: state is async, so two fast clicks both see 'idle' and each fetch. A ref blocks
@@ -46,14 +46,14 @@ export function ReadAloudButton({ text, title = 'Đọc to', className = '', lab
 
   const icon = status === 'loading' ? '…' : status === 'playing' ? '⏸' : '🔊';
   const shownLabel = label
-    ? status === 'loading' ? 'Đang chuẩn bị…' : status === 'playing' ? 'Đang đọc — chạm để dừng' : label
+    ? status === 'loading' ? 'Preparing…' : status === 'playing' ? 'Reading — tap to stop' : label
     : undefined;
   return (
     <button
       type="button"
       className={`read-aloud-btn is-${status} ${label ? 'has-label' : ''} ${className}`}
-      title={status === 'playing' ? 'Dừng' : title}
-      aria-label={status === 'playing' ? 'Dừng đọc' : (label ?? title)}
+      title={status === 'playing' ? 'Stop' : title}
+      aria-label={status === 'playing' ? 'Stop reading' : (label ?? title)}
       onClick={() => void play()}
     >
       <span aria-hidden="true">{icon}</span>

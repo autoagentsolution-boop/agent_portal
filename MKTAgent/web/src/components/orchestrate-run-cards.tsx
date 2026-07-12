@@ -54,7 +54,7 @@ export function PlanCard({ run, busy, defaultName, onSave, onExecute }: PlanProp
             <button className="btn primary plan-run-btn" disabled={busy} onClick={onExecute}>
               {busy ? 'Đang chạy…' : '▶ Duyệt & Chạy ngay'}
             </button>
-            <span className="muted small">Atria tạo nội dung, rồi <b>dừng ở bước duyệt</b> trước khi đăng/gửi.</span>
+            <span className="muted small">Atria generates the content, then <b>stops at the review step</b> before publishing/sending.</span>
           </div>
           <p className="muted small plan-refine-hint">Muốn chỉnh? Gõ bên dưới (vd “thêm video”, “bỏ infographic”). Hoặc lưu thành flow tái dùng:</p>
           <div className="save-flow-row">

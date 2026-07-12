@@ -51,7 +51,7 @@ function ResumeCard(
         <span className="atria-card-cta">{cta}</span>
       </button>
       {onDismiss && (
-        <button className="atria-card-dismiss icon-btn" aria-label="Xoá khỏi danh sách" title="Xoá" onClick={onDismiss}>×</button>
+        <button className="atria-card-dismiss icon-btn" aria-label="Remove from list" title="Remove" onClick={onDismiss}>×</button>
       )}
     </div>
   );

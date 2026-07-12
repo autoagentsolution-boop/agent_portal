@@ -50,9 +50,9 @@ type Panel =
   | { kind: 'surface'; surface: string; agent: AgentNodeDto };
 
 const QUICK_CMDS = [
-  'Tạo chiến dịch marketing cho sản phẩm mới',
-  'Nghiên cứu đối thủ rồi viết nội dung',
-  'Thu thập leads từ chiến dịch social (opt-in)',
+  'Create a marketing campaign for a new product',
+  'Research competitors, then write content',
+  'Collect leads from a social campaign (opt-in)',
 ];
 
 // Position N nodes evenly on an ellipse, starting at the top (−90°). Mirrors the mockup's
@@ -63,7 +63,9 @@ const QUICK_CMDS = [
 interface GroupGeo { ang: number; x: number; y: number }
 const groupGeo = (i: number, total: number): GroupGeo => {
   const ang = (i / total) * Math.PI * 2 - Math.PI / 2;
-  return { ang, x: 50 + Math.cos(ang) * 33, y: 50 + Math.sin(ang) * 31 };
+  // Vertical radius is kept smaller than horizontal: the container is short, and the top/bottom groups'
+  // members fan outward vertically — a tighter Y keeps the top group's expansion clear of the header.
+  return { ang, x: 50 + Math.cos(ang) * 33, y: 50 + Math.sin(ang) * 25 };
 };
 // Member j of a group: placed on an arc around the GROUP node, centred on its outward direction so the
 // members read as "inside" that group and never overlap Atria. The arc is WIDE (up to ~200°, wrapping
@@ -74,8 +76,8 @@ const groupGeo = (i: number, total: number): GroupGeo => {
 const memberGeo = (g: GroupGeo, j: number, count: number): { left: string; top: string; xy: [number, number] } => {
   const spread = count <= 1 ? 0 : Math.min(Math.PI * 1.15, 0.5 * count + 0.5);
   const a = g.ang + (count <= 1 ? 0 : spread * (j / (count - 1) - 0.5));
-  const x = g.x + Math.cos(a) * 16;
-  const y = g.y + Math.sin(a) * 19;
+  const x = g.x + Math.cos(a) * 15;
+  const y = g.y + Math.sin(a) * 15;
   return { left: `${x}%`, top: `${y}%`, xy: [x, y] };
 };
 
@@ -129,7 +131,7 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
   // Open an agent's panel (member click) — planned → "soon" toast, a shipped surface → its inline panel,
   // else the agent spotlight. Unchanged from the flat view, just factored out for reuse by member nodes.
   const openAgent = (a: AgentNodeDto): void => {
-    if (a.implStatus === 'planned') notify(`${a.name} — sắp ra mắt`);
+    if (a.implStatus === 'planned') notify(`${a.name} — coming soon`);
     else if (a.surface) setPanel({ kind: 'surface', surface: a.surface, agent: a });
     else setPanel({ kind: 'agent', agent: a });
   };
@@ -145,16 +147,7 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
       {!chatActive && (
       <div className="cc-head">
         <div className="cc-eyebrow">Neural Network</div>
-        <h1>Trung tâm điều hành AI của bạn</h1>
-        <p>Chạm vào một agent để bắt đầu điều phối. Mọi hành động đều dẫn về không gian làm việc hiện tại.</p>
-        <div className="cc-legend">
-          {(catalog?.groups ?? []).map((g) => (
-            <span className="cc-legend-item" key={g.id}>
-              <span className="cc-legend-dot" style={{ background: g.color, boxShadow: `0 0 8px ${g.color}` }} />
-              {g.emoji} {g.label}
-            </span>
-          ))}
-        </div>
+        <h1>Your AI Command Center</h1>
       </div>
       )}
 
@@ -166,7 +159,7 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
         const coreClick = () => (expandedGroup ? setExpandedGroup(null) : onLaunch());
         return (
       <div className={`cc-network ${anyRunning ? 'is-conducting' : ''} ${expanded ? 'is-expanded' : ''}`}>
-        <button className={`cc-core ${anyRunning ? 'is-conducting' : ''}`} onClick={coreClick} title={expandedGroup ? 'Thu gọn' : 'Mở Atria'}>
+        <button className={`cc-core ${anyRunning ? 'is-conducting' : ''}`} onClick={coreClick} title={expandedGroup ? 'Collapse' : 'Open Atria'}>
           <span className="cc-core-fx" aria-hidden="true">
             <span className="cc-ring cc-ring-1" />
             <span className="cc-ring cc-ring-2" />
@@ -177,7 +170,7 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
           </span>
           <span className="cc-core-label">Master Agent</span>
           <span className="cc-core-name">Atria</span>
-          <span className="cc-core-sub">Nhạc trưởng</span>
+          <span className="cc-core-sub">Conductor</span>
         </button>
         <svg className="cc-links" viewBox="0 0 100 100" preserveAspectRatio="none">
           {/* Tier 1: Atria → each group (always). */}
@@ -249,7 +242,7 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
               className={`cc-node cc-node-member ${a.implStatus === 'stub' ? 'is-stub' : ''} ${planned ? 'is-planned' : ''} ${running ? 'is-running' : ''} ${(panel?.kind === 'agent' || panel?.kind === 'surface') && panel.agent.id === a.id ? 'is-active' : ''}`}
               style={{ left: pos.left, top: pos.top }}
               onClick={() => openAgent(a)}
-              title={planned ? `${a.name} (sắp ra mắt) — ${a.vibe ?? a.description}` : (a.vibe ?? a.description)}
+              title={planned ? `${a.name} (coming soon) — ${a.vibe ?? a.description}` : (a.vibe ?? a.description)}
             >
               <span className="cc-node-circle" style={{ borderColor: colorOf(a) }}>
                 <span className="cc-node-emoji">{a.emoji}</span>
@@ -259,7 +252,7 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
             </button>
           );
         })}
-        {agents.length === 0 && <div className="cc-network-empty">Đang tải mạng lưới agent…</div>}
+        {agents.length === 0 && <div className="cc-network-empty">Loading agent network…</div>}
       </div>
         );
       })()}
@@ -292,26 +285,26 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
           <input
             value={cmd}
             onChange={(e) => setCmd(e.target.value)}
-            placeholder="Ra lệnh cho Atria bằng ngôn ngữ tự nhiên…"
+            placeholder="Command Atria in natural language…"
           />
           {VOICE_SUPPORTED && onStartVoice && (
-            <button type="button" className="cc-mic" aria-label="Trò chuyện bằng giọng nói với Atria" title="Trò chuyện bằng giọng nói với Atria" onClick={onStartVoice}>🎙️</button>
+            <button type="button" className="cc-mic" aria-label="Voice chat with Atria" title="Voice chat with Atria" onClick={onStartVoice}>🎙️</button>
           )}
-          <button type="submit" className="cc-send" aria-label="Gửi">➤</button>
+          <button type="submit" className="cc-send" aria-label="Send">➤</button>
         </div>
         <div className="cc-quick">
           {QUICK_CMDS.map((q) => (
             <button type="button" className="cc-quick-cmd" key={q} onClick={() => setCmd(q)}>{q}</button>
           ))}
         </div>
-        <div className="cc-hint">Atria tự nhận diện ngôn ngữ, xác nhận cách hiểu, rồi đề xuất phương án kèm chi phí.</div>
+        <div className="cc-hint">Atria detects your language, confirms its understanding, then proposes a plan with its cost.</div>
       </form>
 
       {/* Atria's proactive surface on the home (P2.0) — reminders + resume hung work, promoted from the
           old Orchestrate empty-state so the operator sees them without entering a chat. */}
       <div className="cc-atria-surface">
         <section className="cc-atria-block">
-          <h3 className="atria-section-title">Nhắc nhở từ Atria</h3>
+          <h3 className="atria-section-title">Reminders from Atria</h3>
           <AtriaSuggestionCards
             notify={notify}
             onPlanCampaign={(t) => onLaunch(t)}

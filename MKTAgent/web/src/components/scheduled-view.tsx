@@ -84,7 +84,7 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
     try {
       const r = await api.grantPost(grantFor.postId, { confirmationToken: grantFor.token, scheduleConfirmed: true });
       if (!r.ok) { notify(`Grant: ${r.error.error}`, 'err'); return; }
-      notify('Đã cấp quyền — Atria sẽ tự chuẩn bị và đăng tự động theo lịch.');
+      notify('Autonomy granted — Atria will prepare and auto-publish on schedule.');
       setGrantFor(null);
       void load();
     } finally { setGranting(false); }
@@ -119,7 +119,7 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
             <button className="ws-grant-no" disabled={granting} onClick={() => setGrantFor(null)}>Huỷ</button>
           </span>
         ) : (
-          <button className="ws-grant-btn" disabled={granting} title="Cấp quyền cho Atria tự chuẩn bị rồi dừng ở review" onClick={() => void startGrant(p.id)}>⚡ Chuẩn bị</button>
+          <button className="ws-grant-btn" disabled={granting} title="Grant Atria autonomy to prepare, then stop at review" onClick={() => void startGrant(p.id)}>⚡ Prepare</button>
         )
       )}
     </div>

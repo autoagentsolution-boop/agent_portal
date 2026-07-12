@@ -141,7 +141,7 @@ export function App() {
   // running run refuses (409) rather than orphaning its executor. Refresh only the affected list.
   const dismissResumeItem = async (kind: 'run' | 'chat' | 'flow', id: string) => {
     const r = kind === 'chat' ? await api.deleteAgentChat(id) : await api.deleteRun(id);
-    if (!r.ok) { show(`Không xoá được: ${r.error.error}`, 'err'); return; }
+    if (!r.ok) { show(`Couldn't delete: ${r.error.error}`, 'err'); return; }
     if (kind === 'chat') void loadChats();
     else if (kind === 'run') void loadResumableRuns();
     else void loadSavedRuns();
@@ -220,13 +220,13 @@ export function App() {
 
   // Delete a workspace (campaign) from the top-nav Workspace menu.
   const deleteWorkspaceFromNav = async (campaignId: string, name: string) => {
-    if (!confirm(`Xoá workspace “${name}”? Toàn bộ post trong đó sẽ bị xoá.`)) return;
+    if (!confirm(`Delete workspace “${name}”? All posts in it will be deleted.`)) return;
     const r = await api.deleteCampaign(campaignId);
-    if (!r.ok) { show(`Xoá thất bại: ${r.error.error}`, 'err'); return; }
+    if (!r.ok) { show(`Delete failed: ${r.error.error}`, 'err'); return; }
     setWorkspaces((prev) => prev.filter((w) => w.campaignId !== campaignId));
     setCampaigns((prev) => prev.filter((c) => c.id !== campaignId));
     if (openWorkspaceId === campaignId) setOpenWorkspaceId(null);
-    show('Đã xoá workspace');
+    show('Workspace deleted');
   };
 
   // Open a workspace from the top-nav: land on the Command Center and let it open the drawer.

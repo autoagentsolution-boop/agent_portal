@@ -45,17 +45,17 @@ export function ImpactReport({ campaignId, period = '30d' }: Props) {
   const narration = [
     report.headline,
     `Đã chi ${money(metrics.usdSpent)}, khoảng ${metrics.creditsSpent} credit.`,
-    `${metrics.postsPublished} bài đăng trên ${metrics.platforms.length} nền tảng.`,
-    metrics.leadsCaptured > 0 ? `Thu được ${metrics.leadsCaptured} lead.` : '',
-    metrics.measuredReach !== null ? `Tiếp cận đo được ${metrics.measuredReach.toLocaleString()}.` : '',
-    `Ước tính tiết kiệm ${money(value.savedUsd)} và ${value.savedDays} ngày so với thuê agency.`,
+    `${metrics.postsPublished} posts on ${metrics.platforms.length} platforms.`,
+    metrics.leadsCaptured > 0 ? `Captured ${metrics.leadsCaptured} leads.` : '',
+    metrics.measuredReach !== null ? `Measured reach ${metrics.measuredReach.toLocaleString()}.` : '',
+    `Estimated savings of ${money(value.savedUsd)} and ${value.savedDays} days vs hiring an agency.`,
   ].filter(Boolean).join(' ');
 
   return (
     <section style={{ maxWidth: 820 }}>
       <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         Impact {campaignId ? '(this campaign)' : `(last ${period})`}
-        <ReadAloudButton text={narration} title="Atria đọc báo cáo" className="impact-tts" />
+        <ReadAloudButton text={narration} title="Atria reads the report" className="impact-tts" />
       </h3>
       <p style={{ fontSize: 17, fontWeight: 600, margin: '6px 0 16px' }}>{report.headline}</p>
 

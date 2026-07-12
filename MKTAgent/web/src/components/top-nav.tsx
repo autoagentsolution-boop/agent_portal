@@ -102,7 +102,7 @@ export function TopNav(props: Props) {
           onExit={() => onNavigate('command-center')}
         />
 
-        <span className="topnav-credit" title="Tổng credit đã dùng">◈ {credits === null ? '—' : credits.toLocaleString()}</span>
+        <span className="topnav-credit" title="Total credits used">◈ {credits === null ? '—' : credits.toLocaleString()}</span>
         <span className="topnav-user" title={userEmail}>{userEmail}</span>
       </div>
     </header>

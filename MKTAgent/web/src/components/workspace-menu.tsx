@@ -40,13 +40,13 @@ export function WorkspaceMenu({ workspaces, activeCampaignId, onOpenWorkspace, o
   const subtitle = (w: WorkspaceSummaryDto): string => {
     const d = new Date(w.updatedAt);
     const date = `${d.getMonth() + 1}/${d.getDate()}`;
-    const plats = w.platforms.length ? w.platforms.slice(0, 3).join(', ') : 'chưa có nền tảng';
+    const plats = w.platforms.length ? w.platforms.slice(0, 3).join(', ') : 'no platforms yet';
     return `${w.postCount} bài · ${plats} · ${date}`;
   };
 
   return (
     <div className="cc-ws-menu" ref={ref}>
-      <button className={`cc-exit cc-ws-menu-btn ${workspaces.length ? 'has-ws' : ''}`} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} title="Bảng điều khiển các workspace của bạn">
+      <button className={`cc-exit cc-ws-menu-btn ${workspaces.length ? 'has-ws' : ''}`} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} title="Your workspaces dashboard">
         ⌂ Workspace
         {workspaces.length > 0 && <span className="cc-ws-menu-count">{workspaces.length}</span>}
         <span className="cc-ws-menu-caret">▾</span>
@@ -72,7 +72,7 @@ export function WorkspaceMenu({ workspaces, activeCampaignId, onOpenWorkspace, o
                 <button
                   className="cc-ws-menu-act"
                   disabled={!w.chatSessionId}
-                  title={w.chatSessionId ? 'Tiếp tục trò chuyện với Atria' : 'Chưa có hội thoại liên kết'}
+                  title={w.chatSessionId ? 'Continue the chat with Atria' : 'No linked conversation'}
                   onClick={() => { if (w.chatSessionId) { onContinueChat(w.chatSessionId); setOpen(false); } }}
                 >
                   💬

@@ -225,7 +225,7 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
       if (!r.ok) { notify(`Chạy flow: ${r.error.error}`, 'err'); return; }
       if (r.data.status === 'needs_connection') {
         applyRun(r.data);
-        notify('Cần kết nối nền tảng trước khi chạy — mở tab Connections để kết nối rồi chạy lại.', 'err');
+        notify('Connect a platform before running — open the Connections tab, connect, then run again.', 'err');
         return;
       }
       onOpenFlow(run.id); // running → live DAG in Active Flows
@@ -281,7 +281,7 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
                 {m.role === 'agent' ? <TypewriterText text={m.content} animate={animate} /> : m.content}
                 {m.role === 'agent' && m.content.trim().length > 0 && (
                   m.offerRead
-                    ? <ReadAloudButton text={m.content} className="bubble-tts tts-offer" label="Đọc kết quả cho bạn" />
+                    ? <ReadAloudButton text={m.content} className="bubble-tts tts-offer" label="Read the result aloud" />
                     : <ReadAloudButton text={m.content} className="bubble-tts" />
                 )}
               </div>
@@ -320,11 +320,11 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
         {sr.supported && (voiceMode || voiceState !== 'idle') && (
           <div className={`voice-status is-${voiceState}`} role="status" aria-live="polite">
             <span className="voice-status-dot" aria-hidden="true" />
-            {voiceState === 'listening' && 'Đang nghe…'}
-            {voiceState === 'thinking' && 'Atria đang suy nghĩ…'}
-            {voiceState === 'speaking' && 'Atria đang nói — chạm mic để ngắt lời'}
-            {voiceState === 'idle' && 'Chế độ giọng nói bật — chạm mic để nói'}
-            {voiceMode && <span className="voice-status-exit"> · Esc để thoát</span>}
+            {voiceState === 'listening' && 'Listening…'}
+            {voiceState === 'thinking' && 'Atria is thinking…'}
+            {voiceState === 'speaking' && 'Atria is speaking — tap the mic to interrupt'}
+            {voiceState === 'idle' && 'Voice mode on — tap the mic to speak'}
+            {voiceMode && <span className="voice-status-exit"> · Esc to exit</span>}
           </div>
         )}
         <div className={`composer-box ${voiceState === 'listening' ? 'is-listening' : ''}`}>
@@ -334,8 +334,8 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void start(input); } }}
             placeholder={
-              voiceState === 'listening' ? 'Nói đi — Atria đang nghe…'
-              : showPlan ? 'Refine the plan — e.g. “thêm video” or “bỏ infographic”…'
+              voiceState === 'listening' ? 'Go ahead — Atria is listening…'
+              : showPlan ? 'Refine the plan — e.g. “add video” or “remove infographic”…'
               : 'Describe a marketing goal to orchestrate…'
             }
           />
@@ -345,7 +345,7 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
                 type="button"
                 className={`composer-voice ${voiceMode ? 'is-on' : ''}`}
                 onClick={toggleVoiceMode}
-                title={voiceMode ? 'Tắt chế độ giọng nói' : 'Bật chế độ giọng nói (rảnh tay)'}
+                title={voiceMode ? 'Turn off voice mode' : 'Turn on voice mode (hands-free)'}
                 aria-pressed={voiceMode}
                 aria-label="Voice mode"
               >🎙</button>
@@ -353,7 +353,7 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
                 type="button"
                 className={`composer-mic ${sr.listening ? 'is-listening' : ''}`}
                 onClick={micClick}
-                title={sr.listening ? 'Dừng nghe' : 'Nói với Atria'}
+                title={sr.listening ? 'Stop listening' : 'Talk to Atria'}
                 aria-label={sr.listening ? 'Stop listening' : 'Speak'}
               >{sr.listening ? '■' : '🎤'}</button>
             </>
