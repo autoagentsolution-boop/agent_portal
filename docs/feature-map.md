@@ -82,3 +82,6 @@ Fixes spurious "sorry, I ran into a problem" replies. `gemini-2.5-flash`'s **def
 - **docs(plan): mark P1/P2/P5 done, P3/P4 superseded by lightweight task seam** (bdef900)
   - `docs/feature-map.md`
   - `plans/260712-1649-atria-composable-planner/plan.md`
+- **fix(orchestration): explicit brain thinking budget — stop spurious empty-reply apologies** (b5c4f9c)
+  - `MKTAgent/src/orchestration/atria/atria-brain.ts`
+  - `docs/feature-map.md`
