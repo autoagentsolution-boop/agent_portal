@@ -4,6 +4,11 @@ Living record of features shipped and their real relationships in the app. Each 
 
 ## Features & relationships
 
+### Command Center: 2-tier grouped agent constellation (`93d3cdd`)
+The flat ~17-node ring was cluttered; now Atria → group → agent renders as a collapsible hierarchy, default collapsed to 5 group nodes.
+- **Taxonomy (display metadata ONLY):** re-split `agent-groups.ts` from 3 groups (the old "Action" held 8) into 5 phase-based groups — 🧠 Intelligence(4), 🎨 Creative(5), 📢 Delivery(2), 📊 Insight & Growth(4), ⚙️ Core(2: scheduler+summarize). Each runnable agent + vision agent reassigned. **Zero flow impact:** node selection keys on `produces`/`requires` (C1) and the thinking-budget policy (P6) keys on `agentId` — neither reads `group`, so golden 23/23 unaffected.
+- **CC render (`command-center-page.tsx`):** default shows only the 5 group nodes (emoji + count) ringing Atria; clicking one expands its members fanned around THAT group node (new `groupGeo`/`memberGeo`); one open at a time; clicking Atria collapses. Reuses the existing energy-link/flow-dot system on both tiers (new `cc-flow-sub` dot for group→member) and the agent panel (`openAgent`) for member clicks. Consumes `GET /orchestration/agents` (`groups` + per-agent `group`), unchanged contract.
+
 ### Composable planner — backward-chaining selection (C1, `0295323`)
 The planner selects agent nodes by **backward-chaining from requested output artifacts** instead of a marketing if-ladder.
 - **Depends on:** the agent registry's `produces`/`requires` graph (`registry/agent-registry.ts`); a new single-producer reverse index (`master/artifact-graph.ts`).
@@ -167,5 +172,14 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `MKTAgent/web/src/App.tsx`
   - `MKTAgent/web/src/components/OrchestratePanel.tsx`
   - `MKTAgent/web/src/components/atria-resume-work-cards.tsx`
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+  - `MKTAgent/web/src/styles.css`
+- **docs(feature-map): CC voice launch + dismissable resume cards relationships** (6013881)
+  - `docs/feature-map.md`
+- **feat(cc): collapsible 2-tier agent constellation grouped by function** (93d3cdd)
+  - `MKTAgent/src/api/orchestration-router.ts`
+  - `MKTAgent/src/orchestration/registry/agent-groups.ts`
+  - `MKTAgent/src/orchestration/registry/agent-registry.ts`
+  - `MKTAgent/src/orchestration/registry/vision-agents.ts`
   - `MKTAgent/web/src/components/command-center-page.tsx`
   - `MKTAgent/web/src/styles.css`
