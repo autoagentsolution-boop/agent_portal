@@ -171,9 +171,13 @@ model UserMemory {
 model RoadmapDemand {
   id        String   @id @default(uuid()) @db.Uuid
   ownerId   String   @map("owner_id") @db.Uuid
-  agentId   String   @map("agent_id") // roadmap agent id (email | memory | analytics)
-  action    String   // 'pitched' | 'accepted'
+  agentId   String   @map("agent_id") // roadmap agent id (email | memory | analytics) OR a requested capability id
+  action    String   // 'pitched' | 'accepted' | 'requested' (a user-driven capability gap)
   signal    String?  // the triggering signal label (e.g. "leads_no_email"), no personal data
+  // Auto-generated drop-in spec for a 'requested' capability gap: { produces, requires[], suggestedGate,
+  // exampleTask, whatItWouldDo } — shaped like a registry AgentDefinition so a dev can scaffold the node.
+  // Null for pitched/accepted rows.
+  spec      Json?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)

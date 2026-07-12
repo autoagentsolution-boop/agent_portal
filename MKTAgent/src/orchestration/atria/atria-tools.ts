@@ -13,6 +13,7 @@ import { mergeGoals } from '../master/goal-merge.ts';
 import { recordLlmUsage } from '../../cost/llm-usage.ts';
 import { parseScheduleTime } from './parse-schedule-time.ts';
 import { goalSpec, type GoalSpec } from '../schemas/goal-spec.ts';
+import { recordCapabilityGap, type CapabilityGapSpec } from '../../db/repos/roadmap-demand-repo.ts';
 
 // Per-turn state threaded through every tool call. `searched` accumulates citation labels (surfaced to
 // the user for transparency); `proposal` is set when the brain calls propose_workflow (the router turns
@@ -116,6 +117,22 @@ export const TOOL_DECLARATIONS = [
       'Run the workflow you ALREADY proposed (the flow card currently on screen). Use ONLY when the user explicitly says to run / proceed / execute / "chạy đi" AND a plan is already on the table. Atria generates the content, then the run HALTS at the approval gate before anything is published or sent — so this is safe. Do NOT use this to make a new plan (use propose_workflow), and do not call it if no workflow has been proposed yet.',
     parameters: { type: 'object', properties: {} },
   },
+  {
+    name: 'flag_capability_gap',
+    description:
+      'Use when the user asks for a capability you genuinely do NOT have — no tool above AND outside the agent pipeline (which covers social posts, campaigns, video, email, research). Examples: translate a document, transcribe audio, analyze a spreadsheet, build a slide deck. Do NOT force such a request into a marketing/email workflow and do NOT pretend to do it. This honestly logs the missing capability as demand for the team to build; afterwards, tell the user plainly you cannot do it yet but have flagged it.',
+    parameters: {
+      type: 'object',
+      properties: {
+        capability: { type: 'string', description: 'Short kebab-case id of the missing capability, e.g. "translate", "transcribe-audio", "analyze-spreadsheet".' },
+        what_it_would_do: { type: 'string', description: 'One sentence: what this capability would do for the user.' },
+        produces: { type: 'string', description: 'The output it would produce, e.g. "translated_text".' },
+        requires: { type: 'array', items: { type: 'string' }, description: 'Inputs it would need, e.g. ["source_text","target_language"].' },
+        example_task: { type: 'string', description: "The user's request in their own words." },
+      },
+      required: ['capability'],
+    },
+  },
 ] as const;
 
 // Dispatch one tool call. Returns a plain JSON-serializable result (never throws — a thrown tool
@@ -201,6 +218,30 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         if (outcome.status === 'planned') return { status: 'planned', agents: outcome.plan.nodes.map((n) => n.agentId), steps: outcome.plan.nodes.length };
         if (outcome.status === 'awaiting_clarification') return { status: 'need_more_info', missing: outcome.questions.map((q) => q.slot) };
         return { status: 'error', error: outcome.error };
+      }
+      case 'flag_capability_gap': {
+        const capability = str(args.capability).trim().slice(0, 60);
+        if (!capability) return { logged: false, note: 'No capability id given — tell the user plainly you cannot do that yet.' };
+        const requires = Array.isArray(args.requires) ? args.requires.map(str).filter(Boolean) : undefined;
+        const spec: CapabilityGapSpec = {
+          whatItWouldDo: str(args.what_it_would_do) || undefined,
+          produces: str(args.produces) || undefined,
+          requires: requires && requires.length ? requires : undefined,
+          exampleTask: (str(args.example_task) || ctx.message).slice(0, 500) || undefined,
+        };
+        // DB write must never break the turn — on failure the honest reply still stands (logged:false).
+        let logged = false;
+        try {
+          logged = await recordCapabilityGap(ctx.ownerId, capability, str(args.what_it_would_do) || null, spec);
+        } catch {
+          logged = false;
+        }
+        return {
+          logged,
+          note:
+            `You do NOT have this capability. In the user's language, tell them honestly you can't do "${capability}" yet, ` +
+            `that you've flagged it to the team${logged ? '' : ' (already on the list)'}, and offer what you CAN do if relevant. Never pretend to perform the task.`,
+        };
       }
       default:
         return { error: `unknown tool: ${name}` };

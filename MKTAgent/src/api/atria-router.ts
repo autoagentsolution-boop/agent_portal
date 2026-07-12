@@ -9,12 +9,19 @@ import { ok, fail, parseOr422, asyncHandler } from './http.ts';
 import { readSignals } from '../orchestration/atria/signal-reader.ts';
 import { suggestFor } from '../orchestration/atria/atria-suggestions.ts';
 import { ROADMAP_AGENTS, getRoadmapAgent } from '../orchestration/registry/roadmap-agents.ts';
-import { logRoadmapDemand, wasPitched } from '../db/repos/roadmap-demand-repo.ts';
+import { logRoadmapDemand, wasPitched, listDemand } from '../db/repos/roadmap-demand-repo.ts';
 
 export const atriaRouter: Router = Router();
 
 // The roadmap Atria knows about (UI reference for the pitch cards).
 atriaRouter.get('/roadmap', (_req, res) => ok(res, ROADMAP_AGENTS));
+
+// DEV backlog: this owner's demand log — pitched/accepted roadmap agents AND 'requested' capability
+// gaps (a capability the user asked for that no node produces yet, with an auto-generated drop-in spec).
+atriaRouter.get('/roadmap-demand', asyncHandler(async (req, res) => {
+  const rows = await listDemand(req.userId!);
+  ok(res, rows, { count: rows.length });
+}));
 
 // Ranked proactive suggestions. A roadmap pitch is logged once (demand) and then suppressed on
 // later polls so Atria doesn't nag; campaign suggestions always surface while their signal holds.
