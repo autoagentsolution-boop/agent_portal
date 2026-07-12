@@ -59,6 +59,11 @@ Fixes an English conversation producing a Vietnamese email. Content generators r
 A non-marketing run (email/task) is a post-less `kind=instance`, so one paused at an approval gate surfaced nowhere (Saved Flows = templates, Scheduled = already-approved, Workspace = campaigns) — reachable only by remembering its chat.
 - **Depends on:** `getRunByChat`/`selectChat` (reopening a chat restores the paused flow card, any status). **Adds:** `listResumableRuns` + `GET /orchestration/runs/resumable`; the Command Center "Continue where you left off" cards render these as ⚡ status-labelled cards that resume via the run's chat (de-duped from the plain recent-chat list). **Complements:** the Scheduled page (a run moves there once approved → `scheduled`).
 
+### Command Center voice launch + dismissable resume cards (`ab285f2`)
+Two CC quality-of-life additions on top of the resume-cards feature.
+- **Voice:** a 🎙️ button on the CC command bar opens Atria chat directly in hands-free voice mode. Reuses the OrchestratePanel voice stack (`useSpeechRecognition` + `tts-player` + `voiceMode`) via a new `autoVoice` prop that fires `toggleVoiceMode` on the false→true edge (the panel isn't remounted per open, so it watches the flag). `App.launchVoice` sets it; every other open path (`openOrchestrate`/`launchFromCommandCenter`/`selectChat`/`closeCcChat`) clears it. Gated on Web Speech API support.
+- **Dismiss:** each "Continue where you left off" card gets a ✕ that deletes the underlying item — chat → `DELETE /agent/chats/:id`, run/flow → `DELETE /orchestration/runs/:id` (a `running` run refuses 409 rather than orphaning its executor) — then refreshes the affected list. Depends on the resume-cards feature (`473875d`); the card is wrapped so the ✕ is a sibling, not a nested `<button>`.
+
 ## Commit ledger
 
 - **fix(orchestration): preserve email intent + recipient name across refine/confirm turns** (0733288)
@@ -156,3 +161,11 @@ A non-marketing run (email/task) is a post-less `kind=instance`, so one paused a
   - `MKTAgent/web/src/api/client.ts`
   - `MKTAgent/web/src/components/atria-resume-work-cards.tsx`
   - `MKTAgent/web/src/components/command-center-page.tsx`
+- **docs(feature-map): curate schedule-persistence, content-language, resume-cards relationships** (a345669)
+  - `docs/feature-map.md`
+- **feat(web): Command Center voice launch + dismissable resume cards** (ab285f2)
+  - `MKTAgent/web/src/App.tsx`
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+  - `MKTAgent/web/src/components/atria-resume-work-cards.tsx`
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+  - `MKTAgent/web/src/styles.css`
