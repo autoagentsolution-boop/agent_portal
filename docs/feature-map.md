@@ -63,3 +63,16 @@ Proves the composable-agent thesis end-to-end: a real capability drops in with *
   - `MKTAgent/src/orchestration/prompts/atria-brain-prompt.ts`
   - `MKTAgent/src/orchestration/verify-capability-gap.ts`
   - `docs/feature-map.md`
+- **feat(orchestration): summarize node — first non-marketing capability, reachable + composable (P5)** (caa2d27)
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/executor/agent-runners.ts`
+  - `MKTAgent/src/orchestration/master/master-agent.ts`
+  - `MKTAgent/src/orchestration/master/workflow-planner.ts`
+  - `MKTAgent/src/orchestration/prompts/atria-brain-prompt.ts`
+  - `MKTAgent/src/orchestration/registry/agent-registry.ts`
+  - `MKTAgent/src/orchestration/registry/agent-types.ts`
+  - `MKTAgent/src/orchestration/schemas/artifact-schemas.ts`
+  - `MKTAgent/src/orchestration/schemas/goal-spec.ts`
+  - `MKTAgent/src/orchestration/schemas/workflow-plan.ts`
+  - `MKTAgent/src/orchestration/verify-summarize-node.ts`
+  - `docs/feature-map.md`

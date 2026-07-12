@@ -23,13 +23,13 @@ Any capability chain — present or future — runs **standalone OR composed**, 
 ## Phases
 | # | Phase | Status | File |
 |---|-------|--------|------|
-| 1 | C1 — backward-chaining selection (registry-driven; golden-clean **incl. tiers+materializer**) | planned | [phase-01](phase-01-c1-backward-chaining.md) |
-| 2 | Capability-gap → **extend RoadmapDemand** (reuse, don't duplicate) — **keystone** | planned | [phase-02](phase-02-capability-gap-devnotify.md) |
-| 3 | C2 — general `WorkflowProposal` (adapter-first over MasterAgentOutcome) | planned | [phase-03](phase-03-c2-workflow-proposal.md) |
-| 4 | C3 — `TaskSpec` + **GoalSpec persistence/back-compat** for non-marketing intents | planned | [phase-04](phase-04-c3-taskspec.md) |
-| 5 | Node-authoring doc + full verify | planned | [phase-05](phase-05-node-authoring-verify.md) |
+| 1 | C1 — backward-chaining selection (registry-driven; golden-clean **incl. tiers+materializer**) | ✅ DONE (`6047d18`,`0295323`) | [phase-01](phase-01-c1-backward-chaining.md) |
+| 2 | Capability-gap → **extend RoadmapDemand** (reuse, don't duplicate) — **keystone** | ✅ DONE (`2861dbe`) | [phase-02](phase-02-capability-gap-devnotify.md) |
+| 5 | First non-marketing node (`summarize`) — reachable + composable + runs | ✅ DONE (`caa2d27`) | [phase-05](phase-05-node-authoring-verify.md) |
+| 3 | C2 — general `WorkflowProposal` (adapter-first over MasterAgentOutcome) | ⏸ SUPERSEDED/YAGNI | [phase-03](phase-03-c2-workflow-proposal.md) |
+| 4 | C3 — `TaskSpec` + GoalSpec persistence/back-compat | ⏸ SUPERSEDED/YAGNI | [phase-04](phase-04-c3-taskspec.md) |
 
-Phases 1–2 unblock the birthday case and the missing-node story — the highest-value slice. 3–4 generalize the brain's contract. 5 documents the recipe + closes verification.
+**Status (2026-07-12):** the highest-value slice (P1 + P2) shipped, then P5 authored the first real non-marketing node (`summarize`) end-to-end. P5 used a **lightweight seam** — a general `GoalSpec.taskTargets` + a `propose_task` brain tool — that delivered what C2/C3 (P3/P4) were meant to unlock, at a fraction of the cost. **P3/P4 are therefore superseded/YAGNI**: revisit only on a concrete need (multi-turn task refine, or a 3rd+ producer that justifies the general `WorkflowProposal` contract). Adding another utility = author node + runner + one `TASK_CAPABILITIES` row.
 
 ## Locked decisions (2026-07-12)
 - **Capability-gap channel:** **extend the existing `RoadmapDemand`** mechanism (`roadmap-demand-repo.ts` + `/atria` surface) — do NOT add a parallel `node_requests` table (DRY). Reuse `logRoadmapDemand(owner, capabilityId, 'requested', signal)` + a `wasRequested` dedup; add an optional `spec` (produces/requires/suggestedGate/exampleTask) column for auto-generated gap specs. **No email** (pull demand from the existing surface).
