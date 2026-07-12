@@ -32,6 +32,7 @@ export function App() {
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [savedRuns, setSavedRuns] = useState<SavedRunDto[]>([]);
+  const [resumableRuns, setResumableRuns] = useState<Array<{ id: string; name: string | null; status: string; chatSessionId: string | null; updatedAt: string }>>([]);
   const [chatSessions, setChatSessions] = useState<AgentChatSessionDto[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [orchestrateRestore, setOrchestrateRestore] = useState<OrchestrateRestore | null>(null);
@@ -117,6 +118,14 @@ export function App() {
   const loadSavedRuns = async () => {
     const r = await api.listSavedRuns();
     if (r.ok) setSavedRuns(r.data);
+  };
+
+  // In-flight Atria email/task runs (paused mid-flight, no campaign) for the CC "Continue where you
+  // left off" cards — they surface nowhere else, so without this a run paused at an approval gate is
+  // reachable only by remembering its chat. Refreshed on the same signals as chats/saved flows.
+  const loadResumableRuns = async () => {
+    const r = await api.listResumableRuns();
+    if (r.ok) setResumableRuns(r.data);
   };
 
   // Load ALL of the user's posts for the sidebar tree, independent of which campaign
@@ -221,6 +230,7 @@ export function App() {
     void api.listCampaigns().then((r) => { if (r.ok) setCampaigns(r.data); });
     void loadChats();
     void loadSavedRuns();
+    void loadResumableRuns();
     void loadAllPosts();
     void loadCredits();
     void loadWorkspaces();
@@ -272,8 +282,8 @@ export function App() {
       flowsWithoutStrategy={flowsWithoutStrategy}
       chats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
       notify={show}
-      onRunActivity={(sessionId) => { void loadChats(); if (!activeChatId) setActiveChatId(sessionId); bump(); }}
-      onSaved={() => { void loadSavedRuns(); }}
+      onRunActivity={(sessionId) => { void loadChats(); void loadResumableRuns(); if (!activeChatId) setActiveChatId(sessionId); bump(); }}
+      onSaved={() => { void loadSavedRuns(); void loadResumableRuns(); }}
       onSetupCampaign={(runId) => { void loadSavedRuns().then(() => setupFirstCampaign(runId)); }}
       onOpenFlow={(runId) => { void loadSavedRuns().then(() => openSavedFlow(runId)); }}
       onResumeChat={(id) => void selectChat(id)}
@@ -306,8 +316,11 @@ export function App() {
             onOpenWorkspaceConsumed={() => setOpenWorkspaceId(null)}
             onOpenConnections={() => { setSelectedRunId(null); setPage('connections'); }}
             onOpenBoard={(id) => { setActiveCampaign(id); setSelectedPostId(null); setSelectedRunId(null); setPage('flows'); }}
-            resumeChats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
+            resumeChats={chatSessions
+              .filter((c) => !resumableRuns.some((run) => run.chatSessionId === c.id))
+              .map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
             resumeFlows={flowsWithoutStrategy}
+            resumeRuns={resumableRuns.filter((run) => run.chatSessionId).map((run) => ({ id: run.id, name: run.name, status: run.status, chatSessionId: run.chatSessionId!, updatedAt: run.updatedAt }))}
             onResumeChat={(id) => void selectChat(id)}
             onOpenFlow={(id) => openSavedFlow(id)}
             chatActive={ccChatActive}

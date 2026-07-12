@@ -29,6 +29,7 @@ import {
   getLatestRunWithNodesForChat,
   listRuns,
   listSavedRuns,
+  listResumableRuns,
   nameRun,
   renameRun,
   replanRun,
@@ -629,6 +630,14 @@ orchestrationRouter.get('/runs/saved', asyncHandler(async (req, res) => {
 orchestrationRouter.get('/runs', asyncHandler(async (req, res) => {
   const rows = await listRuns(req.userId!);
   ok(res, rows.map((r) => ({ id: r.id, status: r.status, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })), { count: rows.length, nextCursor: null });
+}));
+
+// Resumable in-flight runs for the Command Center "Continue where you left off" cards: non-marketing
+// Atria runs (email / task) paused mid-flight with no campaign, resumed by reopening their chat.
+// Registered BEFORE /runs/:id so the static segment wins. Owner-scoped.
+orchestrationRouter.get('/runs/resumable', asyncHandler(async (req, res) => {
+  const rows = await listResumableRuns(req.userId!);
+  ok(res, rows.map((r) => ({ id: r.id, name: r.name, status: r.status, chatSessionId: r.chatSessionId, updatedAt: r.updatedAt.toISOString() })), { count: rows.length, nextCursor: null });
 }));
 
 // Scheduled runs for the Scheduled page (generic-scheduler node): parked runs (status='scheduled')

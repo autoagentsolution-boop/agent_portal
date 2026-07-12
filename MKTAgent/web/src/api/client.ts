@@ -495,6 +495,7 @@ export const api = {
   listRuns: () => request<Array<{ id: string; status: string; createdAt: string; updatedAt: string }>>('/orchestration/runs'),
   // Saved Flows (named runs) for the sidebar + Active Flows surface.
   listSavedRuns: () => request<SavedRunDto[]>('/orchestration/runs/saved'),
+  listResumableRuns: () => request<Array<{ id: string; name: string | null; status: string; chatSessionId: string | null; updatedAt: string }>>('/orchestration/runs/resumable'),
   deleteRun: (id: string) => request<void>(`/orchestration/runs/${id}`, { method: 'DELETE' }),
 
   // Generic scheduler (2026-07-12): parked runs (status='scheduled') queued for a timed re-entry, plus

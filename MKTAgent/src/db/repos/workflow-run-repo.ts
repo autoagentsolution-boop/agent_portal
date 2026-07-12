@@ -365,6 +365,25 @@ export const listSavedRuns = async (ownerId: string, limit = 50): Promise<RunLis
   return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, nodeCount: r._count.nodes, createdAt: r.createdAt, updatedAt: r.updatedAt }));
 };
 
+// Resumable in-flight run (Command Center "Continue where you left off"). A non-marketing Atria run —
+// email / task flow — is a kind='instance' with NO Post/campaign, so it surfaces NOWHERE else (Saved
+// Flows = templates only; Scheduled = already-approved 'scheduled'; Workspace = campaigns). Without this
+// a run paused at an approval gate is reachable only by remembering which chat spawned it. We list the
+// post-less instance runs that STARTED executing and paused, newest first. 'planned' is deliberately
+// excluded — a not-yet-executed proposal is transient and would flood the cards with abandoned drafts;
+// the recent-chat card already covers resuming those.
+export interface ResumableRunItem { id: string; name: string | null; status: string; chatSessionId: string | null; updatedAt: Date }
+const RESUMABLE_STATUSES = ['needs_approval', 'needs_connection', 'running'];
+export const listResumableRuns = async (ownerId: string, limit = 10): Promise<ResumableRunItem[]> => {
+  const rows = await prisma.workflowRun.findMany({
+    where: { ownerId, kind: 'instance', status: { in: RESUMABLE_STATUSES }, chatSessionId: { not: null }, posts: { none: {} } },
+    orderBy: { updatedAt: 'desc' },
+    take: limit,
+    select: { id: true, name: true, status: true, chatSessionId: true, updatedAt: true },
+  });
+  return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, chatSessionId: r.chatSessionId, updatedAt: r.updatedAt }));
+};
+
 // Name a planned run AND freeze it into a Flow template (Saved Flows). Guarded
 // transition keeps it scoped + only names a run that is still planned AND not yet named
 // — /save is the FIRST-time save, so a second call must no-op (renames go through

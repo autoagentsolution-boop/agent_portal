@@ -31,6 +31,7 @@ interface Props {
   // resume a hung chat/flow. Cards self-fetch their suggestions; these feed the "resume work" row.
   resumeChats?: Array<{ id: string; title: string; updatedAt: string }>;
   resumeFlows?: Array<{ id: string; name: string }>;
+  resumeRuns?: Array<{ id: string; name: string | null; status: string; chatSessionId: string; updatedAt: string }>;
   onResumeChat?: (id: string) => void;
   onOpenFlow?: (id: string) => void;
   // The live chat, hosted inside the CC (P2.1-2.3). When chatActive, the graph collapses to a
@@ -59,7 +60,7 @@ const nodePos = (i: number, total: number): { left: string; top: string } => {
   return { left: `${50 + Math.cos(ang) * 42}%`, top: `${50 + Math.sin(ang) * 40}%` };
 };
 
-export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], onResumeChat, onOpenFlow, chatActive = false, chatSlot, notify }: Props) {
+export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], resumeRuns = [], onResumeChat, onOpenFlow, chatActive = false, chatSlot, notify }: Props) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [cmd, setCmd] = useState('');
@@ -224,10 +225,11 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
             onAct={(kind) => setActedSuggestions((s) => new Set(s).add(kind))}
           />
         </section>
-        {(resumeChats.length > 0 || resumeFlows.length > 0) && onResumeChat && onOpenFlow && (
+        {(resumeChats.length > 0 || resumeFlows.length > 0 || resumeRuns.length > 0) && onResumeChat && onOpenFlow && (
           <AtriaResumeWorkCards
             chats={resumeChats.slice(0, 4)}
             flows={resumeFlows.slice(0, 4)}
+            runs={resumeRuns.slice(0, 4)}
             onResumeChat={onResumeChat}
             onOpenFlow={onOpenFlow}
           />
