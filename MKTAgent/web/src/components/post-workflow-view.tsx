@@ -25,6 +25,8 @@ const STATUS_HINT: Record<string, string> = {
   needs_connection: 'Connect a platform before running.',
   completed: 'Completed. Click any step to review or re-run it.',
   failed: 'A step failed — fix and re-run, or re-run the flow.',
+  scheduled: 'Scheduled — it will resume and run automatically at the confirmed time.',
+  cancelled: 'Cancelled — the scheduled run was called off.',
 };
 
 interface Copy { body: string; threads: string; x: string }

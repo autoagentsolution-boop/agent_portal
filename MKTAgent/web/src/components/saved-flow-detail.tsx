@@ -26,7 +26,7 @@ const STATUS_LABEL: Record<string, string> = {
   planned: 'Ready to run', running: 'Running…', needs_approval: 'Paused — approve to publish',
   completed: 'Completed', failed: 'Failed', awaiting_clarification: 'Needs detail',
   needs_connection: 'Connect a platform to run', template: 'Approved blueprint',
-  aborted: 'Aborted',
+  aborted: 'Aborted', scheduled: 'Scheduled — waiting for its time', cancelled: 'Cancelled',
 };
 
 // Short, human role for each agent so the blueprint reads as a "team" a non-tech user
