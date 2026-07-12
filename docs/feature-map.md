@@ -28,6 +28,9 @@ Proves the composable-agent thesis end-to-end: a real capability drops in with *
 - **Relationship to C1 + capability-gap:** C1 made selection target-driven so this composes with zero planner edits; capability-gap (P2) would have flagged "summarize" as missing — building it via the drop-in recipe **closes that loop** (gap → authored node → reachable). `TASK_CAPABILITIES` is where the next utility (translate, transcribe…) plugs in.
 - **Guarded by:** `verify-summarize-node` (planner compose + runner + brain seam + **real executor run** producing a stored `summary` artifact); golden 23/23 + email/scheduler/capability-gap verifies unregressed.
 
+### Atria brain reliability — explicit thinking budget (fix, this commit)
+Fixes spurious "sorry, I ran into a problem" replies. `gemini-2.5-flash`'s **default dynamic thinking** misbehaves with tools — it intermittently returns `finishReason=STOP` with EMPTY content parts, which the brain loop reads as a failed turn. Setting an **explicit** `thinkingConfig.thinkingBudget` (4096) in `atria-brain.ts` `doCall` fixes it deterministically while KEEPING real reasoning (the model self-limits below the ceiling). Measured: default → empty every time; explicit budget → a clean tool-call/reply every time. Baseline of a coming **per-agent-group thinking-budget policy** (see `plans/260712-1649-atria-composable-planner/phase-06-thinking-budget-policy.md`).
+
 ## Commit ledger
 
 - **fix(orchestration): preserve email intent + recipient name across refine/confirm turns** (0733288)
@@ -76,3 +79,6 @@ Proves the composable-agent thesis end-to-end: a real capability drops in with *
   - `MKTAgent/src/orchestration/schemas/workflow-plan.ts`
   - `MKTAgent/src/orchestration/verify-summarize-node.ts`
   - `docs/feature-map.md`
+- **docs(plan): mark P1/P2/P5 done, P3/P4 superseded by lightweight task seam** (bdef900)
+  - `docs/feature-map.md`
+  - `plans/260712-1649-atria-composable-planner/plan.md`

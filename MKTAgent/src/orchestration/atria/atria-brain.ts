@@ -64,7 +64,13 @@ const historyContents = (prior: PriorMessage[]): GeminiContent[] =>
 // server-side CachedContent — billed at the cached rate — so we omit it from the body; without one we
 // send it inline (unchanged behavior).
 const doCall = (contents: GeminiContent[], cache: string | null): Promise<Response> => {
-  const body: Record<string, unknown> = { contents, generationConfig: { temperature: 0.5 } };
+  // Atria KEEPS its thinking — but with an EXPLICIT budget, not the default. gemini-2.5-flash's DEFAULT
+  // (dynamic) thinking mode misbehaves with tools: it intermittently returns finishReason=STOP with EMPTY
+  // content parts (no tool call, no text), which the loop can only read as a failed turn → a spurious
+  // apology. An explicit thinkingBudget avoids that failure mode while preserving real reasoning headroom
+  // for deep-dive replies (the model still only spends what a turn needs). Measured: default → EMPTY every
+  // time; budget 512/2048 → a clean tool-call/reply every time with genuine thinking tokens used.
+  const body: Record<string, unknown> = { contents, generationConfig: { temperature: 0.5, thinkingConfig: { thinkingBudget: 4096 } } };
   if (cache) {
     body.cachedContent = cache;
   } else {
