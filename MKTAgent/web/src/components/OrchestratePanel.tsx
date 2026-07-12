@@ -49,6 +49,9 @@ interface Props {
   // Fired once, right after the auto-start send is dispatched, so the parent can CLEAR the prefill —
   // otherwise a remount (tab switch / refresh) would re-run autoStart and re-send (duplicate LLM call).
   onAutoStarted?: () => void;
+  // Opened from the Command Center voice button → enter hands-free voice mode on mount
+  // (mic in, TTS out, re-listen), so the user starts talking to Atria without a second click.
+  autoVoice?: boolean;
   // Empty-state "Continue where you left off" — recent chats + saved flows with no
   // campaign. Atria IS this surface, so the strategist home lives here, not on a hub page.
   chats: Array<{ id: string; title: string; updatedAt: string }>;
@@ -65,7 +68,7 @@ const starters = [
   'Write a short LinkedIn post about our new feature',
 ];
 
-export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, onAutoStarted, chats, onResumeChat }: Props) {
+export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, onAutoStarted, autoVoice, chats, onResumeChat }: Props) {
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   // Messages present at mount (restored history) render instantly; only messages added afterwards get
   // the typewriter reveal, and only the newest one (P3 — "alive" feel without re-typing old replies).
@@ -126,6 +129,13 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
 
   const voiceState: 'idle' | 'listening' | 'thinking' | 'speaking' =
     sr.listening ? 'listening' : busy ? 'thinking' : speaking ? 'speaking' : 'idle';
+
+  // Opened via the Command Center voice button → enter hands-free voice mode, so the user is already
+  // talking to Atria. Fires on the false→true edge (the panel is often NOT remounted per open, so this
+  // watches the flag rather than mount); the !voiceMode guard makes a repeat flag harmless.
+  useEffect(() => {
+    if (autoVoice && sr.supported && !voiceModeRef.current) toggleVoiceMode();
+  }, [autoVoice]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Esc exits voice mode / stops the round-trip (P3).
   useEffect(() => {

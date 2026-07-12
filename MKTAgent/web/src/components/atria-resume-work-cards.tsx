@@ -1,11 +1,13 @@
-// "Continue where you left off" cards for the Atria hub — recent chats (the DTO carries no
-// flow/campaign linkage, so they're labeled "Recent chat", not "unfinished") and saved flows
-// with no campaign yet.
+// "Continue where you left off" cards for the Atria hub — in-flight runs (paused/running, resumed via
+// their chat), recent chats, and saved flows with no campaign yet. Each card carries a dismiss ✕ that
+// deletes the underlying item (the user's own clutter) via onDismiss.
 // Pure presentation: resuming routes through the SAME handlers the sidebar uses (selectChat /
 // openSavedFlow), so this is an entry point, not a second implementation.
 interface ChatItem { id: string; title: string; updatedAt: string }
 interface FlowItem { id: string; name: string }
 interface RunItem { id: string; name: string | null; status: string; chatSessionId: string; updatedAt: string }
+
+type DismissKind = 'run' | 'chat' | 'flow';
 
 interface Props {
   chats: ChatItem[];
@@ -13,6 +15,7 @@ interface Props {
   runs?: RunItem[];
   onResumeChat: (id: string) => void;
   onOpenFlow: (id: string) => void;
+  onDismiss?: (kind: DismissKind, id: string) => void;
 }
 
 const dayLabel = (iso: string): string => {
@@ -31,41 +34,67 @@ const runStatusLabel = (status: string): string => {
   }
 };
 
-export function AtriaResumeWorkCards({ chats, flows, runs = [], onResumeChat, onOpenFlow }: Props) {
+// One card = an .atria-card button (the resume/open action) + a sibling ✕ inside a positioned wrapper,
+// so the dismiss control is never a <button> nested inside another <button> (invalid HTML).
+function ResumeCard(
+  { icon, title, sub, cta, onClick, onDismiss }:
+  { icon: string; title: string; sub: string; cta: string; onClick: () => void; onDismiss?: () => void },
+) {
+  return (
+    <div className="atria-card-wrap">
+      <button className="atria-card" onClick={onClick}>
+        <span className="atria-card-icon">{icon}</span>
+        <span className="atria-card-body">
+          <strong>{title}</strong>
+          <span className="muted small">{sub}</span>
+        </span>
+        <span className="atria-card-cta">{cta}</span>
+      </button>
+      {onDismiss && (
+        <button className="atria-card-dismiss icon-btn" aria-label="Xoá khỏi danh sách" title="Xoá" onClick={onDismiss}>×</button>
+      )}
+    </div>
+  );
+}
+
+export function AtriaResumeWorkCards({ chats, flows, runs = [], onResumeChat, onOpenFlow, onDismiss }: Props) {
   if (chats.length === 0 && flows.length === 0 && runs.length === 0) return null;
   return (
     <section>
       <h3 className="atria-section-title">Continue where you left off</h3>
       <div className="atria-card-grid">
         {runs.map((r) => (
-          <button key={r.id} className="atria-card" onClick={() => onResumeChat(r.chatSessionId)}>
-            <span className="atria-card-icon">⚡</span>
-            <span className="atria-card-body">
-              <strong>{r.name?.trim() || 'Untitled flow'}</strong>
-              <span className="muted small">{runStatusLabel(r.status)} · {dayLabel(r.updatedAt)}</span>
-            </span>
-            <span className="atria-card-cta">Resume →</span>
-          </button>
+          <ResumeCard
+            key={r.id}
+            icon="⚡"
+            title={r.name?.trim() || 'Untitled flow'}
+            sub={`${runStatusLabel(r.status)} · ${dayLabel(r.updatedAt)}`}
+            cta="Resume →"
+            onClick={() => onResumeChat(r.chatSessionId)}
+            onDismiss={onDismiss && (() => onDismiss('run', r.id))}
+          />
         ))}
         {chats.map((c) => (
-          <button key={c.id} className="atria-card" onClick={() => onResumeChat(c.id)}>
-            <span className="atria-card-icon">💬</span>
-            <span className="atria-card-body">
-              <strong>{c.title}</strong>
-              <span className="muted small">Recent chat · {dayLabel(c.updatedAt)}</span>
-            </span>
-            <span className="atria-card-cta">Resume →</span>
-          </button>
+          <ResumeCard
+            key={c.id}
+            icon="💬"
+            title={c.title}
+            sub={`Recent chat · ${dayLabel(c.updatedAt)}`}
+            cta="Resume →"
+            onClick={() => onResumeChat(c.id)}
+            onDismiss={onDismiss && (() => onDismiss('chat', c.id))}
+          />
         ))}
         {flows.map((f) => (
-          <button key={f.id} className="atria-card" onClick={() => onOpenFlow(f.id)}>
-            <span className="atria-card-icon">⚡</span>
-            <span className="atria-card-body">
-              <strong>{f.name}</strong>
-              <span className="muted small">Saved flow — no campaign started yet</span>
-            </span>
-            <span className="atria-card-cta">Open →</span>
-          </button>
+          <ResumeCard
+            key={f.id}
+            icon="⚡"
+            title={f.name}
+            sub="Saved flow — no campaign started yet"
+            cta="Open →"
+            onClick={() => onOpenFlow(f.id)}
+            onDismiss={onDismiss && (() => onDismiss('flow', f.id))}
+          />
         ))}
       </div>
     </section>

@@ -34,6 +34,8 @@ interface Props {
   resumeRuns?: Array<{ id: string; name: string | null; status: string; chatSessionId: string; updatedAt: string }>;
   onResumeChat?: (id: string) => void;
   onOpenFlow?: (id: string) => void;
+  onStartVoice?: () => void;
+  onDismissResume?: (kind: 'run' | 'chat' | 'flow', id: string) => void;
   // The live chat, hosted inside the CC (P2.1-2.3). When chatActive, the graph collapses to a
   // mini-hero and chatSlot (the OrchestratePanel, wired in App) renders below. onCloseChat returns home.
   chatActive?: boolean;
@@ -60,7 +62,10 @@ const nodePos = (i: number, total: number): { left: string; top: string } => {
   return { left: `${50 + Math.cos(ang) * 42}%`, top: `${50 + Math.sin(ang) * 40}%` };
 };
 
-export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], resumeRuns = [], onResumeChat, onOpenFlow, chatActive = false, chatSlot, notify }: Props) {
+// Web Speech API support (Chrome/Edge) — gate the mic button so it never shows a dead control.
+const VOICE_SUPPORTED = typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+
+export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], resumeRuns = [], onResumeChat, onOpenFlow, onStartVoice, onDismissResume, chatActive = false, chatSlot, notify }: Props) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [cmd, setCmd] = useState('');
@@ -203,6 +208,9 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
             onChange={(e) => setCmd(e.target.value)}
             placeholder="Ra lệnh cho Atria bằng ngôn ngữ tự nhiên…"
           />
+          {VOICE_SUPPORTED && onStartVoice && (
+            <button type="button" className="cc-mic" aria-label="Trò chuyện bằng giọng nói với Atria" title="Trò chuyện bằng giọng nói với Atria" onClick={onStartVoice}>🎙️</button>
+          )}
           <button type="submit" className="cc-send" aria-label="Gửi">➤</button>
         </div>
         <div className="cc-quick">
@@ -232,6 +240,7 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
             runs={resumeRuns.slice(0, 4)}
             onResumeChat={onResumeChat}
             onOpenFlow={onOpenFlow}
+            onDismiss={onDismissResume}
           />
         )}
       </div>

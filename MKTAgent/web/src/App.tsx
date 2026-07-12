@@ -38,6 +38,9 @@ export function App() {
   const [orchestrateRestore, setOrchestrateRestore] = useState<OrchestrateRestore | null>(null);
   // Command typed on the Command Center, carried once into a fresh Orchestrate composer.
   const [orchestratePrefill, setOrchestratePrefill] = useState<string | null>(null);
+  // Set true only when the CC voice button opens the chat → OrchestratePanel enters hands-free voice
+  // mode on mount. Cleared by every other open path so a normal chat never auto-listens.
+  const [orchestrateAutoVoice, setOrchestrateAutoVoice] = useState(false);
   // Top-nav-owned state (Command Center Unification P1): credits + workspaces feed the global top bar;
   // a workspace picked in the top-nav Workspace menu opens on the Command Center via openWorkspaceId.
   const [credits, setCredits] = useState<number | null>(null);
@@ -79,6 +82,7 @@ export function App() {
     // normal Orchestrate conversation. (The old Master Agent setup surface is retired.)
     const runRes = await api.getRunByChat(id);
     setOrchestratePrefill(null); // restored chats must never re-trigger a stale auto-send
+    setOrchestrateAutoVoice(false); // resuming a chat is not a voice launch
     setOrchestrateRestore({
       sessionId: id,
       messages: r.data.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -88,7 +92,10 @@ export function App() {
     setPage('command-center'); // chat now hosted INSIDE the Command Center (P2.3)
   };
 
-  const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setOrchestratePrefill(null); setCcChatOpen(true); setPage('command-center'); };
+  const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setOrchestratePrefill(null); setOrchestrateAutoVoice(false); setCcChatOpen(true); setPage('command-center'); };
+
+  // CC voice button → open Atria chat straight into hands-free voice mode (mic in, TTS out).
+  const launchVoice = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setOrchestratePrefill(null); setOrchestrateAutoVoice(true); setCcChatOpen(true); setPage('command-center'); };
 
   // Command bar / Atria core → open the chat, now hosted INSIDE the Command Center (P2.2). A non-empty
   // prefill (a typed command or an accepted Atria suggestion) is a SEND — the panel auto-submits it so
@@ -96,12 +103,13 @@ export function App() {
   const launchFromCommandCenter = (prefill?: string) => {
     setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null);
     setOrchestratePrefill(prefill ?? null);
+    setOrchestrateAutoVoice(false);
     setCcChatOpen(true);
     setPage('command-center');
   };
 
   const ccChatActive = ccChatOpen;
-  const closeCcChat = () => { setCcChatOpen(false); setOrchestratePrefill(null); setOrchestrateRestore(null); setActiveChatId(null); };
+  const closeCcChat = () => { setCcChatOpen(false); setOrchestratePrefill(null); setOrchestrateRestore(null); setActiveChatId(null); setOrchestrateAutoVoice(false); };
 
   // Returning to the CC (tab switch / back) with an open chat but no live restore → re-hydrate it from
   // the active session so the conversation reappears WITHOUT re-sending. Only runs on a page transition
@@ -126,6 +134,17 @@ export function App() {
   const loadResumableRuns = async () => {
     const r = await api.listResumableRuns();
     if (r.ok) setResumableRuns(r.data);
+  };
+
+  // Dismiss a "Continue where you left off" card = delete the underlying item (the user's own clutter):
+  // a chat, an in-flight run, or a saved flow. The ✕ click IS the consent, so no extra confirm; a
+  // running run refuses (409) rather than orphaning its executor. Refresh only the affected list.
+  const dismissResumeItem = async (kind: 'run' | 'chat' | 'flow', id: string) => {
+    const r = kind === 'chat' ? await api.deleteAgentChat(id) : await api.deleteRun(id);
+    if (!r.ok) { show(`Không xoá được: ${r.error.error}`, 'err'); return; }
+    if (kind === 'chat') void loadChats();
+    else if (kind === 'run') void loadResumableRuns();
+    else void loadSavedRuns();
   };
 
   // Load ALL of the user's posts for the sidebar tree, independent of which campaign
@@ -279,6 +298,7 @@ export function App() {
       initialInput={orchestratePrefill ?? undefined}
       autoStart={Boolean(orchestratePrefill)}
       onAutoStarted={() => setOrchestratePrefill(null)}
+      autoVoice={orchestrateAutoVoice}
       flowsWithoutStrategy={flowsWithoutStrategy}
       chats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
       notify={show}
@@ -323,6 +343,8 @@ export function App() {
             resumeRuns={resumableRuns.filter((run) => run.chatSessionId).map((run) => ({ id: run.id, name: run.name, status: run.status, chatSessionId: run.chatSessionId!, updatedAt: run.updatedAt }))}
             onResumeChat={(id) => void selectChat(id)}
             onOpenFlow={(id) => openSavedFlow(id)}
+            onStartVoice={launchVoice}
+            onDismissResume={dismissResumeItem}
             chatActive={ccChatActive}
             chatSlot={orchestratePanelEl}
             notify={show}
