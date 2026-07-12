@@ -8,6 +8,7 @@ import { deterministicReply, conversationAuthor } from './master/conversation-au
 import { detectLanguage } from './master/detect-language.ts';
 import { mergeGoals, applyRemovals } from './master/goal-merge.ts';
 import { parseRemovals } from './master/deterministic-analyzer.ts';
+import { goalSpec } from './schemas/goal-spec.ts';
 import { agentIdList } from './schemas/workflow-plan.ts';
 import { env } from '../config/env.ts';
 
@@ -111,6 +112,26 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
 
   const mergedOut = new MasterAgent().planFromGoal(merged);
   check('merged still plans (no re-clarify)', mergedOut.status === 'planned', mergedOut.status);
+
+  // qualityPref (Phase 06) survives a refine turn: a bare delta analyzes as the 'standard' default, so
+  // without carry-over a stated "high quality" is silently reset (loses the per-node thinking budget).
+  const hi = analyzeDeterministic('viết bài chất lượng cao về cà phê trên facebook');
+  check('rich baseline detects high qualityPref', hi.qualityPref === 'high', hi.qualityPref);
+  const hiMerged = mergeGoals(hi, analyzeDeterministic('thêm ảnh nữa'));
+  check('merge keeps high qualityPref across refine', hiMerged.qualityPref === 'high', hiMerged.qualityPref);
+  const reMerged = mergeGoals(hi, analyzeDeterministic('làm nhanh thôi, tiết kiệm'));
+  check('a new stated pref wins (high → economy)', reMerged.qualityPref === 'economy', reMerged.qualityPref);
+
+  // taskTargets + sourceText (non-marketing task) survive a refine: mergeGoals must NOT revert a task
+  // goal to a marketing publish flow by dropping these (the latent gap — real once a 2nd task capability
+  // or multi-turn task refine lands).
+  const task = goalSpec.parse({ taskTargets: ['summary'], outputs: { needsTextPost: false, needsPublishing: false }, slots: { sourceText: 'A long article about tea economics.' }, provider: 'atria-task' });
+  const taskMerged = mergeGoals(task, analyzeDeterministic('cho tôi thêm bullet points'));
+  check('merge keeps taskTargets', JSON.stringify(taskMerged.taskTargets) === JSON.stringify(['summary']), taskMerged.taskTargets);
+  check('merge keeps sourceText', Boolean(taskMerged.slots.sourceText), taskMerged.slots.sourceText);
+  const taskOut = new MasterAgent().planFromGoal(taskMerged);
+  const taskAgents = taskOut.status === 'planned' ? agentIdList(taskOut.plan) : [taskOut.status];
+  check('merged task still selects summarize (not a marketing flow)', JSON.stringify(taskAgents) === JSON.stringify(['summarize']), taskAgents);
 }
 
 // Subtractive refinement: a removal phrase ("bỏ video") must un-set the named output

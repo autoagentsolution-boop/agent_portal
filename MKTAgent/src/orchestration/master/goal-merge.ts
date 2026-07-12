@@ -79,8 +79,20 @@ export const mergeGoals = (prior: GoalSpec, delta: GoalSpec): GoalSpec => {
       // has no address) keeps who the email is for. Paired with needsEmail above.
       emailTo: fillIfEmpty(prior.slots.emailTo, delta.slots.emailTo),
       emailSubject: fillIfEmpty(prior.slots.emailSubject, delta.slots.emailSubject),
+      // sourceText: the input for a non-marketing utility task (summarize). A refine turn's delta
+      // carries none, so keep prior — else the merged goal loses the very text it operates on.
+      sourceText: fillIfEmpty(prior.slots.sourceText, delta.slots.sourceText),
     },
+    // taskTargets: a NON-marketing task goal is selected backward from these. mergeGoals otherwise
+    // rebuilds a marketing-shaped goal (taskTargets undefined) → the task silently reverts to a publish
+    // flow on any refine. Carry prior unless the delta explicitly re-targets (delta wins). Latent until a
+    // 2nd task capability or multi-turn task refine makes propose_workflow-on-a-task a normal path.
+    taskTargets: delta.taskTargets ?? prior.taskTargets,
     schedule: mergeSchedule(prior.schedule, delta.schedule),
+    // qualityPref (Phase 06): survives refine — a marketing delta analyzes as the 'standard' default, so
+    // without this a user's stated "chất lượng cao"/"high quality" is silently reset on the next turn.
+    // A later turn that states a NEW preference (non-default) wins; else keep what was gathered.
+    qualityPref: delta.qualityPref !== 'standard' ? delta.qualityPref : prior.qualityPref,
     confidence: Math.max(prior.confidence, delta.confidence),
     provider: delta.provider,
   });

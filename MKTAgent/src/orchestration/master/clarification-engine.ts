@@ -70,6 +70,14 @@ export const evaluateClarification = (
 ): ClarificationResult => {
   const q: ClarificationQuestion[] = [];
 
+  // A NON-marketing utility task (taskTargets set — e.g. summarize) carries its own inputs (sourceText)
+  // and has NO marketing slots to interrogate; every question below (product / output_format / platforms)
+  // is marketing-shaped and would wrongly block it. Input sufficiency is enforced by the runner (fails
+  // loud on empty), not here. So a task goal is always ready. This closes the marketing-clarification leg
+  // of the task seam even on the (LLM-misroute) path that reaches here without skipClarification. Marketing
+  // goals never set taskTargets → byte-identical for them (golden unaffected).
+  if (goal.taskTargets && goal.taskTargets.length) return { status: 'ready' };
+
   // A creative/topic request ("make a short video about English vocabulary for kids") is NOT a
   // product sell — the TOPIC is the subject, so we must not interrogate for product depth
   // (differentiator/proof/audience) it will never have. Treat the goal as subject-sufficient when
