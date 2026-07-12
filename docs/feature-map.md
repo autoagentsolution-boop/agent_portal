@@ -31,6 +31,14 @@ Proves the composable-agent thesis end-to-end: a real capability drops in with *
 ### Atria brain reliability — explicit thinking budget (fix, this commit)
 Fixes spurious "sorry, I ran into a problem" replies. `gemini-2.5-flash`'s **default dynamic thinking** misbehaves with tools — it intermittently returns `finishReason=STOP` with EMPTY content parts, which the brain loop reads as a failed turn. Setting an **explicit** `thinkingConfig.thinkingBudget` (4096) in `atria-brain.ts` `doCall` fixes it deterministically while KEEPING real reasoning (the model self-limits below the ceiling). Measured: default → empty every time; explicit budget → a clean tool-call/reply every time. Baseline of a coming **per-agent-group thinking-budget policy** (see `plans/260712-1649-atria-composable-planner/phase-06-thinking-budget-policy.md`).
 
+### Per-agent-group thinking-budget policy (P6, `f2c9f98`)
+Generalizes the brain fix above into a per-node policy: one module maps each registry agentId to its gemini-2.5 `thinkingBudget` ceiling — reasoning nodes 4096, creative nodes scaled by a new `goal.qualityPref`, `summarize` scaled by source length, action nodes 0. The budget is a CEILING (the model self-limits below it), so a generous value is ~free on easy turns.
+- **Depends on:** the explicit-brain-budget fix (`b5c4f9c`) that established WHY (dynamic thinking + tools → empty replies); the `llm-json` seam (`callGeminiJson` now takes `opts.thinkingBudget`); `GoalSpec` (new `qualityPref` — additive, nullish-safe, so old persisted `wf_run.goal` rows default cleanly).
+- **How (the zero-per-runner trick):** `agent-executor.executeNode` computes `thinkingBudgetFor(agentId, ctx)` and binds it onto `ctx.llmJsonFn` — but ONLY when the seam is the real call (a DRY-RUN stub sets `llmJsonFn`, so verification's no-spend/no-network contract is preserved). Every `ctx.llmJsonFn ?? callGeminiJson` runner (`ideation`, `strategy`, `campaign_strategist`, `email_writer`, `summarize`, `storyboard`/`video` planning) inherits its budget automatically. `atria-brain.doCall` reads the shared `BRAIN_THINKING_BUDGET`.
+- **Flows touched:** intake — `requirement-analyzer` + `deterministic-analyzer` detect a stated quality preference conversationally ("chất lượng cao"/"high quality" → high; "nhanh"/"tiết kiệm" → economy) → any orchestration run applies the per-node budget on the wire.
+- **Deliberately NOT touched:** node SELECTION (golden 23/23 unchanged — `qualityPref`/budget never change which nodes run) and copygen (`concept_writer` keeps `thinkingBudget:0`, the hard-won JSON-truncation fix), so the creative tier effectively lands on `email_writer`. `memory`/`analytics` seams are outside the runner map (default budget; dynamic growth deferred).
+- **Guarded by:** `verify-thinking-budget` (25 checks: policy math + `callGeminiJson` body + real executor run proving the budget reaches the wire per node + DRY-RUN pass-through); golden 23/23 + summarize regression green.
+
 ## Commit ledger
 
 - **fix(orchestration): preserve email intent + recipient name across refine/confirm turns** (0733288)
@@ -99,8 +107,5 @@ Fixes spurious "sorry, I ran into a problem" replies. `gemini-2.5-flash`'s **def
   - `MKTAgent/src/orchestration/verify-thinking-budget.ts`
   - `docs/feature-map.md`
   - `plans/260712-1649-atria-composable-planner/phase-06-thinking-budget-policy.md`
-
-  **What:** A single policy module (`thinking-budget.ts`) that maps each registry agentId to the gemini-2.5 `thinkingBudget` ceiling used for its LLM call — reasoning nodes 4096, creative nodes scaled by a new `goal.qualityPref`, `summarize` scaled by source length, action nodes 0.
-  **Depends on:** the earlier explicit-brain-budget fix (`b5c4f9c`) that established WHY an explicit budget is needed (dynamic thinking + tools → empty replies); the `llm-json` seam (`callGeminiJson`) which now accepts an `opts.thinkingBudget`; `GoalSpec` (new `qualityPref` field, additive/nullish-safe).
-  **Now depends on it:** `agent-executor.executeNode` binds the per-node budget onto `ctx.llmJsonFn` for every `ctx.llmJsonFn ?? callGeminiJson` runner (`ideation`, `strategy`, `campaign_strategist`, `email_writer`, `summarize`, `storyboard`/`video` planning) with zero per-runner edits; `atria-brain.doCall` reads the shared `BRAIN_THINKING_BUDGET`.
-  **Flows touched:** intake (`requirement-analyzer` + `deterministic-analyzer` now detect a stated quality preference conversationally) → any orchestration run (per-node budget on the wire). Deliberately NOT touched: node SELECTION (golden 23/23 unchanged) and copygen (`concept_writer` keeps `thinkingBudget:0` — the JSON-truncation fix), so the creative tier effectively lands on `email_writer`.
+- **docs(feature-map): describe P6 thinking-budget policy relationships** (a9aac26)
+  - `docs/feature-map.md`
