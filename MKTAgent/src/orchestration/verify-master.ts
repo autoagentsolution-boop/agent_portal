@@ -132,6 +132,32 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   const taskOut = new MasterAgent().planFromGoal(taskMerged);
   const taskAgents = taskOut.status === 'planned' ? agentIdList(taskOut.plan) : [taskOut.status];
   check('merged task still selects summarize (not a marketing flow)', JSON.stringify(taskAgents) === JSON.stringify(['summarize']), taskAgents);
+
+  // Scheduled-email carry: a run persisted on the set_schedule turn holds schedule.confirmed=false; the
+  // confirm turn (a bare delta, no new schedule proposal) merges onto it → mergeGoals must keep schedule.at
+  // and the overlay flips it confirmed → the planner splices the ⏰ scheduler. Regression guard for the
+  // 2026-07-12 lost-schedule bug (plan came out email_writer→email_agent, no scheduler).
+  const master = new MasterAgent();
+  const agentsOf = (o: ReturnType<MasterAgent['planFromGoal']>): string[] => (o.status === 'planned' ? agentIdList(o.plan) : [o.status]);
+  const emailBase = analyzeDeterministic('Gửi email chúc mừng sinh nhật cho bạn tôi, email nghiep@example.com, vui vẻ thân mật');
+  const pendingSched = goalSpec.parse({ ...emailBase, schedule: { phrase: 'sáng mai', at: '2026-07-13T01:00:00Z', timezone: 'Asia/Bangkok', confirmed: false } });
+  const pendingOut = master.planFromGoal(pendingSched);
+  check('unconfirmed schedule → NO scheduler yet', !agentsOf(pendingOut).includes('scheduler'), agentsOf(pendingOut));
+  // Carry: a bare confirm turn (delta has no schedule) must keep schedule.at from the persisted run — the
+  // exact link that broke (schedule dropped → scheduler never spliced). Uses a schedule-only delta so the
+  // assertion isolates the carry from the marketing-flag defaults an empty analyze would introduce.
+  const nb = analyzeDeterministic('ok');
+  const neutralDelta = goalSpec.parse({ ...nb, outputs: { ...nb.outputs, needsTextPost: false, needsPublishing: false, needsEmail: false } });
+  const confirmMerged = mergeGoals(pendingSched, neutralDelta);
+  check('merge keeps schedule.at across the confirm turn', confirmMerged.schedule?.at === '2026-07-13T01:00:00Z', confirmMerged.schedule);
+  check('merge keeps needsEmail across the confirm turn', confirmMerged.outputs.needsEmail === true, confirmMerged.outputs);
+  // Splice: once confirmed, the planner inserts the ⏰ scheduler between email_writer and email_agent.
+  const confirmedGoal = goalSpec.parse({ ...confirmMerged, schedule: { ...confirmMerged.schedule!, confirmed: true } });
+  const schedAgents = agentsOf(master.planFromGoal(confirmedGoal));
+  check('confirmed schedule splices scheduler before email_agent', schedAgents.includes('scheduler') && schedAgents.indexOf('scheduler') < schedAgents.indexOf('email_agent'), schedAgents);
+  // Reply must read the parsed time back + ask to confirm while unconfirmed (the seam that was missing).
+  const unconfirmedReply = deterministicReply(pendingOut);
+  check('reply asks to confirm the parsed time', /confirm/i.test(unconfirmedReply), unconfirmedReply.slice(0, 160));
 }
 
 // Subtractive refinement: a removal phrase ("bỏ video") must un-set the named output

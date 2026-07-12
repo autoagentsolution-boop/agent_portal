@@ -108,7 +108,7 @@ export const TOOL_DECLARATIONS = [
   {
     name: 'set_schedule',
     description:
-      'Parse a natural-language time ("tomorrow morning", "next Mon 9am", "sáng mai") into ONE exact absolute instant, so a later action (e.g. sending an email) can happen at that time. Call this when the user wants an action to run at a specific FUTURE time. It returns the exact instant + timezone for you to read back and ask the user to confirm — it schedules NOTHING by itself. After the user confirms, call propose_workflow so the flow includes the scheduler.',
+      'Parse a natural-language time ("tomorrow morning", "next Mon 9am", "sáng mai") into ONE exact absolute instant, so a later action (e.g. sending an email) can happen at that time. Call this when the user wants an action to run at a specific FUTURE time. It returns the exact instant + timezone for you to read back and ask the user to confirm — it schedules NOTHING by itself. IMPORTANT: in the SAME turn, right after this, also call propose_workflow so the draft flow is created and the parsed time is carried on it (still UNconfirmed); then read the time back and ask the user to confirm. After they confirm, call propose_workflow again — the flow then includes the ⏰ scheduler step.',
     parameters: {
       type: 'object',
       properties: { when_phrase: { type: 'string', description: 'The time expression exactly as the user said it.' } },
@@ -210,7 +210,7 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
           proposed_time_utc: parsed.atUtc,
           timezone: parsed.timezone,
           human_confirm: parsed.humanConfirm,
-          note: 'Read the exact time + timezone back to the user and ask them to confirm. Do NOT say it is scheduled yet. After they confirm, call propose_workflow.',
+          note: 'Now, in THIS same turn, call propose_workflow so the draft flow is created carrying this time (it stays UNconfirmed until the user agrees). Then read the exact time + timezone back to the user and ask them to confirm — do NOT say it is scheduled yet. After they confirm, call propose_workflow again; the flow will then include the ⏰ scheduler step.',
         };
       }
       case 'propose_workflow': {

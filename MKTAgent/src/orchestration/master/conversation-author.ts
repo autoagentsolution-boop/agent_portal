@@ -72,23 +72,51 @@ const outcomeContext = (outcome: MasterAgentOutcome, replyLanguage: string | nul
   };
   const lang = replyLanguage ? { replyLanguage } : {};
   const workspace = report ? { workspaceReport: report } : {};
+  // Schedule confirm seam: when the goal carries a parsed-but-unconfirmed time, the reply MUST read the
+  // exact instant back and ask the user to confirm before anything is scheduled. Surfaced here so both
+  // the LLM prompt and (via the fallback) the no-key path can voice it.
+  const sched = outcome.goal.schedule?.at
+    ? { schedule: { at: outcome.goal.schedule.at, timezone: outcome.goal.schedule.timezone ?? null, confirmed: Boolean(outcome.goal.schedule.confirmed) } }
+    : {};
   if (outcome.status === 'awaiting_clarification') {
-    return { ...lang, ...workspace, status: outcome.status, goal, questions: outcome.questions.map((q) => ({ slot: q.slot, question: q.question, required: q.required })) };
+    return { ...lang, ...workspace, ...sched, status: outcome.status, goal, questions: outcome.questions.map((q) => ({ slot: q.slot, question: q.question, required: q.required })) };
   }
   if (outcome.status === 'planned') {
     const agents = outcome.plan.nodes.map((n) => n.agentId);
-    return { ...lang, ...workspace, status: outcome.status, goal, plan: { agents, nodeCount: outcome.plan.nodes.length, platforms: outcome.goal.platforms } };
+    return { ...lang, ...workspace, ...sched, status: outcome.status, goal, plan: { agents, nodeCount: outcome.plan.nodes.length, platforms: outcome.goal.platforms } };
   }
-  return { ...lang, ...workspace, status: outcome.status, goal, error: outcome.error, detail: outcome.detail };
+  return { ...lang, ...workspace, ...sched, status: outcome.status, goal, error: outcome.error, detail: outcome.detail };
 };
 
 // Plain-language fallback composed from the structured outcome — no LLM. Keeps the
 // surface usable (and verify deterministic) when GEMINI_API_KEY is absent.
+// Human-readable local time for the no-LLM fallback. Best-effort Intl formatting in the schedule's
+// timezone; degrades to the raw ISO instant if the zone is unknown/invalid (never throws).
+const formatScheduleInstant = (at: string, timezone: string | null): string => {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone ?? 'UTC', dateStyle: 'full', timeStyle: 'short', hour12: true,
+    });
+    return `${fmt.format(new Date(at))}${timezone ? ` (${timezone})` : ' (UTC)'}`;
+  } catch {
+    return `${at}${timezone ? ` (${timezone})` : ''}`;
+  }
+};
+
+// Confirm-ask appended when the goal carries a parsed-but-unconfirmed schedule — the exact instant read
+// back so a mis-parsed time is caught before it is scheduled. Empty once confirmed.
+const scheduleConfirmTail = (outcome: MasterAgentOutcome): string => {
+  const s = outcome.goal.schedule;
+  if (!s?.at || s.confirmed) return '';
+  return ` I've read the time as ${formatScheduleInstant(s.at, s.timezone ?? null)} — please confirm that's right before I schedule anything.`;
+};
+
 export const deterministicReply = (outcome: MasterAgentOutcome, report?: WorkspaceReport | null): string => {
   // Campaign-scope turns open with the workspace snapshot — even without an LLM, the
   // reply should show what already exists before proposing the new plan.
   const reportLead = report ? `${formatWorkspaceReport(report)}\n\n` : '';
   const product = outcome.goal.slots.product?.trim();
+  const scheduleTail = scheduleConfirmTail(outcome);
   if (outcome.status === 'awaiting_clarification') {
     const lead = product
       ? `Got it — a marketing flow for ${product}.`
@@ -97,7 +125,7 @@ export const deterministicReply = (outcome: MasterAgentOutcome, report?: Workspa
     const tail = asks.length
       ? ` To plan the right workflow I need a bit more: ${asks.join(' ')}`
       : ` Tell me a little more so I can plan the right steps.`;
-    return reportLead + lead + tail;
+    return reportLead + lead + tail + scheduleTail;
   }
   if (outcome.status === 'planned') {
     const agents = outcome.plan.nodes.map((n) => n.agentId.replace(/_/g, ' '));
@@ -105,9 +133,9 @@ export const deterministicReply = (outcome: MasterAgentOutcome, report?: Workspa
     if (outcome.goal.campaignScope !== 'single') {
       const weeks = outcome.goal.duration?.weeks ?? 4;
       const perWeek = outcome.goal.cadence?.postsPerWeek ?? 3;
-      return `${reportLead}Here's my proposal${product ? ` for ${product}` : ''}: a ${weeks}-week campaign at ${perWeek} post(s)/week on ${platforms}. I'll run ${agents.join(' → ')} to draft the full content calendar for your review. Nothing is created or published until you approve — review the plan below and approve to start.`;
+      return `${reportLead}Here's my proposal${product ? ` for ${product}` : ''}: a ${weeks}-week campaign at ${perWeek} post(s)/week on ${platforms}. I'll run ${agents.join(' → ')} to draft the full content calendar for your review. Nothing is created or published until you approve — review the plan below and approve to start.${scheduleTail}`;
     }
-    return `${reportLead}Here's the plan${product ? ` for ${product}` : ''}: I'll run ${agents.join(' → ')} across ${outcome.plan.nodes.length} step(s), publishing to ${platforms}. Nothing is published until you approve — review the workflow below and hit approve to start.`;
+    return `${reportLead}Here's the plan${product ? ` for ${product}` : ''}: I'll run ${agents.join(' → ')} across ${outcome.plan.nodes.length} step(s), publishing to ${platforms}. Nothing is published until you approve — review the workflow below and hit approve to start.${scheduleTail}`;
   }
   return `${reportLead}I couldn't finalize a plan: ${outcome.error}. Add the missing detail and I'll try again.`;
 };
