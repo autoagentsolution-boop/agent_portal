@@ -45,6 +45,20 @@ Closes the one real gap found when rescanning whether P3/P4 (general `WorkflowPr
 - **Blast radius:** none for marketing (goals never set `taskTargets` → golden 23/23 byte-identical). **Defers:** P3/P4 remain YAGNI; revive trigger = a 2nd `TASK_CAPABILITIES` entry or real multi-turn task refinement.
 - **Guarded by:** `verify-master` (task-goal survives merge + still selects `summarize`; `qualityPref` survives refine; a new stated pref wins).
 
+### Scheduled email: confirmed schedule persists across turns (`0f89f51`)
+Fixes a birthday email + "tomorrow morning" planning as `email_writer → email_agent` with no `scheduler` node. The splice (`workflow-planner`) and carry-via-`priorGoal` were correct; the schedule was never persisted because `set_schedule` wrote to a turn-scoped `ctx.scheduleProposal` that only lands on a run if `propose_workflow` runs the same turn — and the tool note told the model to defer it (contradicting the system prompt).
+- **Depends on:** the generic-scheduler node + `email_writer→scheduler→email_agent` composition (Composable planner C1). **Touches:** `atria-tools` (set_schedule guidance), `conversation-author` (now surfaces `schedule{at,timezone,confirmed}` so the reply reads the time back to confirm), `conversation-prompt`.
+- **Guarded by:** `verify-master` (merge keeps `schedule.at`+`needsEmail`; confirmed goal splices `scheduler` before `email_agent`; reply asks to confirm).
+
+### Content language mirrors the chat (`bc2c60d`)
+Fixes an English conversation producing a Vietnamese email. Content generators resolved language via `goal.slots.language` (a stale 'vi' inferred from recalled memory) → `user.defaultLanguage` → `DEFAULT_LANGUAGE='vi'` — the same untrustworthy signal the chat reply already stopped using.
+- **Depends on:** `detect-language`; new `contentLanguageFor(message, prior)` derives the run's language from the actual message + the flow's established prior, never the analyzer's inferred slot. **Used by:** `atria-tools` `propose_workflow` + `propose_task` (sets `goal.slots.language`), consumed downstream by `resolveRunLanguage` (email/copy/media). **Also:** `clarification-engine` skips the platforms question for an email goal (mirrors the planner's `needsEmail` short-circuit); `atria-brain-prompt` reconciles the line-32/33 conflict so scheduling proposes even before the @ address is known.
+- **Blast radius:** VN chats still produce VN content (detection catches accented + unaccented VN); golden 23/23. **Guarded by:** `verify-master` (+7: content mirrors chat / refine override / inferred-vi ignored; email goal never asks platforms).
+
+### In-flight Atria runs resumable from the Command Center (`473875d`)
+A non-marketing run (email/task) is a post-less `kind=instance`, so one paused at an approval gate surfaced nowhere (Saved Flows = templates, Scheduled = already-approved, Workspace = campaigns) — reachable only by remembering its chat.
+- **Depends on:** `getRunByChat`/`selectChat` (reopening a chat restores the paused flow card, any status). **Adds:** `listResumableRuns` + `GET /orchestration/runs/resumable`; the Command Center "Continue where you left off" cards render these as ⚡ status-labelled cards that resume via the run's chat (de-duped from the plain recent-chat list). **Complements:** the Scheduled page (a run moves there once approved → `scheduled`).
+
 ## Commit ledger
 
 - **fix(orchestration): preserve email intent + recipient name across refine/confirm turns** (0733288)
@@ -122,3 +136,23 @@ Closes the one real gap found when rescanning whether P3/P4 (general `WorkflowPr
   - `MKTAgent/src/orchestration/master/goal-merge.ts`
   - `MKTAgent/src/orchestration/verify-master.ts`
   - `plans/260712-1649-atria-composable-planner/plan.md`
+- **docs(feature-map): task-seam hardening relationships** (90de7a9)
+  - `docs/feature-map.md`
+- **fix(orchestration): persist confirmed schedule so email flow splices the scheduler node** (0f89f51)
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/master/conversation-author.ts`
+  - `MKTAgent/src/orchestration/prompts/conversation-prompt.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
+- **fix(orchestration): content language mirrors the chat; email-aware clarification; reconcile scheduling prompt** (bc2c60d)
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/master/clarification-engine.ts`
+  - `MKTAgent/src/orchestration/master/detect-language.ts`
+  - `MKTAgent/src/orchestration/prompts/atria-brain-prompt.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
+- **feat(orchestration): surface in-flight Atria runs in Command Center resume cards** (473875d)
+  - `MKTAgent/src/api/orchestration-router.ts`
+  - `MKTAgent/src/db/repos/workflow-run-repo.ts`
+  - `MKTAgent/web/src/App.tsx`
+  - `MKTAgent/web/src/api/client.ts`
+  - `MKTAgent/web/src/components/atria-resume-work-cards.tsx`
+  - `MKTAgent/web/src/components/command-center-page.tsx`
