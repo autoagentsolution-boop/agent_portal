@@ -57,6 +57,9 @@ export const goalSlots = z.object({
   // writer proposes one). Only meaningful when outputs.needsEmail is true.
   emailTo: z.string().max(400).nullish(),
   emailSubject: z.string().max(200).nullish(),
+  // Utility-task input (P1b Phase 05): the source text a non-marketing utility node operates on
+  // (e.g. the document to summarize). Read by the utility runner; empty for marketing goals.
+  sourceText: z.string().max(20000).nullish(),
 });
 export type GoalSlots = z.infer<typeof goalSlots>;
 
@@ -109,6 +112,11 @@ export const goalSpec = z.object({
   // Deferred-execution schedule (2026-07-12). Nullish → an immediate flow (the default for everyone).
   // Set (confirmed) → the planner splices a `scheduler` node before the terminal action.
   schedule: scheduleSpec.nullish(),
+  // General task targets (P1b Phase 05): explicit terminal artifact types for a NON-marketing task
+  // (e.g. ['summary'], or ['summary','email_result'] to summarize-then-email). When set, the planner
+  // selects backward from THESE instead of the marketing output flags — the seam that makes any
+  // registry capability reachable without a marketing frame. Nullish for every marketing goal (unchanged).
+  taskTargets: z.array(z.string()).nullish(),
   // Auto-publish preference (decision 2026-07-08). DEFAULT false → a cleanly-postable post STILL
   // halts at the approval gate; the user reviews then approves. The analyzer flips this true when
   // the message explicitly asks to publish without review ("đăng luôn", "auto publish", "no review")

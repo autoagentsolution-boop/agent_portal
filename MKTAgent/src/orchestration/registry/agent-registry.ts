@@ -268,9 +268,10 @@ export const AGENTS: AgentDefinition[] = [
     description: 'Draft a ready-to-send email (subject + body) from the goal or an upstream concept.',
     implStatus: 'live',
     requires: [],
-    // Grounds on a content_concept when one exists upstream (a nurture flow); a standalone email
-    // (e.g. a birthday note) has none → drafts from the goal directly. Optional = no edge when absent.
-    optional: ['content_concept'],
+    // Grounds on a content_concept (a nurture flow) OR a summary (summarize → email) when one exists
+    // upstream; a standalone email (e.g. a birthday note) has none → drafts from the goal directly.
+    // Optional = no edge when absent, so all three shapes plan cleanly.
+    optional: ['content_concept', 'summary'],
     produces: ['email_draft'],
     requiresConnection: false,
     requiresApproval: false,
@@ -318,6 +319,25 @@ export const AGENTS: AgentDefinition[] = [
     vibe: 'Patient timekeeper: holds a ready action until its confirmed moment, then hands off — never acts itself.',
     successMetrics: ['parks only a user-confirmed absolute time', 'fires once, at the right instant', 'never performs the action itself'],
     decisionFramework: 'Do nothing but wait. Once the user confirms the exact instant + timezone, park the run; when due, hand control straight back to the flow so its next node runs unattended.',
+  },
+  {
+    id: 'summarize',
+    name: 'Summarizer',
+    description: 'Condense user-provided source text into a concise summary + key bullet points.',
+    // The first NON-marketing capability node (P1b Phase 05). Proves the registry is a general composable
+    // graph: it drops in with ONLY this entry + a runner — no planner change. Reads its source text from
+    // the task goal (like email_writer reads the goal), so it needs no upstream producer.
+    implStatus: 'live',
+    requires: [],
+    optional: [],
+    produces: ['summary'],
+    requiresConnection: false,
+    requiresApproval: false,
+    emoji: '📝',
+    group: 'intelligence',
+    vibe: 'A crisp editor: distills the essential few points from a wall of text.',
+    successMetrics: ['captures the core points, drops the noise', 'faithful to the source — invents nothing', 'concise summary + a few scannable bullets'],
+    decisionFramework: 'Read the source, identify the main thesis + the few points that matter, and restate them tightly in the source language. Never add facts not present in the text.',
   },
 ];
 

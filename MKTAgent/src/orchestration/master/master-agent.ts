@@ -22,10 +22,14 @@ export class MasterAgent {
   // merged in by the API layer — no re-analysis needed). `autonomous` (Atria granted path)
   // relaxes the optional-ish required questions so a granted goal doesn't dead-end at
   // clarification; only genuinely unplannable slots still block. Default false = unchanged.
-  planFromGoal(goal: GoalSpec, opts: { autonomous?: boolean } = {}): MasterAgentOutcome {
-    const clarify = evaluateClarification(goal, opts);
-    if (clarify.status === 'needs_clarification') {
-      return { status: 'awaiting_clarification', goal, questions: clarify.questions };
+  planFromGoal(goal: GoalSpec, opts: { autonomous?: boolean; skipClarification?: boolean } = {}): MasterAgentOutcome {
+    // Non-marketing task goals (taskTargets) carry their input directly and have no marketing slots to
+    // fill, so they skip the marketing clarification engine — the brain gathered the input already.
+    if (!opts.skipClarification) {
+      const clarify = evaluateClarification(goal, opts);
+      if (clarify.status === 'needs_clarification') {
+        return { status: 'awaiting_clarification', goal, questions: clarify.questions };
+      }
     }
     const planned = planWorkflow(goal);
     if (!planned.ok) {

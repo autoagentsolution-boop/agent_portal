@@ -18,6 +18,7 @@ const runnableAgentId = z.enum([
   'email_writer',
   'email_agent',
   'scheduler',
+  'summarize',
 ]);
 
 export const workflowNode = z.object({

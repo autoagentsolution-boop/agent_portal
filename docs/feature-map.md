@@ -20,6 +20,14 @@ When the user asks for a capability **no agent node produces**, Atria does not f
 - **Complements C1:** C1 composes EXISTING nodes; this is the honest fallback when NONE produces the needed artifact. The `spec` maps 1:1 to a registry `AgentDefinition`, so a dev scaffolds the node (registry + runner) with no planner change.
 - **Guarded by:** `verify-capability-gap` (repo round-trip + dedup + brain dispatch); `verify-atria-suggestions` confirms the pitched/accepted path is unregressed.
 
+### `summarize` — first non-marketing capability node, reachable + composable (Phase 05, this commit)
+Proves the composable-agent thesis end-to-end: a real capability drops in with **only a registry entry + a runner**, is reachable from chat, composes with other nodes, and runs — with the marketing path untouched.
+- **The node:** `registry/agent-registry.ts` (`summarize`: produces `summary`, requires `[]` — reads source from the goal like `email_writer`) + `executor/agent-runners.ts` `runSummarize` (Gemini → `{summary, bullets}`) + `schemas/artifact-schemas.ts` `summary` type. **No planner change** — this is the whole point.
+- **Reachability (the seam that avoids a thin layer):** new `GoalSpec.taskTargets` (a general escape hatch from marketing flags) short-circuits `targetsFromGoal` → `selectByTargets` picks the node by its output. Brain tool `propose_task(capability, source_text)` (`atria-tools.ts`, map `TASK_CAPABILITIES`) builds a task goal and plans it via `master-agent.planFromGoal(goal, {skipClarification})` — skips the marketing clarification engine. Marketing goals never set `taskTargets`, so the golden 23/23 is unaffected.
+- **Composition:** `email_writer.optional` now includes `summary`, so `taskTargets:['summary','email_result']` composes `summarize → email_writer → email_agent` (deriveDeps wires the edge; email_writer grounds the email on the summary).
+- **Relationship to C1 + capability-gap:** C1 made selection target-driven so this composes with zero planner edits; capability-gap (P2) would have flagged "summarize" as missing — building it via the drop-in recipe **closes that loop** (gap → authored node → reachable). `TASK_CAPABILITIES` is where the next utility (translate, transcribe…) plugs in.
+- **Guarded by:** `verify-summarize-node` (planner compose + runner + brain seam + **real executor run** producing a stored `summary` artifact); golden 23/23 + email/scheduler/capability-gap verifies unregressed.
+
 ## Commit ledger
 
 - **fix(orchestration): preserve email intent + recipient name across refine/confirm turns** (0733288)
@@ -45,4 +53,13 @@ When the user asks for a capability **no agent node produces**, Atria does not f
 - **refactor(orchestration): backward-chaining agent selection (C1)** (0295323)
   - `MKTAgent/src/orchestration/master/artifact-graph.ts`
   - `MKTAgent/src/orchestration/master/workflow-planner.ts`
+  - `docs/feature-map.md`
+- **feat(orchestration): capability-gap handling — Atria honestly flags missing capabilities (P2)** (2861dbe)
+  - `MKTAgent/prisma/migrations/20260712112702_add_capability_gap_spec/migration.sql`
+  - `MKTAgent/prisma/schema.prisma`
+  - `MKTAgent/src/api/atria-router.ts`
+  - `MKTAgent/src/db/repos/roadmap-demand-repo.ts`
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/prompts/atria-brain-prompt.ts`
+  - `MKTAgent/src/orchestration/verify-capability-gap.ts`
   - `docs/feature-map.md`

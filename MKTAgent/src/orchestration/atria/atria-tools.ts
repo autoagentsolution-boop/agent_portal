@@ -37,6 +37,10 @@ export interface ToolContext {
   scheduleProposal: { phrase: string | null; at: string; timezone: string | null } | null;
 }
 
+// Supported NON-marketing utility capabilities → the terminal artifact each produces. propose_task plans
+// backward from this target (bypassing the marketing frame). Extend by authoring a node + adding a row.
+const TASK_CAPABILITIES: Record<string, string> = { summarize: 'summary' };
+
 const MEMORY_KINDS = new Set<MemoryKind>(['product', 'brand', 'audience', 'preference', 'contact', 'fact']);
 const asKind = (v: unknown): MemoryKind => (MEMORY_KINDS.has(v as MemoryKind) ? (v as MemoryKind) : 'fact');
 const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
@@ -116,6 +120,19 @@ export const TOOL_DECLARATIONS = [
     description:
       'Run the workflow you ALREADY proposed (the flow card currently on screen). Use ONLY when the user explicitly says to run / proceed / execute / "chạy đi" AND a plan is already on the table. Atria generates the content, then the run HALTS at the approval gate before anything is published or sent — so this is safe. Do NOT use this to make a new plan (use propose_workflow), and do not call it if no workflow has been proposed yet.',
     parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'propose_task',
+    description:
+      'Run a supported UTILITY capability on text the user gives you — currently: "summarize" (condense a document / article / long text into a concise summary + key points). Use this when the user provides text/content and asks you to summarize it. It assembles a flow card with the utility node and does NOT execute — the user reviews, then says go ahead. For a capability that is NOT in the supported list, use flag_capability_gap instead (never force it).',
+    parameters: {
+      type: 'object',
+      properties: {
+        capability: { type: 'string', enum: ['summarize'], description: 'The utility to run. Currently only "summarize" is supported.' },
+        source_text: { type: 'string', description: 'The full text/content to run the capability on (e.g. the document to summarize).' },
+      },
+      required: ['capability', 'source_text'],
+    },
   },
   {
     name: 'flag_capability_gap',
@@ -218,6 +235,27 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         if (outcome.status === 'planned') return { status: 'planned', agents: outcome.plan.nodes.map((n) => n.agentId), steps: outcome.plan.nodes.length };
         if (outcome.status === 'awaiting_clarification') return { status: 'need_more_info', missing: outcome.questions.map((q) => q.slot) };
         return { status: 'error', error: outcome.error };
+      }
+      case 'propose_task': {
+        const capability = str(args.capability).trim().toLowerCase();
+        const target = TASK_CAPABILITIES[capability];
+        if (!target) {
+          return { status: 'unsupported', note: `No "${capability}" capability exists yet. If the user needs it, call flag_capability_gap — do NOT pretend to do it.` };
+        }
+        const sourceText = str(args.source_text).trim();
+        if (!sourceText) return { status: 'need_input', note: `Ask the user to paste or provide the text to ${capability}.` };
+        // A non-marketing TASK goal: select backward from the utility's output artifact (taskTargets),
+        // skip the marketing clarification engine, carry the source text in a slot for the runner.
+        const goal = goalSpec.parse({
+          taskTargets: [target],
+          outputs: { needsTextPost: false, needsPublishing: false },
+          slots: { sourceText },
+          provider: 'atria-task',
+        });
+        const outcome = masterAgent.planFromGoal(goal, { skipClarification: true });
+        ctx.proposal = { goal, outcome };
+        if (outcome.status === 'planned') return { status: 'planned', agents: outcome.plan.nodes.map((n) => n.agentId), steps: outcome.plan.nodes.length };
+        return { status: 'error', error: outcome.status === 'plan_error' ? outcome.error : 'could_not_plan' };
       }
       case 'flag_capability_gap': {
         const capability = str(args.capability).trim().slice(0, 60);

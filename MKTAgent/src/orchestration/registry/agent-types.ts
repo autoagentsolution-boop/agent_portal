@@ -15,7 +15,10 @@ export type AgentId =
   | 'storyboard'
   | 'video'
   // Email path (P4-lite): write an email, then send it (Gmail). Separate from the social pipeline.
-  | 'email_writer';
+  | 'email_writer'
+  // Utility capability (P1b Phase 05): the first NON-marketing producer node — summarize source text.
+  // Proves the registry composes any capability; reachable via a task goal (taskTargets), not marketing flags.
+  | 'summarize';
 
 // `scheduler` is a generic, type-agnostic control node (not an AgentId content producer): the planner
 // splices it before a run's terminal action when the goal carries a confirmed schedule. It performs no

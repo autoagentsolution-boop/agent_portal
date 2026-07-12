@@ -22,7 +22,7 @@ import { validatePlan } from './workflow-validator.ts';
 // plan-tiers' ORDERED agentIdList dedup stays stable. Nodes not requested are simply filtered out.
 const PIPELINE_ORDER: readonly RunnableAgentId[] = [
   'content_search', 'ideation', 'strategy', 'campaign_strategist',
-  'concept_writer', 'infographic', 'storyboard', 'video',
+  'summarize', 'concept_writer', 'infographic', 'storyboard', 'video',
   'email_writer', 'email_agent', 'publisher',
 ];
 
@@ -30,6 +30,12 @@ const PIPELINE_ORDER: readonly RunnableAgentId[] = [
 // This is the ONLY place output flags are read — a thin, exhaustive shim so the marketing GoalSpec
 // maps to artifact targets while selection itself stays registry-driven and marketing-agnostic.
 const targetsFromGoal = (goal: GoalSpec): ArtifactType[] => {
+  // General task path (P1b Phase 05): a goal carrying explicit taskTargets is a NON-marketing task —
+  // select backward from those directly, ignoring the marketing output flags. This is the seam that
+  // makes any registry capability (e.g. summarize) reachable without a marketing frame. Unknown target
+  // types simply resolve to no producer in selectByTargets (a capability gap, surfaced in Phase 02).
+  if (goal.taskTargets && goal.taskTargets.length) return goal.taskTargets as ArtifactType[];
+
   const o = goal.outputs;
   // Email path (P4-lite): a self-contained write+send, NOT the social pipeline. The analyzer forces
   // the social flags off when needsEmail is set, so this owns the plan (email_writer's optional

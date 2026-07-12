@@ -772,13 +772,15 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const call = ctx.llmJsonFn ?? callGeminiJson;
   const language = await resolveRunLanguage(ctx);
   const concept = ctx.upstream['content_concept']; // optional grounding (a nurture flow); usually absent
+  const summary = ctx.upstream['summary']; // summarize → email composition: base the email on the summary
   const purpose = ctx.goal.slots.angle?.trim() || ctx.goal.slots.product?.trim() || ctx.goal.slots.emailSubject?.trim() || 'a short, friendly note';
   const input = [
     `Purpose / what to say: ${purpose}`,
     ctx.goal.slots.emailSubject ? `Requested subject: ${ctx.goal.slots.emailSubject}` : '',
     ctx.goal.slots.brandVoice ? `Tone: ${ctx.goal.slots.brandVoice}` : '',
     `Recipient(s): ${to.join(', ')}`,
-    concept ? `Context to ground in: ${JSON.stringify(concept).slice(0, 1200)}` : '',
+    concept ? `Context to ground in: ${JSON.stringify(concept).slice(0, 1200)}`
+      : summary ? `Summary to base the email on: ${JSON.stringify(summary).slice(0, 1200)}` : '',
     `Write the email entirely in this language: ${language}.`,
   ].filter(Boolean).join('\n');
 
@@ -791,8 +793,37 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'email', model: env.GEMINI_MODEL, usage, runId: ctx.runId });
   return {
     type: 'email_draft',
-    data: { to, subject, body, groundedOn: concept ? 'content_concept' : 'goal' },
+    data: { to, subject, body, groundedOn: concept ? 'content_concept' : summary ? 'summary' : 'goal' },
     cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(EMAIL_WRITER_PROMPT + input, body),
+  };
+};
+
+// summarize (P1b Phase 05) — the first non-marketing utility runner. Reads the source text off the task
+// goal (goal.slots.sourceText, like email_writer reads the goal) and returns a faithful summary + bullets.
+// No upstream producer, no external action → composes cleanly (summarize → email_writer grounds on it).
+const SUMMARIZE_PROMPT = [
+  "You are Atria's Summarizer. Read the SOURCE TEXT and write a faithful, concise summary of it.",
+  'Capture the core thesis and the few points that matter; drop filler. Invent NOTHING not in the source.',
+  'Write in the SAME language as the source. Respond ONLY as JSON:',
+  '{"summary":"a tight paragraph","bullets":["key point","..."]}.',
+].join(' ');
+
+const runSummarize = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const source = (ctx.goal.slots.sourceText ?? '').trim();
+  if (!source) throw new Error('summarize: no source text to summarize — give me the text or content to condense.');
+  const call = ctx.llmJsonFn ?? callGeminiJson;
+  const input = `SOURCE TEXT:\n${source.slice(0, 20000)}`;
+  let usage: GeminiUsage | null = null;
+  const raw = await call(SUMMARIZE_PROMPT, input, (u) => { usage = u; });
+  const o = (raw ?? {}) as { summary?: unknown; bullets?: unknown };
+  const summary = String(o.summary ?? '').trim().slice(0, 8000);
+  if (!summary) throw new Error('summarize: the summary came back empty — try again with clearer source text.');
+  const bullets = Array.isArray(o.bullets) ? o.bullets.map((b) => String(b).trim()).filter(Boolean).slice(0, 12) : [];
+  if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'summarize', model: env.GEMINI_MODEL, usage, runId: ctx.runId });
+  return {
+    type: 'summary',
+    data: { summary, bullets },
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(SUMMARIZE_PROMPT + input, summary),
   };
 };
 
@@ -846,6 +877,7 @@ const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOut
   email_writer: runEmailWriter,
   email_agent: runEmailAgent,
   scheduler: runScheduler,
+  summarize: runSummarize,
 };
 
 export const getRunner = (agentId: RunnableAgentId) => runners[agentId];

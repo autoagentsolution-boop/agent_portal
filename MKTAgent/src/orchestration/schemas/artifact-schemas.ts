@@ -22,6 +22,9 @@ export const artifactType = z.enum([
   'email_draft',
   'email_result',
   'schedule_marker',
+  // Utility capability (P1b Phase 05): summarize — the first NON-marketing producer node, proving the
+  // registry is a general composable graph (drop-in via registry entry + runner, no planner change).
+  'summary',
 ]);
 export type ArtifactType = z.infer<typeof artifactType>;
 
@@ -167,6 +170,13 @@ export const scheduleMarker = z.object({
   phrase: z.string().nullable().default(null),
 });
 
+// summarize → summary. A concise summary of user-provided source text, plus optional key bullets.
+// The first non-marketing utility artifact; email_writer can optionally ground on it (summarize → email).
+export const summaryArtifact = z.object({
+  summary: z.string().min(1),
+  bullets: z.array(z.string()).default([]),
+});
+
 // Lookup: artifactType → its payload schema. The executor uses this to validate
 // an agent's output by its declared `produces` type.
 export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
@@ -182,4 +192,5 @@ export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
   email_draft: emailDraft,
   email_result: emailResult,
   schedule_marker: scheduleMarker,
+  summary: summaryArtifact,
 };
