@@ -1135,7 +1135,25 @@ a { color: var(--accent); }
 /* Member nodes are a touch smaller than group nodes so the two tiers read distinctly. */
 .cc-node-member .cc-node-circle { width: 46px; height: 46px; }
 .cc-node-member .cc-node-emoji { font-size: 18px; }
-.cc-node-member { animation: cc-member-in .25s ease-out both; }
+.cc-node-member { animation: cc-member-in .25s ease-out both; z-index: 4; }
+/* Member labels are hover-revealed as a floating chip so they NEVER overlap neighbours — the fix scales
+   to any member count (only the emoji circles must stay apart, which the wide fan handles). The hovered/
+   active node lifts above its siblings so its chip is always readable. */
+.cc-node-member:hover, .cc-node-member.is-active, .cc-node-member:focus-visible { z-index: 12; }
+.cc-node-member .cc-node-label { position: absolute; top: 100%; left: 50%; transform: translate(-50%, 5px);
+  white-space: nowrap; max-width: none; padding: 3px 9px; border-radius: 8px; background: var(--cc-panel);
+  border: 1px solid var(--cc-border-bright); color: var(--cc-text); opacity: 0; pointer-events: none;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.45); transition: opacity .15s; }
+.cc-node-member:hover .cc-node-label,
+.cc-node-member.is-active .cc-node-label,
+.cc-node-member:focus-visible .cc-node-label { opacity: 1; }
+/* Expanded group's member names as a wrapping chip row — all names readable at a glance, below the graph. */
+.cc-member-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
+  max-width: 720px; margin: 4px auto 0; padding: 0 20px; }
+.cc-member-legend-head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 2px; }
+.cc-member-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 14px; cursor: pointer;
+  border: 1px solid var(--cc-border); background: var(--cc-panel); color: var(--cc-text); font-size: 12px; transition: .15s; }
+.cc-member-chip:hover { background: rgba(157,123,255,0.14); transform: translateY(-1px); }
 @keyframes cc-member-in { from { opacity: 0; transform: translate(-50%,-50%) scale(0.6); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
 /* Tier-2 energy dot: group → member. Same look as the tier-1 dot but starts at the group (--x1/--y1). */
 .cc-flow-sub .cc-flow-out { left: var(--x1); top: var(--y1); animation: cc-flow-sub-out 1.5s linear infinite; }

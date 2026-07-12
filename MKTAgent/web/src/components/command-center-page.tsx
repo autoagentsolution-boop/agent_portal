@@ -66,12 +66,16 @@ const groupGeo = (i: number, total: number): GroupGeo => {
   return { ang, x: 50 + Math.cos(ang) * 33, y: 50 + Math.sin(ang) * 31 };
 };
 // Member j of a group: placed on an arc around the GROUP node, centred on its outward direction so the
-// members read as "inside" that group and never overlap Atria. Arc widens with member count (capped).
+// members read as "inside" that group and never overlap Atria. The arc is WIDE (up to ~200°, wrapping
+// the outer side of the group node) so the circles stay well separated as the member count grows — the
+// wider the fan, the more tangential the extreme members sit, which also keeps them inside the frame.
+// The container is wider than tall, so we give the vertical radius more % to counter the squash; labels
+// are hover-revealed (see CSS) so this only has to keep the *circles* apart, not full label boxes.
 const memberGeo = (g: GroupGeo, j: number, count: number): { left: string; top: string; xy: [number, number] } => {
-  const spread = count <= 1 ? 0 : Math.min(Math.PI * 0.85, (count - 1) * 0.5);
+  const spread = count <= 1 ? 0 : Math.min(Math.PI * 1.15, 0.5 * count + 0.5);
   const a = g.ang + (count <= 1 ? 0 : spread * (j / (count - 1) - 0.5));
-  const x = g.x + Math.cos(a) * 15;
-  const y = g.y + Math.sin(a) * 15;
+  const x = g.x + Math.cos(a) * 16;
+  const y = g.y + Math.sin(a) * 19;
   return { left: `${x}%`, top: `${y}%`, xy: [x, y] };
 };
 
@@ -266,6 +270,23 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
         </div>
       ) : (
       <>
+      {/* Expanded group's members, spelled out as a wrapping chip row (all names at a glance, no node
+          overlap — complements the hover-revealed labels on the graph; scales by wrapping). */}
+      {expandedGroup && (() => {
+        const g = groups.find((x) => x.id === expandedGroup);
+        const members = membersByGroup.get(expandedGroup) ?? [];
+        if (!g || members.length === 0) return null;
+        return (
+          <div className="cc-member-legend">
+            <span className="cc-member-legend-head" style={{ color: g.color }}>{g.emoji} {g.label}</span>
+            {members.map((a) => (
+              <button key={a.id} className="cc-member-chip" style={{ borderColor: `${g.color}66` }} onClick={() => openAgent(a)}>
+                <span>{a.emoji}</span> {a.name.replace(/ Agent$/, '')}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
       <form className="cc-cmdbar-wrap" onSubmit={submit}>
         <div className="cc-cmdbar">
           <input
