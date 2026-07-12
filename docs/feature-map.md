@@ -88,3 +88,19 @@ Fixes spurious "sorry, I ran into a problem" replies. `gemini-2.5-flash`'s **def
 - **docs(plan): phase-06 per-agent-group thinking-budget policy (design locked)** (0c8c883)
   - `docs/feature-map.md`
   - `plans/260712-1649-atria-composable-planner/phase-06-thinking-budget-policy.md`
+- **feat(orchestration): per-agent-group thinking-budget policy (P6)** (f2c9f98)
+  - `MKTAgent/src/orchestration/atria/atria-brain.ts`
+  - `MKTAgent/src/orchestration/executor/agent-executor.ts`
+  - `MKTAgent/src/orchestration/master/deterministic-analyzer.ts`
+  - `MKTAgent/src/orchestration/master/llm-json.ts`
+  - `MKTAgent/src/orchestration/master/requirement-analyzer.ts`
+  - `MKTAgent/src/orchestration/schemas/goal-spec.ts`
+  - `MKTAgent/src/orchestration/thinking-budget.ts`
+  - `MKTAgent/src/orchestration/verify-thinking-budget.ts`
+  - `docs/feature-map.md`
+  - `plans/260712-1649-atria-composable-planner/phase-06-thinking-budget-policy.md`
+
+  **What:** A single policy module (`thinking-budget.ts`) that maps each registry agentId to the gemini-2.5 `thinkingBudget` ceiling used for its LLM call — reasoning nodes 4096, creative nodes scaled by a new `goal.qualityPref`, `summarize` scaled by source length, action nodes 0.
+  **Depends on:** the earlier explicit-brain-budget fix (`b5c4f9c`) that established WHY an explicit budget is needed (dynamic thinking + tools → empty replies); the `llm-json` seam (`callGeminiJson`) which now accepts an `opts.thinkingBudget`; `GoalSpec` (new `qualityPref` field, additive/nullish-safe).
+  **Now depends on it:** `agent-executor.executeNode` binds the per-node budget onto `ctx.llmJsonFn` for every `ctx.llmJsonFn ?? callGeminiJson` runner (`ideation`, `strategy`, `campaign_strategist`, `email_writer`, `summarize`, `storyboard`/`video` planning) with zero per-runner edits; `atria-brain.doCall` reads the shared `BRAIN_THINKING_BUDGET`.
+  **Flows touched:** intake (`requirement-analyzer` + `deterministic-analyzer` now detect a stated quality preference conversationally) → any orchestration run (per-node budget on the wire). Deliberately NOT touched: node SELECTION (golden 23/23 unchanged) and copygen (`concept_writer` keeps `thinkingBudget:0` — the JSON-truncation fix), so the creative tier effectively lands on `email_writer`.
