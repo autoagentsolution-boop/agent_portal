@@ -29,7 +29,7 @@ export const VISION_AGENTS: VisionAgent[] = [
     description: 'Learns your copy style from the posts you edit, then teaches it to every future draft.',
     emoji: '🧠',
     // Assistant: the cross-cutting store every other agent reads/writes (Trợ lý).
-    group: 'assistant',
+    group: 'data',
     vibe: 'An archivist who turns your edits into reusable style Atria remembers.',
     // P2-2a: shipped as a real Command-Center surface (learn→propose→approve→apply).
     implStatus: 'live',
@@ -40,7 +40,7 @@ export const VISION_AGENTS: VisionAgent[] = [
     name: 'Lead Collector Agent',
     description: 'Scores inbound comments, captures opt-in leads, routes qualified ones to sales.',
     emoji: '🎯',
-    group: 'action',
+    group: 'data',
     vibe: 'A classifier who captures qualified leads and never wastes a sales cycle.',
     // P2-2d: already real (comment capture, scoring, liveness) — promoted from vision node to a live
     // Command-Center surface. The node opens the Leads dashboard inline.
@@ -52,7 +52,7 @@ export const VISION_AGENTS: VisionAgent[] = [
     name: 'Analytics Agent',
     description: 'Pulls real FB Page reach/impressions into your Impact report — measured, not estimated.',
     emoji: '📊',
-    group: 'intelligence',
+    group: 'data',
     vibe: 'A data storyteller who reads real Insights and names the next move.',
     // P2-2b: shipped — measured FB reach flows into Impact. The node opens the Impact report.
     implStatus: 'live',
@@ -63,7 +63,7 @@ export const VISION_AGENTS: VisionAgent[] = [
     name: 'Email Campaign Agent',
     description: 'Drafts a personal nurture email for each captured lead and sends it from your Gmail.',
     emoji: '📧',
-    group: 'action',
+    group: 'data',
     vibe: 'An email copywriter who personalizes each nurture and never blasts.',
     // P2-2c: shipped — draft (LLM) → review → send one lead at a time via the owner's Gmail.
     implStatus: 'live',

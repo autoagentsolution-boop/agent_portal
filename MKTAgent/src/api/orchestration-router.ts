@@ -785,7 +785,7 @@ orchestrationRouter.get('/agents', asyncHandler(async (_req, res) => {
         name: a.name,
         description: a.description,
         emoji: a.emoji ?? '🤖',
-        group: a.group ?? 'action',
+        group: a.group ?? 'creative',
         vibe: a.vibe ?? null,
         implStatus: a.implStatus as 'live' | 'stub' | 'planned',
         surface: null as string | null,

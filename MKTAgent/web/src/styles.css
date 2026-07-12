@@ -378,6 +378,8 @@ a { color: var(--accent); }
 /* In chat mode the graph GATHERS into just the Atria hero — the orbiting agent nodes + links hide. */
 .command-center.is-chat .cc-network { flex: 0 0 132px; height: 132px; min-height: 132px; margin: 6px 0 0; }
 .command-center.is-chat .cc-node,
+.command-center.is-chat .cc-group,
+.command-center.is-chat .cc-flows,
 .command-center.is-chat .cc-links,
 .command-center.is-chat .cc-network-empty { display: none; }
 .command-center.is-chat .cc-core { transform: translate(-50%, -50%) scale(0.82); animation: cc-core-breathe 3.2s ease-in-out infinite; }
@@ -1114,6 +1116,35 @@ a { color: var(--accent); }
 .cc-node:hover .cc-node-label { color: var(--cc-text); }
 .cc-network-empty { position: absolute; inset: 0; display: flex; align-items: center;
   justify-content: center; color: var(--cc-text-faint); font-size: 13px; }
+
+/* Grouped view — tier-1 group nodes (bigger than an agent node, carry a member count). */
+.cc-group { position: absolute; transform: translate(-50%,-50%); background: none; border: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 5; transition: .25s; }
+.cc-group-circle { position: relative; width: 72px; height: 72px; border-radius: 50%; background: var(--cc-bg2);
+  border: 2px solid var(--cc-border); display: flex; align-items: center; justify-content: center; transition: .25s; }
+.cc-group:hover .cc-group-circle { transform: scale(1.1); }
+.cc-group.is-expanded .cc-group-circle { transform: scale(1.14); }
+.cc-group.is-running .cc-group-circle { animation: cc-group-pulse 1.6s ease-in-out infinite; }
+.cc-group-emoji { font-size: 30px; line-height: 1; }
+.cc-group-count { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 4px;
+  border-radius: 9px; color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.cc-group-label { font-size: 11px; letter-spacing: 0.6px; color: var(--cc-text-dim);
+  text-transform: uppercase; font-weight: 700; transition: .2s; max-width: 96px; text-align: center; }
+.cc-group:hover .cc-group-label, .cc-group.is-expanded .cc-group-label { color: var(--cc-text); }
+@keyframes cc-group-pulse { 0%,100% { box-shadow: 0 0 14px currentColor; } 50% { box-shadow: 0 0 30px currentColor; } }
+/* Member nodes are a touch smaller than group nodes so the two tiers read distinctly. */
+.cc-node-member .cc-node-circle { width: 46px; height: 46px; }
+.cc-node-member .cc-node-emoji { font-size: 18px; }
+.cc-node-member { animation: cc-member-in .25s ease-out both; }
+@keyframes cc-member-in { from { opacity: 0; transform: translate(-50%,-50%) scale(0.6); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
+/* Tier-2 energy dot: group → member. Same look as the tier-1 dot but starts at the group (--x1/--y1). */
+.cc-flow-sub .cc-flow-out { left: var(--x1); top: var(--y1); animation: cc-flow-sub-out 1.5s linear infinite; }
+@keyframes cc-flow-sub-out {
+  0%   { left: var(--x1); top: var(--y1); opacity: 0; }
+  15%  { opacity: var(--peak); }
+  85%  { opacity: var(--peak); }
+  100% { left: var(--x2); top: var(--y2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cc-flow-sub .cc-flow-out { animation: none; opacity: 0; } }
 
 .cc-cmdbar-wrap { max-width: 700px; margin: 12px auto 60px; padding: 0 20px; }
 .cc-cmdbar { display: flex; align-items: center; gap: 12px; background: var(--cc-panel);

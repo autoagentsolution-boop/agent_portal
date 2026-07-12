@@ -57,9 +57,22 @@ const QUICK_CMDS = [
 
 // Position N nodes evenly on an ellipse, starting at the top (−90°). Mirrors the mockup's
 // buildNetwork layout so the visual reads the same, but driven by real registry data.
-const nodePos = (i: number, total: number): { left: string; top: string } => {
+// Grouped constellation geometry (2 tiers: Atria → group → agent). Group nodes ring Atria at a slightly
+// tighter radius so an expanded group's members fan OUTWARD without leaving the frame. `ang` is the
+// group's outward direction from Atria, reused to centre its member arc.
+interface GroupGeo { ang: number; x: number; y: number }
+const groupGeo = (i: number, total: number): GroupGeo => {
   const ang = (i / total) * Math.PI * 2 - Math.PI / 2;
-  return { left: `${50 + Math.cos(ang) * 42}%`, top: `${50 + Math.sin(ang) * 40}%` };
+  return { ang, x: 50 + Math.cos(ang) * 33, y: 50 + Math.sin(ang) * 31 };
+};
+// Member j of a group: placed on an arc around the GROUP node, centred on its outward direction so the
+// members read as "inside" that group and never overlap Atria. Arc widens with member count (capped).
+const memberGeo = (g: GroupGeo, j: number, count: number): { left: string; top: string; xy: [number, number] } => {
+  const spread = count <= 1 ? 0 : Math.min(Math.PI * 0.85, (count - 1) * 0.5);
+  const a = g.ang + (count <= 1 ? 0 : spread * (j / (count - 1) - 0.5));
+  const x = g.x + Math.cos(a) * 15;
+  const y = g.y + Math.sin(a) * 15;
+  return { left: `${x}%`, top: `${y}%`, xy: [x, y] };
 };
 
 // Web Speech API support (Chrome/Edge) — gate the mic button so it never shows a dead control.
@@ -72,6 +85,9 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
   // Suggestions already acted on — held HERE (CommandCenterPage survives the chat open/close toggle)
   // so a card doesn't reappear after you leave+return the chat and let you re-fire the same plan.
   const [actedSuggestions, setActedSuggestions] = useState<Set<string>>(new Set());
+  // Grouped constellation: default COLLAPSED (only group nodes). Clicking a group expands its members
+  // around that group node; one group open at a time (opening another replaces it).
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
 
   useEffect(() => {
     void api.getAgents().then((r) => {
@@ -99,6 +115,21 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
   const activeAgents = useAgentActivity(agents.length > 0);
   const anyRunning = activeAgents.size > 0;
 
+  const groups = catalog?.groups ?? [];
+  const membersByGroup = useMemo(() => {
+    const m = new Map<string, AgentNodeDto[]>();
+    for (const a of agents) { const arr = m.get(a.group) ?? []; arr.push(a); m.set(a.group, arr); }
+    return m;
+  }, [agents]);
+  const groupRunning = (gid: string): boolean => (membersByGroup.get(gid) ?? []).some((a) => activeAgents.has(a.id));
+  // Open an agent's panel (member click) — planned → "soon" toast, a shipped surface → its inline panel,
+  // else the agent spotlight. Unchanged from the flat view, just factored out for reuse by member nodes.
+  const openAgent = (a: AgentNodeDto): void => {
+    if (a.implStatus === 'planned') notify(`${a.name} — sắp ra mắt`);
+    else if (a.surface) setPanel({ kind: 'surface', surface: a.surface, agent: a });
+    else setPanel({ kind: 'agent', agent: a });
+  };
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     onLaunch(cmd.trim() || undefined);
@@ -123,8 +154,15 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
       </div>
       )}
 
-      <div className={`cc-network ${anyRunning ? 'is-conducting' : ''}`}>
-        <button className={`cc-core ${anyRunning ? 'is-conducting' : ''}`} onClick={() => onLaunch()}>
+      {(() => {
+        const geoList = groups.map((g, i) => ({ g, geo: groupGeo(i, groups.length) }));
+        const expanded = geoList.find((x) => x.g.id === expandedGroup) ?? null;
+        const members = expanded ? (membersByGroup.get(expanded.g.id) ?? []) : [];
+        // Clicking Atria collapses an open group first (the "back" gesture); otherwise it launches chat.
+        const coreClick = () => (expandedGroup ? setExpandedGroup(null) : onLaunch());
+        return (
+      <div className={`cc-network ${anyRunning ? 'is-conducting' : ''} ${expanded ? 'is-expanded' : ''}`}>
+        <button className={`cc-core ${anyRunning ? 'is-conducting' : ''}`} onClick={coreClick} title={expandedGroup ? 'Thu gọn' : 'Mở Atria'}>
           <span className="cc-core-fx" aria-hidden="true">
             <span className="cc-ring cc-ring-1" />
             <span className="cc-ring cc-ring-2" />
@@ -138,50 +176,75 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
           <span className="cc-core-sub">Nhạc trưởng</span>
         </button>
         <svg className="cc-links" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {agents.map((a, i) => {
-            const ang = (i / agents.length) * Math.PI * 2 - Math.PI / 2;
-            const on = activeAgents.has(a.id); // energy flows along an edge whose agent is working
+          {/* Tier 1: Atria → each group (always). */}
+          {geoList.map(({ g, geo }) => {
+            const on = groupRunning(g.id);
             return (
-              <line
-                key={a.id}
-                className={on ? 'cc-link-live' : ''}
-                x1={50} y1={50}
-                x2={50 + Math.cos(ang) * 42} y2={50 + Math.sin(ang) * 40}
-                stroke={colorOf(a)} strokeOpacity={on ? 0.85 : 0.22} strokeWidth={on ? 0.7 : 0.3} strokeDasharray="1 1.3"
-              />
+              <line key={g.id} className={on ? 'cc-link-live' : ''} x1={50} y1={50} x2={geo.x} y2={geo.y}
+                stroke={g.color} strokeOpacity={on ? 0.85 : 0.22} strokeWidth={on ? 0.7 : 0.35} strokeDasharray="1 1.3" />
+            );
+          })}
+          {/* Tier 2: expanded group → its members (energy flows along the sub-edges). */}
+          {expanded && members.map((a, j) => {
+            const [mx, my] = memberGeo(expanded.geo, j, members.length).xy;
+            const on = activeAgents.has(a.id);
+            return (
+              <line key={`ml-${a.id}`} className="cc-link-live" x1={expanded.geo.x} y1={expanded.geo.y} x2={mx} y2={my}
+                stroke={expanded.g.color} strokeOpacity={on ? 0.9 : 0.5} strokeWidth={on ? 0.7 : 0.4} strokeDasharray="1 1.2" />
             );
           })}
         </svg>
-        {/* Data-flow dots: a violet dot dispatches Atria→agent (ambient at idle). When SSE says an
-            agent is running, it bursts fast AND an agent-coloured "ack" dot returns agent→Atria.
-            Positions mirror nodePos(); pure CSS motion (prefers-reduced-motion calms it). */}
+        {/* Tier-1 data-flow dots: Atria → group (ambient; burst + return dot when the group is working). */}
         <div className="cc-flows" aria-hidden="true">
-          {agents.map((a, i) => {
-            const pos = nodePos(i, agents.length);
+          {geoList.map(({ g, geo }, i) => (
+            <span key={`flow-${g.id}`} className={`cc-flow ${groupRunning(g.id) ? 'is-active' : ''}`}
+              style={{ '--x2': `${geo.x}%`, '--y2': `${geo.y}%`, '--i': i, '--ret': g.color } as CSSProperties}>
+              <span className="cc-flow-out" />
+              <span className="cc-flow-ret" />
+            </span>
+          ))}
+          {/* Tier-2 dots: group → each member of the expanded group. */}
+          {expanded && members.map((a, j) => {
+            const m = memberGeo(expanded.geo, j, members.length);
             return (
-              <span
-                key={`flow-${a.id}`}
-                className={`cc-flow ${activeAgents.has(a.id) ? 'is-active' : ''}`}
-                style={{ '--x2': pos.left, '--y2': pos.top, '--i': i, '--ret': colorOf(a) } as CSSProperties}
-              >
+              <span key={`subflow-${a.id}`} className="cc-flow cc-flow-sub is-active"
+                style={{ '--x1': `${expanded.geo.x}%`, '--y1': `${expanded.geo.y}%`, '--x2': m.left, '--y2': m.top, '--i': j, '--ret': expanded.g.color } as CSSProperties}>
                 <span className="cc-flow-out" />
-                <span className="cc-flow-ret" />
               </span>
             );
           })}
         </div>
-        {agents.map((a, i) => {
+        {/* Tier-1 group nodes (default collapsed view). Clicking toggles its expansion. */}
+        {geoList.map(({ g, geo }) => {
+          const count = (membersByGroup.get(g.id) ?? []).length;
+          const isOpen = expandedGroup === g.id;
+          return (
+            <button
+              key={g.id}
+              className={`cc-group ${groupRunning(g.id) ? 'is-running' : ''} ${isOpen ? 'is-expanded' : ''}`}
+              style={{ left: `${geo.x}%`, top: `${geo.y}%` }}
+              onClick={() => setExpandedGroup((cur) => (cur === g.id ? null : g.id))}
+              title={`${g.label} · ${count} agent`}
+            >
+              <span className="cc-group-circle" style={{ borderColor: g.color, boxShadow: `0 0 18px ${g.color}55` }}>
+                <span className="cc-group-emoji">{g.emoji}</span>
+                <span className="cc-group-count" style={{ background: g.color }}>{count}</span>
+              </span>
+              <span className="cc-group-label">{g.label}</span>
+            </button>
+          );
+        })}
+        {/* Tier-2 member nodes — only the expanded group's, fanned around its group node. */}
+        {expanded && members.map((a, j) => {
           const planned = a.implStatus === 'planned';
           const running = activeAgents.has(a.id);
+          const pos = memberGeo(expanded.geo, j, members.length);
           return (
             <button
               key={a.id}
-              className={`cc-node ${a.implStatus === 'stub' ? 'is-stub' : ''} ${planned ? 'is-planned' : ''} ${running ? 'is-running' : ''} ${(panel?.kind === 'agent' || panel?.kind === 'surface') && panel.agent.id === a.id ? 'is-active' : ''}`}
-              style={nodePos(i, agents.length)}
-              onClick={() =>
-                planned ? notify(`${a.name} — sắp ra mắt`)
-                : a.surface ? setPanel({ kind: 'surface', surface: a.surface, agent: a })
-                : setPanel({ kind: 'agent', agent: a })}
+              className={`cc-node cc-node-member ${a.implStatus === 'stub' ? 'is-stub' : ''} ${planned ? 'is-planned' : ''} ${running ? 'is-running' : ''} ${(panel?.kind === 'agent' || panel?.kind === 'surface') && panel.agent.id === a.id ? 'is-active' : ''}`}
+              style={{ left: pos.left, top: pos.top }}
+              onClick={() => openAgent(a)}
               title={planned ? `${a.name} (sắp ra mắt) — ${a.vibe ?? a.description}` : (a.vibe ?? a.description)}
             >
               <span className="cc-node-circle" style={{ borderColor: colorOf(a) }}>
@@ -194,6 +257,8 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
         })}
         {agents.length === 0 && <div className="cc-network-empty">Đang tải mạng lưới agent…</div>}
       </div>
+        );
+      })()}
 
       {chatActive ? (
         <div className="cc-chat-embed">
