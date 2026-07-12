@@ -67,6 +67,8 @@ export interface ExecuteOptions {
   videoFn?: RunnerContext['videoFn'];
   ttsFn?: RunnerContext['ttsFn'];
   researchFn?: RunnerContext['researchFn'];
+  // Gmail send seam (email_agent) — stubbed in DRY-RUN verification so a re-entry sends nothing.
+  gmailSendFn?: RunnerContext['gmailSendFn'];
   // When true, the executor RUNS the gated node instead of halting (post-approval).
   approveNodeId?: string;
   // Auto-publish (item 2): when true (DEFAULT), the publisher external-write gate is
@@ -225,7 +227,7 @@ export const runWorkflow = async (
       await setRunStatus(runId, 'failed');
       return { status: 'failed', nodeId: opts.rerunOnly, error: 'node_not_found' };
     }
-    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn, researchFn: opts.researchFn };
+    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn, researchFn: opts.researchFn, gmailSendFn: opts.gmailSendFn };
     await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
     publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'running' });
     try {
@@ -418,7 +420,7 @@ export const runWorkflow = async (
     }
 
     const def = getAgent(planNode.agentId);
-    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn, researchFn: opts.researchFn };
+    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn, researchFn: opts.researchFn, gmailSendFn: opts.gmailSendFn };
 
     await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
     publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'running' });

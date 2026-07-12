@@ -9,8 +9,20 @@ interface Props {
   onOpenPost: (campaignId: string, postId: string) => void;
 }
 
+// A parked run queued for a timed re-entry (generic-scheduler node).
+type ScheduledRun = { id: string; name: string | null; resumeAt: string | null; timezone: string | null; phrase: string | null; action: string | null; createdAt: string };
+
 const fmt = (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : '— not scheduled');
 const dueClass = (iso: string | null): string => (iso && new Date(iso).getTime() <= Date.now() ? 'due' : '');
+
+// UTC ISO → the value a <input type="datetime-local"> expects (viewer-local, no tz suffix, minute precision).
+const toLocalInput = (iso: string | null): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const actionLabel = (a: string | null): string => (a === 'email_agent' ? '📧 Email' : a === 'publisher' ? '📤 Post' : '⏰ Action');
 
 export function ScheduledView({ notify, onOpenPost }: Props) {
   const [posts, setPosts] = useState<PostDto[]>([]);
@@ -19,13 +31,42 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
   // fanned-out posts can be handed to Atria without hunting for the Workspace dashboard.
   const [grantFor, setGrantFor] = useState<{ postId: string; credits: number; token: string } | null>(null);
   const [granting, setGranting] = useState(false);
+  // Generic-scheduler parked runs + inline reschedule editor state.
+  const [schedRuns, setSchedRuns] = useState<ScheduledRun[]>([]);
+  const [reschedFor, setReschedFor] = useState<string | null>(null);
+  const [reschedVal, setReschedVal] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const r = await api.listPosts({ limit: 100 });
-    if (r.ok) setPosts(r.data);
-    else notify(`Scheduled: ${r.error.error}`, 'err');
+    const [posts, runs] = await Promise.all([api.listPosts({ limit: 100 }), api.listScheduledRuns()]);
+    if (posts.ok) setPosts(posts.data);
+    else notify(`Scheduled: ${posts.error.error}`, 'err');
+    if (runs.ok) setSchedRuns(runs.data);
     setLoading(false);
+  };
+
+  const cancelRun = async (id: string) => {
+    setBusy(true);
+    try {
+      const r = await api.cancelSchedule(id);
+      if (!r.ok) { notify(`Cancel: ${r.error.error}`, 'err'); return; }
+      notify('Scheduled send cancelled.');
+      void load();
+    } finally { setBusy(false); }
+  };
+  const saveReschedule = async (id: string) => {
+    if (!reschedVal) return;
+    const iso = new Date(reschedVal).toISOString();
+    if (new Date(iso).getTime() <= Date.now()) { notify('Pick a future time.', 'err'); return; }
+    setBusy(true);
+    try {
+      const r = await api.reschedule(id, iso);
+      if (!r.ok) { notify(`Reschedule: ${r.error.error}`, 'err'); return; }
+      notify('Rescheduled.');
+      setReschedFor(null);
+      void load();
+    } finally { setBusy(false); }
   };
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -92,7 +133,36 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
       </div>
       <p className="muted">Posts queued for automatic publishing. The scheduler publishes each `ready` post when its time is due.</p>
 
-      <h3 style={{ marginTop: 16 }}>Upcoming ({upcoming.length})</h3>
+      <h3 style={{ marginTop: 16 }}>Scheduled sends ({schedRuns.length})</h3>
+      {schedRuns.length === 0
+        ? <p className="muted small">No scheduled emails or actions. When you approve a run at its ⏰ scheduler gate, it appears here and fires automatically at the confirmed time.</p>
+        : (
+          <div className="sched-list">
+            {schedRuns.map((r) => (
+              <div key={r.id} className={`sched-row-wrap ${dueClass(r.resumeAt)}`}>
+                <div className="sched-row" style={{ cursor: 'default' }}>
+                  <span className="badge scheduled">{actionLabel(r.action)}</span>
+                  <span className="sched-when">⏰ {fmt(r.resumeAt)}{r.timezone ? ` (${r.timezone})` : ''}</span>
+                  <span className="sched-copy muted">{r.name || r.phrase || r.id.slice(0, 8)}</span>
+                </div>
+                {reschedFor === r.id ? (
+                  <span className="ws-grant-confirm">
+                    <input type="datetime-local" value={reschedVal} onChange={(e) => setReschedVal(e.target.value)} />
+                    <button className="ws-grant-yes" disabled={busy} onClick={() => void saveReschedule(r.id)}>Save</button>
+                    <button className="ws-grant-no" disabled={busy} onClick={() => setReschedFor(null)}>Huỷ</button>
+                  </span>
+                ) : (
+                  <span>
+                    <button className="btn small" disabled={busy} onClick={() => { setReschedFor(r.id); setReschedVal(toLocalInput(r.resumeAt)); }}>Reschedule</button>
+                    <button className="ws-grant-no" disabled={busy} onClick={() => void cancelRun(r.id)}>Cancel</button>
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+      <h3 style={{ marginTop: 20 }}>Upcoming ({upcoming.length})</h3>
       {loading ? <p className="muted small">Loading…</p>
         : upcoming.length === 0 ? <p className="muted small">Nothing scheduled. Approve a post with a future time at the publish gate (or set a schedule in the post brief).</p>
         : <div className="sched-list">{upcoming.map((p) => <Row key={p.id} p={p} when={p.scheduledAt} />)}</div>}

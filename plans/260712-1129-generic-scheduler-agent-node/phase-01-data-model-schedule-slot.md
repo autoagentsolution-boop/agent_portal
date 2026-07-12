@@ -1,6 +1,6 @@
 # Phase 01 — Data model + GoalSpec schedule slot
 
-**Priority:** P0 (foundation) · **Status:** ⬜ Not started
+**Priority:** P0 (foundation) · **Status:** ✅ Done
 
 ## Overview
 Add the durable fields the whole feature hangs on: a resume time on the run, and a first-class

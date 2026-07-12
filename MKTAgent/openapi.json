@@ -1862,6 +1862,9 @@
           "chatSessionId": {
             "type": "string",
             "format": "uuid"
+          },
+          "voice": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -2080,6 +2083,12 @@
             "enum": [
               "human",
               "atria"
+            ]
+          },
+          "scheduledResumeAt": {
+            "type": [
+              "string",
+              "null"
             ]
           },
           "nodes": {

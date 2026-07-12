@@ -358,6 +358,9 @@ export const workflowRunDto = z.object({
   // runner (auto-prepares + parks at review); 'human' = manual Execute. Lets the post view
   // show the grant button (human) vs an "Atria đang chuẩn bị…" indicator (atria).
   approvalMode: z.enum(['human', 'atria']).optional(),
+  // Generic scheduler: the confirmed UTC instant a parked (status='scheduled') run resumes at. Null on
+  // an immediate run. Rendered as a "⏰ Scheduled for …" chip (converted to the viewer's local time).
+  scheduledResumeAt: z.string().nullable().optional(),
   nodes: z.array(workflowNodeDto),
   artifacts: z.array(artifactDto),
   // This run's own token/cost total (sum of its nodes). Always present.

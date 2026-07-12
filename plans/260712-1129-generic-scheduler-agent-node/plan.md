@@ -30,13 +30,23 @@ which skips the completed scheduler node and runs the pre-authorized action unat
 ## Phases
 | # | Phase | Status |
 |---|-------|--------|
-| 01 | [Data model + GoalSpec schedule slot](phase-01-data-model-schedule-slot.md) | ⬜ Not started |
-| 02 | [Gemini time-parse + Atria confirm](phase-02-time-parse-and-confirm.md) | ⬜ Not started |
-| 03 | [Scheduler registry node + planner injection](phase-03-scheduler-node-and-planner.md) | ⬜ Not started |
-| 04 | [Executor schedule gate + action waive + re-entry](phase-04-executor-schedule-gate.md) | ⬜ Not started |
-| 05 | [Generic resume-due-runs cron](phase-05-resume-due-runs-cron.md) | ⬜ Not started |
-| 06 | [Frontend: flow card node + Scheduled page cancel/reschedule](phase-06-frontend-scheduled.md) | ⬜ Not started |
-| 07 | [Tests + verify (coexist, no double-send)](phase-07-tests-verify.md) | ⬜ Not started |
+| 01 | [Data model + GoalSpec schedule slot](phase-01-data-model-schedule-slot.md) | ✅ Done |
+| 02 | [Gemini time-parse + Atria confirm](phase-02-time-parse-and-confirm.md) | ✅ Done |
+| 03 | [Scheduler registry node + planner injection](phase-03-scheduler-node-and-planner.md) | ✅ Done |
+| 04 | [Executor schedule gate + action waive + re-entry](phase-04-executor-schedule-gate.md) | ✅ Done |
+| 05 | [Generic resume-due-runs cron](phase-05-resume-due-runs-cron.md) | ✅ Done |
+| 06 | [Frontend: flow card node + Scheduled page cancel/reschedule](phase-06-frontend-scheduled.md) | ✅ Done |
+| 07 | [Tests + verify (coexist, no double-send)](phase-07-tests-verify.md) | ✅ Done |
+
+## Status — DONE 2026-07-12
+Implemented end-to-end. Backend `tsc --noEmit` + web `tsc -b` green; `verify-scheduler-node.ts` (21
+checks) PASS DRY (0 real emails, 0 LLM spend); regression suites (planner/golden/email/executor/
+scheduler-safe-path) unchanged; `docker compose up --build` boots green (migrate deploy clean).
+Live path realized: cron re-enters the executor at the parked action; publisher path untouched.
+Implementation approach note: the executor needed NO new schedule branch — the generic `requiresApproval`
+halt provides the schedule-gate HALT, the approve path parks directly (`parkScheduled`), and re-entry
+passes `approveNodeId = downstream action` to waive that one gate. `ENABLE_SCHEDULER_RESUME=1` gates the
+cron (set in `.env`).
 
 ## Key reuse (why this is medium, not large)
 - Cron + advisory lock (`src/scheduler/cron.ts`, `lock.ts`) — reused, add one tick branch.

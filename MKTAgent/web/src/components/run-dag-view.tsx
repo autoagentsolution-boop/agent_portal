@@ -13,7 +13,7 @@ export const NODE_DOT: Record<string, string> = {
   needs_connection: '⚷',
 };
 
-const agentLabel = (id: string): string => id.replace(/_/g, ' ');
+const agentLabel = (id: string): string => (id === 'scheduler' ? '⏰ scheduler' : id.replace(/_/g, ' '));
 
 // Live-ticking elapsed timer for a node that's currently running. Long steps (video
 // generation runs ~30-90s) otherwise look frozen — this makes it obvious work is
@@ -85,9 +85,12 @@ interface Props {
   // because other steps are still in progress. Comes from the live node.status SSE event —
   // not persisted on the run, so the caller keeps it in its own state and passes it down.
   notices?: Record<string, string>;
+  // Generic scheduler: the confirmed UTC resume instant of a parked run. When set, a "⏰ Scheduled for
+  // {local time}" chip renders under the scheduler node (converted to the viewer's local timezone).
+  scheduledResumeAt?: string | null;
 }
 
-export function RunDagView({ nodes, publishUrls, platforms, onSelectNode, selectedNodeId, notices }: Props) {
+export function RunDagView({ nodes, publishUrls, platforms, onSelectNode, selectedNodeId, notices, scheduledResumeAt }: Props) {
   const platformRows = Object.entries(publishUrls ?? {});
   const targetPlatforms = platforms ?? [];
   return (
@@ -105,6 +108,9 @@ export function RunDagView({ nodes, publishUrls, platforms, onSelectNode, select
             {n.dependsOn.length > 0 && <span className="dag-dep">after {n.dependsOn.join(', ')}</span>}
             {n.status === 'running' && <RunningElapsed key={`${n.nodeId}-elapsed`} />}
             {n.status === 'completed' && <NodeStats node={n} />}
+            {n.agentId === 'scheduler' && scheduledResumeAt && (
+              <span className="dag-notice">⏰ Scheduled for {new Date(scheduledResumeAt).toLocaleString()}</span>
+            )}
             {n.error && <span className="dag-err">{n.error}</span>}
             {notices?.[n.nodeId] && <span className="dag-notice">{notices[n.nodeId]}</span>}
             {n.agentId === 'publisher' && platformRows.length > 0 && (

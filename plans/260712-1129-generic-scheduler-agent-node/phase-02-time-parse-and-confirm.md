@@ -1,6 +1,6 @@
 # Phase 02 — Gemini time-parse + Atria confirm
 
-**Priority:** P0 · **Status:** ⬜ Not started · **Depends on:** 01
+**Priority:** P0 · **Status:** ✅ Done · **Depends on:** 01
 
 ## Overview
 Turn "sáng mai" / "tomorrow morning" / "next Mon 9am" into a confirmed absolute UTC instant. Gemini

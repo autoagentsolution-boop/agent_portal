@@ -817,6 +817,20 @@ const runEmailAgent = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   return { type: 'email_result', data: { to, subject, status, sentIds, error: status === 'partial' ? lastErr : null } };
 };
 
+// scheduler (generic-scheduler node): a trivial, action-free runner. It performs NO external action —
+// it only emits the marker recording the confirmed resume instant. In the normal email/publish flow the
+// PARK happens in the approve path (the scheduler node is marked completed there without executing this),
+// so this runner is a defensive fallback for any path that executes the node directly. It reads the
+// confirmed instant off the goal; a missing/unconfirmed schedule is a planning error, so fail loud.
+const runScheduler = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const sched = ctx.goal.schedule;
+  if (!sched?.confirmed || !sched.at) throw new Error('scheduler: no confirmed schedule to park on');
+  return {
+    type: 'schedule_marker',
+    data: { resumeAt: sched.at, timezone: sched.timezone ?? null, phrase: sched.phrase ?? null },
+  };
+};
+
 const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOutput>> = {
   ideation: runIdeation,
   strategy: runStrategy,
@@ -829,6 +843,7 @@ const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOut
   publisher: runPublisher,
   email_writer: runEmailWriter,
   email_agent: runEmailAgent,
+  scheduler: runScheduler,
 };
 
 export const getRunner = (agentId: RunnableAgentId) => runners[agentId];

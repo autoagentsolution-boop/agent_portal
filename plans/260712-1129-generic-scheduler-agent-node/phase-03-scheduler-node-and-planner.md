@@ -1,6 +1,6 @@
 # Phase 03 — Scheduler registry node + planner injection
 
-**Priority:** P0 · **Status:** ⬜ Not started · **Depends on:** 01
+**Priority:** P0 · **Status:** ✅ Done · **Depends on:** 01
 
 ## Overview
 Make `scheduler` a real registry agent node with a new `gate: 'schedule'`, and teach the planner to

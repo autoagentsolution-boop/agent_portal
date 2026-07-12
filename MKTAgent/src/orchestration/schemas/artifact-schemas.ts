@@ -21,6 +21,7 @@ export const artifactType = z.enum([
   'content_calendar',
   'email_draft',
   'email_result',
+  'schedule_marker',
 ]);
 export type ArtifactType = z.infer<typeof artifactType>;
 
@@ -157,6 +158,15 @@ export const emailResult = z.object({
   error: z.string().nullable().default(null),
 });
 
+// scheduler → schedule_marker (generic-scheduler node). A trivial, action-free marker recording the
+// absolute UTC instant the run is parked to resume at + the tz it was confirmed in. The scheduler
+// performs NO external action; this artifact just documents the park for the DAG/audit.
+export const scheduleMarker = z.object({
+  resumeAt: z.string(),
+  timezone: z.string().nullable().default(null),
+  phrase: z.string().nullable().default(null),
+});
+
 // Lookup: artifactType → its payload schema. The executor uses this to validate
 // an agent's output by its declared `produces` type.
 export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
@@ -171,4 +181,5 @@ export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
   content_calendar: contentCalendar,
   email_draft: emailDraft,
   email_result: emailResult,
+  schedule_marker: scheduleMarker,
 };

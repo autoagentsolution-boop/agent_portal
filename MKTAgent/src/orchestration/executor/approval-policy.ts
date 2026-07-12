@@ -51,6 +51,12 @@ export const atriaApprovalPolicy = (gate: GateKind, ctx: GuardrailContext): Appr
       return ctx.connected && ctx.mediaReady && ctx.cleanlyPostable && ctx.contentChecksPass
         ? 'approve'
         : 'hold';
+
+    case 'schedule':
+      // A schedule is NEVER auto-cleared, even for a granted run: parse ambiguity + sender-vs-recipient
+      // timezone mean the exact instant MUST be confirmed by a human before the run is parked (the single
+      // mitigation that covers both risks). Always hold → the executor halts for the explicit time-confirm.
+      return 'hold';
   }
 };
 
@@ -73,5 +79,7 @@ export const guardrailHoldReason = (gate: GateKind, ctx: GuardrailContext): stri
       if (!ctx.contentChecksPass) gaps.push('content checks failed');
       return gaps.join('; ') || 'guardrail not met';
     }
+    case 'schedule':
+      return 'awaiting your confirmation of the exact time';
   }
 };

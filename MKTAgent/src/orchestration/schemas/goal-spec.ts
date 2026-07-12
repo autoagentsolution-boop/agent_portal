@@ -79,6 +79,21 @@ export const assetTypeFromOutputs = (o: OutputFlags): 'image' | 'carousel' | 'vi
 export const campaignScope = z.enum(['single', 'campaign', 'spotlight']);
 export type CampaignScope = z.infer<typeof campaignScope>;
 
+// Generic scheduler slot (2026-07-12). First-class scheduling intent on the goal so ANY flow can
+// defer its terminal action to a confirmed future time — scheduling is intent, not per-task plumbing.
+//   at        = the absolute UTC instant (ISO 8601) Gemini parsed the phrase to; null until parsed.
+//   phrase    = the raw natural-language time the user said ("sáng mai", "tomorrow 8am") — for audit.
+//   timezone  = the IANA zone the instant was resolved in (recipient may differ from sender).
+//   confirmed = the user EXPLICITLY confirmed the exact instant+tz. GATES planning of the scheduler
+//               node: an unconfirmed schedule never parks a run (parse ambiguity + tz backstop).
+export const scheduleSpec = z.object({
+  at: z.string().nullish(),
+  phrase: z.string().nullish(),
+  timezone: z.string().nullish(),
+  confirmed: z.boolean().default(false),
+});
+export type ScheduleSpec = z.infer<typeof scheduleSpec>;
+
 export const goalSpec = z.object({
   // Stable goal classifier. Milestone 1 only plans `marketing_content`; the field
   // exists so future goal types (lead_nurture, report, etc.) slot in additively.
@@ -91,6 +106,9 @@ export const goalSpec = z.object({
   campaignScope: campaignScope.default('single'),
   duration: z.object({ weeks: z.number().int().positive().max(52) }).nullish(),
   cadence: z.object({ postsPerWeek: z.number().int().positive().max(21) }).nullish(),
+  // Deferred-execution schedule (2026-07-12). Nullish → an immediate flow (the default for everyone).
+  // Set (confirmed) → the planner splices a `scheduler` node before the terminal action.
+  schedule: scheduleSpec.nullish(),
   // Auto-publish preference (decision 2026-07-08). DEFAULT false → a cleanly-postable post STILL
   // halts at the approval gate; the user reviews then approves. The analyzer flips this true when
   // the message explicitly asks to publish without review ("đăng luôn", "auto publish", "no review")

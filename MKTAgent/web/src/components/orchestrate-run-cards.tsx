@@ -46,7 +46,7 @@ export function PlanCard({ run, busy, defaultName, onSave, onExecute }: PlanProp
           ))}
         </div>
       )}
-      <RunDagView nodes={run.nodes} platforms={platforms} />
+      <RunDagView nodes={run.nodes} platforms={platforms} scheduledResumeAt={run.scheduledResumeAt} />
 
       {run.status === 'planned' && !savedName && (
         <div className="save-flow">

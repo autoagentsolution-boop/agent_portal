@@ -1,6 +1,6 @@
 # Phase 06 — Frontend: flow card node + Scheduled page cancel/reschedule
 
-**Priority:** P1 · **Status:** ⬜ Not started · **Depends on:** 04, 05
+**Priority:** P1 · **Status:** ✅ Done · **Depends on:** 04, 05
 
 ## Overview
 Make the schedule visible and reversible: the flow card shows the `scheduler` node with its confirmed

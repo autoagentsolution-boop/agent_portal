@@ -1,6 +1,6 @@
 # Phase 05 — Generic resume-due-runs cron
 
-**Priority:** P0 · **Status:** ⬜ Not started · **Depends on:** 04
+**Priority:** P0 · **Status:** ✅ Done · **Depends on:** 04
 
 ## Overview
 The single type-agnostic driver: every minute, find runs due to resume and re-enter the executor.

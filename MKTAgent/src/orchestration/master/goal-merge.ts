@@ -5,8 +5,26 @@
 // gathered (the re-asks-everything bug). Instead we merge: keep what we know, add
 // what's new. Slots fill only when empty; platforms union; output flags OR (a turn
 // can ADD media but never silently drop a requirement).
-import { goalSpec, type GoalSpec } from '../schemas/goal-spec.ts';
+import { goalSpec, type GoalSpec, type ScheduleSpec } from '../schemas/goal-spec.ts';
 import type { Removals } from './deterministic-analyzer.ts';
+
+// Schedule survives a refinement turn: a freshly-analyzed delta carries no schedule (the analyzer
+// doesn't parse time — the set_schedule tool does, then propose_workflow overlays it), so the prior
+// schedule must not be dropped. When BOTH carry one, the later turn's set fields win (re-schedule),
+// and confirmed is OR'd so a confirmed instant isn't silently un-confirmed by a slot-only delta.
+const mergeSchedule = (
+  prior: ScheduleSpec | null | undefined,
+  delta: ScheduleSpec | null | undefined,
+): ScheduleSpec | null | undefined => {
+  if (!delta) return prior;
+  if (!prior) return delta;
+  return {
+    at: delta.at ?? prior.at,
+    phrase: delta.phrase ?? prior.phrase,
+    timezone: delta.timezone ?? prior.timezone,
+    confirmed: delta.confirmed || prior.confirmed,
+  };
+};
 
 const fillIfEmpty = (prior: string | null | undefined, delta: string | null | undefined): string | null | undefined =>
   (prior && prior.trim() ? prior : (delta && delta.trim() ? delta : prior));
@@ -53,6 +71,7 @@ export const mergeGoals = (prior: GoalSpec, delta: GoalSpec): GoalSpec => {
       lengthSpec: fillIfEmpty(prior.slots.lengthSpec, delta.slots.lengthSpec),
       heroFile: fillIfEmpty(prior.slots.heroFile, delta.slots.heroFile),
     },
+    schedule: mergeSchedule(prior.schedule, delta.schedule),
     confidence: Math.max(prior.confidence, delta.confidence),
     provider: delta.provider,
   });

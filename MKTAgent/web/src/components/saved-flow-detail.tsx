@@ -269,7 +269,7 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
       {run.cost && run.cost.totalTokens > 0 && <CostStrip cost={run.cost} />}
 
       <p className="muted small">Click a step to view its output. Publishing pauses for your approval (safe / dry-run by default).</p>
-      <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} notices={notices} />
+      <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} notices={notices} scheduledResumeAt={run.scheduledResumeAt} />
 
       {showTierCards && tiers && (
         <PlanTierCards tiers={tiers} busyTierId={tierBusy} onSelect={(id) => void selectTier(id)} />

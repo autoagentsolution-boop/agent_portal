@@ -56,6 +56,7 @@ export const toRunDto = (run: RunWithNodes, extras: RunDtoExtras = {}): Workflow
   ...(extras.createdCampaignId ? { createdCampaignId: extras.createdCampaignId } : {}),
   ...(extras.createdPostId ? { createdPostId: extras.createdPostId } : {}),
   approvalMode: run.approvalMode === 'atria' ? 'atria' : 'human',
+  scheduledResumeAt: run.scheduledResumeAt ? run.scheduledResumeAt.toISOString() : null,
   nodes: run.nodes.map((n) => ({
     nodeId: n.nodeId,
     agentId: n.agentId,

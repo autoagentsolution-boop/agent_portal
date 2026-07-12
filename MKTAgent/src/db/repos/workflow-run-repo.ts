@@ -552,6 +552,74 @@ export const markRunCrashed = async (runId: string, error: string): Promise<bool
   return r.count === 1;
 };
 
+// ── Generic scheduler (2026-07-12) ───────────────────────────────────────────
+// Park a run at its scheduler gate for a timed re-entry. Guarded on `needs_approval` (the state the
+// executor left it in at the schedule-gate halt) so a stale double-approve can't re-park. Records the
+// confirmed resume instant + flips scheduleConfirmed (the cron requires it), and marks the scheduler
+// NODE completed so the resume-safe executor skips it on re-entry. Owner-scoped. null = stale/wrong-tenant.
+export const parkScheduled = async (
+  runId: string,
+  ownerId: string,
+  at: Date,
+  schedulerNodeId: string,
+): Promise<WorkflowRun | null> => {
+  const r = await prisma.workflowRun.updateMany({
+    where: { id: runId, ownerId, status: 'needs_approval' },
+    data: { status: 'scheduled', scheduledResumeAt: at, scheduleConfirmed: true },
+  });
+  if (r.count !== 1) return null;
+  await prisma.workflowNodeRun.updateMany({
+    where: { runId, ownerId, nodeId: schedulerNodeId },
+    data: { status: 'completed', finishedAt: new Date() },
+  });
+  return prisma.workflowRun.findFirst({ where: { id: runId, ownerId } });
+};
+
+// Re-park an already-scheduled run at a NEW time (Reschedule). Guarded on `scheduled` so a run the cron
+// just claimed (now `running`) can't be moved mid-fire — the reschedule no-ops (null) and the UI refreshes.
+export const reparkScheduled = async (runId: string, ownerId: string, at: Date): Promise<WorkflowRun | null> => {
+  const r = await prisma.workflowRun.updateMany({
+    where: { id: runId, ownerId, status: 'scheduled' },
+    data: { scheduledResumeAt: at, scheduleConfirmed: true },
+  });
+  return r.count === 1 ? prisma.workflowRun.findFirst({ where: { id: runId, ownerId } }) : null;
+};
+
+// Cancel a scheduled run before it fires. Guarded on `scheduled` so a cancel racing the cron's claim
+// (scheduled → running) no-ops rather than clobbering a run that already began publishing/sending.
+export const cancelScheduled = async (runId: string, ownerId: string): Promise<WorkflowRun | null> => {
+  const r = await prisma.workflowRun.updateMany({
+    where: { id: runId, ownerId, status: 'scheduled' },
+    data: { status: 'cancelled', scheduledResumeAt: null },
+  });
+  return r.count === 1 ? prisma.workflowRun.findFirst({ where: { id: runId, ownerId } }) : null;
+};
+
+// Owner-scoped list of parked runs for the Scheduled page (status='scheduled', soonest first).
+export const listScheduledRuns = (ownerId: string): Promise<WorkflowRun[]> =>
+  prisma.workflowRun.findMany({
+    where: { ownerId, status: 'scheduled' },
+    orderBy: { scheduledResumeAt: 'asc' },
+  });
+
+// Atomically claim ONE due scheduled run for the resumeDueRuns cron (scheduled → running, oldest first,
+// one per tick). Owner-AGNOSTIC read (trusted background sweep, like the publish tick) then a guarded
+// updateMany scoped by the row's own id — the atomic claim guards double-fire even if the advisory lock
+// were ever bypassed. Requires scheduleConfirmed so an unconfirmed schedule is never auto-fired.
+export const claimScheduledDue = async (now: Date): Promise<WorkflowRun | null> => {
+  const candidate = await prisma.workflowRun.findFirst({
+    where: { status: 'scheduled', scheduleConfirmed: true, scheduledResumeAt: { lte: now } },
+    orderBy: { scheduledResumeAt: 'asc' },
+    select: { id: true },
+  });
+  if (!candidate) return null;
+  const claim = await prisma.workflowRun.updateMany({
+    where: { id: candidate.id, status: 'scheduled', scheduleConfirmed: true, scheduledResumeAt: { lte: now } },
+    data: { status: 'running' },
+  });
+  return claim.count === 1 ? prisma.workflowRun.findUnique({ where: { id: candidate.id } }) : null;
+};
+
 // ── Transitions ──────────────────────────────────────────────────────────────
 // Guarded status transition: only advance if currently in `from` AND owned by
 // the caller. Returns the row or null (stale/wrong-tenant) — route maps null→409.

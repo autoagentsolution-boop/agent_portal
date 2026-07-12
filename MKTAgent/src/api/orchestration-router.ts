@@ -42,6 +42,10 @@ import {
   markRunCrashed,
   setNodeStatus,
   cloneTemplateRun,
+  parkScheduled,
+  reparkScheduled,
+  cancelScheduled,
+  listScheduledRuns,
 } from '../db/repos/workflow-run-repo.ts';
 import { createCampaign } from '../db/repos/campaign-repo.ts';
 import { materializeCalendar } from '../orchestration/master/campaign-materializer.ts';
@@ -52,7 +56,7 @@ import { getPostByRunId, setPostSchedule } from '../db/repos/post-repo.ts';
 import { publishNodeStatus } from '../events/bus.ts';
 import { logRun } from '../db/client.ts';
 import { deleteArtifactsByNodes } from '../orchestration/executor/artifact-store.ts';
-import { getAgent } from '../orchestration/registry/agent-registry.ts';
+import { getAgent, agentGate } from '../orchestration/registry/agent-registry.ts';
 import { AGENTS } from '../orchestration/registry/agent-registry.ts';
 import { AGENT_GROUPS } from '../orchestration/registry/agent-groups.ts';
 import { VISION_AGENTS } from '../orchestration/registry/vision-agents.ts';
@@ -500,6 +504,31 @@ orchestrationRouter.post('/runs/:id/approve-node/:nodeId', asyncHandler(async (r
   const run = await getRunForOwner(req.params.id, req.userId!);
   if (!run) return fail(res, 404, 'run_not_found');
   if (run.status !== 'needs_approval') return fail(res, 409, 'run_not_awaiting_approval');
+
+  // Schedule gate (generic-scheduler node): approving the scheduler does NOT run inline — it PARKS the
+  // run for a timed re-entry. Read the confirmed instant off the goal (set in chat via set_schedule +
+  // the user's explicit confirm) and require it be a valid FUTURE time; then park (status='scheduled',
+  // scheduledResumeAt) and let the resumeDueRuns cron re-enter the flow at its action when due.
+  {
+    const plan = workflowPlan.parse(run.plan);
+    const targetNode = plan.nodes.find((n) => n.nodeId === req.params.nodeId);
+    if (targetNode && agentGate(targetNode.agentId) === 'schedule') {
+      const goal = goalSpec.parse(run.goal);
+      // A body-supplied ISO instant (Reschedule/confirm UI) overrides the goal's parsed instant.
+      const rawAt = (req.body as { scheduledAt?: unknown } | undefined)?.scheduledAt;
+      const iso = typeof rawAt === 'string' && rawAt.trim() ? rawAt : goal.schedule?.at ?? null;
+      const at = iso ? new Date(iso) : null;
+      if (!at || Number.isNaN(at.getTime()) || at.getTime() <= Date.now()) {
+        return fail(res, 409, 'schedule_not_confirmed', 'confirm a valid future time before scheduling this run');
+      }
+      const parked = await parkScheduled(run.id, req.userId!, at, targetNode.nodeId);
+      if (!parked) return fail(res, 409, 'run_not_awaiting_approval');
+      await logRun('info', 'wf_scheduled', { runId: run.id, resumeAt: at.toISOString(), tz: goal.schedule?.timezone ?? null }, req.userId!);
+      logger.info('wf_run_scheduled', { runId: run.id, resumeAt: at.toISOString() });
+      return respondRun(res, run.id, req.userId!);
+    }
+  }
+
   // Optional schedule at the publish gate: the user may pick a FUTURE time. Set it on the run's
   // post BEFORE resuming so the executor's isScheduledFuture() parks the post `ready` (the scheduler
   // publishes it at that time) instead of publishing inline. A flow post is `ready` (concept already
@@ -600,6 +629,54 @@ orchestrationRouter.get('/runs/saved', asyncHandler(async (req, res) => {
 orchestrationRouter.get('/runs', asyncHandler(async (req, res) => {
   const rows = await listRuns(req.userId!);
   ok(res, rows.map((r) => ({ id: r.id, status: r.status, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })), { count: rows.length, nextCursor: null });
+}));
+
+// Scheduled runs for the Scheduled page (generic-scheduler node): parked runs (status='scheduled')
+// with their confirmed resume instant + timezone, soonest first. Registered BEFORE /runs/:id so the
+// static segment wins. Owner-scoped.
+orchestrationRouter.get('/runs/scheduled', asyncHandler(async (req, res) => {
+  const rows = await listScheduledRuns(req.userId!);
+  const items = rows.map((r) => {
+    const goal = goalSpec.parse(r.goal);
+    return {
+      id: r.id,
+      name: r.name ?? null,
+      resumeAt: r.scheduledResumeAt ? r.scheduledResumeAt.toISOString() : null,
+      timezone: goal.schedule?.timezone ?? null,
+      phrase: goal.schedule?.phrase ?? null,
+      action: (r.plan as { nodes?: Array<{ agentId: string }> } | null)?.nodes?.find((n) => n.agentId === 'email_agent' || n.agentId === 'publisher')?.agentId ?? null,
+      createdAt: r.createdAt.toISOString(),
+    };
+  });
+  ok(res, items, { count: items.length, nextCursor: null });
+}));
+
+// Cancel a scheduled run before it fires. No-ops (409) if the cron already claimed it (now running).
+orchestrationRouter.post('/runs/:id/cancel-schedule', asyncHandler(async (req, res) => {
+  const cancelled = await cancelScheduled(req.params.id, req.userId!);
+  if (!cancelled) return fail(res, 409, 'run_not_scheduled', 'this run is not scheduled (or already firing)');
+  await logRun('info', 'wf_schedule_cancelled', { runId: req.params.id }, req.userId!);
+  return respondRun(res, req.params.id, req.userId!);
+}));
+
+// Reschedule a parked run to a new confirmed future time. Body: { scheduledAt: ISO }. No-ops if the run
+// is no longer `scheduled` (already firing/cancelled). Also updates the goal's schedule.at for consistency.
+orchestrationRouter.post('/runs/:id/reschedule', asyncHandler(async (req, res) => {
+  const rawAt = (req.body as { scheduledAt?: unknown } | undefined)?.scheduledAt;
+  const at = typeof rawAt === 'string' && rawAt.trim() ? new Date(rawAt) : null;
+  if (!at || Number.isNaN(at.getTime()) || at.getTime() <= Date.now()) {
+    return fail(res, 422, 'invalid_time', 'provide a valid future scheduledAt (ISO 8601)');
+  }
+  const run = await getRunForOwner(req.params.id, req.userId!);
+  if (!run) return fail(res, 404, 'run_not_found');
+  if (run.status !== 'scheduled') return fail(res, 409, 'run_not_scheduled', 'this run is not scheduled (or already firing)');
+  const goal = goalSpec.parse(run.goal);
+  const nextGoal = { ...goal, schedule: { ...(goal.schedule ?? { phrase: null, timezone: null }), at: at.toISOString(), confirmed: true } };
+  await replanRun(run.id, run.status, nextGoal, (run.plan as object | null) ?? null);
+  const reparked = await reparkScheduled(req.params.id, req.userId!, at);
+  if (!reparked) return fail(res, 409, 'run_not_scheduled', 'this run is not scheduled (or already firing)');
+  await logRun('info', 'wf_rescheduled', { runId: req.params.id, resumeAt: at.toISOString() }, req.userId!);
+  return respondRun(res, req.params.id, req.userId!);
 }));
 
 // History restore: the latest run for a chat session (conversational unify). The

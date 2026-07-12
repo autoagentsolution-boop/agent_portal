@@ -285,7 +285,7 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
       )}
 
       <div className="post-workflow-body">
-        <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} notices={notices} />
+        <RunDagView nodes={run.nodes} publishUrls={publishUrls} platforms={(run.goal as { platforms?: string[] } | null)?.platforms ?? []} onSelectNode={setSelectedNode} selectedNodeId={selectedNode} notices={notices} scheduledResumeAt={run.scheduledResumeAt} />
 
         {run.status === 'needs_connection' && requiredActions.length > 0 && (
           <ConnectionRequired actions={requiredActions} busy={busy} onContinue={() => void execute()} onOpenConnections={onOpenConnections} />

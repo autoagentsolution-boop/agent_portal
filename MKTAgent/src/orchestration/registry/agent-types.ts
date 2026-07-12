@@ -17,7 +17,10 @@ export type AgentId =
   // Email path (P4-lite): write an email, then send it (Gmail). Separate from the social pipeline.
   | 'email_writer';
 
-export type RunnableAgentId = AgentId | 'publisher' | 'email_agent';
+// `scheduler` is a generic, type-agnostic control node (not an AgentId content producer): the planner
+// splices it before a run's terminal action when the goal carries a confirmed schedule. It performs no
+// external action — it parks the run for a timed re-entry (see the executor + resumeDueRuns cron).
+export type RunnableAgentId = AgentId | 'publisher' | 'email_agent' | 'scheduler';
 
 // M1 status: live = wraps an existing production seam; stub = emits a schema-valid
 // placeholder artifact so the DAG runs end-to-end now. Wiring stubs→live is later.
@@ -46,12 +49,15 @@ export interface AgentDefinition {
   //   'selection' — pauses AFTER executing so the user picks an output (concept versions).
   //   'cost'      — pauses BEFORE executing (expensive step, e.g. video) for a spend OK.
   //   'publish'   — pauses BEFORE the external write (publisher).
+  //   'schedule'  — pauses BEFORE the terminal action for the user to review the draft + confirm the
+  //                 exact future time; approving PARKS the run (status='scheduled') for a timed re-entry
+  //                 by the resumeDueRuns cron instead of running inline (generic-scheduler node).
   //   undefined   — no gate; runs straight through.
   // Note this is orthogonal to `requiresApproval` (the executor's before-halt flag):
   // concept_writer has gate='selection' but requiresApproval=false because its pause is a
   // POST-execution park, not a pre-execution halt — that's what fixes the old display≠behavior
   // (a UI roster reads `gate` to show "pauses", not the misleading requiresApproval=false).
-  gate?: 'selection' | 'cost' | 'publish';
+  gate?: 'selection' | 'cost' | 'publish' | 'schedule';
   // Capability skills this agent provides (brief §11.5). The publisher declares
   // `social.post.*`; target platforms come from the GoalSpec and are resolved at
   // run time (capability-based planning), NOT modeled as separate DAG nodes.

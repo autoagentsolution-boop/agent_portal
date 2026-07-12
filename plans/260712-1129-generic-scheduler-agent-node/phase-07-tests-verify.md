@@ -1,6 +1,6 @@
 # Phase 07 — Tests + verify (coexist, no double-send)
 
-**Priority:** P0 (gate to done) · **Status:** ⬜ Not started · **Depends on:** 01–06
+**Priority:** P0 (gate to done) · **Status:** ✅ Done · **Depends on:** 01–06
 
 ## Overview
 Prove the generic path end-to-end with NO real send, prove it coexists with the untouched publisher

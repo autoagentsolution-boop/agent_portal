@@ -122,6 +122,7 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
     searched: [],
     proposal: null,
     executeRunId: null,
+    scheduleProposal: null,
   };
   // Voice hint rides the user turn (NOT the system prompt — that's context-cached and must stay stable).
   const userParts = input.voice

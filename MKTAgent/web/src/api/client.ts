@@ -497,6 +497,14 @@ export const api = {
   listSavedRuns: () => request<SavedRunDto[]>('/orchestration/runs/saved'),
   deleteRun: (id: string) => request<void>(`/orchestration/runs/${id}`, { method: 'DELETE' }),
 
+  // Generic scheduler (2026-07-12): parked runs (status='scheduled') queued for a timed re-entry, plus
+  // cancel + reschedule. Timezone/phrase come from the run's confirmed schedule; resumeAt is UTC.
+  listScheduledRuns: () =>
+    request<Array<{ id: string; name: string | null; resumeAt: string | null; timezone: string | null; phrase: string | null; action: string | null; createdAt: string }>>('/orchestration/runs/scheduled'),
+  cancelSchedule: (id: string) => request<WorkflowRunDto>(`/orchestration/runs/${id}/cancel-schedule`, { method: 'POST' }),
+  reschedule: (id: string, scheduledAt: string) =>
+    request<WorkflowRunDto>(`/orchestration/runs/${id}/reschedule`, { method: 'POST', body: { scheduledAt } }),
+
   // ---- Phase 03: plan tiers, kill switch, usage dashboard ----
   // Checkpoint 2 — Economy/Balanced/Full variants for a `planned` run's goal (read-only
   // preview; [] when the goal can't be tiered, caller keeps the single-plan flow).

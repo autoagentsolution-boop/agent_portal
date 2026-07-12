@@ -81,10 +81,25 @@ const deriveDeps = (
   return [...deps];
 };
 
+// The terminal external-action nodes a scheduler is spliced in FRONT of. First consumer is email;
+// publisher is listed so a scheduled social post rides the same generic path once it's proven out.
+const TERMINAL_ACTIONS: ReadonlyArray<RunnableAgentId> = ['email_agent', 'publisher'];
+
 export const planWorkflow = (goal: GoalSpec): PlanResult => {
   const selected = selectAgents(goal);
   if (selected.length === 0) {
     return { ok: false, error: 'no_agents_selected', detail: ['goal produced no output requirements'] };
+  }
+
+  // Generic scheduler splice (2026-07-12): a goal carrying a user-CONFIRMED schedule gets a `scheduler`
+  // node inserted immediately before its terminal action, so the run parks at the scheduler gate and a
+  // cron re-enters the flow at the action when due. Unconfirmed / no schedule → plan unchanged (the
+  // publisher keeps its own scheduledAt path). Guarded on `.confirmed` so a mere parse never plans it.
+  const scheduled = Boolean(goal.schedule?.confirmed && goal.schedule.at);
+  const ids: RunnableAgentId[] = [...selected];
+  if (scheduled) {
+    const actionIdx = ids.findIndex((id) => TERMINAL_ACTIONS.includes(id));
+    if (actionIdx >= 0) ids.splice(actionIdx, 0, 'scheduler');
   }
 
   // Publish-only goal (Phase 05 / D-F5): needsPublishing selected the publisher but no content
@@ -99,7 +114,7 @@ export const planWorkflow = (goal: GoalSpec): PlanResult => {
   const placed: Array<{ nodeId: string; def: AgentDefinition }> = [];
   const nodes: WorkflowNode[] = [];
 
-  selected.forEach((agentId, i) => {
+  ids.forEach((agentId, i) => {
     const def = getAgent(agentId);
     if (!def) return; // unreachable: selected ids are registry ids
     const nodeId = `n${i + 1}`;
@@ -111,6 +126,19 @@ export const planWorkflow = (goal: GoalSpec): PlanResult => {
     });
     placed.push({ nodeId, def });
   });
+
+  // Scheduler edge wiring: the scheduler produces no artifact any node consumes, so deriveDeps can't
+  // order it — wire it explicitly as writer(s) → scheduler → action. The action then depends ONLY on the
+  // scheduler (its content producers stay transitively upstream, so input satisfiability holds), which
+  // forces the executor to halt at the scheduler gate BEFORE reaching the action.
+  if (scheduled) {
+    const schedulerNode = nodes.find((n) => n.agentId === 'scheduler');
+    const actionNode = nodes.find((n) => TERMINAL_ACTIONS.includes(n.agentId));
+    if (schedulerNode && actionNode) {
+      schedulerNode.dependsOn = [...actionNode.dependsOn];
+      actionNode.dependsOn = [schedulerNode.nodeId];
+    }
+  }
 
   const parsed = workflowPlan.safeParse({ goal: goal.goal, nodes });
   if (!parsed.success) {

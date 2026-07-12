@@ -299,6 +299,26 @@ export const AGENTS: AgentDefinition[] = [
     successMetrics: ['sends only after explicit approval', 'delivers to every valid recipient', 'clear per-recipient outcome'],
     decisionFramework: 'Treat a send as an external write. Present the draft for review; on approval, send via the owner\'s Gmail to each recipient and report per-recipient status. Never auto-blast.',
   },
+  {
+    id: 'scheduler',
+    name: 'Scheduler',
+    description: 'Hold the run until a confirmed future time, then re-enter the flow to run its next action.',
+    implStatus: 'live',
+    // Type-agnostic control node: no content inputs, no external action. Produces only a marker.
+    requires: [],
+    optional: [],
+    produces: ['schedule_marker'],
+    requiresConnection: false,
+    // BEFORE-gate: halts the run so the user reviews the produced draft and confirms the exact instant.
+    // Approving parks the run (status='scheduled') for a timed re-entry — it never runs the action itself.
+    requiresApproval: true,
+    gate: 'schedule',
+    emoji: '⏰',
+    group: 'action',
+    vibe: 'Patient timekeeper: holds a ready action until its confirmed moment, then hands off — never acts itself.',
+    successMetrics: ['parks only a user-confirmed absolute time', 'fires once, at the right instant', 'never performs the action itself'],
+    decisionFramework: 'Do nothing but wait. Once the user confirms the exact instant + timezone, park the run; when due, hand control straight back to the flow so its next node runs unattended.',
+  },
 ];
 
 const byId = new Map<RunnableAgentId, AgentDefinition>(AGENTS.map((a) => [a.id, a]));

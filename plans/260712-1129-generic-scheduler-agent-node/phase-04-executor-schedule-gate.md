@@ -1,6 +1,6 @@
 # Phase 04 — Executor schedule gate + action waive + re-entry
 
-**Priority:** P0 (the core) · **Status:** ⬜ Not started · **Depends on:** 03
+**Priority:** P0 (the core) · **Status:** ✅ Done · **Depends on:** 03
 
 ## Overview
 The heart: when the executor reaches the `scheduler` node it HALTS for the single human approval;

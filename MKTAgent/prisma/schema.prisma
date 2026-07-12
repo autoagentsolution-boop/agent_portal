@@ -568,6 +568,12 @@ model WorkflowRun {
   // user confirms the finalized schedule; the scheduler tick (Phase 03) skips runs where
   // this is false. Irrelevant for human-mode runs (they publish via the in-flow gate).
   scheduleConfirmed Boolean @default(false) @map("schedule_confirmed")
+  // Generic scheduler node (2026-07-12): absolute UTC instant at which a PARKED run should
+  // resume and run its pre-authorized terminal action. Null = not scheduled. Set when the user
+  // approves a `scheduler` gate (executor parks the run `status='scheduled'`); the resumeDueRuns
+  // cron claims runs with scheduledResumeAt <= now AND scheduleConfirmed, and re-enters the
+  // executor. Type-agnostic — the scheduler is blind to what the downstream node does.
+  scheduledResumeAt DateTime? @map("scheduled_resume_at") @db.Timestamptz(6)
   // For an instance: the template it was cloned from (reuse/audit). SetNull if the
   // template is deleted so instances/posts outlive their blueprint.
   templateId    String?  @map("template_id") @db.Uuid
@@ -585,6 +591,8 @@ model WorkflowRun {
   @@index([ownerId, status], name: "ix_wf_run_owner_status")
   @@index([ownerId, kind], name: "ix_wf_run_owner_kind")
   @@index([templateId], name: "ix_wf_run_template")
+  // Due-run scan for the generic resumeDueRuns cron (status='scheduled' AND scheduledResumeAt <= now).
+  @@index([status, scheduledResumeAt], name: "ix_wf_run_status_resume")
   @@map("wf_run")
 }
 

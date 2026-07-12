@@ -7,7 +7,7 @@ import { mkdirSync } from 'node:fs';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { logger } from './lib/logger.ts';
-import { startSchedulerCron } from './scheduler/cron.ts';
+import { startSchedulerCron, startSchedulerResumeCron } from './scheduler/cron.ts';
 import { startReaperCron } from './scheduler/reaper-cron.ts';
 import { startAutonomyCron } from './orchestration/autonomy/autonomy-cron.ts';
 import { startCopyGenCron } from './copygen/cron.ts';
@@ -161,6 +161,7 @@ const bootstrap = (): void => {
     logger.info('mktagent_listening', { port: env.PORT, env: env.NODE_ENV });
   });
   if (env.ENABLE_SCHEDULER_CRON) startSchedulerCron();
+  if (env.ENABLE_SCHEDULER_RESUME) startSchedulerResumeCron();
   if (env.ENABLE_REAPER_CRON) startReaperCron();
   if (env.ENABLE_AUTONOMY_CRON) startAutonomyCron();
   if (env.ENABLE_COPYGEN_CRON) startCopyGenCron();

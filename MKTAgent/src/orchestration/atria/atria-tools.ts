@@ -11,7 +11,8 @@ import { requirementAnalyzer } from '../master/requirement-analyzer.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
 import { mergeGoals } from '../master/goal-merge.ts';
 import { recordLlmUsage } from '../../cost/llm-usage.ts';
-import type { GoalSpec } from '../schemas/goal-spec.ts';
+import { parseScheduleTime } from './parse-schedule-time.ts';
+import { goalSpec, type GoalSpec } from '../schemas/goal-spec.ts';
 
 // Per-turn state threaded through every tool call. `searched` accumulates citation labels (surfaced to
 // the user for transparency); `proposal` is set when the brain calls propose_workflow (the router turns
@@ -29,6 +30,10 @@ export interface ToolContext {
   proposal: { goal: GoalSpec; outcome: MasterAgentOutcome } | null;
   // Set by execute_workflow when the user asks to run the plan → the router triggers execution.
   executeRunId: string | null;
+  // A schedule PROPOSAL parsed by set_schedule THIS turn (natural-language time → absolute UTC instant).
+  // Overlaid onto the goal in propose_workflow as UNconfirmed — the user must confirm the exact instant
+  // (which they do on a later turn, at which point the schedule is carried via priorGoal → confirmed).
+  scheduleProposal: { phrase: string | null; at: string; timezone: string | null } | null;
 }
 
 const MEMORY_KINDS = new Set<MemoryKind>(['product', 'brand', 'audience', 'preference', 'contact', 'fact']);
@@ -96,6 +101,16 @@ export const TOOL_DECLARATIONS = [
     },
   },
   {
+    name: 'set_schedule',
+    description:
+      'Parse a natural-language time ("tomorrow morning", "next Mon 9am", "sáng mai") into ONE exact absolute instant, so a later action (e.g. sending an email) can happen at that time. Call this when the user wants an action to run at a specific FUTURE time. It returns the exact instant + timezone for you to read back and ask the user to confirm — it schedules NOTHING by itself. After the user confirms, call propose_workflow so the flow includes the scheduler.',
+    parameters: {
+      type: 'object',
+      properties: { when_phrase: { type: 'string', description: 'The time expression exactly as the user said it.' } },
+      required: ['when_phrase'],
+    },
+  },
+  {
     name: 'execute_workflow',
     description:
       'Run the workflow you ALREADY proposed (the flow card currently on screen). Use ONLY when the user explicitly says to run / proceed / execute / "chạy đi" AND a plan is already on the table. Atria generates the content, then the run HALTS at the approval gate before anything is published or sent — so this is safe. Do NOT use this to make a new plan (use propose_workflow), and do not call it if no workflow has been proposed yet.',
@@ -150,12 +165,37 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         ctx.executeRunId = ctx.existingRunId;
         return { status: 'executing', note: 'The workflow is now running; it will pause at the approval gate before anything is published or sent.' };
       }
+      case 'set_schedule': {
+        const phrase = str(args.when_phrase) || ctx.message;
+        const parsed = await parseScheduleTime(phrase, ctx.ownerId);
+        if (!parsed) {
+          return { error: 'could_not_parse_time', note: 'Ask the user to state the time more concretely (e.g. "tomorrow 8am") — do not claim anything is scheduled.' };
+        }
+        ctx.scheduleProposal = { phrase, at: parsed.atUtc, timezone: parsed.timezone };
+        return {
+          proposed_time_utc: parsed.atUtc,
+          timezone: parsed.timezone,
+          human_confirm: parsed.humanConfirm,
+          note: 'Read the exact time + timezone back to the user and ask them to confirm. Do NOT say it is scheduled yet. After they confirm, call propose_workflow.',
+        };
+      }
       case 'propose_workflow': {
         const analyzed = await requirementAnalyzer.analyze(str(args.goal_description) || ctx.message, ctx.ownerId, ctx.memoryContext);
         // Multi-turn: merge onto the prior goal (additive — same semantics as the old refine path) so a
         // description that restates only this turn's delta never drops product/audience/platforms
         // gathered earlier. First turn (no priorGoal) uses the analyzed goal as-is.
-        const goal = ctx.priorGoal ? mergeGoals(ctx.priorGoal, analyzed) : analyzed;
+        const merged = ctx.priorGoal ? mergeGoals(ctx.priorGoal, analyzed) : analyzed;
+        // Schedule overlay (generic-scheduler node): a proposal parsed THIS turn is UNconfirmed (the user
+        // still has to confirm the exact instant) → the planner leaves the flow immediate. A schedule
+        // CARRIED from a prior turn (priorGoal, via mergeGoals) means the user already saw it and is now
+        // proceeding → confirmed, so the planner splices the scheduler node. Either way the executor's
+        // schedule gate is the final park checkpoint — nothing parks without an explicit approval click.
+        let goal = merged;
+        if (ctx.scheduleProposal) {
+          goal = goalSpec.parse({ ...merged, schedule: { ...ctx.scheduleProposal, confirmed: false } });
+        } else if (merged.schedule?.at) {
+          goal = goalSpec.parse({ ...merged, schedule: { ...merged.schedule, confirmed: true } });
+        }
         const outcome = masterAgent.planFromGoal(goal);
         ctx.proposal = { goal, outcome };
         if (outcome.status === 'planned') return { status: 'planned', agents: outcome.plan.nodes.map((n) => n.agentId), steps: outcome.plan.nodes.length };

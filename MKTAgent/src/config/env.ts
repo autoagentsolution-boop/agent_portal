@@ -33,6 +33,9 @@ const schema = z.object({
   MKT_API_KEYS: z.string().default(''),
   // Background workers (off by default so dev/CLI runs don't auto-post).
   ENABLE_SCHEDULER_CRON: boolEnv(false),
+  // Generic resume-due-runs cron (generic-scheduler node): re-enters parked (status='scheduled') runs at
+  // their confirmed time. OFF by default like the other workers; enable alongside ENABLE_SCHEDULER_CRON.
+  ENABLE_SCHEDULER_RESUME: boolEnv(false),
   ENABLE_TOKEN_CRON: boolEnv(false),
   // Token encryption (32 bytes hex). Required once tokens module is used; we
   // validate format here but allow empty in dev so scaffold boots.

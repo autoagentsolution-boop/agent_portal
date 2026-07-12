@@ -3,6 +3,38 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-12
+
+### Feat: generic scheduler agent node (deferred-execution, type-agnostic)
+`pivot/video-content-farm`. Plan `plans/260712-1129-generic-scheduler-agent-node`. One reusable
+`scheduler` registry node lets ANY flow defer its terminal action to a confirmed future time. The
+scheduler performs NO action — it PARKS the run and a single generic cron re-enters the executor at
+the parked node when due. First consumer: scheduled email ("send tomorrow morning"). The existing
+publisher `scheduledAt` + `runSchedulerTick` path is **untouched** (coexists).
+- **Data model**: `WorkflowRun.scheduledResumeAt` (nullable Timestamptz) + `@@index([status,
+  scheduledResumeAt])`; migration `20260712061605_generic_scheduler_resume_at` (additive, safe).
+  New first-class `GoalSpec.schedule { at, phrase, timezone, confirmed }`; `mergeGoals` carries it.
+- **Time parse + confirm** (`orchestration/atria/parse-schedule-time.ts`, `set_schedule` tool):
+  Gemini parses NL time → absolute UTC instant + IANA tz; Atria ALWAYS reads the exact instant back
+  and the user must confirm before it becomes bindable (covers parse ambiguity + sender-vs-recipient
+  tz). Unconfirmed never parks.
+- **Registry + planner**: `scheduler` node (gate `schedule`, emoji ⏰, produces `schedule_marker`);
+  `planWorkflow` splices it before the terminal action (`email_agent`/`publisher`) only when the goal
+  carries a CONFIRMED schedule — explicit edges writer→scheduler→action. No schedule → plan unchanged.
+- **Executor + approve path**: the generic `requiresApproval` halt provides the schedule-gate HALT
+  (draft produced first for review); approving parks directly (`parkScheduled`: status='scheduled',
+  scheduledResumeAt, scheduleConfirmed, scheduler node completed) instead of running inline.
+- **Resume cron** (`scheduler/resume-due-runs.ts`, `ENABLE_SCHEDULER_RESUME`): own advisory lock key
+  + atomic `claimScheduledDue` (scheduled→running) → `runWorkflow` with `approveNodeId = downstream
+  action` (waives that one gate). Resume-safe executor skips completed writer+scheduler. `<= now`
+  catch-up (missed windows fire late, never lost). A resume failure ends `failed` (no re-queue).
+- **Frontend**: Scheduled page "Scheduled sends" section (list + Cancel + Reschedule); flow card
+  renders the ⏰ scheduler node + a "Scheduled for {local time}" chip. New endpoints `GET
+  /runs/scheduled`, `POST /runs/:id/cancel-schedule`, `POST /runs/:id/reschedule`.
+- **Verify**: `orchestration/executor/verify-scheduler-node.ts` (21 checks) PASS DRY — halt→park→
+  single-send re-entry, double-fire guard (lock + atomic claim), unconfirmed/completed skip,
+  failure-no-requeue. Backend + web typecheck green; regression suites unchanged; Docker boot green.
+
 ## 2026-07-10
 
 ### Fix: strict bool env parse, grant visibility, SSE multiplex, verify reconciliation (demo-ready polish)

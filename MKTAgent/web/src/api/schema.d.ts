@@ -3001,6 +3001,7 @@ export interface components {
             message: string;
             /** Format: uuid */
             chatSessionId?: string;
+            voice?: boolean;
         };
         ClarifyRunBody: {
             answers: {
@@ -3058,6 +3059,7 @@ export interface components {
             createdPostId?: string;
             /** @enum {string} */
             approvalMode?: "human" | "atria";
+            scheduledResumeAt?: string | null;
             nodes: {
                 nodeId: string;
                 agentId: string;
