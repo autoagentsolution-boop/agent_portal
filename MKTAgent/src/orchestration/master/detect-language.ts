@@ -70,3 +70,19 @@ export const languageName = (code: string | null | undefined): string | null => 
   if (!c) return null;
   return NAMES[c] ?? code ?? null;
 };
+
+// The authoritative CONTENT language for a run — mirrors the language the user is actually communicating
+// in, so a memory-inferred 'vi' can't force Vietnamese onto an English (or Thai, …) conversation. Rules:
+//   1. A confident detection of the CURRENT message wins (VN/Thai/JP/… by script — kills memory bleed and
+//      lets a later refine that states a detectable language override the flow's language).
+//   2. Otherwise (Latin/ambiguous message) keep the flow's ESTABLISHED prior language.
+//   3. First turn with no prior → English (mirror a Latin chat), never the VN account default.
+// `prior` MUST be the previously-established goal language (ctx.priorGoal), NEVER this turn's analyzer
+// output — the analyzer's inferred language is the untrustworthy signal we deliberately ignore. Because
+// turn 1 already resolves via this function, a carried 'vi' can only mean a genuinely VN conversation, so
+// keeping it is safe. A per-node form field / explicit form override still wins downstream.
+export const contentLanguageFor = (message: string, prior: string | null | undefined): string => {
+  const detected = detectLanguage(message);
+  if (detected) return detected;
+  return (prior ?? '').trim().toLowerCase() || 'en';
+};

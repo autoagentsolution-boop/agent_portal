@@ -163,8 +163,11 @@ export const evaluateClarification = (
 
   // Publishing with no platform named → ALWAYS ask (mandatory brief field). We must never
   // silently default the publish targets (the "defaulted to Facebook" bug): the user has to
-  // choose where this goes before an external write.
-  if (goal.outputs.needsPublishing && goal.platforms.length === 0) {
+  // choose where this goes before an external write. Skip for an email goal: the planner
+  // short-circuits needsEmail to the standalone email flow (ignoring social flags), so asking
+  // which platforms to publish to is a marketing question that doesn't apply — mirror that
+  // precedence here so a merged email goal carrying a default needsPublishing isn't interrogated.
+  if (goal.outputs.needsPublishing && !goal.outputs.needsEmail && goal.platforms.length === 0) {
     q.push({
       slot: 'platforms',
       question: 'Which platforms should this publish to?',

@@ -10,6 +10,7 @@ import { rememberFreeform, type MemoryKind } from '../../db/repos/user-memory-re
 import { requirementAnalyzer } from '../master/requirement-analyzer.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
 import { mergeGoals } from '../master/goal-merge.ts';
+import { contentLanguageFor } from '../master/detect-language.ts';
 import { recordLlmUsage } from '../../cost/llm-usage.ts';
 import { parseScheduleTime } from './parse-schedule-time.ts';
 import { goalSpec, type GoalSpec } from '../schemas/goal-spec.ts';
@@ -230,6 +231,11 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         } else if (merged.schedule?.at) {
           goal = goalSpec.parse({ ...merged, schedule: { ...merged.schedule, confirmed: true } });
         }
+        // Content language mirrors the language the user is actually chatting in — derived from THIS
+        // message + the flow's established prior language, never the analyzer's inferred slot (a stale
+        // 'vi' bled from recalled memory would otherwise force Vietnamese onto an English conversation).
+        // A detectable language in a later refine turn overrides; the analyzer's own guess is ignored.
+        goal = goalSpec.parse({ ...goal, slots: { ...goal.slots, language: contentLanguageFor(ctx.message, ctx.priorGoal?.slots.language ?? null) } });
         const outcome = masterAgent.planFromGoal(goal);
         ctx.proposal = { goal, outcome };
         if (outcome.status === 'planned') return { status: 'planned', agents: outcome.plan.nodes.map((n) => n.agentId), steps: outcome.plan.nodes.length };
@@ -249,7 +255,8 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         const goal = goalSpec.parse({
           taskTargets: [target],
           outputs: { needsTextPost: false, needsPublishing: false },
-          slots: { sourceText },
+          // Summary language mirrors the chat, same rule as propose_workflow (no prior task-lang to carry).
+          slots: { sourceText, language: contentLanguageFor(ctx.message, ctx.priorGoal?.slots.language ?? null) },
           provider: 'atria-task',
         });
         const outcome = masterAgent.planFromGoal(goal, { skipClarification: true });

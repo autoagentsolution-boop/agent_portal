@@ -5,7 +5,7 @@ import { analyzeDeterministic } from './master/deterministic-analyzer.ts';
 import { evaluateClarification } from './master/clarification-engine.ts';
 import { MasterAgent } from './master/master-agent.ts';
 import { deterministicReply, conversationAuthor } from './master/conversation-author.ts';
-import { detectLanguage } from './master/detect-language.ts';
+import { detectLanguage, contentLanguageFor } from './master/detect-language.ts';
 import { mergeGoals, applyRemovals } from './master/goal-merge.ts';
 import { parseRemovals } from './master/deterministic-analyzer.ts';
 import { goalSpec } from './schemas/goal-spec.ts';
@@ -158,6 +158,13 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   // Reply must read the parsed time back + ask to confirm while unconfirmed (the seam that was missing).
   const unconfirmedReply = deterministicReply(pendingOut);
   check('reply asks to confirm the parsed time', /confirm/i.test(unconfirmedReply), unconfirmedReply.slice(0, 160));
+
+  // Email goal is not interrogated for marketing platforms even if a default needsPublishing rides along
+  // (planner short-circuits email; clarification mirrors that precedence).
+  const emailPlusPublish = goalSpec.parse({ ...emailBase, outputs: { ...emailBase.outputs, needsPublishing: true }, slots: { ...emailBase.slots, emailTo: 'nghiep@example.com' } });
+  const emailClar = evaluateClarification(emailPlusPublish);
+  const emailAsks = emailClar.status === 'needs_clarification' ? emailClar.questions.map((x) => x.slot) : [];
+  check('email goal never asks platforms', !emailAsks.includes('platforms'), emailAsks);
 }
 
 // Subtractive refinement: a removal phrase ("bỏ video") must un-set the named output
@@ -259,6 +266,16 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   check('Arabic → ar', detectLanguage('اكتب منشورًا قصيرًا عن الميزة الجديدة') === 'ar');
   check('French (Latin) → null (model mirrors)', detectLanguage('Rédige un court post LinkedIn sur notre nouvelle fonctionnalité') === null);
   check('empty → null', detectLanguage('') === null);
+
+  // Content language mirrors the chat (kills the "English chat → Vietnamese email" bug). Derived from the
+  // message + the flow's established prior, NEVER the analyzer's inferred slot.
+  console.log('contentLanguageFor (content mirrors the chat, no VN default)');
+  check('English chat → en (not the vi default)', contentLanguageFor('send a birthday email to my friend', null) === 'en');
+  check('VN chat → vi', contentLanguageFor('gửi email chúc mừng sinh nhật', null) === 'vi');
+  check('neutral refine keeps established en', contentLanguageFor('add an image', 'en') === 'en');
+  check('neutral refine keeps established vi', contentLanguageFor('proceed', 'vi') === 'vi');
+  check('detectable refine overrides the flow language', contentLanguageFor('thêm ảnh nữa', 'en') === 'vi');
+  check('inferred vi slot is ignored on an English chat', contentLanguageFor('yes please proceed', null) === 'en');
 }
 
 // Optional live Gemini smoke.
