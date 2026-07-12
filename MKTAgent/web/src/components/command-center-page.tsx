@@ -37,7 +37,6 @@ interface Props {
   // mini-hero and chatSlot (the OrchestratePanel, wired in App) renders below. onCloseChat returns home.
   chatActive?: boolean;
   chatSlot?: ReactNode;
-  onCloseChat?: () => void;
   notify: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
@@ -60,7 +59,7 @@ const nodePos = (i: number, total: number): { left: string; top: string } => {
   return { left: `${50 + Math.cos(ang) * 42}%`, top: `${50 + Math.sin(ang) * 40}%` };
 };
 
-export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], onResumeChat, onOpenFlow, chatActive = false, chatSlot, onCloseChat, notify }: Props) {
+export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], onResumeChat, onOpenFlow, chatActive = false, chatSlot, notify }: Props) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [cmd, setCmd] = useState('');
@@ -192,7 +191,6 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
 
       {chatActive ? (
         <div className="cc-chat-embed">
-          <button className="cc-chat-back" onClick={onCloseChat}>← Trung tâm điều hành</button>
           {chatSlot}
         </div>
       ) : (

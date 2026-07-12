@@ -86,7 +86,11 @@ export function buildGeminiBody(post: PostWithCampaignOwner, refine?: RefineDire
     ...(userInstructions.length
       ? [`USER INSTRUCTIONS (the user's own steer — honor these unless they conflict with a hard guardrail below, which always wins):\n${userInstructions.map((s) => `- ${s}`).join('\n')}`]
       : []),
-    `LANGUAGE: write EVERY variant (body, threads, x) in ${lang}. Do not mix languages; keep it natural and idiomatic in ${lang}.`,
+    // On a REFINE the instruction may ask to translate / switch language — it must be allowed to
+    // override the base language (feedback #1: "translate to English" was silently re-pinned to VN).
+    refine
+      ? `LANGUAGE: the current copy is in ${lang}. If the refinement instruction asks to translate or switch language, rewrite EVERY variant (body, threads, x) fully in the requested target language; otherwise keep ${lang}. Never mix languages.`
+      : `LANGUAGE: write EVERY variant (body, threads, x) in ${lang}. Do not mix languages; keep it natural and idiomatic in ${lang}.`,
     'FORMAT (hard guardrail): NO HTML/markdown (no <br>, <b>, **). Real newlines only to separate lines. Short sentences (<20 words). Generous blank lines between lines for mobile readability.',
     `STRUCTURE for "body": first-line HOOK MAX 50 CHARACTERS (including emoji & punctuation) — a concrete number/situation, a contrarian line, or a pain admission; no rambling, no product name in the hook. Then: blank line; a deeper re-hook; blank line; 2-3 emoji-led body lines about the real human/operational RESULT (not a feature list); blank line; 1 closing line; 1 SPECIFIC discussion question (avoid "what do you think?"); 1 single CTA; final line ${hashtagRule}.`,
     `LENGTH: body ${lengthSpec}. 4-6 emojis total. Strictly avoid empty buzzwords ("breakthrough solution", "discover", "game changer", "take it to the next level", "instantly optimize"). Do NOT fabricate stats/percentages/numbers not in the brief; no over-promising.`,

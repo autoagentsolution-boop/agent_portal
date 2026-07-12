@@ -372,7 +372,9 @@ a { color: var(--accent); }
 
 /* Command Center CHAT MODE (P2.1-2.3): graph collapses to a mini-hero at the top, the embedded
    OrchestratePanel takes the rest. Keeps the neural identity while the conversation is front+center. */
-.command-center.is-chat { display: flex; flex-direction: column; height: 100%; }
+/* In chat mode the CC fills EXACTLY the app-main viewport (no min-height:100vh page overflow), so the
+   Atria mini-hero stays pinned at the top and ONLY the transcript scrolls internally (feedback 6.1/6.4). */
+.command-center.is-chat { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
 /* In chat mode the graph GATHERS into just the Atria hero — the orbiting agent nodes + links hide. */
 .command-center.is-chat .cc-network { flex: 0 0 132px; height: 132px; min-height: 132px; margin: 6px 0 0; }
 .command-center.is-chat .cc-node,
@@ -387,11 +389,8 @@ a { color: var(--accent); }
 /* Typewriter caret (P3). */
 .tw-caret { display: inline-block; margin-left: 1px; color: #9d7bff; animation: tw-blink 0.9s steps(1) infinite; }
 @keyframes tw-blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
-.cc-chat-embed { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid #23252f;
+.cc-chat-embed { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
   margin-top: 6px; overflow: hidden; }
-.cc-chat-back { align-self: flex-start; margin: 8px 0 2px 16px; background: none; border: 1px solid #2c2f3d;
-  color: #b6b8c8; border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
-.cc-chat-back:hover { color: #fff; border-color: #40435a; }
 /* Bound the embedded chat so the transcript scrolls internally and the composer pins at the bottom
    (the standalone page relies on min-height:620px + a page-level scroll, which overflows the embed). */
 .cc-chat-embed > .master-chat-main { flex: 1 1 auto; min-height: 0; overflow: hidden; }

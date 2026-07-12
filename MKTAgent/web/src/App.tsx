@@ -285,7 +285,7 @@ export function App() {
     <div className="app-root">
       <TopNav
         page={page}
-        onNavigate={(p) => { setSelectedRunId(null); if (p !== 'flows') { setActiveCampaign(null); setSelectedPostId(null); } setPage(p); }}
+        onNavigate={(p) => { setSelectedRunId(null); if (p !== 'flows') { setActiveCampaign(null); setSelectedPostId(null); } if (p === 'command-center') closeCcChat(); setPage(p); }}
         credits={credits}
         userEmail={auth.user.email}
         workspaces={workspaces}
@@ -312,7 +312,6 @@ export function App() {
             onOpenFlow={(id) => openSavedFlow(id)}
             chatActive={ccChatActive}
             chatSlot={orchestratePanelEl}
-            onCloseChat={closeCcChat}
             notify={show}
           />
         ) : page === 'connections' ? (

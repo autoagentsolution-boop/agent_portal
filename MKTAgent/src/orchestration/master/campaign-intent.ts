@@ -22,6 +22,15 @@ const CAMPAIGN_NOUN = wordRe(
   'chiến dịch|chien dich|bài|bai|bài viết|bai viet|nội dung|noi dung|task',
 );
 
+// A request to PLAN a batch/calendar/weekly schedule is a CONVERSATIONAL ask for Atria — NOT a
+// "create the campaign now" command. Without this, "plan/make weekly posts" on a saved flow was
+// hijacked into campaign creation + a hard redirect to the board (feedback 5). When these words are
+// present (and it isn't a bare "yes"), let the message fall through to Atria's planner instead.
+const PLAN_INTENT = wordRe(
+  'weekly|week|calendar|schedule|plan|planning|batch|series|monthly|daily|' +
+  'hằng tuần|hang tuan|hàng tuần|hàng tháng|hang thang|lịch|lich|kế hoạch|ke hoach|lên kế hoạch|len ke hoach|nhiều bài|nhieu bai|chuỗi|chuoi',
+);
+
 // Bare affirmation to the save-offer's question ("Want to set up the first campaign?").
 // Kept narrow so a random "yes" mid-conversation doesn't trigger a create; requires the
 // message to be essentially just the affirmation.
@@ -51,6 +60,8 @@ const quotedAfter = (msg: string, keys: string[]): string | null => {
 export const detectCampaignIntent = (message: string, _prior: GoalSpec): CampaignIntent => {
   const m = message.trim();
   const bare = BARE_AFFIRM.test(m);
+  // Planning language routes to Atria (conversational batch/weekly planning), never a forced create.
+  if (!bare && PLAN_INTENT.test(m)) return { isCreate: false, campaignName: null, postTitle: null };
   const isCreate = bare || (CREATE_VERB.test(m) && CAMPAIGN_NOUN.test(m));
   if (!isCreate) return { isCreate: false, campaignName: null, postTitle: null };
 

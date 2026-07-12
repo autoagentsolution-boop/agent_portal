@@ -7,6 +7,7 @@ import {
   fromLocalDateTimeInput,
   languageOptions,
   lengthOptions,
+  nativeLanguageLabel,
   platformAssetSupport,
   platformOptions,
   toLocalDateTimeInput,
@@ -61,7 +62,9 @@ const initialState = (post?: PostDto | null): PostBody => ({
   // on an edit (so a manual re-save doesn't wipe generated media) but never expose an input.
   driveFolderId: post?.driveFolderId ?? '',
   heroFile: post?.heroFile ?? '',
-  platforms: post?.platforms ?? ['facebook'],
+  // On EDIT keep the post's platforms; on CREATE start empty and let the campaign-inherit effect seed
+  // the campaign's configured platforms (feedback 2 — a new post silently collapsed to Facebook-only).
+  platforms: post?.platforms ?? [],
   scheduledAt: toLocalDateTimeInput(post?.scheduledAt ?? null),
 });
 
@@ -93,15 +96,21 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
   useEffect(() => { void api.listProductKnowledge().then((r) => { if (r.ok) setLibrary(r.data); }); }, []);
 
   // Resolve the inherited language (campaign → user default) so the brief shows what a blank field
-  // will actually produce (feedback: manual posts silently fell back to 'vi').
+  // will actually produce (feedback: manual posts silently fell back to 'vi'). Also seed the CREATE
+  // brief's target platforms from the campaign so a new post inherits the full platform set the
+  // campaign was configured with, instead of defaulting to Facebook-only (feedback 2).
   useEffect(() => {
     void (async () => {
       const [c, m] = await Promise.all([api.getCampaign(campaignId), api.me()]);
       const camp = c.ok ? c.data.language : null;
       const usr = m.ok ? m.data?.defaultLanguage : null;
       setResolvedLang((camp || usr || 'vi').trim());
+      if (!post) {
+        const inherited = (c.ok ? c.data.platforms : []) as SocialPlatform[];
+        setForm((prev) => (prev.platforms?.length ? prev : { ...prev, platforms: inherited.length ? inherited : ['facebook'] }));
+      }
     })();
-  }, [campaignId]);
+  }, [campaignId, post]);
 
   const setField = <K extends keyof PostBody>(key: K, value: PostBody[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -178,12 +187,12 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
             list="brief-language-list"
             value={form.language ?? ''}
             onChange={(e) => setField('language', e.target.value)}
-            placeholder={resolvedLang ? `Inherit → ${resolvedLang}` : 'Inherit default'}
+            placeholder={resolvedLang ? `Inherit → ${nativeLanguageLabel(resolvedLang)}` : 'Inherit default'}
           />
           <datalist id="brief-language-list">
             {languageOptions.filter((o) => o.value).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </datalist>
-          <div className="help-text">Type any language, or leave blank to inherit{resolvedLang ? ` (${resolvedLang})` : ''}.</div>
+          <div className="help-text">Pick a language or type any dialect; leave blank to inherit{resolvedLang ? ` (${nativeLanguageLabel(resolvedLang)})` : ''}.</div>
         </div>
         <div className="field">
           <label>Length</label>
@@ -217,18 +226,6 @@ export function PostBriefForm({ campaignId, post, onSaved, onCancel, notify }: P
           {refFile ? <><strong>{refFile.name}</strong> — </> : ''}
           Infographic/storyboard generate FROM this image (edit mode) so they follow your product/look.
           {post?.referenceImage && !refFile ? ' A reference image is already set; choosing a new one replaces it.' : ''}
-        </div>
-      </div>
-
-      <div className="field">
-        <label>Media storage</label>
-        <select value="local" disabled onChange={() => { /* only local for now */ }}>
-          <option value="local">Local storage (active)</option>
-          <option value="drive" disabled>Google Drive (coming soon)</option>
-        </select>
-        <div className="help-text">
-          {currentAsset?.value === 'video' ? 'The video' : 'The image'} this flow generates is saved here automatically — no file IDs to enter.{' '}
-          Manage storage in <strong>Connections</strong>.
         </div>
       </div>
 

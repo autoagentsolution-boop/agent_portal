@@ -41,6 +41,22 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
   // Existing product knowledge already stored on this campaign (brandContext). Fetched on
   // mount so the user SEES their prior upload persisted instead of a blank panel after reload.
   const [existing, setExisting] = useState<{ productDetails: string; brandVoice: string | null } | null>(null);
+  // Inline edit of the campaign's grounding knowledge (feedback 4d: it was read-only + felt truncated).
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [savingPk, setSavingPk] = useState(false);
+
+  const saveKnowledge = async () => {
+    const text = draft.trim();
+    setSavingPk(true);
+    try {
+      const r = await api.updateCampaign(campaignId, { brandContext: text || null });
+      if (!r.ok) { notify(`Save: ${r.error.error}`, 'err'); return; }
+      setExisting(text ? { productDetails: text, brandVoice: r.data.brandVoice ?? null } : null);
+      setEditing(false);
+      notify('Product knowledge updated');
+    } finally { setSavingPk(false); }
+  };
 
   useEffect(() => {
     let live = true;
@@ -89,10 +105,36 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
 
       {/* Re-hydrate (A): the campaign's stored product knowledge, shown so a prior upload is
           visibly persisted (it survives reloads/rebuilds — it grounds this campaign's copy). */}
-      {existing && !result && (
+      {(existing || editing) && !result && (
         <div className="pk-result" style={{ marginTop: 10 }}>
-          <div className="copy-box"><div className="label">Current product knowledge (grounds this campaign)</div><div className="text">{existing.productDetails}</div></div>
-          {existing.brandVoice && <div className="row muted small" style={{ gap: 12, marginTop: 6 }}><span>Voice: {existing.brandVoice}</span></div>}
+          {editing ? (
+            <div className="copy-box">
+              <div className="label">Edit product knowledge (grounds this campaign)</div>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                disabled={savingPk}
+                rows={8}
+                style={{ width: '100%', marginTop: 6, resize: 'vertical', font: 'inherit' }}
+                placeholder="Describe the product/service in detail — features, audience, tone. This grounds every copy/image/video prompt."
+              />
+              <div className="row" style={{ gap: 8, marginTop: 8 }}>
+                <button className="btn small primary" disabled={savingPk} onClick={() => void saveKnowledge()}>{savingPk ? 'Saving…' : 'Save'}</button>
+                <button className="btn small" disabled={savingPk} onClick={() => setEditing(false)}>Cancel</button>
+              </div>
+            </div>
+          ) : existing && (
+            <>
+              <div className="copy-box">
+                <div className="spread">
+                  <div className="label">Current product knowledge (grounds this campaign)</div>
+                  <button className="btn small" onClick={() => { setDraft(existing.productDetails); setEditing(true); }}>✎ Edit</button>
+                </div>
+                <div className="text" style={{ maxHeight: 220, overflowY: 'auto' }}>{existing.productDetails}</div>
+              </div>
+              {existing.brandVoice && <div className="row muted small" style={{ gap: 12, marginTop: 6 }}><span>Voice: {existing.brandVoice}</span></div>}
+            </>
+          )}
         </div>
       )}
 

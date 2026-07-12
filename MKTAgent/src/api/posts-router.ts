@@ -290,6 +290,17 @@ postsRouter.post(
     if (r.status === 'retry') return fail(res, 502, 'copygen_failed', r.error?.slice(0, 300) ?? 'refine failed');
     if (r.status !== 'review') return fail(res, 500, 'copygen_error');
     const post = await getPostForOwner(req.params.id, req.userId!);
+    // refineForPost only writes post.copy — but the workflow view renders the run's content_concept
+    // artifact, so without this the refined/translated copy never surfaces (feedback #1). Mirror
+    // /select-variant: push the new copy onto the concept artifact so a reload shows the change.
+    if (post?.runId && post.copy) {
+      const arts = await listArtifacts(post.runId);
+      const concept = arts.find((a) => a.type === 'content_concept');
+      if (concept) {
+        const data = (concept.data as Record<string, unknown>) ?? {};
+        await updateArtifactData(concept.id, req.userId!, 'content_concept', { ...data, copy: post.copy }).catch(() => {});
+      }
+    }
     ok(res, post ? toPostDto(post) : { id: req.params.id, status: 'review' });
   }),
 );
