@@ -375,5 +375,257 @@
     "name": "publish-only-edge",
     "ok": false,
     "error": "publish_only_no_content"
+  },
+  {
+    "name": "mat-slot-text",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "mat-slot-image",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "infographic",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n1",
+          "n2"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "mat-slot-carousel",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "storyboard",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n1",
+          "n2"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "mat-slot-video",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "storyboard",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "video",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": true
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n1",
+          "n2",
+          "n3"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "tier-economy-text",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "tier-full-text",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "content_search",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "ideation",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "strategy",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [
+          "n1",
+          "n3"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n4"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "tier-economy-video",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "storyboard",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "video",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": true
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n1",
+          "n2",
+          "n3"
+        ],
+        "requiresApproval": true
+      }
+    ]
+  },
+  {
+    "name": "tier-full-video",
+    "ok": true,
+    "nodes": [
+      {
+        "agentId": "content_search",
+        "dependsOn": [],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "ideation",
+        "dependsOn": [
+          "n1"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "strategy",
+        "dependsOn": [
+          "n2"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "concept_writer",
+        "dependsOn": [
+          "n1",
+          "n3"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "storyboard",
+        "dependsOn": [
+          "n4"
+        ],
+        "requiresApproval": false
+      },
+      {
+        "agentId": "video",
+        "dependsOn": [
+          "n5"
+        ],
+        "requiresApproval": true
+      },
+      {
+        "agentId": "publisher",
+        "dependsOn": [
+          "n4",
+          "n5",
+          "n6"
+        ],
+        "requiresApproval": true
+      }
+    ]
   }
 ]

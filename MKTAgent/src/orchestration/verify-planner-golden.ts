@@ -32,6 +32,23 @@ const CASES: Case[] = [
   { name: 'spotlight', outputs: {}, scope: 'spotlight' },
   { name: 'email', outputs: { needsEmail: true, needsTextPost: false, needsPublishing: false } },
   { name: 'publish-only-edge', outputs: { needsTextPost: false, needsInfographic: false, needsVideo: false, needsStoryboard: false, needsPublishing: true } },
+
+  // ── C1-refactor coverage (added 2026-07-12): the OTHER planWorkflow entry points ──────────────
+  // Materializer slots (`campaign-materializer.goalForSlot` → `outputsForFormat`): a single-scope goal
+  // with needsTextPost:true + EXACTLY ONE media flag. The media cases above use needsTextPost:false, so
+  // these text+media combos were previously UNcovered — every materialized post plans through here.
+  { name: 'mat-slot-text', outputs: { needsTextPost: true, needsPublishing: true }, platforms: ['facebook'] },
+  { name: 'mat-slot-image', outputs: { needsTextPost: true, needsInfographic: true, needsPublishing: true }, platforms: ['instagram'] },
+  { name: 'mat-slot-carousel', outputs: { needsTextPost: true, needsStoryboard: true, needsPublishing: true }, platforms: ['instagram'] },
+  { name: 'mat-slot-video', outputs: { needsTextPost: true, needsVideo: true, needsPublishing: true }, platforms: ['facebook'] },
+
+  // Plan-tier variants (`plan-tiers.economyGoal`/`fullGoal` toggle needs{Research,Ideation,Strategy} then
+  // re-plan). `buildPlanTiers` dedups tier cards by the ORDERED agentIdList of `plan.nodes` — the exact
+  // array this snapshot captures — so locking planWorkflow order here transitively locks tier behavior.
+  { name: 'tier-economy-text', outputs: { needsTextPost: true, needsPublishing: true, needsResearch: false, needsIdeation: false, needsStrategy: false }, platforms: ['facebook'] },
+  { name: 'tier-full-text', outputs: { needsTextPost: true, needsPublishing: true, needsResearch: true, needsIdeation: true, needsStrategy: true }, platforms: ['facebook'] },
+  { name: 'tier-economy-video', outputs: { needsTextPost: true, needsVideo: true, needsPublishing: true, needsResearch: false, needsIdeation: false, needsStrategy: false }, platforms: ['facebook'] },
+  { name: 'tier-full-video', outputs: { needsTextPost: true, needsVideo: true, needsPublishing: true, needsResearch: true, needsIdeation: true, needsStrategy: true }, platforms: ['facebook'] },
 ];
 
 const buildGoal = (c: Case): GoalSpec =>
