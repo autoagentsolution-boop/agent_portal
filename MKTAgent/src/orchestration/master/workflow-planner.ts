@@ -12,50 +12,82 @@ import {
 } from '../schemas/workflow-plan.ts';
 import { getAgent } from '../registry/agent-registry.ts';
 import type { AgentDefinition, RunnableAgentId } from '../registry/agent-types.ts';
+import type { ArtifactType } from '../schemas/artifact-schemas.ts';
+import { producerOf } from './artifact-graph.ts';
 import { validatePlan } from './workflow-validator.ts';
 
-// Rule selection (brief §10). Order matters: it establishes the natural pipeline
-// sequence so derived edges point backwards to already-added producers.
-const selectAgents = (goal: GoalSpec): RunnableAgentId[] => {
-  const ids: RunnableAgentId[] = [];
-  const { outputs } = goal;
+// Canonical pipeline order. selectByTargets returns the chosen node SET sorted by this, so the
+// natural sequence (research → ideation → strategy → [campaign_strategist | concept → media] →
+// publisher; email is its own tail) holds — derived edges then point backwards to producers, and
+// plan-tiers' ORDERED agentIdList dedup stays stable. Nodes not requested are simply filtered out.
+const PIPELINE_ORDER: readonly RunnableAgentId[] = [
+  'content_search', 'ideation', 'strategy', 'campaign_strategist',
+  'concept_writer', 'infographic', 'storyboard', 'video',
+  'email_writer', 'email_agent', 'publisher',
+];
 
-  // Email goal (P4-lite): write + send an email — a self-contained path, NOT the social pipeline.
-  // The analyzer forces the social flags off when needsEmail is set, so this branch owns the plan.
-  // email_writer optionally grounds on a content_concept, but a standalone email needs no upstream.
-  if (outputs.needsEmail) {
-    return ['email_writer', 'email_agent'];
+// The terminal artifact types a goal REQUESTS. Backward-chaining resolves the rest from `requires`.
+// This is the ONLY place output flags are read — a thin, exhaustive shim so the marketing GoalSpec
+// maps to artifact targets while selection itself stays registry-driven and marketing-agnostic.
+const targetsFromGoal = (goal: GoalSpec): ArtifactType[] => {
+  const o = goal.outputs;
+  // Email path (P4-lite): a self-contained write+send, NOT the social pipeline. The analyzer forces
+  // the social flags off when needsEmail is set, so this owns the plan (email_writer's optional
+  // content_concept is not a target → a standalone email has no upstream).
+  if (o.needsEmail) return ['email_result'];
+
+  // Campaign scope: route to the strategist and STOP at the editable calendar. ideation + strategy
+  // ALWAYS ground the strategist (via its optional slots — emitted as targets so they're selected);
+  // research only when asked. Per-post copy/media/publish belong to the materialized posts, not here.
+  if (goal.campaignScope !== 'single') {
+    const targets: ArtifactType[] = ['campaign_ideas', 'strategy_brief', 'content_calendar'];
+    if (o.needsResearch) targets.push('research_summary');
+    return targets;
   }
 
-  // Campaign scope (Atria Phase 03): a multi-post plan routes to the campaign_strategist and STOPS
-  // at the editable content calendar — per-post copy/media/publish belong to the posts materialized
-  // from the approved calendar (Phase 04), NOT to this planning run. `single` falls through to the
-  // unchanged one-post pipeline below (byte-identical). ideation + strategy always ground the
-  // strategist; research only when asked (it's a paid grounded call).
-  if (goal.campaignScope && goal.campaignScope !== 'single') {
-    if (outputs.needsResearch) ids.push('content_search');
-    ids.push('ideation', 'strategy', 'campaign_strategist');
-    return ids;
-  }
+  // Single-post pipeline. Intelligence agents (research/ideation/strategy) are flag-driven enrichment
+  // that ground concept_writer via its OPTIONAL edges; the deliverable/publish targets pull the
+  // concept + media + publisher chain by their `requires`. strategy_brief → strategy → campaign_ideas
+  // → ideation is a `requires` chain, so needsStrategy alone still selects ideation.
+  const targets: ArtifactType[] = [];
+  if (o.needsResearch) targets.push('research_summary');
+  if (o.needsIdeation) targets.push('campaign_ideas');
+  if (o.needsStrategy) targets.push('strategy_brief');
+  if (o.needsTextPost) targets.push('content_concept');
+  if (o.needsInfographic) targets.push('infographic_brief');
+  if (o.needsStoryboard) targets.push('storyboard');
+  if (o.needsVideo) targets.push('video_prompt');
+  if (o.needsPublishing) targets.push('publish_result');
+  return targets;
+};
 
-  if (outputs.needsResearch) ids.push('content_search');
-  // strategy requires campaign_ideas → ideation is implied whenever strategy runs.
-  if (outputs.needsIdeation || outputs.needsStrategy) ids.push('ideation');
-  if (outputs.needsStrategy) ids.push('strategy');
-  // concept_writer produces content_concept — the narrative spine required by a text post AND by
-  // every media agent (infographic/storyboard/video). Add it whenever ANY of those is requested,
-  // not just needsTextPost; otherwise a media-only goal has an unsatisfiable content_concept
-  // dependency and fails to plan (plan_error).
-  if (outputs.needsTextPost || outputs.needsInfographic || outputs.needsStoryboard || outputs.needsVideo) {
-    ids.push('concept_writer');
+// Backward-chaining selection: for each requested artifact, add its producer, then its producer's
+// `requires` (recursively). Optional inputs are NOT chased — optional grounding is an EDGE concern
+// (deriveDeps), and any optional producer that should run is already selected via its own target.
+// Returns the closed set in canonical pipeline order.
+const selectByTargets = (targets: ArtifactType[]): RunnableAgentId[] => {
+  const selected = new Set<RunnableAgentId>();
+  const queue: ArtifactType[] = [...targets];
+  while (queue.length) {
+    const type = queue.shift()!;
+    const producer = producerOf(type);
+    if (!producer || selected.has(producer)) continue;
+    selected.add(producer);
+    const def = getAgent(producer);
+    if (def) for (const req of def.requires) queue.push(req);
   }
-  if (outputs.needsInfographic) ids.push('infographic');
-  // Storyboard is independent; video DEPENDS ON storyboard. So plan storyboard whenever
-  // it's asked OR a video is (video implies storyboard), and video only when asked.
-  if (outputs.needsStoryboard || outputs.needsVideo) ids.push('storyboard');
-  if (outputs.needsVideo) ids.push('video');
-  if (outputs.needsPublishing) ids.push('publisher');
-  return ids;
+  return PIPELINE_ORDER.filter((id) => selected.has(id));
+};
+
+const selectAgents = (goal: GoalSpec): RunnableAgentId[] => selectByTargets(targetsFromGoal(goal));
+
+// A publish goal with nothing to publish. Backward-chaining WOULD auto-pull concept_writer (publisher
+// requires content_concept), silently turning a content-less publish into a content plan — a behavior
+// change. Detect it up front (flag-based) and surface the same actionable error as before.
+const isPublishOnly = (goal: GoalSpec): boolean => {
+  const o = goal.outputs;
+  return o.needsPublishing && !o.needsEmail && goal.campaignScope === 'single'
+    && !(o.needsTextPost || o.needsInfographic || o.needsStoryboard || o.needsVideo);
 };
 
 // Derive depends_on: for each of this agent's required (+ satisfiable optional)
@@ -102,12 +134,10 @@ export const planWorkflow = (goal: GoalSpec): PlanResult => {
     if (actionIdx >= 0) ids.splice(actionIdx, 0, 'scheduler');
   }
 
-  // Publish-only goal (Phase 05 / D-F5): needsPublishing selected the publisher but no content
-  // agent was — nothing produces the `content_concept` the publisher requires, so validatePlan
-  // would fail with a cryptic `plan_unsatisfiable_inputs`. Surface an ACTIONABLE error instead:
-  // a publish needs something to publish. (A future "publish existing media" path would add a
-  // source node here; today we ask the user to include content.)
-  if (selected.includes('publisher') && !selected.includes('concept_writer')) {
+  // Publish-only goal (Phase 05 / D-F5): a publish with no content to publish. Surface an ACTIONABLE
+  // error instead of auto-inventing a content step (see isPublishOnly). A future "publish existing
+  // media" path would add a source node here; today we ask the user to include content.
+  if (isPublishOnly(goal)) {
     return { ok: false, error: 'publish_only_no_content', detail: ['A publish goal needs content — add a text post, image, or video for the publisher to send.'] };
   }
 
