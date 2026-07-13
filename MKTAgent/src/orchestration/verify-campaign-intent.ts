@@ -33,5 +33,30 @@ check('new flow request → NOT create', !detectCampaignIntent('build a full bra
 check('bare mention of campaign word → NOT create', !detectCampaignIntent('what does the campaign plan look like?', g).isCreate);
 check('mid-sentence yes → NOT create', !detectCampaignIntent('yes but change the video to an image', g).isCreate);
 
+// REGRESSION (bug 2026-07-13, session b8064b19) — the VERBATIM message that reproduced a new flow.
+// Incidental "schedule" must NOT hijack a clearly-named single-campaign create-from-flow.
+const real = detectCampaignIntent(
+  'Let create a first campaigns "Impression". First post will be related how Atria help people to achieve their daily task. Specially for the marketing purpose where we can schedule it or on demand',
+  g,
+);
+check('real msg: "schedule it" does NOT block create', real.isCreate, real);
+check('real msg: not misrouted to plan', !real.isPlan, real);
+check('real msg: not ambiguous', !real.isAmbiguous, real);
+check('real msg: campaign name = Impression', real.campaignName === 'Impression', real.campaignName);
+
+// Batch/plan asks → isPlan (fall through to strategist), NOT create-from-flow.
+check('weekly campaigns → plan', detectCampaignIntent('plan weekly campaigns for me', g).isPlan);
+check('content calendar → plan (batch wins over create verb)', detectCampaignIntent('make a content calendar for the month', g).isPlan);
+check('chiến dịch hàng tuần → plan', detectCampaignIntent('lên lịch chiến dịch hàng tuần', g).isPlan);
+check('create weekly campaigns → plan (batch phrase wins)', detectCampaignIntent('create weekly campaigns', g).isPlan);
+
+// Genuinely ambiguous — a NAMED single create AND a batch phrase together → reconfirm.
+const amb = detectCampaignIntent('create campaign "Launch" with weekly posts', g);
+check('named create + weekly posts → ambiguous (reconfirm)', amb.isAmbiguous && !amb.isCreate && !amb.isPlan, amb);
+
+// Reconfirm answers resolve cleanly.
+check('"single" answer → create', detectCampaignIntent('single', g).isCreate);
+check('"weekly" answer → plan', detectCampaignIntent('weekly', g).isPlan);
+
 console.log(failures === 0 ? '\nPASS — campaign-intent detector green' : `\nFAIL — ${failures} check(s)`);
 process.exit(failures === 0 ? 0 : 1);

@@ -147,6 +147,29 @@ export const recordCampaignCreated = async (
   return message;
 };
 
+// Reconfirm SINGLE-campaign vs WEEKLY-plan on a saved flow (bug 2026-07-13). When a message
+// carries both a create ask and a batch/calendar word, we ASK instead of guessing — so Atria
+// never silently reproduces a new flow. Deterministic + language-mirrored, no LLM.
+const campaignScopeClarifyText = (language: string | null): string => {
+  const isVi = /^vi/i.test(language ?? '');
+  return isVi
+    ? 'Bạn muốn tạo MỘT chiến dịch đơn lẻ trong quy trình đã lưu này, hay lên KẾ HOẠCH một loạt bài đăng theo tuần/tháng? Trả lời “đơn lẻ” hoặc “theo tuần” để mình thiết lập đúng ý.'
+    : 'Do you want to create a SINGLE campaign under this saved flow, or PLAN a weekly/monthly batch of campaign posts? Reply “single” or “weekly” and I’ll set it up the right way — I won’t change your saved flow.';
+};
+
+export const recordCampaignScopeClarify = async (
+  sessionId: string,
+  userMessage: string,
+  goal: GoalSpec,
+): Promise<string> => {
+  await prisma.agentChatMessage.create({ data: { sessionId, role: 'user', content: userMessage } });
+  const language = goal.slots.language ?? detectLanguage(userMessage);
+  const message = campaignScopeClarifyText(language);
+  await prisma.agentChatMessage.create({ data: { sessionId, role: 'agent', content: message } });
+  await prisma.agentChatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+  return message;
+};
+
 // Readable one-line summary of clarification answers → the user-side chat message
 // (the user "said" their answers). Slots map to labels the assistant restates.
 const SLOT_LABEL: Record<string, string> = {

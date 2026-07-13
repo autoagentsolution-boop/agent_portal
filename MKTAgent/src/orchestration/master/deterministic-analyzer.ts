@@ -87,7 +87,9 @@ const isCampaign = (t: string): boolean =>
 // (isCampaign below) — only an unambiguous MULTI-post intent (a calendar, a duration, a cadence,
 // an explicit push) escalates to campaign/spotlight scope, so existing one-post goals are unchanged.
 const SPOTLIGHT_RE = /\b(spotlight campaign|big push|launch push|launch campaign|content blitz)\b/i;
-const CAMPAIGN_PLAN_RE = /\b(content calendar|content plan|posting schedule|plan (?:a|the|out|my)?\s*(?:month|week|content)|a month of|weeks? of content|weekly (?:posts?|content)|month.long campaign|multi.?post|series of posts|lịch đăng|lich dang|kế hoạch nội dung|ke hoach noi dung)\b/i;
+// Recognise "campaign(s)" as a plannable noun too (bug 2026-07-13): users say "plan weekly/monthly
+// campaigns" — not "weekly posts" — so a bare campaign-scope ask must still route to the strategist.
+const CAMPAIGN_PLAN_RE = /\b(content calendar|content plan|posting schedule|plan (?:a|the|out|my)?\s*(?:month|week|content|campaigns?)|a month of|weeks? of content|(?:weekly|monthly) (?:posts?|content|campaigns?)|campaigns? (?:for )?(?:the |this |next )?(?:week|month)|month.long campaign|multi.?post|series of posts|lịch đăng|lich dang|kế hoạch nội dung|ke hoach noi dung|chiến dịch (?:hàng )?(?:tuần|tháng)|chien dich (?:hang )?(?:tuan|thang))\b/i;
 
 const parseDurationWeeks = (t: string): number | null => {
   const w = t.match(/(\d{1,2})\s*(?:weeks?|tuần|tuan)\b/i)?.[1];

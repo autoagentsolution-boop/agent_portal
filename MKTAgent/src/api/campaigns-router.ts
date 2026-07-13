@@ -22,6 +22,8 @@ import { materializeCalendar } from '../orchestration/master/campaign-materializ
 import { estimateCampaignCost, campaignStatusRollup } from '../orchestration/master/campaign-grant.ts';
 import { issueCampaignGrantToken, verifyCampaignGrantToken } from './autonomy-grant-token.ts';
 import type { CalendarSlot } from '../orchestration/schemas/artifact-schemas.ts';
+import { goalSpec } from '../orchestration/schemas/goal-spec.ts';
+import type { SocialPlatform } from '../../prisma/generated/prisma/client.ts';
 import { logRun } from '../db/client.ts';
 import { env } from '../config/env.ts';
 import { logger } from '../lib/logger.ts';
@@ -55,11 +57,32 @@ campaignsRouter.post(
     if (!body) return;
     // If attaching to a flow, it must be the caller's own flow (tenancy) — else 404
     // so a user can't graft a campaign onto another tenant's run.
-    if (body.flowId && !(await getRunForOwner(body.flowId, req.userId!))) {
+    const flow = body.flowId ? await getRunForOwner(body.flowId, req.userId!) : null;
+    if (body.flowId && !flow) {
       return fail(res, 404, 'flow_not_found');
     }
+    // Inherit the parent flow's platforms/strategy when the create request omits them, so a
+    // campaign set up under a saved flow keeps its FULL platform set instead of collapsing to
+    // empty/Facebook (bug 2026-07-13: "MonthPlan-Atria" campaign persisted platforms=[] under an
+    // all-5-platform flow → every post then defaulted to Facebook-only). The final fallback
+    // guarantees a campaign is never platform-less, matching createCampaignFromFlow / the strategist.
+    const parsedFlowGoal = flow ? goalSpec.safeParse(flow.goal) : null;
+    const flowGoal = parsedFlowGoal?.success ? parsedFlowGoal.data : null;
+    const platforms = (body.platforms?.length
+      ? body.platforms
+      : flowGoal?.platforms.length
+        ? flowGoal.platforms
+        : ['facebook']) as SocialPlatform[];
     // ownerId from the JWT — never the body.
-    const c = await createCampaign({ ...body, ownerId: req.userId! });
+    const c = await createCampaign({
+      ...body,
+      ownerId: req.userId!,
+      platforms,
+      language: body.language ?? flowGoal?.slots.language ?? null,
+      brandVoice: body.brandVoice ?? flowGoal?.slots.brandVoice ?? null,
+      angle: body.angle ?? flowGoal?.slots.angle ?? null,
+      brandContext: body.brandContext ?? flowGoal?.slots.productDetails ?? null,
+    });
     res.status(201);
     ok(res, toCampaignDto(c));
   }),
