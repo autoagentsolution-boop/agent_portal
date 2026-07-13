@@ -57,7 +57,9 @@ export async function resolveWorkspaceInstructionsBlock(ownerId: string): Promis
   if (!items.length) return null;
   const lines = items.map((s) => `- ${s.replace(/\s+/g, ' ').trim().slice(0, 400)}`).slice(0, 12);
   return (
-    `USER INSTRUCTIONS (the user configured these — follow them in your reasoning and in any workflow you propose; ` +
-    `if none apply, use your own judgment):\n${lines.join('\n')}`
+    `USER MARKETING INSTRUCTIONS — apply these ONLY to MARKETING content (social posts, campaigns, ads, ` +
+    `marketing copy). Do NOT apply them to a PERSONAL message such as an email, a birthday/greeting, or a ` +
+    `note to a specific person — those are not marketing and must not be given a brand voice, a call to ` +
+    `action, or an audience-targeting angle. If none apply to the current task, use your own judgment:\n${lines.join('\n')}`
   );
 }

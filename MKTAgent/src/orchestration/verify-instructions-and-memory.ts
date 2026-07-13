@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     // Add a workspace, all-agent instruction → block includes it, labeled.
     await createInstruction({ ownerId: user.id, scope: 'workspace', agentId: null, content: 'Always use a witty tone and target SME founders.' });
     const block = await resolveWorkspaceInstructionsBlock(user.id);
-    check('instruction → labeled block', Boolean(block?.includes('USER INSTRUCTIONS') && block.includes('witty tone')), block);
+    check('instruction → labeled block', Boolean(block?.includes('USER MARKETING INSTRUCTIONS') && block.includes('witty tone')), block);
 
     // 2. Angle capture — a goal with product + angle persists an angle fact.
     const base = analyzeDeterministic('make a post about Widget');

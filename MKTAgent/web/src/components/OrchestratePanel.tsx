@@ -134,12 +134,14 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
   };
 
   const toggleVoiceMode = () => {
-    setVoiceMode((on) => {
-      const next = !on;
-      if (next) { stopSpeaking(); sr.start(); } // enter → start listening immediately
-      else { sr.stop(); stopSpeaking(); setSpeaking(false); } // exit → stop everything
-      return next;
-    });
+    // Read the current value from the ref and run the mic side-effects OUTSIDE the setState updater —
+    // a side-effect inside the updater is double-invoked under React 18 StrictMode (dev), which would
+    // start()→start() (or start()→abort()) the SpeechRecognition and leave the mic not actually listening.
+    const next = !voiceModeRef.current;
+    voiceModeRef.current = next;
+    setVoiceMode(next);
+    if (next) { stopSpeaking(); sr.start(); } // enter → start listening immediately
+    else { sr.stop(); stopSpeaking(); setSpeaking(false); } // exit → stop everything
   };
 
   const voiceState: VoiceState =
@@ -160,7 +162,10 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
   // the mic/narration never keeps running detached. Runs once on unmount.
   // Set true on (re)mount, false on unmount — NOT relying on the useRef init, so a StrictMode dev
   // double-mount (mount → cleanup → remount) can't leave the flag stuck false and kill the strategist poll.
-  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; sr.stop(); stopSpeaking(); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Only stop TTS here; useSpeechRecognition already aborts its recognition + releases the mic on unmount,
+  // so calling sr.stop() here too would double-abort and, under StrictMode, kill the mic autoVoice just
+  // started (the "opens chat but doesn't record" bug). Nav-away voice stop is handled explicitly in App.
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; stopSpeaking(); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Opened via the Command Center voice button → enter hands-free voice mode, so the user is already
   // talking to Atria. Fires on the false→true edge (the panel is often NOT remounted per open, so this

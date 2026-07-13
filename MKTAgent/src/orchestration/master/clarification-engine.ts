@@ -78,6 +78,17 @@ export const evaluateClarification = (
   // goals never set taskTargets → byte-identical for them (golden unaffected).
   if (goal.taskTargets && goal.taskTargets.length) return { status: 'ready' };
 
+  // An EMAIL goal is NOT marketing content — a birthday note / personal email needs only a recipient (the
+  // purpose/angle is already carried, and the writer fails loud if it's truly empty). The whole marketing
+  // interrogation below (product depth, audience, angle, style, platforms, richness) is wrong for it and
+  // would trap a simple "birthday greeting for Nghiep" in awaiting_clarification. So: recipient present →
+  // READY; absent → ask ONLY for the address. Non-email marketing goals are unaffected (golden intact).
+  if (goal.outputs.needsEmail) {
+    return (goal.slots.emailTo ?? '').trim()
+      ? { status: 'ready' }
+      : { status: 'needs_clarification', questions: [{ slot: 'emailTo', question: 'What email address should I send this to?', required: true }] };
+  }
+
   // A creative/topic request ("make a short video about English vocabulary for kids") is NOT a
   // product sell — the TOPIC is the subject, so we must not interrogate for product depth
   // (differentiator/proof/audience) it will never have. Treat the goal as subject-sufficient when

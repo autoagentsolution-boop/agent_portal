@@ -282,7 +282,10 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   // the tuned plan-presentation + approval-ask copy), with lead-awareness on a FRESH marketing plan.
   const outcome = turn.outcome;
   await logRun('info', 'atria_proposal', { status: outcome.status, tools: turn.tools, rounds: turn.rounds, inPlace: Boolean(existingPreExec) }, req.userId!).catch(() => {});
-  const leadNote = !existingPreExec && outcome.status === 'planned'
+  // Lead-awareness is a MARKETING-campaign nudge ("your post could collect leads"). It makes no sense on
+  // an email goal (a birthday note / personal email doesn't collect leads) — skip it there so Atria never
+  // brings up lead collection in the middle of a personal-email flow.
+  const leadNote = !existingPreExec && outcome.status === 'planned' && !outcome.goal.outputs.needsEmail
     ? await buildLeadAwarenessNote(req.userId!, outcome.goal, body.message).catch(() => null)
     : null;
   const assistantMessage = await recordTurn(sessionId, body.message, outcome, req.userId!, leadNote);

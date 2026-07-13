@@ -142,7 +142,10 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   const emailBase = analyzeDeterministic('Gửi email chúc mừng sinh nhật cho bạn tôi, email nghiep@example.com, vui vẻ thân mật');
   const pendingSched = goalSpec.parse({ ...emailBase, schedule: { phrase: 'sáng mai', at: '2026-07-13T01:00:00Z', timezone: 'Asia/Bangkok', confirmed: false } });
   const pendingOut = master.planFromGoal(pendingSched);
-  check('unconfirmed schedule → NO scheduler yet', !agentsOf(pendingOut).includes('scheduler'), agentsOf(pendingOut));
+  // A PARSED schedule splices the scheduler immediately (even unconfirmed) — the read-back confirm-ask is
+  // the mis-parse safety, the approve gate parks at the exact time. Splicing on `.confirmed` made the node
+  // depend on the LLM re-proposing after confirm (unreliable → "schedule lost"); splice on `.at` is robust.
+  check('parsed schedule → scheduler spliced (even unconfirmed)', agentsOf(pendingOut).includes('scheduler'), agentsOf(pendingOut));
   // Carry: a bare confirm turn (delta has no schedule) must keep schedule.at from the persisted run — the
   // exact link that broke (schedule dropped → scheduler never spliced). Uses a schedule-only delta so the
   // assertion isolates the carry from the marketing-flag defaults an empty analyze would introduce.

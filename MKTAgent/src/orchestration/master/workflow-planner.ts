@@ -129,11 +129,16 @@ export const planWorkflow = (goal: GoalSpec): PlanResult => {
     return { ok: false, error: 'no_agents_selected', detail: ['goal produced no output requirements'] };
   }
 
-  // Generic scheduler splice (2026-07-12): a goal carrying a user-CONFIRMED schedule gets a `scheduler`
-  // node inserted immediately before its terminal action, so the run parks at the scheduler gate and a
-  // cron re-enters the flow at the action when due. Unconfirmed / no schedule → plan unchanged (the
-  // publisher keeps its own scheduledAt path). Guarded on `.confirmed` so a mere parse never plans it.
-  const scheduled = Boolean(goal.schedule?.confirmed && goal.schedule.at);
+  // Generic scheduler splice (2026-07-12): a goal carrying a parsed schedule time gets a `scheduler` node
+  // inserted immediately before its terminal action, so the run parks at the scheduler gate and a cron
+  // re-enters the flow at the action when due. No schedule → plan unchanged (the publisher keeps its own
+  // scheduledAt path).
+  // Splice on a PARSED instant (`.at`), NOT on `.confirmed`: gating on confirmed made the scheduler depend
+  // on the LLM reliably re-proposing after the user confirms — which it doesn't do consistently, so the
+  // scheduler silently never spliced ("schedule lost"). The read-back confirm-ask (conversation-author)
+  // is the mis-parse safety, and the approve gate parks at the exact `.at`, so splicing on parse is robust
+  // and just gives immediate visual feedback that the flow will be scheduled.
+  const scheduled = Boolean(goal.schedule?.at);
   const ids: RunnableAgentId[] = [...selected];
   if (scheduled) {
     const actionIdx = ids.findIndex((id) => TERMINAL_ACTIONS.includes(id));

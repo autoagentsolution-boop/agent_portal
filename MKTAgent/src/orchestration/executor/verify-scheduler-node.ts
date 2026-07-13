@@ -59,8 +59,14 @@ async function main(): Promise<void> {
     check('(1) confirmed schedule → email_writer→scheduler→email_agent',
       planned.ok && agentIdList(planned.plan).join('→') === 'email_writer→scheduler→email_agent',
       planned.ok ? agentIdList(planned.plan) : planned.error);
-    const noSched = planWorkflow(goalSpec.parse({ ...goal, schedule: { ...goal.schedule, confirmed: false } }));
-    check('(1) unconfirmed schedule → email_writer→email_agent (no scheduler)',
+    // A PARSED schedule splices the scheduler even while unconfirmed (robust splice-on-`.at`): the
+    // read-back confirm-ask is the mis-parse safety; the approve gate parks at the exact time.
+    const unconfSched = planWorkflow(goalSpec.parse({ ...goal, schedule: { ...goal.schedule, confirmed: false } }));
+    check('(1) unconfirmed (but parsed) schedule → scheduler still spliced',
+      unconfSched.ok && agentIdList(unconfSched.plan).join('→') === 'email_writer→scheduler→email_agent',
+      unconfSched.ok ? agentIdList(unconfSched.plan) : unconfSched.error);
+    const noSched = planWorkflow(goalSpec.parse({ ...goal, schedule: null }));
+    check('(1) no schedule → email_writer→email_agent (no scheduler)',
       noSched.ok && agentIdList(noSched.plan).join('→') === 'email_writer→email_agent',
       noSched.ok ? agentIdList(noSched.plan) : noSched.error);
     if (!planned.ok) return;

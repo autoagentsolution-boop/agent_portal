@@ -272,7 +272,14 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         // schedule gate is the final park checkpoint — nothing parks without an explicit approval click.
         let goal = merged;
         if (ctx.scheduleProposal) {
-          goal = goalSpec.parse({ ...merged, schedule: { ...ctx.scheduleProposal, confirmed: false } });
+          // A schedule parsed THIS turn is normally UNconfirmed — the user must confirm the exact instant.
+          // BUT on the confirm turn the model re-parses the SAME time it already read back (priorGoal
+          // already carries that instant) — that IS the user confirming, so a re-parse of the same instant
+          // becomes confirmed (else the scheduler never splices — the "schedule lost" bug). A DIFFERENT
+          // instant is a reschedule → stays unconfirmed until the user confirms the new time.
+          const priorAt = ctx.priorGoal?.schedule?.at ?? null;
+          const confirmed = priorAt != null && priorAt === ctx.scheduleProposal.at;
+          goal = goalSpec.parse({ ...merged, schedule: { ...ctx.scheduleProposal, confirmed } });
         } else if (merged.schedule?.at) {
           goal = goalSpec.parse({ ...merged, schedule: { ...merged.schedule, confirmed: true } });
         }

@@ -92,9 +92,9 @@ const outcomeContext = (outcome: MasterAgentOutcome, replyLanguage: string | nul
 // surface usable (and verify deterministic) when GEMINI_API_KEY is absent.
 // Human-readable local time for the no-LLM fallback. Best-effort Intl formatting in the schedule's
 // timezone; degrades to the raw ISO instant if the zone is unknown/invalid (never throws).
-const formatScheduleInstant = (at: string, timezone: string | null): string => {
+const formatScheduleInstant = (at: string, timezone: string | null, locale = 'en-US'): string => {
   try {
-    const fmt = new Intl.DateTimeFormat('en-US', {
+    const fmt = new Intl.DateTimeFormat(locale, {
       timeZone: timezone ?? 'UTC', dateStyle: 'full', timeStyle: 'short', hour12: true,
     });
     return `${fmt.format(new Date(at))}${timezone ? ` (${timezone})` : ' (UTC)'}`;
@@ -104,19 +104,25 @@ const formatScheduleInstant = (at: string, timezone: string | null): string => {
 };
 
 // Confirm-ask appended when the goal carries a parsed-but-unconfirmed schedule — the exact instant read
-// back so a mis-parsed time is caught before it is scheduled. Empty once confirmed.
-const scheduleConfirmTail = (outcome: MasterAgentOutcome): string => {
+// back so a mis-parsed time is caught before it is scheduled. Empty once confirmed. Localized (vi/en) and
+// appended DETERMINISTICALLY (not left to the LLM, which intermittently omits it → the "schedule lost"
+// look, where the flow shows no scheduler and an immediate Execute would send now).
+const scheduleConfirmTail = (outcome: MasterAgentOutcome, lang?: string | null): string => {
   const s = outcome.goal.schedule;
   if (!s?.at || s.confirmed) return '';
-  return ` I've read the time as ${formatScheduleInstant(s.at, s.timezone ?? null)} — please confirm that's right before I schedule anything.`;
+  const vi = (lang ?? '').toLowerCase().startsWith('vi');
+  const when = formatScheduleInstant(s.at, s.timezone ?? null, vi ? 'vi-VN' : 'en-US');
+  return vi
+    ? `\n\n🕒 Mình hiểu thời gian gửi là ${when}. Bạn xác nhận đúng giờ này giúp mình nhé — chưa có gì được lên lịch cho tới khi bạn xác nhận.`
+    : `\n\n🕒 I've read the send time as ${when}. Please confirm that's right — nothing is scheduled until you do.`;
 };
 
-export const deterministicReply = (outcome: MasterAgentOutcome, report?: WorkspaceReport | null): string => {
+export const deterministicReply = (outcome: MasterAgentOutcome, report?: WorkspaceReport | null, lang?: string | null): string => {
   // Campaign-scope turns open with the workspace snapshot — even without an LLM, the
   // reply should show what already exists before proposing the new plan.
   const reportLead = report ? `${formatWorkspaceReport(report)}\n\n` : '';
   const product = outcome.goal.slots.product?.trim();
-  const scheduleTail = scheduleConfirmTail(outcome);
+  const scheduleTail = scheduleConfirmTail(outcome, lang ?? outcome.goal.slots.language);
   if (outcome.status === 'awaiting_clarification') {
     const lead = product
       ? `Got it — a marketing flow for ${product}.`
@@ -146,9 +152,9 @@ export interface ConversationAuthor {
 
 export class GeminiConversationAuthor implements ConversationAuthor {
   async author(outcome: MasterAgentOutcome, prior: PriorMessage[] = [], opts: AuthorOptions = {}): Promise<string> {
-    const fallback = deterministicReply(outcome, opts.workspaceReport);
-    if (!env.GEMINI_API_KEY) return fallback;
     const replyLanguage = resolveLanguage(outcome, opts);
+    const fallback = deterministicReply(outcome, opts.workspaceReport, replyLanguage ?? opts.language);
+    if (!env.GEMINI_API_KEY) return fallback;
     // Language directive: pin to a named language when we confidently have one, else
     // tell the model to MIRROR the user's message — which covers every language,
     // including Latin-script ones (French, Spanish, German…) a code can't disambiguate.
@@ -184,7 +190,12 @@ export class GeminiConversationAuthor implements ConversationAuthor {
       // recording hiccup can't degrade the authored reply.
       await recordGeminiCall(raw, { ownerId: opts.ownerId ?? null, surface: 'chat', model: env.GEMINI_MODEL });
       const text = extractText(raw);
-      return text.length >= 2 ? text : fallback;
+      if (text.length < 2) return fallback;
+      // The model is handed the schedule but intermittently omits reading the exact time back → the user
+      // sees no scheduler + no confirm ask and thinks the time was ignored (and an immediate Execute would
+      // send NOW). Append the confirm-ask deterministically (localized) so an unconfirmed schedule always
+      // prompts a confirm. `set schedule → confirm → re-plan splices the ⏰ scheduler` still holds.
+      return text + scheduleConfirmTail(outcome, replyLanguage ?? opts.language);
     } catch {
       return fallback;
     }

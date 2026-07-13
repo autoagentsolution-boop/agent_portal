@@ -79,6 +79,10 @@ export const mergeGoals = (prior: GoalSpec, delta: GoalSpec): GoalSpec => {
       // has no address) keeps who the email is for. Paired with needsEmail above.
       emailTo: fillIfEmpty(prior.slots.emailTo, delta.slots.emailTo),
       emailSubject: fillIfEmpty(prior.slots.emailSubject, delta.slots.emailSubject),
+      // leadId (P3): a lead resolved by name (find_lead) on an earlier turn must survive a confirm/
+      // schedule turn whose delta re-resolves nothing — else the draft loses its lead grounding and
+      // the send never stamps nurturedAt. Carried like emailTo.
+      leadId: fillIfEmpty(prior.slots.leadId, delta.slots.leadId),
       // sourceText: the input for a non-marketing utility task (summarize). A refine turn's delta
       // carries none, so keep prior — else the merged goal loses the very text it operates on.
       sourceText: fillIfEmpty(prior.slots.sourceText, delta.slots.sourceText),
