@@ -69,7 +69,8 @@ const groupGeo = (i: number, total: number): GroupGeo => {
   const ang = (i / total) * Math.PI * 2 - Math.PI / 2;
   // Vertical radius is kept smaller than horizontal: the container is short, and the top/bottom groups'
   // members fan outward vertically — a tighter Y keeps the top group's expansion clear of the header.
-  return { ang, x: 50 + Math.cos(ang) * 33, y: 50 + Math.sin(ang) * 25 };
+  // Radii pushed out so the groups sit clear of Atria's outer glow ring (more breathing room).
+  return { ang, x: 50 + Math.cos(ang) * 40, y: 50 + Math.sin(ang) * 32 };
 };
 // Member j of a group: placed on an arc around the GROUP node, centred on its outward direction so the
 // members read as "inside" that group and never overlap Atria. The arc is WIDE (up to ~200°, wrapping
@@ -80,8 +81,9 @@ const groupGeo = (i: number, total: number): GroupGeo => {
 const memberGeo = (g: GroupGeo, j: number, count: number): { left: string; top: string; xy: [number, number] } => {
   const spread = count <= 1 ? 0 : Math.min(Math.PI * 1.15, 0.5 * count + 0.5);
   const a = g.ang + (count <= 1 ? 0 : spread * (j / (count - 1) - 0.5));
-  const x = g.x + Math.cos(a) * 15;
-  const y = g.y + Math.sin(a) * 15;
+  // Members pushed further out from their group node for clearer separation.
+  const x = g.x + Math.cos(a) * 18;
+  const y = g.y + Math.sin(a) * 18;
   return { left: `${x}%`, top: `${y}%`, xy: [x, y] };
 };
 
