@@ -183,3 +183,53 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `MKTAgent/src/orchestration/registry/vision-agents.ts`
   - `MKTAgent/web/src/components/command-center-page.tsx`
   - `MKTAgent/web/src/styles.css`
+- **docs(feature-map): 2-tier grouped constellation relationships** (acf8985)
+  - `docs/feature-map.md`
+- **fix(cc): member labels no longer overlap when a group expands** (08c7efb)
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+  - `MKTAgent/web/src/styles.css`
+- **feat(web): default UI copy to English; declutter + fix Command Center constellation** (549925c)
+  - `MKTAgent/web/src/App.tsx`
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+  - `MKTAgent/web/src/components/atria-resume-work-cards.tsx`
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+  - `MKTAgent/web/src/components/impact-report.tsx`
+  - `MKTAgent/web/src/components/orchestrate-run-cards.tsx`
+  - `MKTAgent/web/src/components/post-workflow-view.tsx`
+  - `MKTAgent/web/src/components/read-aloud-button.tsx`
+  - `MKTAgent/web/src/components/scheduled-view.tsx`
+  - `MKTAgent/web/src/components/top-nav.tsx`
+  - `MKTAgent/web/src/components/workspace-menu.tsx`
+  - `MKTAgent/web/src/components/workspace-panel.tsx`
+- **fix(atria): stop campaign/flow intent confusion + inherit platforms** (5eeff26)
+  - `MKTAgent/src/api/campaigns-router.ts`
+  - `MKTAgent/src/api/orchestration-chat.ts`
+  - `MKTAgent/src/orchestration/master/campaign-intent.ts`
+  - `MKTAgent/src/orchestration/master/deterministic-analyzer.ts`
+  - `MKTAgent/src/orchestration/verify-campaign-intent.ts`
+  - `MKTAgent/src/orchestration/verify-campaign-platform-inherit-http.ts`
+- **feat(atria): demo-readiness — instructions/memory in brain, email-by-name, voice one-button, strategist inline** (ae95f52)
+  - `MKTAgent/src/api/memory-router.ts`
+  - `MKTAgent/src/api/orchestration-router.ts`
+  - `MKTAgent/src/db/repos/lead-repo.ts`
+  - `MKTAgent/src/memory/user-memory.ts`
+  - `MKTAgent/src/orchestration/atria/atria-brain.ts`
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/executor/agent-runners.ts`
+  - `MKTAgent/src/orchestration/master/requirement-analyzer.ts`
+  - `MKTAgent/src/orchestration/prompts/atria-brain-prompt.ts`
+  - `MKTAgent/src/orchestration/prompts/resolve-instructions.ts`
+  - `MKTAgent/src/orchestration/schemas/goal-spec.ts`
+  - `MKTAgent/src/orchestration/verify-capability-gap.ts`
+  - `MKTAgent/src/orchestration/verify-instructions-and-memory.ts`
+  - `MKTAgent/src/orchestration/verify-nurture-email-from-chat.ts`
+  - `MKTAgent/src/orchestration/verify-p6-seed-session.ts`
+  - `MKTAgent/src/orchestration/verify-summarize-node.ts`
+  - `MKTAgent/web/src/App.tsx`
+  - `MKTAgent/web/src/api/client.ts`
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+  - `MKTAgent/web/src/components/memory-panel.tsx`
+  - `MKTAgent/web/src/components/orchestrate-run-cards.tsx`
+  - `MKTAgent/web/src/components/post-workflow-view.tsx`
+  - `MKTAgent/web/src/styles.css`
