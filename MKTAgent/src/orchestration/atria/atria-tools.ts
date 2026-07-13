@@ -8,6 +8,7 @@ import { workspaceMetrics } from '../master/report-answer.ts';
 import { recallForMessage } from '../../memory/user-memory.ts';
 import { rememberFreeform, type MemoryKind } from '../../db/repos/user-memory-repo.ts';
 import { requirementAnalyzer } from '../master/requirement-analyzer.ts';
+import { emailOutputs } from '../master/deterministic-analyzer.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
 import { mergeGoals } from '../master/goal-merge.ts';
 import { contentLanguageFor } from '../master/detect-language.ts';
@@ -117,8 +118,14 @@ export const TOOL_DECLARATIONS = [
           description:
             'A full natural-language description of the goal as you understand it: product/topic, platforms, outputs (post/video/email/campaign), and scope (single vs a multi-week campaign).',
         },
+        kind: {
+          type: 'string',
+          enum: ['email', 'marketing'],
+          description:
+            "YOU decide the intent type — do not leave it to guesswork. 'email' = a personal message SENT to a person (a birthday/greeting/thank-you/nurture note, or any email to someone). 'marketing' = a social post, campaign, ad, or marketing content published to platforms. A birthday greeting for a named person is 'email', NOT 'marketing'. Always set this so the flow is built correctly.",
+        },
       },
-      required: ['goal_description'],
+      required: ['goal_description', 'kind'],
     },
   },
   {
@@ -261,10 +268,31 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
       }
       case 'propose_workflow': {
         const analyzed = await requirementAnalyzer.analyze(str(args.goal_description) || ctx.message, ctx.ownerId, ctx.memoryContext, ctx.instructions);
-        // Multi-turn: merge onto the prior goal (additive — same semantics as the old refine path) so a
-        // description that restates only this turn's delta never drops product/audience/platforms
-        // gathered earlier. First turn (no priorGoal) uses the analyzed goal as-is.
-        const merged = ctx.priorGoal ? mergeGoals(ctx.priorGoal, analyzed) : analyzed;
+        // The BRAIN (LLM) declares the intent KIND — 'email' (a personal message SENT to a person) vs
+        // 'marketing' (a social post / campaign). The regex analyzer only extracts slots; it must NOT decide
+        // the TYPE (letting it guess is what mis-routed a birthday greeting into a 5-platform campaign, and
+        // vice-versa). Force the goal's type to the brain's declared kind so the two intents never bleed into
+        // each other. Omitted kind → keep the analyzer's result (backward-compatible for plain social posts).
+        const kindArg = str(args.kind).trim().toLowerCase();
+        const kind = kindArg === 'email' ? 'email' : kindArg === 'marketing' ? 'marketing' : null;
+        const analyzedTyped = goalSpec.parse(
+          kind === 'email'
+            ? { ...analyzed, outputs: emailOutputs(analyzed.outputs), platforms: [] as GoalSpec['platforms'], campaignScope: 'single' as const, duration: null, cadence: null }
+            : kind === 'marketing'
+              ? { ...analyzed, outputs: { ...analyzed.outputs, needsEmail: false }, slots: { ...analyzed.slots, emailTo: null, leadId: null } }
+              : analyzed,
+        );
+        // Merge onto the prior goal (additive) only WITHIN the same kind — a genuine refine. A kind SWITCH
+        // (marketing after an email, or vice-versa) starts fresh so nothing bleeds across. A bare confirm/
+        // refine names nothing new (empty delta) → always continues the prior, so an email survives its
+        // confirm turn even if this turn's analyzed type looks different.
+        const effKind = analyzedTyped.outputs.needsEmail ? 'email' : 'marketing';
+        const priorKind = ctx.priorGoal ? (ctx.priorGoal.outputs.needsEmail ? 'email' : 'marketing') : null;
+        const deltaEmpty = !analyzedTyped.outputs.needsEmail && !(analyzedTyped.slots.product ?? '').trim()
+          && analyzedTyped.platforms.length === 0 && !analyzedTyped.outputs.needsIdeation
+          && !analyzedTyped.outputs.needsInfographic && !analyzedTyped.outputs.needsVideo;
+        const isSwitch = ctx.priorGoal != null && !deltaEmpty && priorKind !== effKind;
+        const merged = ctx.priorGoal && !isSwitch ? mergeGoals(ctx.priorGoal, analyzedTyped) : analyzedTyped;
         // Schedule overlay (generic-scheduler node): a proposal parsed THIS turn is UNconfirmed (the user
         // still has to confirm the exact instant) → the planner leaves the flow immediate. A schedule
         // CARRIED from a prior turn (priorGoal, via mergeGoals) means the user already saw it and is now

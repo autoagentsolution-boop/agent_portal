@@ -289,8 +289,10 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
     ? await buildLeadAwarenessNote(req.userId!, outcome.goal, body.message).catch(() => null)
     : null;
   const assistantMessage = await recordTurn(sessionId, body.message, outcome, req.userId!, leadNote);
-  // Capture (P3): remember the goal's durable slots for next time. Fire-and-forget.
-  void captureFromGoal(req.userId!, outcome.goal, sessionId).catch(() => {});
+  // Capture (P3): remember the goal's durable MARKETING slots for next time. Fire-and-forget. Skip EMAIL
+  // goals — a birthday/personal email's "product"/"angle" (e.g. "birthday for Nghiep") is not durable
+  // marketing knowledge, and capturing it would leak the lead/email context into a later campaign's recall.
+  if (!outcome.goal.outputs.needsEmail) void captureFromGoal(req.userId!, outcome.goal, sessionId).catch(() => {});
 
   // In-place when the chat already has a pre-execution run (the flow card evolves on ONE run as setup
   // progresses); a fresh proposal creates a new run.

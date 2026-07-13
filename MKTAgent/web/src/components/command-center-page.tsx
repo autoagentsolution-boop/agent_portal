@@ -152,6 +152,21 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
     onLaunch(cmd.trim() || undefined);
   };
 
+  // Voice launch: PRIME the mic permission INSIDE this click gesture, then open the voice chat. The panel's
+  // hands-free auto-start calls SpeechRecognition.start() from a post-mount effect (NOT a user gesture); a
+  // mic prompt/grant triggered outside a gesture is silently blocked by Chrome → the chat opens but the mic
+  // never turns on ("redirect, no voice"). Requesting getUserMedia synchronously in the click grants mic
+  // permission for the session so the subsequent recognition reliably begins. Best-effort — a denial just
+  // means the user retries; we still open the chat.
+  const startVoice = (): void => {
+    try {
+      void navigator.mediaDevices?.getUserMedia?.({ audio: true })
+        .then((s) => s.getTracks().forEach((t) => t.stop()))
+        .catch(() => {});
+    } catch { /* no mediaDevices → recognition still attempts */ }
+    onStartVoice?.();
+  };
+
 
   return (
     <div className={`command-center ${chatActive ? 'is-chat' : ''}`}>
@@ -310,7 +325,7 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
             placeholder="Command Atria in natural language…"
           />
           {VOICE_SUPPORTED && onStartVoice && (
-            <button type="button" className="cc-mic" aria-label="Voice chat with Atria" title="Voice chat with Atria" onClick={onStartVoice}>🎙️</button>
+            <button type="button" className="cc-mic" aria-label="Voice chat with Atria" title="Voice chat with Atria" onClick={startVoice}>🎙️</button>
           )}
           <button type="submit" className="cc-send" aria-label="Send">➤</button>
         </div>
