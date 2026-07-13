@@ -167,11 +167,16 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
   // started (the "opens chat but doesn't record" bug). Nav-away voice stop is handled explicitly in App.
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; stopSpeaking(); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Opened via the Command Center voice button → enter hands-free voice mode, so the user is already
-  // talking to Atria. Fires on the false→true edge (the panel is often NOT remounted per open, so this
-  // watches the flag rather than mount); the !voiceMode guard makes a repeat flag harmless.
+  // Opened via the Command Center voice button → enter hands-free voice mode + START LISTENING, so the user
+  // can speak right away (no second tap). DEFERRED with a cancel-on-unmount timer: React 18 StrictMode's dev
+  // mount→unmount→remount would otherwise fire start()→abort()→start() on the browser's singleton
+  // SpeechRecognition — the 2nd start() throws "already started" (caught → mic stuck IDLE, the "voice mode on
+  // but not listening" bug). The unmount clears the first, spurious timer, so ONLY the final stable mount
+  // starts recognition — exactly once. The !voiceMode guard makes a repeat flag harmless.
   useEffect(() => {
-    if (autoVoice && sr.supported && !voiceModeRef.current) toggleVoiceMode();
+    if (!autoVoice || !sr.supported) return;
+    const t = window.setTimeout(() => { if (!voiceModeRef.current) toggleVoiceMode(); }, 120);
+    return () => window.clearTimeout(t);
   }, [autoVoice]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Esc exits voice mode / stops the round-trip (P3).
