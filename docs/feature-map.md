@@ -233,3 +233,18 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `MKTAgent/web/src/components/orchestrate-run-cards.tsx`
   - `MKTAgent/web/src/components/post-workflow-view.tsx`
   - `MKTAgent/web/src/styles.css`
+- **docs(demo-readiness): plan phase logs + P6 ui-validation + feature-map** (0885234)
+  - `docs/feature-map.md`
+  - `plans/260713-1743-demo-readiness-full-fix/phase-01-voice-cc-unification.md`
+  - `plans/260713-1743-demo-readiness-full-fix/phase-02-strategist-proposal-in-chat.md`
+  - `plans/260713-1743-demo-readiness-full-fix/phase-03-nurture-email-by-lead-from-chat.md`
+  - `plans/260713-1743-demo-readiness-full-fix/phase-04-instructions-ground-atria-ideas.md`
+  - `plans/260713-1743-demo-readiness-full-fix/phase-05-memory-smarter.md`
+  - `plans/260713-1743-demo-readiness-full-fix/phase-06-ui-flow-validation.md`
+  - `plans/260713-1743-demo-readiness-full-fix/plan.md`
+  - `plans/260713-1743-demo-readiness-full-fix/ui-validation/README.md`
+- **feat(cc): widen constellation — groups + members sit further out for breathing room** (84482a9)
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+- **fix(cc): constellation groups form a true circle (equal distance from Atria)** (e339870)
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+  - `MKTAgent/web/src/styles.css`

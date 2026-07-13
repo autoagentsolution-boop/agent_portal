@@ -3,6 +3,43 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-13
+
+### Feat: demo-readiness full-fix — Atria brain grounding, email-by-name, voice + strategist UX
+`pivot/video-content-farm`. Plan `plans/260713-1743-demo-readiness-full-fix`. Commits `ae95f52`
+(feature) + `5eeff26` (prior campaign fix) + `84482a9`/`e339870` (constellation). No thin layers;
+6 scenarios driven live in-browser (P6) — which caught + fixed 4 bugs the API/verify tests missed.
+- **Instructions ground the brain (P4)**: `resolveWorkspaceInstructionsBlock` → injected as a DYNAMIC
+  preamble in `runAtriaBrain` (never the context-cached system prompt → no tenant leak) AND threaded
+  into the requirement analyzer, so proposed pillars/angle/tone honor the user's Instructions, not
+  just the downstream content agents.
+- **Memory smarter (P5a)**: `memoryContext` injected into the brain EVERY turn (fixes "forgets
+  mid-chat"); product-keyed angle capture; recall ranking `score*10 + priority*4 + usedCount*.6 +
+  recency*2`; product is an always-eligible default (fixes cross-language recall); `GET/DELETE
+  /memory/facts` + a "What Atria remembers about you" panel. P5b embeddings deferred (YAGNI).
+- **Email to a lead by NAME from chat (P3)**: `find_lead` brain tool resolves a lead by name/handle
+  (masked email to the model; authoritative recipient from the Lead RECORD, never a model string);
+  `runEmailWriter` grounds the draft on the lead; `markLeadNurtured` on send. New `goal.slots.leadId`.
+  Brain prompt: an email is never "posted to a platform", personal emails skip marketing framing,
+  resolve+propose in one turn.
+- **Voice one-button + JARVIS core central (P1, FE)**: the Atria core is the single two-way voice
+  toggle and stays large + central in chat mode (was collapsing to 132px). `OrchestratePanel` exposes
+  a voice handle via `forwardRef`; App mirrors the state so the core reflects + toggles it.
+- **Strategist campaign inline in chat (P2, FE)**: `PlanCard` variants (🗓 Strategist / ✉️ Email /
+  📄 Single post); executing a strategist plan polls to its selection gate and renders the editable
+  content calendar INLINE in the transcript (approve → materialize → grant, no navigation).
+- **Constellation = true circle**: group + member radii aspect-corrected (pixel radius ÷ box
+  dimension) so every group is equidistant from Atria instead of sitting on an ellipse.
+- **Verify**: BE+FE tsc clean; golden 23/23 + campaign-intent + reuse-http 21/21 + platform-inherit
+  6/6 = no regression; new `verify-instructions-and-memory` + `verify-nurture-email-from-chat` green.
+  Deferred-to-manual: P1 real STT (needs a mic), P3 real Gmail send (needs the user's connected
+  account — DRY send + `nurturedAt` stamp already green).
+
+### Fix: campaign/flow intent confusion + platform inheritance
+`5eeff26`. `detectCampaignIntent` → create/plan/ambiguous (cadence words need noun-pairing) so a clear
+create message with "schedule" no longer trips PLAN_INTENT and reproduces a new flow; campaign created
+under a flow inherits the flow's platforms/language (facebook fallback) instead of persisting `[]`.
+
 ## 2026-07-12
 
 ### Feat: generic scheduler agent node (deferred-execution, type-agnostic)
