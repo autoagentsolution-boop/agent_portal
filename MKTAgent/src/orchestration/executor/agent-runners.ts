@@ -16,6 +16,7 @@ import { getUserById } from '../../db/repos/user-repo.ts';
 import { generateVariantsForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { sendGmailAs, type GmailSendFn } from '../../email/gmail-send.ts';
+import { getLead, markLeadNurtured } from '../../db/repos/lead-repo.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
 import { buildAgentPrompt } from '../prompts/build-agent-prompt.ts';
 import { resolveInstructions } from '../prompts/resolve-instructions.ts';
@@ -774,11 +775,27 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const concept = ctx.upstream['content_concept']; // optional grounding (a nurture flow); usually absent
   const summary = ctx.upstream['summary']; // summarize → email composition: base the email on the summary
   const purpose = ctx.goal.slots.angle?.trim() || ctx.goal.slots.product?.trim() || ctx.goal.slots.emailSubject?.trim() || 'a short, friendly note';
+  // Lead grounding (P3): when the recipient is a captured lead resolved by name (find_lead), enrich the
+  // draft with the lead's own context — their NAME (so the writer addresses them properly), the product
+  // they came in on, and their message. This personalizes a birthday/nurture note WITHOUT forcing the
+  // sales-nurture framing (draftNurtureEmail's job); the purpose still drives what the email says.
+  let leadGrounding = '';
+  if (ctx.goal.slots.leadId) {
+    const lead = await getLead(ctx.goal.slots.leadId, ctx.ownerId).catch(() => null);
+    if (lead) {
+      leadGrounding = [
+        `Recipient name: ${lead.name ?? '(unknown — do not guess a name)'}`,
+        lead.sourceProduct ? `They first showed interest in: ${lead.sourceProduct}` : '',
+        lead.message ? `Their original message: ${lead.message.slice(0, 400)}` : '',
+      ].filter(Boolean).join('\n');
+    }
+  }
   const input = [
     `Purpose / what to say: ${purpose}`,
     ctx.goal.slots.emailSubject ? `Requested subject: ${ctx.goal.slots.emailSubject}` : '',
     ctx.goal.slots.brandVoice ? `Tone: ${ctx.goal.slots.brandVoice}` : '',
     `Recipient(s): ${to.join(', ')}`,
+    leadGrounding,
     concept ? `Context to ground in: ${JSON.stringify(concept).slice(0, 1200)}`
       : summary ? `Summary to base the email on: ${JSON.stringify(summary).slice(0, 1200)}` : '',
     `Write the email entirely in this language: ${language}.`,
@@ -846,6 +863,12 @@ const runEmailAgent = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const okCount = Object.keys(sentIds).length;
   if (okCount === 0) throw new Error(`email_agent: send failed (${lastErr ?? 'unknown'})`);
   const status = okCount < to.length ? 'partial' : 'sent';
+  // Stamp the lead as nurtured (P3) when this email was addressed to a resolved lead — idempotency +
+  // audit, and it flips the lead's "never contacted" state. Best-effort; a stamp failure never fails a
+  // real send that already went out.
+  if (ctx.goal.slots.leadId) {
+    void markLeadNurtured(ctx.goal.slots.leadId, ctx.ownerId).catch(() => {});
+  }
   logger.info('wf_email_sent', { runId: ctx.runId, recipients: to.length, sent: okCount, status });
   return { type: 'email_result', data: { to, subject, status, sentIds, error: status === 'partial' ? lastErr : null } };
 };

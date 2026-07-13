@@ -46,3 +46,18 @@ export async function resolveInstructions(ctx: InstructionResolveCtx): Promise<s
     .map((i) => i.content.trim())
     .filter(Boolean);
 }
+
+// Workspace-scoped, all-agent instructions as a single labeled block for the Atria BRAIN + the marketing
+// analyzer (P4). Passing no agentId/campaignId/postId narrows resolveInstructions to workspace + all-agent
+// rows — the global steer the reasoning layer should honor (agent-specific rows still flow through
+// buildAgentPrompt at content time). Null when the user set none → Atria keeps its own default judgment.
+// MUST be injected as a DYNAMIC preamble (per-user), never into the cached system prompt (tenant leak).
+export async function resolveWorkspaceInstructionsBlock(ownerId: string): Promise<string | null> {
+  const items = await resolveInstructions({ ownerId });
+  if (!items.length) return null;
+  const lines = items.map((s) => `- ${s.replace(/\s+/g, ' ').trim().slice(0, 400)}`).slice(0, 12);
+  return (
+    `USER INSTRUCTIONS (the user configured these — follow them in your reasoning and in any workflow you propose; ` +
+    `if none apply, use your own judgment):\n${lines.join('\n')}`
+  );
+}

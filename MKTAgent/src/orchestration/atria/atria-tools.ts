@@ -15,6 +15,7 @@ import { recordLlmUsage } from '../../cost/llm-usage.ts';
 import { parseScheduleTime } from './parse-schedule-time.ts';
 import { goalSpec, type GoalSpec } from '../schemas/goal-spec.ts';
 import { recordCapabilityGap, type CapabilityGapSpec } from '../../db/repos/roadmap-demand-repo.ts';
+import { searchLeadsByName } from '../../db/repos/lead-repo.ts';
 
 // Per-turn state threaded through every tool call. `searched` accumulates citation labels (surfaced to
 // the user for transparency); `proposal` is set when the brain calls propose_workflow (the router turns
@@ -23,6 +24,7 @@ export interface ToolContext {
   ownerId: string;
   message: string; // the raw user message — fallback subject for search/data/recall
   memoryContext: string | null; // recalled memory block (passed into the marketing analyzer)
+  instructions: string | null; // workspace Instructions block (P4) — passed into the marketing analyzer
   sessionId: string | null;
   // The existing pre-exec run's goal (mid-setup), merged in propose_workflow so earlier slots survive.
   priorGoal: GoalSpec | null;
@@ -36,6 +38,10 @@ export interface ToolContext {
   // Overlaid onto the goal in propose_workflow as UNconfirmed — the user must confirm the exact instant
   // (which they do on a later turn, at which point the schedule is carried via priorGoal → confirmed).
   scheduleProposal: { phrase: string | null; at: string; timezone: string | null } | null;
+  // A lead resolved BY NAME this turn (find_lead, single match). propose_workflow reads it to set the
+  // email recipient FROM THE LEAD RECORD (authoritative — never a model-typed address) + carry leadId.
+  // Only set on an unambiguous single match; >1 matches leave this null so the brain asks which one.
+  resolvedLead: { leadId: string; email: string; name: string | null } | null;
 }
 
 // Supported NON-marketing utility capabilities → the terminal artifact each produces. propose_task plans
@@ -45,6 +51,15 @@ const TASK_CAPABILITIES: Record<string, string> = { summarize: 'summary' };
 const MEMORY_KINDS = new Set<MemoryKind>(['product', 'brand', 'audience', 'preference', 'contact', 'fact']);
 const asKind = (v: unknown): MemoryKind => (MEMORY_KINDS.has(v as MemoryKind) ? (v as MemoryKind) : 'fact');
 const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
+
+// Mask a lead's email before it reaches the model (find_lead): keep the first local char + full domain
+// so the user can tell candidates apart by domain without the full PII address entering the LLM context.
+const maskEmail = (email: string): string => {
+  const [local, domain] = email.split('@');
+  if (!domain) return '***';
+  const head = local && local.length ? local[0] : '';
+  return `${head}***@${domain}`;
+};
 
 // Gemini functionDeclarations — the menu shown to the model each round.
 export const TOOL_DECLARATIONS = [
@@ -114,6 +129,16 @@ export const TOOL_DECLARATIONS = [
       type: 'object',
       properties: { when_phrase: { type: 'string', description: 'The time expression exactly as the user said it.' } },
       required: ['when_phrase'],
+    },
+  },
+  {
+    name: 'find_lead',
+    description:
+      "Resolve a captured LEAD by NAME (or partial name / email fragment) from the user's own leads, when they ask to email someone by name without giving an @ address (e.g. \"send a birthday email to Nghiep\"). Returns matching candidates with a MASKED email so you can confirm the right person. Call this BEFORE propose_workflow for a named-recipient email: exactly one match → the recipient is resolved for you (propose right away, same turn); several → ask the user which one; none → tell them you have no lead by that name and ask for the email address. NEVER guess or invent an email address.",
+    parameters: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'The person to find — a name, partial name, or an email fragment like a domain to disambiguate (e.g. "Nghiep", "Nghiep gmail").' } },
+      required: ['name'],
     },
   },
   {
@@ -193,6 +218,26 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         if (content) await rememberFreeform(ctx.ownerId, asKind(args.kind), content, ctx.sessionId);
         return { saved: Boolean(content) };
       }
+      case 'find_lead': {
+        const query = str(args.name).trim();
+        if (!query) return { found: 0, note: 'No name given — ask the user who to send to, or for an email address.' };
+        const matches = await searchLeadsByName(ctx.ownerId, query, 5);
+        if (!matches.length) {
+          return { found: 0, note: `No lead named "${query}". Tell the user you don't have a saved contact by that name and ask for the email address to send to — never invent one.` };
+        }
+        if (matches.length === 1) {
+          const m = matches[0]!;
+          // Authoritative recipient stays SERVER-SIDE on ctx; only the masked address goes to the model.
+          ctx.resolvedLead = { leadId: m.id, email: m.email, name: m.name };
+          return { found: 1, lead: { name: m.name ?? '(no name)', email_masked: maskEmail(m.email) }, note: 'Resolved this single match — the recipient is set. Propose the email now (same turn); do NOT ask for their address.' };
+        }
+        // Ambiguous — do NOT resolve; the brain must ask which one (never guess a recipient).
+        return {
+          found: matches.length,
+          candidates: matches.map((m) => ({ name: m.name ?? '(no name)', email_masked: maskEmail(m.email) })),
+          note: 'Several matches — ask the user which person (show the masked emails so they can tell them apart). Do NOT propose until they pick. When they clarify, call find_lead again with a narrower query (e.g. add the domain).',
+        };
+      }
       case 'execute_workflow': {
         // Signal the router to run the plan already on screen. Never executes here — keeps the async
         // launch + connection gate in the router (the /execute path), so this stays a pure signal.
@@ -215,7 +260,7 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         };
       }
       case 'propose_workflow': {
-        const analyzed = await requirementAnalyzer.analyze(str(args.goal_description) || ctx.message, ctx.ownerId, ctx.memoryContext);
+        const analyzed = await requirementAnalyzer.analyze(str(args.goal_description) || ctx.message, ctx.ownerId, ctx.memoryContext, ctx.instructions);
         // Multi-turn: merge onto the prior goal (additive — same semantics as the old refine path) so a
         // description that restates only this turn's delta never drops product/audience/platforms
         // gathered earlier. First turn (no priorGoal) uses the analyzed goal as-is.
@@ -236,6 +281,12 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         // 'vi' bled from recalled memory would otherwise force Vietnamese onto an English conversation).
         // A detectable language in a later refine turn overrides; the analyzer's own guess is ignored.
         goal = goalSpec.parse({ ...goal, slots: { ...goal.slots, language: contentLanguageFor(ctx.message, ctx.priorGoal?.slots.language ?? null) } });
+        // Lead-resolved recipient (P3): when find_lead matched a single lead this turn AND this is an email
+        // goal, set the recipient FROM THE LEAD RECORD (never the model's text) + carry leadId so the writer
+        // grounds on the lead and the send stamps nurturedAt. Non-email goals ignore it.
+        if (ctx.resolvedLead && goal.outputs.needsEmail) {
+          goal = goalSpec.parse({ ...goal, slots: { ...goal.slots, emailTo: ctx.resolvedLead.email, leadId: ctx.resolvedLead.leadId } });
+        }
         const outcome = masterAgent.planFromGoal(goal);
         ctx.proposal = { goal, outcome };
         if (outcome.status === 'planned') return { status: 'planned', agents: outcome.plan.nodes.map((n) => n.agentId), steps: outcome.plan.nodes.length };

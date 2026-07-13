@@ -127,6 +127,33 @@ export const getLead = async (id: string, ownerId: string): Promise<DecryptedLea
   return row ? decryptLead(row) : null;
 };
 
+// Name/handle search for the Atria find_lead tool (P3). PII is encrypted at rest with no name blind
+// index, so equality/contains can't run in SQL — fetch the owner's recent leads (bounded) and match in
+// memory on DECRYPTED name+email. Token-AND: every query token must appear in name+email, so a follow-up
+// like "Nghiep gmail" narrows a same-name collision by domain. Ranked name-first, higher-score leads tie-
+// break. Owner-scoped. Returns top N decrypted leads (caller masks the email before it reaches the model).
+export const searchLeadsByName = async (ownerId: string, q: string, limit = 5): Promise<DecryptedLead[]> => {
+  const tokens = (q.toLowerCase().match(/[\p{L}\p{N}@._-]{2,}/gu) ?? []).slice(0, 6);
+  if (!tokens.length) return [];
+  const rows = await prisma.lead.findMany({ where: { ownerId }, orderBy: { receivedAt: 'desc' }, take: 500 });
+  const scored = rows.map(decryptLead).map((l) => {
+    const name = (l.name ?? '').toLowerCase();
+    const email = l.email.toLowerCase();
+    const hay = `${name} ${email}`;
+    if (!tokens.every((t) => hay.includes(t))) return null;
+    let score = 0;
+    for (const t of tokens) {
+      if (name === t) score += 100;
+      else if (name.startsWith(t)) score += 60;
+      else if (name.includes(t)) score += 40;
+      else if (email.includes(t)) score += 20;
+    }
+    return { l, score };
+  }).filter((x): x is { l: DecryptedLead; score: number } => x !== null);
+  scored.sort((a, b) => b.score - a.score || (b.l.score ?? 0) - (a.l.score ?? 0));
+  return scored.slice(0, limit).map((x) => x.l);
+};
+
 // Owner-scoped score write (rescore). Returns the updated decrypted lead, or null on miss.
 export const updateLeadScore = async (
   id: string,

@@ -289,6 +289,9 @@ export interface WorkspaceDetailDto extends WorkspaceSummaryDto {
 export interface MemoryProposalDto { content: string; rationale: string; agentId: string }
 export interface MemoryProposalsDto { editedCount: number; sampled: number; proposals: MemoryProposalDto[]; model: string | null }
 export interface MemoryDto { id: string; agentId: string | null; content: string; enabled: boolean; createdAt: string }
+// Slot facts (P5a) — what Atria remembers ABOUT the user (product/brand/audience/preference), distinct
+// from the learned copy-style rules above.
+export interface MemoryFactDto { id: string; kind: string; key: string | null; content: string; usedCount: number; updatedAt: string }
 
 // Email Agent (Atria v2 P2-2c) — nurture captured leads via the owner's Gmail. Routes (/email) not in openapi.
 export interface NurtureLeadDto { id: string; name: string | null; email: string; sourceProduct: string | null; score: number | null; nurturedAt: string | null }
@@ -582,6 +585,8 @@ export const api = {
   memoryProposals: () => request<MemoryProposalsDto>('/memory/proposals'),
   acceptMemory: (content: string, agentId?: string) => request<MemoryDto>('/memory/accept', { method: 'POST', body: { content, ...(agentId ? { agentId } : {}) } }),
   deleteMemory: (id: string) => request<void>(`/memory/${id}`, { method: 'DELETE' }),
+  listMemoryFacts: () => request<MemoryFactDto[]>('/memory/facts'),
+  deleteMemoryFact: (id: string) => request<void>(`/memory/facts/${id}`, { method: 'DELETE' }),
   grantCampaign: (id: string, body: { confirmationToken?: string; scheduleConfirmed?: boolean }) =>
     request<CampaignGrantResponse>(`/campaigns/${id}/grant-autonomy`, { method: 'POST', body }),
   grantPost: (postId: string, body: { confirmationToken?: string; scheduleConfirmed?: boolean } = {}) =>

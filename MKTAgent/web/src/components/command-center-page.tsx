@@ -40,6 +40,10 @@ interface Props {
   // mini-hero and chatSlot (the OrchestratePanel, wired in App) renders below. onCloseChat returns home.
   chatActive?: boolean;
   chatSlot?: ReactNode;
+  // Voice unification (P1): live voice state (owned by the embedded OrchestratePanel) + a two-way toggle.
+  // In chat mode the Atria core IS this control — one persistent button that turns hands-free voice on/off
+  // and stays large + central (no collapse). The core's glow already rides global root attrs.
+  voice?: { mode: boolean; state: 'idle' | 'listening' | 'thinking' | 'speaking'; onToggle: () => void };
   notify: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
@@ -84,7 +88,7 @@ const memberGeo = (g: GroupGeo, j: number, count: number): { left: string; top: 
 // Web Speech API support (Chrome/Edge) — gate the mic button so it never shows a dead control.
 const VOICE_SUPPORTED = typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
 
-export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], resumeRuns = [], onResumeChat, onOpenFlow, onStartVoice, onDismissResume, chatActive = false, chatSlot, notify }: Props) {
+export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], resumeRuns = [], onResumeChat, onOpenFlow, onStartVoice, onDismissResume, chatActive = false, chatSlot, voice, notify }: Props) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [cmd, setCmd] = useState('');
@@ -155,11 +159,20 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
         const geoList = groups.map((g, i) => ({ g, geo: groupGeo(i, groups.length) }));
         const expanded = geoList.find((x) => x.g.id === expandedGroup) ?? null;
         const members = expanded ? (membersByGroup.get(expanded.g.id) ?? []) : [];
-        // Clicking Atria collapses an open group first (the "back" gesture); otherwise it launches chat.
-        const coreClick = () => (expandedGroup ? setExpandedGroup(null) : onLaunch());
+        // In CHAT mode the core is the persistent, two-way VOICE toggle (P1). Otherwise it collapses an
+        // open group first (the "back" gesture), else launches the chat.
+        const coreClick = () => {
+          if (chatActive) { voice?.onToggle(); return; }
+          if (expandedGroup) { setExpandedGroup(null); return; }
+          onLaunch();
+        };
+        const vs = chatActive ? (voice?.state ?? 'idle') : null;
+        const coreTitle = chatActive
+          ? (voice?.mode ? 'Voice on — tap to stop' : 'Tap to talk to Atria')
+          : (expandedGroup ? 'Collapse' : 'Open Atria');
         return (
       <div className={`cc-network ${anyRunning ? 'is-conducting' : ''} ${expanded ? 'is-expanded' : ''}`}>
-        <button className={`cc-core ${anyRunning ? 'is-conducting' : ''}`} onClick={coreClick} title={expandedGroup ? 'Collapse' : 'Open Atria'}>
+        <button className={`cc-core ${anyRunning ? 'is-conducting' : ''} ${voice?.mode ? 'is-voice-on' : ''} ${vs ? `is-voice-${vs}` : ''}`} onClick={coreClick} title={coreTitle} aria-pressed={chatActive ? Boolean(voice?.mode) : undefined}>
           <span className="cc-core-fx" aria-hidden="true">
             <span className="cc-ring cc-ring-1" />
             <span className="cc-ring cc-ring-2" />
@@ -170,7 +183,9 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
           </span>
           <span className="cc-core-label">Master Agent</span>
           <span className="cc-core-name">Atria</span>
-          <span className="cc-core-sub">Conductor</span>
+          <span className="cc-core-sub">
+            {vs === 'listening' ? 'Listening…' : vs === 'thinking' ? 'Thinking…' : vs === 'speaking' ? 'Speaking…' : chatActive ? (voice?.mode ? 'Tap to stop' : '🎙 Tap to talk') : 'Conductor'}
+          </span>
         </button>
         <svg className="cc-links" viewBox="0 0 100 100" preserveAspectRatio="none">
           {/* Tier 1: Atria → each group (always). */}

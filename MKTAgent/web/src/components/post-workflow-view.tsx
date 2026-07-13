@@ -315,7 +315,9 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
           />
         )}
 
-        {run.status === 'needs_approval' && gateNode && gateNode.agentId !== 'concept_writer' && (
+        {/* campaign_strategist never gates under a Post (it runs under a flow), but exclude it here so a
+            stray strategist gate can't render as a mislabeled "external action". */}
+        {run.status === 'needs_approval' && gateNode && gateNode.agentId !== 'concept_writer' && gateNode.agentId !== 'campaign_strategist' && (
           <div className="gate-block">
             {gateNode.agentId === 'video' ? (
               <>

@@ -375,14 +375,19 @@ a { color: var(--accent); }
 /* In chat mode the CC fills EXACTLY the app-main viewport (no min-height:100vh page overflow), so the
    Atria mini-hero stays pinned at the top and ONLY the transcript scrolls internally (feedback 6.1/6.4). */
 .command-center.is-chat { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
-/* In chat mode the graph GATHERS into just the Atria hero — the orbiting agent nodes + links hide. */
-.command-center.is-chat .cc-network { flex: 0 0 132px; height: 132px; min-height: 132px; margin: 6px 0 0; }
+/* In chat mode the graph GATHERS into just the Atria hero — the orbiting agent nodes + links hide, but
+   the JARVIS CORE stays large + central (P1): it's the persistent voice control and must read as the
+   living centrepiece, not a shrunken 132px badge. Responsive height so the transcript still gets room. */
+.command-center.is-chat .cc-network { flex: 0 0 clamp(190px, 27vh, 300px); height: auto; min-height: 190px; margin: 4px 0 0; }
 .command-center.is-chat .cc-node,
 .command-center.is-chat .cc-group,
 .command-center.is-chat .cc-flows,
 .command-center.is-chat .cc-links,
 .command-center.is-chat .cc-network-empty { display: none; }
-.command-center.is-chat .cc-core { transform: translate(-50%, -50%) scale(0.82); animation: cc-core-breathe 3.2s ease-in-out infinite; }
+.command-center.is-chat .cc-core { transform: translate(-50%, -50%) scale(1); animation: cc-core-breathe 3.2s ease-in-out infinite; cursor: pointer; }
+/* Voice-toggle affordance on the core while chatting: hover lifts it; "on" gets a steady ready ring. */
+.command-center.is-chat .cc-core:hover { filter: drop-shadow(0 0 26px rgba(157,123,255,0.7)); }
+.command-center.is-chat .cc-core.is-voice-on { box-shadow: 0 0 40px rgba(53,208,192,0.35); }
 /* "Alive" breathing on the Atria core while a chat is open (P3, decorative — no data binding). */
 @keyframes cc-core-breathe {
   0%, 100% { filter: drop-shadow(0 0 14px rgba(157,123,255,0.45)); }
@@ -407,6 +412,14 @@ a { color: var(--accent); }
 .cc-chat-embed .chat-bubble.user { background: rgba(157,123,255,0.18); border: 1px solid rgba(157,123,255,0.35); color: #f2f0ff; }
 .cc-chat-embed .chat-bubble.agent { background: var(--panel); border: 1px solid var(--border); color: var(--text); }
 .cc-chat-embed .floating-composer { background: transparent; }
+
+/* Plan scope badge (P2): distinguishes a Strategist campaign (multi-post calendar) from a Single post,
+   right in the chat plan card, so the two are unmistakable at propose time. */
+.plan-scope { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; margin-bottom: 8px;
+  border-radius: 8px; border: 1px solid var(--border); }
+.plan-scope.strategist { background: rgba(157,123,255,0.12); border-color: rgba(157,123,255,0.4); }
+.plan-scope.single { background: rgba(255,255,255,0.04); }
+.plan-scope strong { font-size: 13px; }
 .cc-chat-embed .composer-box { background: var(--panel); border: 1px solid var(--border); }
 .cc-chat-embed .composer-box textarea { background: transparent; color: var(--text); }
 .cc-chat-embed .composer-box textarea::placeholder { color: var(--muted); }

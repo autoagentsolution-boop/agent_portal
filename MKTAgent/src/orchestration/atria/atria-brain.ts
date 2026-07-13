@@ -32,6 +32,9 @@ export interface AtriaBrainInput {
   message: string;
   ownerId: string;
   memoryContext: string | null;
+  // Workspace Instructions block (P4) — the user's configured steer. Injected as a DYNAMIC preamble
+  // (never the cached system prompt) so it shapes the brain's reasoning + proposals; null → Atria default.
+  instructions: string | null;
   sessionId: string | null;
   prior?: PriorMessage[];
   // The existing pre-execution run's GoalSpec, when this chat is mid-setup. Threaded into
@@ -123,6 +126,7 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
     ownerId: input.ownerId,
     message: input.message,
     memoryContext: input.memoryContext,
+    instructions: input.instructions,
     sessionId: input.sessionId,
     priorGoal: input.priorGoal ?? null,
     existingRunId: input.existingRunId ?? null,
@@ -130,11 +134,17 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
     proposal: null,
     executeRunId: null,
     scheduleProposal: null,
+    resolvedLead: null,
   };
-  // Voice hint rides the user turn (NOT the system prompt — that's context-cached and must stay stable).
-  const userParts = input.voice
-    ? [{ text: '(The user is speaking by voice — reply in 1–2 short, natural spoken sentences. No lists or markdown.)' }, { text: input.message }]
-    : [{ text: input.message }];
+  // Dynamic preamble (P4 instructions + P5a memory) + the voice hint all ride the user turn — NOT the
+  // system prompt, which is context-cached and must stay stable/tenant-agnostic. Injecting memory here
+  // (not only into the analyzer) makes EVERY conversational turn memory-aware so Atria stops "forgetting"
+  // facts mid-chat. Each block is self-labeled so the model reads them as context, not the user's words.
+  const preamble: Array<{ text: string }> = [];
+  if (input.instructions?.trim()) preamble.push({ text: input.instructions.trim() });
+  if (input.memoryContext?.trim()) preamble.push({ text: input.memoryContext.trim() });
+  if (input.voice) preamble.push({ text: '(The user is speaking by voice — reply in 1–2 short, natural spoken sentences. No lists or markdown.)' });
+  const userParts = [...preamble, { text: input.message }];
   const contents: GeminiContent[] = [...historyContents(input.prior ?? []), { role: 'user', parts: userParts }];
   const tools: string[] = [];
   const deadline = Date.now() + TURN_BUDGET_MS;

@@ -3,7 +3,7 @@ import { useAuth } from './hooks/use-auth';
 import { useToast } from './hooks/use-toast';
 import { api, loginUrl, type AgentChatSessionDto, type CampaignDto, type PostDto, type SavedRunDto } from './api/client';
 import { ActiveFlowsPage } from './components/ActiveFlowsPage';
-import { OrchestratePanel, type OrchestrateRestore } from './components/OrchestratePanel';
+import { OrchestratePanel, type OrchestrateRestore, type OrchestrateHandle, type VoiceState } from './components/OrchestratePanel';
 import { ConnectionsPanel } from './components/ConnectionsPanel';
 import { ProductKnowledgeLibrary } from './components/ProductKnowledgeLibrary';
 import { LeadsPage } from './components/LeadsPage';
@@ -50,6 +50,14 @@ export function App() {
   // the first auto-send doesn't close the chat — and, crucially, a remount (tab switch / refresh) no
   // longer re-fires the auto-send (was: duplicate LLM call every time you returned to the CC).
   const [ccChatOpen, setCcChatOpen] = useState(false);
+  // Voice unification (P1): the OrchestratePanel owns the STT/TTS machine; App mirrors its state so the
+  // Command Center core can reflect + toggle it (one persistent, two-way control). Ref = imperative toggle.
+  const voicePanelRef = useRef<OrchestrateHandle>(null);
+  const [voiceUi, setVoiceUi] = useState<{ mode: boolean; state: VoiceState }>({ mode: false, state: 'idle' });
+  const handleVoiceChange = useCallback(
+    (v: { mode: boolean; state: VoiceState }) => setVoiceUi((p) => (p.mode === v.mode && p.state === v.state ? p : v)),
+    [],
+  );
   // Sidebar "+" on a campaign requests the SAME create-post modal the board shows (Manual |
   // Master Agent), rather than silently creating an empty brief — unifies the two entry
   // points. Set the target campaign, navigate to its board, and let PostBoard auto-open the
@@ -109,7 +117,7 @@ export function App() {
   };
 
   const ccChatActive = ccChatOpen;
-  const closeCcChat = () => { setCcChatOpen(false); setOrchestratePrefill(null); setOrchestrateRestore(null); setActiveChatId(null); setOrchestrateAutoVoice(false); };
+  const closeCcChat = () => { voicePanelRef.current?.stopVoice(); setVoiceUi({ mode: false, state: 'idle' }); setCcChatOpen(false); setOrchestratePrefill(null); setOrchestrateRestore(null); setActiveChatId(null); setOrchestrateAutoVoice(false); };
 
   // Returning to the CC (tab switch / back) with an open chat but no live restore → re-hydrate it from
   // the active session so the conversation reappears WITHOUT re-sending. Only runs on a page transition
@@ -294,11 +302,13 @@ export function App() {
   const orchestratePanelEl = (
     <OrchestratePanel
       key={orchestrateRestore?.sessionId ?? 'new'}
+      ref={voicePanelRef}
       restore={orchestrateRestore}
       initialInput={orchestratePrefill ?? undefined}
       autoStart={Boolean(orchestratePrefill)}
       onAutoStarted={() => setOrchestratePrefill(null)}
       autoVoice={orchestrateAutoVoice}
+      onVoiceChange={handleVoiceChange}
       flowsWithoutStrategy={flowsWithoutStrategy}
       chats={chatSessions.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))}
       notify={show}
@@ -347,6 +357,7 @@ export function App() {
             onDismissResume={dismissResumeItem}
             chatActive={ccChatActive}
             chatSlot={orchestratePanelEl}
+            voice={{ mode: voiceUi.mode, state: voiceUi.state, onToggle: () => voicePanelRef.current?.toggleVoice() }}
             notify={show}
           />
         ) : page === 'connections' ? (

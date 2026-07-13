@@ -1,0 +1,97 @@
+// Verify P3 — Birthday/Nurture email by lead NAME from chat. Deterministic seams, NO real Gemini/email:
+//   1. find_lead: 1 match → resolves recipient onto ctx (authoritative, server-side); >1 → asks (no
+//      resolve); narrowed by domain → 1; unknown → none. Email masked before it reaches the model.
+//   2. runEmailWriter (stubbed LLM): a leadId grounds the draft with the lead's NAME/context; no leadId →
+//      no lead line. 0 spend.
+//   3. runEmailAgent (stubbed Gmail): a send to a resolved lead stamps nurturedAt. 0 real send.
+// The Gemini analyzer routing (name → email goal) is validated live in P6 (browser). One throwaway tenant,
+// self-cleaned.  npx tsx src/orchestration/verify-nurture-email-from-chat.ts
+import { prisma } from '../db/client.ts';
+import { createLead, getLead } from '../db/repos/lead-repo.ts';
+import { dispatchTool, type ToolContext } from './atria/atria-tools.ts';
+import { getRunner } from './executor/agent-runners.ts';
+import { goalSpec } from './schemas/goal-spec.ts';
+import type { LlmJsonFn } from './master/llm-json.ts';
+import type { GmailSendFn } from '../email/gmail-send.ts';
+
+let failed = 0;
+const ok = (cond: boolean, label: string, extra?: unknown): void => {
+  console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${label}`, cond || extra === undefined ? '' : JSON.stringify(extra));
+  if (!cond) failed++;
+};
+
+const baseCtx = (ownerId: string): ToolContext => ({
+  ownerId, message: 'email a lead', memoryContext: null, instructions: null, sessionId: null, priorGoal: null,
+  existingRunId: null, searched: [], proposal: null, executeRunId: null, scheduleProposal: null, resolvedLead: null,
+});
+
+const seedLead = (ownerId: string, name: string, email: string) => createLead({
+  ownerId, name, email, phone: null, message: `interested — ${name}`, sourceProduct: 'Atria', source: 'form',
+  calBookingUid: null, score: 60, scoreReasons: [],
+});
+
+async function main(): Promise<void> {
+  const user = await prisma.user.create({ data: { email: `p3-${Date.now()}@test.local`, defaultLanguage: 'en' } });
+  try {
+    const lam = await seedLead(user.id, 'Lam', 'lam@example.com');
+    await seedLead(user.id, 'Nghiep', 'nghiep@gmail.com');
+    await seedLead(user.id, 'Nghiep', 'nghiep@company.com'); // same name → ambiguous
+
+    console.log('find_lead resolution');
+    // 1 match → resolves onto ctx (server-side authoritative), masked email to the model.
+    const ctx1 = baseCtx(user.id);
+    const r1 = await dispatchTool('find_lead', { name: 'Lam' }, ctx1) as any;
+    ok(r1.found === 1, 'single name → found 1', r1);
+    ok(ctx1.resolvedLead?.leadId === lam.id && ctx1.resolvedLead?.email === 'lam@example.com', 'ctx.resolvedLead set to the real record', ctx1.resolvedLead);
+    ok(r1.lead?.email_masked === 'l***@example.com', 'email masked to the model (first char + domain)', r1.lead);
+
+    // >1 match → does NOT resolve; returns candidates for the brain to ask.
+    const ctx2 = baseCtx(user.id);
+    const r2 = await dispatchTool('find_lead', { name: 'Nghiep' }, ctx2) as any;
+    ok(r2.found === 2, 'ambiguous name → found 2', r2);
+    ok(ctx2.resolvedLead === null, 'ambiguous → NOT resolved (brain must ask)', ctx2.resolvedLead);
+    ok(Array.isArray(r2.candidates) && r2.candidates.every((c: any) => c.email_masked.includes('***')), 'candidates masked', r2.candidates);
+
+    // Narrow by domain → 1.
+    const ctx3 = baseCtx(user.id);
+    const r3 = await dispatchTool('find_lead', { name: 'Nghiep gmail' }, ctx3) as any;
+    ok(r3.found === 1 && ctx3.resolvedLead?.email === 'nghiep@gmail.com', 'narrowed "Nghiep gmail" → the gmail lead', { r3, resolved: ctx3.resolvedLead });
+
+    // Unknown → none.
+    const ctx4 = baseCtx(user.id);
+    const r4 = await dispatchTool('find_lead', { name: 'Zzz Nobody' }, ctx4) as any;
+    ok(r4.found === 0 && ctx4.resolvedLead === null, 'unknown name → found 0, no resolve', r4);
+
+    console.log('runEmailWriter grounding (stubbed LLM — 0 spend)');
+    let captured = '';
+    const captureLlm: LlmJsonFn = async (_sys, userText) => { captured = userText; return { subject: 'Happy Birthday', body: 'Happy birthday, Lam!' }; };
+    const groundedGoal = goalSpec.parse({ outputs: { needsEmail: true, needsTextPost: false, needsPublishing: false }, slots: { emailTo: 'lam@example.com', angle: 'a warm birthday note', leadId: lam.id, language: 'en' }, provider: 'test' });
+    const draft = await getRunner('email_writer')({ runId: 'r', ownerId: user.id, goal: groundedGoal, upstream: {}, llmJsonFn: captureLlm as never }) as any;
+    ok(draft.type === 'email_draft' && draft.data.to[0] === 'lam@example.com', 'writer drafts to the resolved address', draft.data);
+    ok(captured.includes('Recipient name: Lam'), 'draft prompt grounded with lead NAME', captured.slice(0, 200));
+    ok(captured.includes('interested — Lam'), 'draft prompt grounded with lead message', captured.includes('interested'));
+
+    // Control: no leadId → no lead grounding line.
+    captured = '';
+    const plainGoal = goalSpec.parse({ outputs: { needsEmail: true, needsTextPost: false, needsPublishing: false }, slots: { emailTo: 'x@y.com', angle: 'a note', language: 'en' }, provider: 'test' });
+    await getRunner('email_writer')({ runId: 'r', ownerId: user.id, goal: plainGoal, upstream: {}, llmJsonFn: captureLlm as never });
+    ok(!captured.includes('Recipient name:'), 'no leadId → no lead grounding line', captured.slice(0, 120));
+
+    console.log('runEmailAgent nurture stamp (stubbed Gmail — 0 real send)');
+    const sendStub: GmailSendFn = async () => ({ id: 'stub-msg-1' });
+    const sendGoal = goalSpec.parse({ outputs: { needsEmail: true, needsTextPost: false, needsPublishing: false }, slots: { emailTo: 'lam@example.com', leadId: lam.id, language: 'en' }, provider: 'test' });
+    const sent = await getRunner('email_agent')({ runId: 'r', ownerId: user.id, goal: sendGoal, upstream: { email_draft: { to: ['lam@example.com'], subject: 'Hi', body: 'Happy birthday!' } }, gmailSendFn: sendStub }) as any;
+    ok(sent.data.status === 'sent', 'email_agent reports sent', sent.data);
+    // markLeadNurtured is fire-and-forget; let the microtask settle before reading.
+    await new Promise((r) => setTimeout(r, 50));
+    const after = await getLead(lam.id, user.id);
+    ok(after?.nurturedAt != null, 'lead stamped nurturedAt after send', after?.nurturedAt);
+  } finally {
+    await prisma.lead.deleteMany({ where: { ownerId: user.id } }).catch(() => {});
+    await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
+  }
+  console.log(failed ? `\n${failed} FAILED` : '\nAll checks passed');
+  process.exit(failed ? 1 : 0);
+}
+
+void main();

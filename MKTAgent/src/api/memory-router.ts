@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { ok, fail, parseOr422, asyncHandler } from './http.ts';
 import { createInstruction, listInstructions, deleteInstruction } from '../db/repos/instruction-repo.ts';
+import { listMemories, forgetMemory } from '../db/repos/user-memory-repo.ts';
 import { proposeMemories, MEMORY_TARGET_AGENT } from '../orchestration/atria/memory-agent.ts';
 import type { Instruction } from '../../prisma/generated/prisma/client.ts';
 
@@ -51,6 +52,21 @@ memoryRouter.post('/accept', asyncHandler(async (req, res) => {
   });
   res.status(201);
   ok(res, toDto(row));
+}));
+
+// Slot facts (P5a) — the durable UserMemory facts Atria remembers ABOUT the user (product / brand /
+// audience / preferences), distinct from the learned COPY-STYLE rules above. "What Atria remembers about
+// you", so the user can see and prune it. Registered before DELETE /:id; /facts/:id is two segments so it
+// never collides with the single-segment /:id learned-memory delete. Owner-scoped throughout.
+memoryRouter.get('/facts', asyncHandler(async (req, res) => {
+  const rows = await listMemories(req.userId!);
+  const facts = rows.map((m) => ({ id: m.id, kind: m.kind, key: m.key, content: m.content, usedCount: m.usedCount, updatedAt: m.updatedAt.toISOString() }));
+  ok(res, facts, { count: facts.length });
+}));
+
+memoryRouter.delete('/facts/:id', asyncHandler(async (req, res) => {
+  if (!(await forgetMemory(req.userId!, req.params.id))) return fail(res, 404, 'fact_not_found');
+  res.status(204).end();
 }));
 
 // Forget a learned memory. deleteInstruction is owner-scoped; 404 on wrong tenant / missing.

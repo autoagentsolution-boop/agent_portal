@@ -64,9 +64,10 @@ import { VISION_AGENTS } from '../orchestration/registry/vision-agents.ts';
 import { logger } from '../lib/logger.ts';
 import { mergeAnswers, toRunDto, type ClarifyQuestions } from './orchestration-mappers.ts';
 import type { MasterAgentOutcome } from '../orchestration/master/master-agent.ts';
-import { ensureChatSession, recordTurn, recordAnswerTurn, recordSaveOffer, recordCampaignCreated, summarizeAnswers, getChatHistory } from './orchestration-chat.ts';
+import { ensureChatSession, recordTurn, recordAnswerTurn, recordSaveOffer, recordCampaignCreated, recordCampaignScopeClarify, summarizeAnswers, getChatHistory } from './orchestration-chat.ts';
 import { runAtriaBrain } from '../orchestration/atria/atria-brain.ts';
 import { recallForMessage, captureFromGoal } from '../memory/user-memory.ts';
+import { resolveWorkspaceInstructionsBlock } from '../orchestration/prompts/resolve-instructions.ts';
 import { buildLeadAwarenessNote } from '../leads/lead-readiness.ts';
 import { detectCampaignIntent } from '../orchestration/master/campaign-intent.ts';
 import { createCampaignFromFlow } from '../orchestration/master/campaign-from-flow.ts';
@@ -213,6 +214,14 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
         createdPostId: post?.id ?? undefined,
       });
     }
+    // Ambiguous (create ask + a batch/calendar word): RECONFIRM single vs weekly before acting
+    // instead of falling through to the brain (which would reproduce a whole new flow — the bug).
+    if (intent.isAmbiguous) {
+      const assistantMessage = await recordCampaignScopeClarify(sessionId, body.message, templateGoal);
+      logger.info('wf_campaign_scope_clarify', { flowId: existing.id });
+      res.status(201);
+      return respondRun(res, existing.id, req.userId!, { assistantMessage });
+    }
   }
 
   // Atria reasoning brain (P1a) — replaces the regex intent classifier + immediate marketing extraction.
@@ -225,6 +234,10 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   // Recall (P3): durable facts about this user — fed to the brain's memory tool AND the marketing
   // analyzer inside propose_workflow so a known product/brand/audience pre-fills instead of re-asking.
   const memory = await recallForMessage(req.userId!, body.message).catch(() => ({ context: null, usedIds: [] }));
+  // Instructions (P4): the user's workspace Instructions steer the brain's reasoning + proposals, not
+  // only the downstream content agents. Resolved per-request and injected as a DYNAMIC preamble (never the
+  // cached system prompt). Null when none set → Atria keeps its own default. Best-effort — never blocks.
+  const instructions = await resolveWorkspaceInstructionsBlock(req.userId!).catch(() => null);
   // Conversation so far (excludes the current, not-yet-persisted message) so the brain deep-dives with
   // full multi-turn context.
   const prior = await getChatHistory(sessionId).catch(() => []);
@@ -234,7 +247,7 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   const priorGoal = existingPreExec ? goalSpec.parse(existingPreExec.goal) : null;
   const existingRunId = existingPreExec && existingPreExec.status === 'planned' ? existingPreExec.id : null;
 
-  const turn = await runAtriaBrain({ message: body.message, ownerId: req.userId!, memoryContext: memory.context, sessionId, prior, priorGoal, existingRunId, voice: body.voice });
+  const turn = await runAtriaBrain({ message: body.message, ownerId: req.userId!, memoryContext: memory.context, instructions, sessionId, prior, priorGoal, existingRunId, voice: body.voice });
 
   // Conversational / general-reasoning / data-query answer — no plan.
   if (turn.kind === 'reply') {

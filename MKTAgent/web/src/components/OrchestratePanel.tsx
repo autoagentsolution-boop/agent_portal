@@ -5,9 +5,10 @@
 // Answering is free text (routed through refine); add/remove a step is free text too.
 // Approving SAVES the plan as a named Saved Flow and hands off to Active Flows for
 // execution — nothing runs on this surface (keeps the chat responsive, no JSON dump).
-import { useEffect, useRef, useState } from 'react';
-import { api, type WorkflowRunDto } from '../api/client';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { api, type WorkflowRunDto, type CalendarSlotDto } from '../api/client';
 import { PlanCard, SaveOfferCard } from './orchestrate-run-cards';
+import { ContentCalendar } from './content-calendar';
 import { AtriaSuggestionCards } from './atria-suggestion-cards';
 import { AtriaResumeWorkCards } from './atria-resume-work-cards';
 import { TypewriterText } from './typewriter-text';
@@ -52,10 +53,22 @@ interface Props {
   // Opened from the Command Center voice button → enter hands-free voice mode on mount
   // (mic in, TTS out, re-listen), so the user starts talking to Atria without a second click.
   autoVoice?: boolean;
+  // P1 voice unification: the panel OWNS the voice machine but reports its state up so the Command
+  // Center's central Atria core can reflect it AND toggle it (single source of truth, one control).
+  onVoiceChange?: (v: { mode: boolean; state: VoiceState }) => void;
   // Empty-state "Continue where you left off" — recent chats + saved flows with no
   // campaign. Atria IS this surface, so the strategist home lives here, not on a hub page.
   chats: Array<{ id: string; title: string; updatedAt: string }>;
   onResumeChat: (id: string) => void;
+}
+
+export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking';
+
+// Imperative handle the Command Center core drives (P1): one persistent, two-way voice control living
+// on the core, calling into the panel that owns the STT/TTS machine — no duplicated state.
+export interface OrchestrateHandle {
+  toggleVoice: () => void;
+  stopVoice: () => void;
 }
 
 // `offerRead` marks an Atria reply the user implicitly asked to hear (read-intent in their message):
@@ -68,7 +81,7 @@ const starters = [
   'Write a short LinkedIn post about our new feature',
 ];
 
-export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, onAutoStarted, autoVoice, chats, onResumeChat }: Props) {
+export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, onAutoStarted, autoVoice, onVoiceChange, chats, onResumeChat }, ref) {
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   // Messages present at mount (restored history) render instantly; only messages added afterwards get
   // the typewriter reveal, and only the newest one (P3 — "alive" feel without re-typing old replies).
@@ -79,6 +92,8 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const autoStarted = useRef(false);
+  // Guards the strategist calendar poll (P2) so a late setRun never fires on an unmounted panel.
+  const mountedRef = useRef(true);
 
   // ── Voice mode ────────────────────────────────────────────────────────────────────────────────────
   // `voiceMode` = hands-free round-trip: mic STT in, auto-TTS out, and (continuous) re-listen after
@@ -127,8 +142,25 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
     });
   };
 
-  const voiceState: 'idle' | 'listening' | 'thinking' | 'speaking' =
+  const voiceState: VoiceState =
     sr.listening ? 'listening' : busy ? 'thinking' : speaking ? 'speaking' : 'idle';
+
+  // Full stop (nav-away / close): kill the hands-free loop + any narration. Idempotent.
+  const stopVoice = () => { setVoiceMode(false); sr.stop(); stopSpeaking(); setSpeaking(false); };
+
+  // Expose the two-way toggle + stop to the Command Center core (P1). Recreated each render so the
+  // captured closures (sr, setters) are never stale — the handle is trivial, so the cost is nil.
+  useImperativeHandle(ref, () => ({ toggleVoice: toggleVoiceMode, stopVoice }));
+
+  // Report voice mode + state UP so the CC core mirrors it (glow already rides global root attrs). Fires
+  // only when the mode/state string actually changes; onVoiceChange is a stable useCallback in App.
+  useEffect(() => { onVoiceChange?.({ mode: voiceMode, state: voiceState }); }, [voiceMode, voiceState, onVoiceChange]);
+
+  // If the panel unmounts mid-session (chat closed, tab switched) while voice is live, stop STT + TTS so
+  // the mic/narration never keeps running detached. Runs once on unmount.
+  // Set true on (re)mount, false on unmount — NOT relying on the useRef init, so a StrictMode dev
+  // double-mount (mount → cleanup → remount) can't leave the flag stuck false and kill the strategist poll.
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; sr.stop(); stopSpeaking(); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Opened via the Command Center voice button → enter hands-free voice mode, so the user is already
   // talking to Atria. Fires on the false→true edge (the panel is often NOT remounted per open, so this
@@ -219,6 +251,7 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
   // approval gate before any publish/send. needs_connection parks the run + tells the user to connect.
   const execute = async () => {
     if (!run) return;
+    const strategist = run.nodes.some((n) => n.agentId === 'campaign_strategist');
     setBusy(true);
     try {
       const r = await api.executeRun(run.id);
@@ -228,8 +261,33 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
         notify('Connect a platform before running — open the Connections tab, connect, then run again.', 'err');
         return;
       }
-      onOpenFlow(run.id); // running → live DAG in Active Flows
+      // Single/other flows → hand off to Active Flows (live DAG) as before.
+      if (!strategist) { onOpenFlow(run.id); return; }
+      // Strategist campaign (P2): keep it INLINE. The run drafts research→strategy→calendar and parks at
+      // its selection gate; poll until the content_calendar is ready, then the editable calendar renders
+      // right here — the user never leaves chat to see/approve Atria's proposal.
+      setRun(r.data);
+      await pollStrategistGate(run.id);
     } finally { setBusy(false); }
+  };
+
+  // Bounded poll for the strategist selection gate (the calendar). Updates the card live; stops on the
+  // gate, a terminal state, or after the cap (then points to Active Flows). Unmount-guarded.
+  const pollStrategistGate = async (runId: string) => {
+    for (let i = 0; i < 40; i++) {
+      await new Promise((res) => setTimeout(res, 2500));
+      const rr = await api.getRun(runId);
+      if (!mountedRef.current) return; // bail on unmount before touching state — but never gate the loop on it
+      if (!rr.ok) continue;
+      setRun(rr.data);
+      const st = rr.data.status;
+      if (st === 'needs_approval') return; // calendar gate → inline ContentCalendar renders below
+      if (st === 'completed' || st === 'failed' || st === 'aborted') {
+        notify(st === 'failed' ? 'The strategist run failed — check Active Flows.' : 'Strategist finished.', st === 'failed' ? 'err' : 'ok');
+        return;
+      }
+    }
+    if (mountedRef.current) notify('Still drafting the calendar — you can open it in Active Flows.', 'ok');
   };
 
   // P6 "Run a test post" — execute the saved flow, then hand off to Active Flows where
@@ -313,6 +371,21 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
               onOpenFlow={() => onOpenFlow(run!.id)}
             />
           )}
+
+          {/* Strategist calendar INLINE (P2): the run parked at the campaign_strategist selection gate with
+              an editable content calendar. Reuse the same component Active Flows uses — approve → materialize
+              → grant, without leaving chat. Deep edit stays available via Active Flows. */}
+          {run && run.status === 'needs_approval' && run.nodes.some((n) => n.agentId === 'campaign_strategist') && (
+            <div className="dag-block run-card">
+              <ContentCalendar
+                runId={run.id}
+                slots={(run.artifacts.find((a) => a.type === 'content_calendar')?.data as { slots?: CalendarSlotDto[] } | undefined)?.slots ?? []}
+                notify={notify}
+                onDone={(cid) => onCampaignCreated(cid)}
+              />
+              <button className="btn ghost" onClick={() => onOpenFlow(run.id)}>Open in Active Flows for deep edit</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -340,23 +413,15 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
             }
           />
           {sr.supported && (
-            <>
-              <button
-                type="button"
-                className={`composer-voice ${voiceMode ? 'is-on' : ''}`}
-                onClick={toggleVoiceMode}
-                title={voiceMode ? 'Turn off voice mode' : 'Turn on voice mode (hands-free)'}
-                aria-pressed={voiceMode}
-                aria-label="Voice mode"
-              >🎙</button>
-              <button
-                type="button"
-                className={`composer-mic ${sr.listening ? 'is-listening' : ''}`}
-                onClick={micClick}
-                title={sr.listening ? 'Stop listening' : 'Talk to Atria'}
-                aria-label={sr.listening ? 'Stop listening' : 'Speak'}
-              >{sr.listening ? '■' : '🎤'}</button>
-            </>
+            // Push-to-talk within the composer. Hands-free voice MODE is toggled from the Atria core
+            // (the single, persistent control — P1), so the redundant composer toggle is gone.
+            <button
+              type="button"
+              className={`composer-mic ${sr.listening ? 'is-listening' : ''}`}
+              onClick={micClick}
+              title={sr.listening ? 'Stop listening' : 'Talk to Atria'}
+              aria-label={sr.listening ? 'Stop listening' : 'Speak'}
+            >{sr.listening ? '■' : '🎤'}</button>
           )}
           <button
             className={`composer-send ${busy ? 'loading' : ''}`}
@@ -375,4 +440,4 @@ export function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunA
       </div>
     </section>
   );
-}
+});

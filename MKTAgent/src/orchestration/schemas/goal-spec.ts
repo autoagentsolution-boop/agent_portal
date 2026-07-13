@@ -57,6 +57,10 @@ export const goalSlots = z.object({
   // writer proposes one). Only meaningful when outputs.needsEmail is true.
   emailTo: z.string().max(400).nullish(),
   emailSubject: z.string().max(200).nullish(),
+  // Lead linkage (P3): set when an email goal was addressed to a captured lead resolved BY NAME from
+  // chat (find_lead). Carries the Lead id so the writer grounds on the lead's context and the send
+  // stamps nurturedAt. The recipient ADDRESS (emailTo) is set from the Lead RECORD, never a model string.
+  leadId: z.string().max(64).nullish(),
   // Utility-task input (P1b Phase 05): the source text a non-marketing utility node operates on
   // (e.g. the document to summarize). Read by the utility runner; empty for marketing goals.
   sourceText: z.string().max(20000).nullish(),

@@ -3,12 +3,18 @@
 // hand-edited copy into new proposed style rules to Accept/Dismiss. Accepting writes a memory that
 // every future concept_writer draft honours. Rendered in the light drawer (.cc-drawer-body).
 import { useCallback, useEffect, useState } from 'react';
-import { api, type MemoryDto, type MemoryProposalDto } from '../api/client';
+import { api, type MemoryDto, type MemoryFactDto, type MemoryProposalDto } from '../api/client';
 
 interface Props { notify: (msg: string, kind?: 'ok' | 'err') => void }
 
+// Friendly label per slot-fact kind (P5a) — so "What Atria remembers" reads plainly, not as raw enum tags.
+const FACT_KIND_LABEL: Record<string, string> = {
+  product: 'Product', brand: 'Brand', audience: 'Audience', preference: 'Preference', contact: 'Contact', fact: 'Note',
+};
+
 export function MemoryPanel({ notify }: Props) {
   const [memories, setMemories] = useState<MemoryDto[] | null>(null);
+  const [facts, setFacts] = useState<MemoryFactDto[] | null>(null);
   const [proposals, setProposals] = useState<MemoryProposalDto[] | null>(null);
   const [editedCount, setEditedCount] = useState<number | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -19,7 +25,20 @@ export function MemoryPanel({ notify }: Props) {
     else notify(`Memory: ${r.error.error}`, 'err');
   }, [notify]);
 
-  useEffect(() => { void loadMemories(); }, [loadMemories]);
+  const loadFacts = useCallback(async () => {
+    const r = await api.listMemoryFacts();
+    if (r.ok) setFacts(r.data);
+    else notify(`Memory: ${r.error.error}`, 'err');
+  }, [notify]);
+
+  useEffect(() => { void loadMemories(); void loadFacts(); }, [loadMemories, loadFacts]);
+
+  const forgetFact = async (f: MemoryFactDto) => {
+    const r = await api.deleteMemoryFact(f.id);
+    if (!r.ok) { notify(`Forget: ${r.error.error}`, 'err'); return; }
+    setFacts((prev) => (prev ?? []).filter((x) => x.id !== f.id));
+    notify('Forgotten');
+  };
 
   const analyze = async () => {
     setAnalyzing(true);
@@ -89,7 +108,25 @@ export function MemoryPanel({ notify }: Props) {
         </p>
       )}
 
-      <div className="ws-section-title">Remembered</div>
+      <div className="ws-section-title">What Atria remembers about you</div>
+      {facts === null ? (
+        <p className="muted">Loading…</p>
+      ) : facts.length === 0 ? (
+        <p className="muted">Nothing yet — tell Atria about your product, brand, or audience in chat and it’ll remember.</p>
+      ) : (
+        <ul className="ws-post-list">
+          {facts.map((f) => (
+            <li key={f.id} className="mem-row">
+              <span className="mem-row-content">
+                <strong>{FACT_KIND_LABEL[f.kind] ?? f.kind}:</strong> {f.content}
+              </span>
+              <button className="ws-post-open mem-forget" onClick={() => void forgetFact(f)} title="Forget this">Forget</button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="ws-section-title">Learned copy style</div>
       {memories === null ? (
         <p className="muted">Loading…</p>
       ) : memories.length === 0 ? (

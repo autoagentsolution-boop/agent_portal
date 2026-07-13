@@ -29,14 +29,51 @@ const PLATFORM_LABEL: Record<string, string> = {
   facebook: 'Facebook', instagram: 'Instagram', threads: 'Threads', linkedin: 'LinkedIn', x: 'X',
 };
 
+// Strategist scope (P2): a plan with the campaign_strategist node drafts a multi-post CALENDAR, not a
+// single post. Reading it off the plan lets the chat card say so unmistakably — the fix for "I can't tell
+// single vs strategist / can't see how Atria proposes a campaign".
+const isStrategistPlan = (run: WorkflowRunDto): boolean => run.nodes.some((n) => n.agentId === 'campaign_strategist');
+// An email flow (email_writer/email_agent) is neither a post nor a campaign — label it as such so a
+// personal email isn't mislabeled "Single post".
+const isEmailPlan = (run: WorkflowRunDto): boolean => run.nodes.some((n) => n.agentId === 'email_writer' || n.agentId === 'email_agent');
+const campaignShape = (run: WorkflowRunDto): { weeks: number | null; estPosts: number | null } => {
+  const g = run.goal as { duration?: { weeks?: number }; cadence?: { postsPerWeek?: number } } | null;
+  const weeks = g?.duration?.weeks ?? null;
+  const perWeek = g?.cadence?.postsPerWeek ?? null;
+  return { weeks, estPosts: weeks && perWeek ? weeks * perWeek : null };
+};
+
 export function PlanCard({ run, busy, defaultName, onSave, onExecute }: PlanProps) {
   const [name, setName] = useState('');
   // Already saved → show its name as a confirmation, not the form again.
   const savedName = run.name ?? null;
   const platforms = goalPlatforms(run);
+  const strategist = isStrategistPlan(run);
+  const email = !strategist && isEmailPlan(run);
+  const { weeks, estPosts } = strategist ? campaignShape(run) : { weeks: null, estPosts: null };
 
   return (
     <div className="dag-block run-card">
+      {strategist ? (
+        <div className="plan-scope strategist">
+          <strong>🗓 Strategist campaign</strong>
+          <span className="muted small">
+            Atria will draft {estPosts ? `a ~${estPosts}-post` : 'a multi-post'} content calendar
+            {weeks ? ` over ${weeks} week${weeks > 1 ? 's' : ''}` : ''} across your content pillars.
+            You review and edit every slot, then approve — nothing schedules until you do.
+          </span>
+        </div>
+      ) : email ? (
+        <div className="plan-scope email">
+          <strong>✉️ Email</strong>
+          <span className="muted small">Atria drafts the email; nothing sends until you review and approve.</span>
+        </div>
+      ) : (
+        <div className="plan-scope single">
+          <strong>📄 Single post</strong>
+          <span className="muted small">One post, set up end to end.</span>
+        </div>
+      )}
       <div className="eyebrow">Workflow plan · {run.nodes.length} step(s)</div>
       {platforms.length > 0 && (
         <div className="plan-platforms">
@@ -52,9 +89,13 @@ export function PlanCard({ run, busy, defaultName, onSave, onExecute }: PlanProp
         <div className="save-flow">
           <div className="plan-run-row">
             <button className="btn primary plan-run-btn" disabled={busy} onClick={onExecute}>
-              {busy ? 'Đang chạy…' : '▶ Duyệt & Chạy ngay'}
+              {busy ? (strategist ? 'Đang lên lịch…' : 'Đang chạy…') : strategist ? '▶ Draft the calendar' : '▶ Duyệt & Chạy ngay'}
             </button>
-            <span className="muted small">Atria generates the content, then <b>stops at the review step</b> before publishing/sending.</span>
+            <span className="muted small">
+              {strategist
+                ? <>Atria drafts the calendar right here, then <b>you approve every post</b> before anything schedules.</>
+                : <>Atria generates the content, then <b>stops at the review step</b> before publishing/sending.</>}
+            </span>
           </div>
           <p className="muted small plan-refine-hint">Muốn chỉnh? Gõ bên dưới (vd “thêm video”, “bỏ infographic”). Hoặc lưu thành flow tái dùng:</p>
           <div className="save-flow-row">

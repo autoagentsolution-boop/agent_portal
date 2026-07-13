@@ -24,7 +24,16 @@ const overlap = (a: Set<string>, b: Set<string>): number => {
   return n;
 };
 
-interface Candidate { line: string; score: number; id: string | null; priority: number }
+interface Candidate { line: string; score: number; id: string | null; priority: number; usedCount: number; updatedAt: number }
+
+// Composite recall rank (P5a): keyword relevance dominates, then priority defaults, then a mild boost for
+// facts the user leans on (usedCount) and recently-touched facts (recency) — so a frequently-used / fresh
+// fact wins ties over a stale one. Weights keep relevance decisive; usedCount/recency only re-order peers.
+const RECENCY_WINDOW_MS = 1000 * 60 * 60 * 24 * 14; // 14d — beyond this, no recency boost
+const rankScore = (c: Candidate, now: number): number => {
+  const recency = c.updatedAt ? Math.max(0, 1 - (now - c.updatedAt) / RECENCY_WINDOW_MS) : 0; // 0..1
+  return c.score * 10 + c.priority * 4 + Math.min(c.usedCount, 10) * 0.6 + recency * 2;
+};
 
 // Keep each recalled line short so a long product-library summary can't bloat the prompt.
 const cap = (s: string, n = 200): string => (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s);
@@ -38,21 +47,28 @@ export async function recallForMessage(ownerId: string, message: string): Promis
   const cands: Candidate[] = [];
 
   for (const m of memories) {
-    cands.push({ line: cap(`[${m.kind}] ${m.content}`), score: overlap(tokenize(`${m.key ?? ''} ${m.content}`), q), id: m.id, priority: m.kind === 'brand' || m.kind === 'preference' ? 1 : 0 });
+    // product/brand/preference are always-eligible defaults (priority 1): high-value, low-volume facts
+    // the user expects Atria to just KNOW. Keyword overlap is keyword-only + monolingual, so a
+    // cross-language or paraphrased query scores 0 — without a priority these would drop out entirely
+    // (e.g. a Vietnamese "sản phẩm của mình là gì?" never matching an English product fact). P5b embeddings
+    // will make relevance semantic; until then, defaulting the core identity facts keeps recall useful.
+    const priority = m.kind === 'brand' || m.kind === 'preference' || m.kind === 'product' ? 1 : 0;
+    cands.push({ line: cap(`[${m.kind}] ${m.content}`), score: overlap(tokenize(`${m.key ?? ''} ${m.content}`), q), id: m.id, priority, usedCount: m.usedCount, updatedAt: m.updatedAt.getTime() });
   }
   // Product library (uploaded docs) — recall the ones whose name/summary matches the message.
   for (const p of profile?.products ?? []) {
     const desc = [p.summary, p.targetAudience ? `audience: ${p.targetAudience}` : null, p.differentiators ? `edge: ${p.differentiators}` : null].filter(Boolean).join('; ');
-    cands.push({ line: cap(`[product] ${p.name}: ${desc || 'in your product library'}`), score: overlap(tokenize(`${p.name} ${desc}`), q), id: null, priority: 0 });
+    cands.push({ line: cap(`[product] ${p.name}: ${desc || 'in your product library'}`), score: overlap(tokenize(`${p.name} ${desc}`), q), id: null, priority: 0, usedCount: 0, updatedAt: 0 });
   }
   // Owner brand/language defaults (User row) — low volume, high value, always eligible.
-  if (profile?.brandVoice) cands.push({ line: `[brand] preferred voice: ${profile.brandVoice}`, score: 0, id: null, priority: 1 });
-  if (profile?.defaultLanguage) cands.push({ line: `[preference] default language: ${profile.defaultLanguage}`, score: 0, id: null, priority: 1 });
+  if (profile?.brandVoice) cands.push({ line: `[brand] preferred voice: ${profile.brandVoice}`, score: 0, id: null, priority: 1, usedCount: 0, updatedAt: 0 });
+  if (profile?.defaultLanguage) cands.push({ line: `[preference] default language: ${profile.defaultLanguage}`, score: 0, id: null, priority: 1, usedCount: 0, updatedAt: 0 });
 
-  // Rank: relevance first, then priority defaults, then keep it short.
+  // Rank: relevance-dominant composite (usedCount + recency break ties), then keep it short.
+  const now = Date.now();
   const ranked = cands
     .filter((c) => c.score > 0 || c.priority > 0)
-    .sort((a, b) => b.score - a.score || b.priority - a.priority)
+    .sort((a, b) => rankScore(b, now) - rankScore(a, now))
     .slice(0, 8);
   if (!ranked.length) return { context: null, usedIds: [] };
 
@@ -77,12 +93,18 @@ export async function captureFromGoal(ownerId: string, goal: GoalSpec, sourceSes
   const details = clean(goal.slots.productDetails);
   const audience = clean(goal.slots.targetAudience);
   const voice = clean(goal.slots.brandVoice);
+  const angle = clean(goal.slots.angle);
   const platforms = goal.platforms.filter(Boolean);
   const tasks: Array<Promise<void>> = [];
 
   if (product) {
     tasks.push(rememberKeyed(ownerId, 'product', product.toLowerCase(), `${product}${details ? `: ${details}` : ''}`, sourceSessionId));
     if (audience) tasks.push(rememberKeyed(ownerId, 'audience', product.toLowerCase(), `audience for ${product}: ${audience}`, sourceSessionId));
+    // Angle (P5a) is product-keyed so the next campaign for the same product recalls the messaging
+    // that worked. NOTE: language is intentionally NOT captured — content language is derived per-turn
+    // from the chat (contentLanguageFor), and a stale memory-driven language re-introduces the
+    // wrong-language bug guarded in atria-tools propose_workflow.
+    if (angle) tasks.push(rememberKeyed(ownerId, 'fact', `angle:${product.toLowerCase()}`, `angle for ${product}: ${angle}`, sourceSessionId));
   } else if (audience) {
     tasks.push(rememberFreeform(ownerId, 'audience', `target audience: ${audience}`, sourceSessionId));
   }
