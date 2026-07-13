@@ -64,13 +64,18 @@ const QUICK_CMDS = [
 // Grouped constellation geometry (2 tiers: Atria → group → agent). Group nodes ring Atria at a slightly
 // tighter radius so an expanded group's members fan OUTWARD without leaving the frame. `ang` is the
 // group's outward direction from Atria, reused to centre its member arc.
+// The .cc-network intrinsic box in px (KEEP IN SYNC with styles.css `.cc-network`). Node positions are
+// percentages of THIS box, so a naive equal-% radius on a non-square box draws an ELLIPSE (side groups end
+// up farther from Atria than the top/bottom ones). Dividing the pixel radius by each dimension puts every
+// group at an EQUAL pixel distance from Atria → a TRUE circle.
+const NET_W = 760, NET_H = 630;
+const GROUP_R = 195; // px — every group node equidistant from Atria (the circle radius)
+const MEMBER_R = 95;  // px — every member equidistant from its group node
+
 interface GroupGeo { ang: number; x: number; y: number }
 const groupGeo = (i: number, total: number): GroupGeo => {
   const ang = (i / total) * Math.PI * 2 - Math.PI / 2;
-  // Vertical radius is kept smaller than horizontal: the container is short, and the top/bottom groups'
-  // members fan outward vertically — a tighter Y keeps the top group's expansion clear of the header.
-  // Radii pushed out so the groups sit clear of Atria's outer glow ring (more breathing room).
-  return { ang, x: 50 + Math.cos(ang) * 40, y: 50 + Math.sin(ang) * 32 };
+  return { ang, x: 50 + (GROUP_R / NET_W) * 100 * Math.cos(ang), y: 50 + (GROUP_R / NET_H) * 100 * Math.sin(ang) };
 };
 // Member j of a group: placed on an arc around the GROUP node, centred on its outward direction so the
 // members read as "inside" that group and never overlap Atria. The arc is WIDE (up to ~200°, wrapping
@@ -81,9 +86,9 @@ const groupGeo = (i: number, total: number): GroupGeo => {
 const memberGeo = (g: GroupGeo, j: number, count: number): { left: string; top: string; xy: [number, number] } => {
   const spread = count <= 1 ? 0 : Math.min(Math.PI * 1.15, 0.5 * count + 0.5);
   const a = g.ang + (count <= 1 ? 0 : spread * (j / (count - 1) - 0.5));
-  // Members pushed further out from their group node for clearer separation.
-  const x = g.x + Math.cos(a) * 18;
-  const y = g.y + Math.sin(a) * 18;
+  // Aspect-corrected (same as groupGeo) so every member sits an EQUAL pixel distance from its group node.
+  const x = g.x + (MEMBER_R / NET_W) * 100 * Math.cos(a);
+  const y = g.y + (MEMBER_R / NET_H) * 100 * Math.sin(a);
   return { left: `${x}%`, top: `${y}%`, xy: [x, y] };
 };
 
