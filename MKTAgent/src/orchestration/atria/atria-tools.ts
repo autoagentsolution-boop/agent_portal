@@ -158,12 +158,12 @@ export const TOOL_DECLARATIONS = [
   {
     name: 'propose_task',
     description:
-      'Run a supported UTILITY capability on text/content the user gives you — currently: "summarize" (condense a document, article, report, or long/large text into a concise summary + key points). Use this whenever the user provides or uploads content and asks you to summarize it. Data protection is BUILT IN: the flow automatically runs a security (Data Guard) scan FIRST that detects and masks any personal or sensitive data (GDPR/PII — names, contacts, financial, IDs, health, credentials) and announces what it found, so nothing sensitive appears in the summary. You do NOT need a separate step or a special request for this — just propose the summarize task and tell the user their data will be protected automatically. It assembles a flow card and does NOT execute — the user reviews, then says go ahead. For a capability that is NOT in the supported list, use flag_capability_gap instead (never force it).',
+      'Route ANY request to PERFORM A TASK on content the user gives you — summarize, translate, transcribe, convert, extract, analyze, reformat, etc. — through this tool. Do NOT decide yourself whether the capability exists: pass the capability id (a short kebab-case verb like "summarize", "translate", "transcribe-audio", "analyze-spreadsheet") and the content, and THE SYSTEM checks the registry. If a node exists (currently: "summarize" — condense a document/article/report; data protection is built in, a Data Guard scan masks any personal/sensitive GDPR/PII data first) it assembles a flow card (executes nothing until the user approves). If NO node exists, the system automatically LOGS the request as demand for the team and tells you to be honest — you then tell the user you can\'t do it yet but have flagged it. This is the RELIABLE path for capturing missing capabilities: always come HERE for a content task rather than just replying "I can\'t".',
     parameters: {
       type: 'object',
       properties: {
-        capability: { type: 'string', enum: ['summarize'], description: 'The utility to run. Currently only "summarize" is supported (data-protection masking is automatic).' },
-        source_text: { type: 'string', description: 'The full text/content to run the capability on (e.g. the document to summarize). Provide it verbatim — the security node masks sensitive spans downstream, so do not pre-redact it yourself.' },
+        capability: { type: 'string', description: 'Short kebab-case verb for the task the user wants done to the content, e.g. "summarize", "translate", "transcribe-audio", "analyze-spreadsheet", "convert-to-slides". Pass what they asked for even if you are unsure it is supported — the system decides and logs a gap if not.' },
+        source_text: { type: 'string', description: 'The text/content to run the capability on (e.g. the document). Provide it verbatim — for summarize, the security node masks sensitive spans downstream, so do not pre-redact.' },
       },
       required: ['capability', 'source_text'],
     },
@@ -347,10 +347,17 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         return { status: 'error', error: outcome.error };
       }
       case 'propose_task': {
-        const capability = str(args.capability).trim().toLowerCase();
+        const capability = str(args.capability).trim().toLowerCase().slice(0, 60);
         const target = TASK_CAPABILITIES[capability];
         if (!target) {
-          return { status: 'unsupported', note: `No "${capability}" capability exists yet. If the user needs it, call flag_capability_gap — do NOT pretend to do it.` };
+          // Deterministic capability-gap logging (the reliable path): the registry has NO node that produces
+          // this capability, so the planner can't build anything for it. Record the request as demand HERE —
+          // do NOT depend on the brain separately calling flag_capability_gap (it routinely skips that). The
+          // planner/registry's own "I can't build this" is the ground-truth signal that a node is missing.
+          const logged = capability
+            ? await recordCapabilityGap(ctx.ownerId, capability, null, { exampleTask: (ctx.message || '').slice(0, 500) || undefined }).catch(() => false)
+            : false;
+          return { status: 'unsupported_logged', capability, logged, note: `No agent node can do "${capability}" yet — I've LOGGED this request as demand for the team to build. Tell the user plainly you can't do it yet but have flagged/recorded it, and offer what you CAN do instead. Do NOT pretend to do it.` };
         }
         const sourceText = str(args.source_text).trim();
         if (!sourceText) return { status: 'need_input', note: `Ask the user to paste or provide the text to ${capability}.` };

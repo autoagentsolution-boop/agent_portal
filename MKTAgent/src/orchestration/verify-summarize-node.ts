@@ -77,7 +77,7 @@ async function main(): Promise<void> {
 
   const unsup = baseCtx();
   const ures = (await dispatchTool('propose_task', { capability: 'translate', source_text: 'x' }, unsup)) as { status?: string };
-  ok(ures.status === 'unsupported', 'unsupported capability → not planned (brain routed to flag_capability_gap)');
+  ok(ures.status === 'unsupported_logged', 'unsupported capability → not planned + auto-logged as demand');
   ok(unsup.proposal === null, 'unsupported capability sets NO proposal');
 
   console.log('Executor end-to-end (real run, stubbed LLM — plan → run → artifacts → completed)');
