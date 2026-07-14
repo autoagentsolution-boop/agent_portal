@@ -312,3 +312,25 @@ Two CC quality-of-life additions on top of the resume-cards feature.
     - The upload path DELIBERATELY bypasses the Atria brain: `POST /orchestration/summarize-file` builds the `security → summarize` run directly (via `masterAgent.planFromGoal` + `persistOutcome`), because raw PII would trip the chat LLM's safety filter. Depends on the Data Guard node (777d17e) to mask before summarizing.
     - Composer "+" (OrchestratePanel) → `extractDocumentText` → `summarizeFile` → `applyRun` (same plan-card path a typed request uses).
     - BUG-4 retry/logging wraps the brain loop's `callGemini` (touches EVERY chat turn); BUG-7 touches the email planning path (`emailOutputs` + email target in `workflow-planner` + `email_writer.optional`) so "research → email" composes `content_search → email_writer → email_agent`.
+- **docs(feature-map): record document-upload summarize relationships** (83e5e98)
+  - `docs/feature-map.md`
+- **fix(atria): reliably re-plan on remove-node refinements (BUG-1 completion)** (0b2b881)
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+- **fix(atria): deterministic plan refinement so node edits always apply (BUG-1)** (239cb65)
+  - `MKTAgent/src/api/orchestration-router.ts`
+  - `MKTAgent/src/api/schemas.ts`
+  - `MKTAgent/web/src/api/client.ts`
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+- **docs(test): post-fix 9-scenario re-run report** (7113e19)
+  - `plans/reports/test-report-260714-1659-rerun-post-fixes.md`
+- **fix(atria): pin reply language to the user's message, not the context language** (ea69f08)
+  - `MKTAgent/src/orchestration/atria/atria-brain.ts`
+- **feat(atria): reliably record requests for capabilities that don't exist yet** (4e228fd)
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/prompts/atria-brain-prompt.ts`
+  - `MKTAgent/src/orchestration/verify-summarize-node.ts`
+  - Relationships:
+    - REUSES the capability-gap mechanism (`recordCapabilityGap` → `mkt_roadmap_demand`, surfaced by `GET /atria/roadmap-demand`) — the same one `flag_capability_gap` already fed. No new table.
+    - Deterministic signal = the PLANNER/REGISTRY failure: `propose_task` (atria-tools) now accepts any capability id and, when `TASK_CAPABILITIES` has no producer, auto-logs the request instead of depending on the brain to separately call `flag_capability_gap` (which it skips ~always).
+    - Complements the composable planner (`workflow-planner` backward-chaining): "no node produces this artifact" is exactly the capability-gap the registry already models; this turns that into a recorded demand signal for the DEV backlog.
+    - Open follow-up: Case 2 (a user 👎/dislike on a proposed flow → record "wrong flow" demand) not yet built.
