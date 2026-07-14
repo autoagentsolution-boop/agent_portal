@@ -25,6 +25,9 @@ export const artifactType = z.enum([
   // Utility capability (P1b Phase 05): summarize — the first NON-marketing producer node, proving the
   // registry is a general composable graph (drop-in via registry entry + runner, no planner change).
   'summary',
+  // Data-protection capability: security — scans source text for personal / sensitive data (GDPR/PII),
+  // masks it, and announces what it found. Runs BEFORE summarize so nothing sensitive reaches the summary.
+  'security_scan',
 ]);
 export type ArtifactType = z.infer<typeof artifactType>;
 
@@ -175,6 +178,24 @@ export const scheduleMarker = z.object({
 export const summaryArtifact = z.object({
   summary: z.string().min(1),
   bullets: z.array(z.string()).default([]),
+  // True when the summarized text had been masked upstream by the security node — so the UI can note
+  // that the summary is derived from a redacted source (no personal/sensitive data in it).
+  fromMaskedSource: z.boolean().default(false),
+});
+
+// security → security_scan. Data-protection pass over source text: which categories of personal/sensitive
+// data (GDPR/PII) were found, the source with those spans MASKED, and a plain-language notice to show the
+// user. `example` fields are ALREADY MASKED — raw PII never lands in an artifact. Runs before summarize.
+export const securityFinding = z.object({
+  category: z.enum(['personal', 'contact', 'financial', 'government_id', 'health', 'credentials', 'other']),
+  count: z.number().int().nonnegative().default(1),
+  example: z.string().default(''), // a MASKED sample or category label, e.g. "j***@***" — never a raw value
+});
+export const securityScanArtifact = z.object({
+  hasSensitive: z.boolean(),
+  findings: z.array(securityFinding).default([]),
+  maskedText: z.string(), // source with every sensitive span replaced by a [CATEGORY] token
+  notice: z.string().default(''), // user-facing announcement of what was found + masked
 });
 
 // Lookup: artifactType → its payload schema. The executor uses this to validate
@@ -193,4 +214,5 @@ export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
   email_result: emailResult,
   schedule_marker: scheduleMarker,
   summary: summaryArtifact,
+  security_scan: securityScanArtifact,
 };

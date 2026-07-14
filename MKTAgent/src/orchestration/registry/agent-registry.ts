@@ -321,14 +321,33 @@ export const AGENTS: AgentDefinition[] = [
     decisionFramework: 'Do nothing but wait. Once the user confirms the exact instant + timezone, park the run; when due, hand control straight back to the flow so its next node runs unattended.',
   },
   {
-    id: 'summarize',
-    name: 'Summarizer',
-    description: 'Condense user-provided source text into a concise summary + key bullet points.',
-    // The first NON-marketing capability node (P1b Phase 05). Proves the registry is a general composable
-    // graph: it drops in with ONLY this entry + a runner — no planner change. Reads its source text from
-    // the task goal (like email_writer reads the goal), so it needs no upstream producer.
+    id: 'security',
+    name: 'Data Guard',
+    description: 'Scan source text for personal / sensitive data (GDPR/PII) — names, contacts, financial, government IDs, health, credentials — mask it, and announce what was found.',
+    // Data-protection primitive. Reads the same task source text summarize does, masks any personal/sensitive
+    // spans, and produces a security_scan artifact carrying the MASKED text + a user-facing notice. summarize
+    // `requires` this, so backward-chaining always places it FIRST — nothing sensitive reaches the summary.
     implStatus: 'live',
     requires: [],
+    optional: [],
+    produces: ['security_scan'],
+    requiresConnection: false,
+    requiresApproval: false,
+    emoji: '🛡️',
+    group: 'core',
+    vibe: 'A vigilant privacy officer: spots personal data, redacts it, and tells you exactly what it caught.',
+    successMetrics: ['flags every category of personal/sensitive data present', 'masks it so nothing leaks downstream', 'announces findings plainly so the user is aware'],
+    decisionFramework: 'Read the source as a data-protection officer. Identify each span of personal or sensitive data by GDPR category, replace it with a [CATEGORY] token, and report what was found. When in doubt, mask — a false positive is safe, a leak is not.',
+  },
+  {
+    id: 'summarize',
+    name: 'Summarizer',
+    description: 'Condense a document or source text into a concise summary + key bullet points, working from the security-masked copy so no personal/sensitive data appears in the result.',
+    // The first NON-marketing capability node (P1b Phase 05). Proves the registry is a general composable
+    // graph. `requires` security_scan so the planner always runs Data Guard first and this node summarizes
+    // the MASKED text — data protection by default. Falls back to raw sourceText only if no scan ran.
+    implStatus: 'live',
+    requires: ['security_scan'],
     optional: [],
     produces: ['summary'],
     requiresConnection: false,
@@ -337,7 +356,7 @@ export const AGENTS: AgentDefinition[] = [
     group: 'core',
     vibe: 'A crisp editor: distills the essential few points from a wall of text.',
     successMetrics: ['captures the core points, drops the noise', 'faithful to the source — invents nothing', 'concise summary + a few scannable bullets'],
-    decisionFramework: 'Read the source, identify the main thesis + the few points that matter, and restate them tightly in the source language. Never add facts not present in the text.',
+    decisionFramework: 'Read the (masked) source, identify the main thesis + the few points that matter, and restate them tightly in the source language. Never add facts not present in the text, and never try to reconstruct masked data.',
   },
 ];
 

@@ -48,6 +48,8 @@ const ARTIFACT_TITLES: Record<string, string> = {
   video_prompt: 'Video',
   publish_result: 'Publish result',
   content_calendar: 'Content calendar',
+  summary: 'Summary',
+  security_scan: 'Data protection scan',
 };
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
@@ -125,6 +127,20 @@ export const formatArtifact = (type: string, data: unknown): ArtifactView => {
         { label: 'Status', value: str(d.status) },
         { label: 'Posts', value: urlLines },
         { label: 'Error', value: str(d.error) },
+      ].filter((f) => f.value.trim()) };
+    }
+    case 'summary':
+      return { title, fields: [
+        { label: 'Summary', value: str(d.summary) },
+        { label: 'Key points', value: '• ' + list(d.bullets) },
+      ].filter((f) => f.value.trim()) };
+    case 'security_scan': {
+      const findings = Array.isArray(d.findings) ? (d.findings as Array<Record<string, unknown>>) : [];
+      const lines = findings.map((f) => `[${str(f.category).toUpperCase()}] ${str(f.count) || '1'}× — e.g. ${str(f.example)}`);
+      return { title, fields: [
+        { label: 'Sensitive data', value: d.hasSensitive ? 'Detected & masked' : 'None detected' },
+        { label: 'Notice', value: str(d.notice) },
+        { label: 'Findings', value: lines.length ? lines.join('\n• ').replace(/^/, '• ') : '' },
       ].filter((f) => f.value.trim()) };
     }
     default:

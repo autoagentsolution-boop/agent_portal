@@ -815,18 +815,75 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   };
 };
 
-// summarize (P1b Phase 05) — the first non-marketing utility runner. Reads the source text off the task
-// goal (goal.slots.sourceText, like email_writer reads the goal) and returns a faithful summary + bullets.
-// No upstream producer, no external action → composes cleanly (summarize → email_writer grounds on it).
+// security (Data Guard) — data-protection pass over the task source text. Scans for personal/sensitive
+// data (GDPR/PII), returns the source with those spans MASKED plus a plain-language notice. summarize
+// `requires` this, so it always runs first and downstream sees only the masked copy. No external action.
+// The example fields it returns are ALREADY MASKED (the prompt forbids echoing raw values), so no PII lands
+// in the artifact. A large document is sliced to a generous window per call — full-document chunking is a
+// follow-up; today the masked window is what summarize condenses.
+const SECURITY_SCAN_CHARS = 40000;
+const SECURITY_PROMPT = [
+  'You are Atria\'s Data Guard, a GDPR data-protection officer. Scan the SOURCE TEXT for personal or sensitive data.',
+  'Categories: personal (names, dates of birth), contact (emails, phones, postal addresses), financial (card/bank/IBAN numbers),',
+  'government_id (SSN, passport, national ID, tax id), health (medical/diagnosis data), credentials (passwords, API keys, tokens), other.',
+  'Produce maskedText: a COPY of the source where every sensitive span is replaced by a bracketed token of its category, e.g. [CONTACT], [PERSONAL], [FINANCIAL]. Preserve all non-sensitive text verbatim.',
+  'NEVER echo a raw sensitive value anywhere — not in findings, not in the notice. Any "example" must itself be masked (e.g. "j***@***").',
+  'Write the notice in the SAME language as the source: state plainly what categories were found and that they were masked so they will not appear in any summary or output. If nothing sensitive is found, hasSensitive=false, findings=[], notice a short all-clear.',
+  'Respond ONLY as JSON: {"hasSensitive":true,"findings":[{"category":"contact","count":2,"example":"j***@***"}],"maskedText":"...","notice":"..."}.',
+].join(' ');
+
+const SECURITY_CATEGORIES = new Set(['personal', 'contact', 'financial', 'government_id', 'health', 'credentials', 'other']);
+
+const runSecurity = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const source = (ctx.goal.slots.sourceText ?? '').trim();
+  if (!source) throw new Error('security: no source text to scan — provide the document or text to protect.');
+  const call = ctx.llmJsonFn ?? callGeminiJson;
+  const windowed = source.slice(0, SECURITY_SCAN_CHARS);
+  const input = `SOURCE TEXT:\n${windowed}`;
+  let usage: GeminiUsage | null = null;
+  const raw = await call(SECURITY_PROMPT, input, (u) => { usage = u; });
+  const o = (raw ?? {}) as { hasSensitive?: unknown; findings?: unknown; maskedText?: unknown; notice?: unknown };
+  // Fail CLOSED: if the model returns no maskedText, do NOT pass raw source downstream — fall back to the
+  // original text ONLY when the model also reported nothing sensitive; otherwise surface the failure.
+  const findings = Array.isArray(o.findings)
+    ? o.findings.map((f) => {
+        const ff = (f ?? {}) as { category?: unknown; count?: unknown; example?: unknown };
+        const category = SECURITY_CATEGORIES.has(String(ff.category)) ? String(ff.category) : 'other';
+        return { category, count: Math.max(0, Math.trunc(Number(ff.count) || 1)), example: String(ff.example ?? '').slice(0, 40) };
+      }).slice(0, 20)
+    : [];
+  const hasSensitive = Boolean(o.hasSensitive) || findings.length > 0;
+  const maskedRaw = typeof o.maskedText === 'string' ? o.maskedText : '';
+  if (hasSensitive && !maskedRaw.trim()) {
+    throw new Error('security: sensitive data was detected but masking failed — refusing to pass the raw source downstream.');
+  }
+  const maskedText = (maskedRaw.trim() ? maskedRaw : windowed).slice(0, SECURITY_SCAN_CHARS);
+  const notice = String(o.notice ?? '').trim().slice(0, 2000)
+    || (hasSensitive ? 'Personal or sensitive data was detected and masked before summarizing.' : 'No personal or sensitive data detected.');
+  if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'security', model: env.GEMINI_MODEL, usage, runId: ctx.runId });
+  if (hasSensitive) logger.info('security_masked', { runId: ctx.runId, categories: findings.map((f) => f.category) });
+  return {
+    type: 'security_scan',
+    data: { hasSensitive, findings, maskedText, notice },
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(SECURITY_PROMPT + input, maskedText),
+  };
+};
+
+// summarize (P1b Phase 05) — condenses the task source into a summary + bullets. It reads the MASKED copy
+// produced upstream by the security node (data protection by default), falling back to the raw goal source
+// only if no scan ran. So no personal/sensitive data reaches the summary.
 const SUMMARIZE_PROMPT = [
   "You are Atria's Summarizer. Read the SOURCE TEXT and write a faithful, concise summary of it.",
   'Capture the core thesis and the few points that matter; drop filler. Invent NOTHING not in the source.',
+  'The source may contain [CATEGORY] tokens where sensitive data was masked — keep them as-is; never guess what they hid.',
   'Write in the SAME language as the source. Respond ONLY as JSON:',
   '{"summary":"a tight paragraph","bullets":["key point","..."]}.',
 ].join(' ');
 
 const runSummarize = async (ctx: RunnerContext): Promise<RunnerOutput> => {
-  const source = (ctx.goal.slots.sourceText ?? '').trim();
+  const scan = ctx.upstream['security_scan'] as { maskedText?: string; hasSensitive?: boolean } | undefined;
+  const masked = scan?.maskedText?.trim();
+  const source = (masked || (ctx.goal.slots.sourceText ?? '').trim());
   if (!source) throw new Error('summarize: no source text to summarize — give me the text or content to condense.');
   const call = ctx.llmJsonFn ?? callGeminiJson;
   const input = `SOURCE TEXT:\n${source.slice(0, 20000)}`;
@@ -839,7 +896,7 @@ const runSummarize = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'summarize', model: env.GEMINI_MODEL, usage, runId: ctx.runId });
   return {
     type: 'summary',
-    data: { summary, bullets },
+    data: { summary, bullets, fromMaskedSource: Boolean(masked) },
     cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(SUMMARIZE_PROMPT + input, summary),
   };
 };
@@ -900,6 +957,7 @@ const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOut
   email_writer: runEmailWriter,
   email_agent: runEmailAgent,
   scheduler: runScheduler,
+  security: runSecurity,
   summarize: runSummarize,
 };
 

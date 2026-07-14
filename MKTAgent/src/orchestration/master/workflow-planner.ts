@@ -22,7 +22,7 @@ import { validatePlan } from './workflow-validator.ts';
 // plan-tiers' ORDERED agentIdList dedup stays stable. Nodes not requested are simply filtered out.
 const PIPELINE_ORDER: readonly RunnableAgentId[] = [
   'content_search', 'ideation', 'strategy', 'campaign_strategist',
-  'summarize', 'concept_writer', 'infographic', 'storyboard', 'video',
+  'security', 'summarize', 'concept_writer', 'infographic', 'storyboard', 'video',
   'email_writer', 'email_agent', 'publisher',
 ];
 

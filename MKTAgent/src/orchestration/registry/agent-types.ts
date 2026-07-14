@@ -18,7 +18,10 @@ export type AgentId =
   | 'email_writer'
   // Utility capability (P1b Phase 05): the first NON-marketing producer node — summarize source text.
   // Proves the registry composes any capability; reachable via a task goal (taskTargets), not marketing flags.
-  | 'summarize';
+  | 'summarize'
+  // Data-protection node: scans source text for personal/sensitive data (GDPR/PII), masks it, announces
+  // what it found. summarize `requires` its security_scan, so it is auto-pulled in front of every summary.
+  | 'security';
 
 // `scheduler` is a generic, type-agnostic control node (not an AgentId content producer): the planner
 // splices it before a run's terminal action when the goal carries a confirmed schedule. It performs no

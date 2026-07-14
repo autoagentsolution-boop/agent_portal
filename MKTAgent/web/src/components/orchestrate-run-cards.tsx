@@ -36,6 +36,10 @@ const isStrategistPlan = (run: WorkflowRunDto): boolean => run.nodes.some((n) =>
 // An email flow (email_writer/email_agent) is neither a post nor a campaign — label it as such so a
 // personal email isn't mislabeled "Single post".
 const isEmailPlan = (run: WorkflowRunDto): boolean => run.nodes.some((n) => n.agentId === 'email_writer' || n.agentId === 'email_agent');
+// A utility flow (summarize / security) is neither a post, campaign nor email — a "Single post" label is
+// plain wrong for it. Prefer the more specific summarize label when present.
+const isSummarizePlan = (run: WorkflowRunDto): boolean => run.nodes.some((n) => n.agentId === 'summarize');
+const hasSecurityScan = (run: WorkflowRunDto): boolean => run.nodes.some((n) => n.agentId === 'security');
 const campaignShape = (run: WorkflowRunDto): { weeks: number | null; estPosts: number | null } => {
   const g = run.goal as { duration?: { weeks?: number }; cadence?: { postsPerWeek?: number } } | null;
   const weeks = g?.duration?.weeks ?? null;
@@ -50,6 +54,8 @@ export function PlanCard({ run, busy, defaultName, onSave, onExecute }: PlanProp
   const platforms = goalPlatforms(run);
   const strategist = isStrategistPlan(run);
   const email = !strategist && isEmailPlan(run);
+  const summarize = !strategist && !email && isSummarizePlan(run);
+  const secured = hasSecurityScan(run);
   const { weeks, estPosts } = strategist ? campaignShape(run) : { weeks: null, estPosts: null };
 
   return (
@@ -67,6 +73,14 @@ export function PlanCard({ run, busy, defaultName, onSave, onExecute }: PlanProp
         <div className="plan-scope email">
           <strong>✉️ Email</strong>
           <span className="muted small">Atria drafts the email; nothing sends until you review and approve.</span>
+        </div>
+      ) : summarize ? (
+        <div className="plan-scope summarize">
+          <strong>📝 Summary</strong>
+          <span className="muted small">
+            Atria condenses your source into a concise summary + key points.
+            {secured && <> First it scans for personal / sensitive data and <b>masks</b> it — nothing sensitive lands in the summary.</>}
+          </span>
         </div>
       ) : (
         <div className="plan-scope single">
@@ -89,24 +103,26 @@ export function PlanCard({ run, busy, defaultName, onSave, onExecute }: PlanProp
         <div className="save-flow">
           <div className="plan-run-row">
             <button className="btn primary plan-run-btn" disabled={busy} onClick={onExecute}>
-              {busy ? (strategist ? 'Đang lên lịch…' : 'Đang chạy…') : strategist ? '▶ Draft the calendar' : '▶ Duyệt & Chạy ngay'}
+              {busy ? (strategist ? 'Scheduling…' : 'Running…') : strategist ? '▶ Draft the calendar' : summarize ? '▶ Approve & run' : '▶ Approve & run now'}
             </button>
             <span className="muted small">
               {strategist
                 ? <>Atria drafts the calendar right here, then <b>you approve every post</b> before anything schedules.</>
+                : summarize
+                ? <>Atria produces the summary right here{secured ? <> after masking any sensitive data</> : ''} — nothing is published or sent.</>
                 : <>Atria generates the content, then <b>stops at the review step</b> before publishing/sending.</>}
             </span>
           </div>
-          <p className="muted small plan-refine-hint">Muốn chỉnh? Gõ bên dưới (vd “thêm video”, “bỏ infographic”). Hoặc lưu thành flow tái dùng:</p>
+          <p className="muted small plan-refine-hint">Want changes? Type below (e.g. “add video”, “remove infographic”). Or save it as a reusable flow:</p>
           <div className="save-flow-row">
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={defaultName ? `e.g. ${defaultName} campaign` : 'Đặt tên flow để lưu'}
+              placeholder={defaultName ? `e.g. ${defaultName} campaign` : 'Name the flow to save'}
               onKeyDown={(e) => { if (e.key === 'Enter' && (name.trim() || defaultName)) onSave((name.trim() || defaultName)); }}
             />
             <button className="btn" disabled={busy} onClick={() => onSave(name.trim() || defaultName || 'Untitled flow')}>
-              {busy ? 'Saving…' : 'Lưu thành flow'}
+              {busy ? 'Saving…' : 'Save as flow'}
             </button>
           </div>
         </div>

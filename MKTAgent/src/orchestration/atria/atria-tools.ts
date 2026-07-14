@@ -10,7 +10,7 @@ import { rememberFreeform, type MemoryKind } from '../../db/repos/user-memory-re
 import { requirementAnalyzer } from '../master/requirement-analyzer.ts';
 import { emailOutputs } from '../master/deterministic-analyzer.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
-import { mergeGoals } from '../master/goal-merge.ts';
+import { mergeGoals, applyRemovals } from '../master/goal-merge.ts';
 import { contentLanguageFor } from '../master/detect-language.ts';
 import { recordLlmUsage } from '../../cost/llm-usage.ts';
 import { parseScheduleTime } from './parse-schedule-time.ts';
@@ -157,12 +157,12 @@ export const TOOL_DECLARATIONS = [
   {
     name: 'propose_task',
     description:
-      'Run a supported UTILITY capability on text the user gives you — currently: "summarize" (condense a document / article / long text into a concise summary + key points). Use this when the user provides text/content and asks you to summarize it. It assembles a flow card with the utility node and does NOT execute — the user reviews, then says go ahead. For a capability that is NOT in the supported list, use flag_capability_gap instead (never force it).',
+      'Run a supported UTILITY capability on text/content the user gives you — currently: "summarize" (condense a document, article, report, or long/large text into a concise summary + key points). Use this whenever the user provides or uploads content and asks you to summarize it. Data protection is BUILT IN: the flow automatically runs a security (Data Guard) scan FIRST that detects and masks any personal or sensitive data (GDPR/PII — names, contacts, financial, IDs, health, credentials) and announces what it found, so nothing sensitive appears in the summary. You do NOT need a separate step or a special request for this — just propose the summarize task and tell the user their data will be protected automatically. It assembles a flow card and does NOT execute — the user reviews, then says go ahead. For a capability that is NOT in the supported list, use flag_capability_gap instead (never force it).',
     parameters: {
       type: 'object',
       properties: {
-        capability: { type: 'string', enum: ['summarize'], description: 'The utility to run. Currently only "summarize" is supported.' },
-        source_text: { type: 'string', description: 'The full text/content to run the capability on (e.g. the document to summarize).' },
+        capability: { type: 'string', enum: ['summarize'], description: 'The utility to run. Currently only "summarize" is supported (data-protection masking is automatic).' },
+        source_text: { type: 'string', description: 'The full text/content to run the capability on (e.g. the document to summarize). Provide it verbatim — the security node masks sensitive spans downstream, so do not pre-redact it yourself.' },
       },
       required: ['capability', 'source_text'],
     },
@@ -267,7 +267,12 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         };
       }
       case 'propose_workflow': {
-        const analyzed = await requirementAnalyzer.analyze(str(args.goal_description) || ctx.message, ctx.ownerId, ctx.memoryContext, ctx.instructions);
+        // analyzeWithRemovals (not analyze) so a subtractive refine ("remove the video/storyboard step",
+        // "bỏ infographic") surfaces its removal delta — analyze() discards it, which is why remove-node
+        // refinements silently no-op'd while the model still narrated "I removed it" (BUG-1). Prior is left
+        // undefined so the goal parse stays byte-identical to the old analyze() path; removals come from the
+        // message (LLM or regex parseRemovals) and are applied AFTER the additive merge below.
+        const { goal: analyzed, removals } = await requirementAnalyzer.analyzeWithRemovals(str(args.goal_description) || ctx.message, undefined, ctx.ownerId, ctx.memoryContext, ctx.instructions);
         // The BRAIN (LLM) declares the intent KIND — 'email' (a personal message SENT to a person) vs
         // 'marketing' (a social post / campaign). The regex analyzer only extracts slots; it must NOT decide
         // the TYPE (letting it guess is what mis-routed a birthday greeting into a 5-platform campaign, and
@@ -292,7 +297,11 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
           && analyzedTyped.platforms.length === 0 && !analyzedTyped.outputs.needsIdeation
           && !analyzedTyped.outputs.needsInfographic && !analyzedTyped.outputs.needsVideo;
         const isSwitch = ctx.priorGoal != null && !deltaEmpty && priorKind !== effKind;
-        const merged = ctx.priorGoal && !isSwitch ? mergeGoals(ctx.priorGoal, analyzedTyped) : analyzedTyped;
+        const mergedAdditive = ctx.priorGoal && !isSwitch ? mergeGoals(ctx.priorGoal, analyzedTyped) : analyzedTyped;
+        // Subtractive pass AFTER the additive merge (mergeGoals alone is additive and would keep a node the
+        // user asked to drop). applyRemovals un-sets the named output flags (storyboard removal also drops
+        // video) + drops named platforms, with an empty-plan guard. No-op when nothing was flagged for removal.
+        const merged = (removals.disableOutputs.length || removals.dropPlatforms.length) ? applyRemovals(mergedAdditive, removals) : mergedAdditive;
         // Schedule overlay (generic-scheduler node): a proposal parsed THIS turn is UNconfirmed (the user
         // still has to confirm the exact instant) → the planner leaves the flow immediate. A schedule
         // CARRIED from a prior turn (priorGoal, via mergeGoals) means the user already saw it and is now

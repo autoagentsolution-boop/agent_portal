@@ -62,8 +62,10 @@ export const goalSlots = z.object({
   // stamps nurturedAt. The recipient ADDRESS (emailTo) is set from the Lead RECORD, never a model string.
   leadId: z.string().max(64).nullish(),
   // Utility-task input (P1b Phase 05): the source text a non-marketing utility node operates on
-  // (e.g. the document to summarize). Read by the utility runner; empty for marketing goals.
-  sourceText: z.string().max(20000).nullish(),
+  // (e.g. the document to summarize). Read by the utility runner; empty for marketing goals. Cap raised to
+  // 200k chars so a real uploaded document (extracted to text) fits — the security + summarize runners
+  // slice what they feed the model; the whole document is retained here so masking sees all of it.
+  sourceText: z.string().max(200_000).nullish(),
 });
 export type GoalSlots = z.infer<typeof goalSlots>;
 

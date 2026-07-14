@@ -13,7 +13,8 @@ export const NODE_DOT: Record<string, string> = {
   needs_connection: '⚷',
 };
 
-const agentLabel = (id: string): string => (id === 'scheduler' ? '⏰ scheduler' : id.replace(/_/g, ' '));
+const agentLabel = (id: string): string =>
+  id === 'scheduler' ? '⏰ scheduler' : id === 'security' ? '🛡️ data guard' : id.replace(/_/g, ' ');
 
 // Live-ticking elapsed timer for a node that's currently running. Long steps (video
 // generation runs ~30-90s) otherwise look frozen — this makes it obvious work is
