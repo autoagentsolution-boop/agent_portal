@@ -403,6 +403,15 @@ export const api = {
     opts?: { product?: string; campaignId?: string; saveToLibrary?: boolean; libraryName?: string; productKnowledgeId?: string },
   ) =>
     request<ProductKnowledgeResult>('/product-knowledge/analyze', { method: 'POST', body: { files, ...(opts ?? {}) } }),
+  // Extract raw text from uploaded document(s)/image(s) so the user can UPLOAD a large file to summarize
+  // instead of pasting it. The chat then proposes a summarize task on the returned text (Data Guard masks
+  // any personal/sensitive data before summarizing).
+  extractDocumentText: (files: UploadedDocInput[]) =>
+    request<{ text: string; chars: number; names: string[] }>('/product-knowledge/extract-text', { method: 'POST', body: { files } }),
+  // Summarize an uploaded document — bypasses the chat brain (raw PII would trip its safety filter). Builds
+  // the security (Data Guard) → summarize run directly; returns the planned run DTO for the plan card.
+  summarizeFile: (text: string, filename?: string, chatSessionId?: string) =>
+    request<WorkflowRunDto>('/orchestration/summarize-file', { method: 'POST', body: { text, filename, chatSessionId } }),
   listProductKnowledge: () => request<ProductKnowledgeEntry[]>('/product-knowledge'),
   updateProductKnowledge: (id: string, body: { name?: string; productDetails?: string; brandVoice?: string | null; language?: string | null }) =>
     request<ProductKnowledgeEntry>(`/product-knowledge/${id}`, { method: 'PATCH', body }),

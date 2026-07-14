@@ -224,6 +224,35 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
   };
   startRef.current = start;
 
+  // Attach-to-summarize (+): upload a document/image, extract its text server-side, then send it as a
+  // summarize request. The Data Guard (security) node masks any personal/sensitive data before summarizing.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const readAsB64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result).split(',')[1] ?? '');
+    fr.onerror = () => reject(fr.error);
+    fr.readAsDataURL(file);
+  });
+  const onFilesPicked = async (files: FileList | null) => {
+    if (!files || !files.length) return;
+    setUploading(true); setBusy(true);
+    try {
+      const docs = await Promise.all([...files].slice(0, 6).map(async (f) => ({ name: f.name, mimeType: f.type || 'application/octet-stream', dataB64: await readAsB64(f) })));
+      const ext = await api.extractDocumentText(docs);
+      if (!ext.ok) { notify(`Upload: ${ext.error.error}`, 'err'); return; }
+      const names = ext.data.names.join(', ');
+      notify(`Read ${ext.data.chars.toLocaleString()} characters from ${names}`, 'ok');
+      push({ role: 'user', content: `📎 ${names} — summarize (sensitive data will be masked)` });
+      // Direct summarize+security run (NOT via the chat brain — raw PII would trip its safety filter).
+      const r = await api.summarizeFile(ext.data.text, names, sessionId ?? undefined);
+      if (!r.ok) { notify(`Summarize: ${r.error.error}`, 'err'); return; }
+      applyRun(r.data, false);
+    } catch {
+      notify('Could not read that file', 'err');
+    } finally { setUploading(false); setBusy(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+  };
+
   // Auto-submit the seeded intent exactly once on a fresh mount (never on restore).
   // Ref guard instead of effect deps: StrictMode double-invoke or a re-render must not
   // fire a second createRun for the same seed.
@@ -411,7 +440,21 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
           </div>
         )}
         <div className={`composer-box ${voiceState === 'listening' ? 'is-listening' : ''}`}>
-          <button className="composer-plus" aria-label="Add context">+</button>
+          <button
+            className="composer-plus"
+            aria-label="Attach a document to summarize"
+            title="Attach a document (PDF, image, TXT/MD) to summarize — sensitive data is masked automatically"
+            disabled={busy || uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >{uploading ? '…' : '+'}</button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md,application/pdf,image/png,image/jpeg,image/webp,text/plain,text/markdown"
+            multiple
+            hidden
+            onChange={(e) => void onFilesPicked(e.target.files)}
+          />
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

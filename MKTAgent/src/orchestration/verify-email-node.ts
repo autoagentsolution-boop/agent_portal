@@ -2,7 +2,7 @@
 // routes an email request to the email_writer→email_agent DAG (no social platforms) while a marketing
 // request is unchanged, and (2) the two runners produce a valid draft and "send" it via a stubbed Gmail
 // (zero real sends). Exits non-zero on any failure.
-import { analyzeDeterministic } from './master/deterministic-analyzer.ts';
+import { analyzeDeterministic, emailOutputs } from './master/deterministic-analyzer.ts';
 import { planWorkflow } from './master/workflow-planner.ts';
 import { evaluateClarification } from './master/clarification-engine.ts';
 import { agentIdList } from './schemas/workflow-plan.ts';
@@ -25,6 +25,19 @@ check('social flags off', !emailGoal.outputs.needsPublishing && !emailGoal.outpu
 check('clarify ready (no platform trap)', evaluateClarification(emailGoal).status === 'ready');
 const emailPlan = planWorkflow(emailGoal);
 check('plans email_writer→email_agent', emailPlan.ok && agentIdList(emailPlan.plan).join('→') === 'email_writer→email_agent', emailPlan.ok ? agentIdList(emailPlan.plan) : emailPlan.error);
+
+console.log('Research → email composition (BUG-7)');
+const researchEmail = goalSpec.parse({ outputs: emailOutputs({ needsEmail: true, needsResearch: true } as never), slots: { emailTo: 'nghiep@example.com', angle: 'top 3 competitor findings' }, provider: 'test' });
+const rePlan = planWorkflow(researchEmail);
+check('research+email plans content_search→email_writer→email_agent', rePlan.ok && agentIdList(rePlan.plan).join('→') === 'content_search→email_writer→email_agent', rePlan.ok ? agentIdList(rePlan.plan) : rePlan.error);
+if (rePlan.ok) {
+  const w = rePlan.plan.nodes.find((n) => n.agentId === 'email_writer')!;
+  const cs = rePlan.plan.nodes.find((n) => n.agentId === 'content_search')!;
+  check('email_writer grounds on the research (depends on content_search)', w.dependsOn.includes(cs.nodeId));
+}
+const plainEmail = goalSpec.parse({ outputs: emailOutputs({ needsEmail: true, needsResearch: false } as never), slots: { emailTo: 'x@example.com' }, provider: 'test' });
+const pePlan = planWorkflow(plainEmail);
+check('plain email (no research) stays email_writer→email_agent', pePlan.ok && agentIdList(pePlan.plan).join('→') === 'email_writer→email_agent', pePlan.ok ? agentIdList(pePlan.plan) : pePlan.error);
 
 console.log('Regression — marketing request unchanged');
 const mkt = analyzeDeterministic('Write a short Facebook post about our new feature');

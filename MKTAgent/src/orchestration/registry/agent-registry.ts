@@ -268,10 +268,10 @@ export const AGENTS: AgentDefinition[] = [
     description: 'Draft a ready-to-send email (subject + body) from the goal or an upstream concept.',
     implStatus: 'live',
     requires: [],
-    // Grounds on a content_concept (a nurture flow) OR a summary (summarize → email) when one exists
-    // upstream; a standalone email (e.g. a birthday note) has none → drafts from the goal directly.
-    // Optional = no edge when absent, so all three shapes plan cleanly.
-    optional: ['content_concept', 'summary'],
+    // Grounds on a content_concept (a nurture flow), a summary (summarize → email), OR a research_summary
+    // ("research X, then email the findings") when one exists upstream; a standalone email (e.g. a birthday
+    // note) has none → drafts from the goal directly. Optional = no edge when absent, so all shapes plan cleanly.
+    optional: ['content_concept', 'summary', 'research_summary'],
     produces: ['email_draft'],
     requiresConnection: false,
     requiresApproval: false,

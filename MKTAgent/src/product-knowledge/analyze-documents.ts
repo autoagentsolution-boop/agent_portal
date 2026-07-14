@@ -97,6 +97,47 @@ const extractText = (raw: unknown): string =>
 
 const s = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 
+// Extract the RAW text of uploaded documents/images (for the summarize + security flow — NOT a product
+// profile). Reuses the same multimodal transport (PDF/image → inlineData, text/* inline). Gemini transcribes
+// verbatim; the security node masks any personal/sensitive data downstream. Throws on missing key / bad
+// response (router maps to 4xx/5xx). No product framing — this is a general document-to-text primitive.
+export interface ExtractionResult { text: string; cost: NodeCost }
+
+const EXTRACT_PROMPT =
+  'Transcribe ALL text content from the attached document(s)/image(s) COMPLETELY and verbatim, preserving '
+  + 'the reading order and structure (headings, paragraphs, lists, tables as readable text). Do NOT summarize, '
+  + 'omit, translate, or add commentary. Output ONLY the extracted text.';
+
+export const extractDocumentText = async (
+  docs: UploadedDoc[],
+  ownerId?: string | null,
+): Promise<ExtractionResult> => {
+  if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY required for document extraction');
+  if (docs.length === 0) throw new Error('no documents provided');
+
+  const parts: unknown[] = [];
+  for (const d of docs) {
+    if (d.mimeType.startsWith('text/')) parts.push({ text: `--- ${d.name} ---\n${decodeText(d.dataB64).slice(0, 200_000)}` });
+    else parts.push({ inlineData: { mimeType: d.mimeType, data: d.dataB64 } });
+  }
+  parts.push({ text: EXTRACT_PROMPT });
+
+  const res = await fetch(endpoint(env.GEMINI_MODEL), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0 } }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!res.ok) throw new Error(`gemini_extract_${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const raw = await res.json();
+  await recordGeminiCall(raw, { ownerId: ownerId ?? null, surface: 'doc_extract', model: env.GEMINI_MODEL });
+  const text = extractText(raw).trim().slice(0, 200_000);
+  if (!text) throw new Error('no text could be extracted from the document');
+  const cost = costFromUsage(raw, JSON.stringify(parts).slice(0, 2000), text);
+  logger.info('doc_text_extracted', { docs: docs.length, chars: text.length, tokens: cost.totalTokens });
+  return { text, cost };
+};
+
 // Analyze uploaded documents into a product profile. Throws on a missing key or an unusable
 // model response (the router maps it to a 4xx/5xx) — callers must handle it.
 // ownerId/refId (optional): the authenticated tenant + a knowledge/campaign id to tag the

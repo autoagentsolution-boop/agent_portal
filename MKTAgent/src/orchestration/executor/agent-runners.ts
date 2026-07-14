@@ -774,6 +774,7 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const language = await resolveRunLanguage(ctx);
   const concept = ctx.upstream['content_concept']; // optional grounding (a nurture flow); usually absent
   const summary = ctx.upstream['summary']; // summarize → email composition: base the email on the summary
+  const research = ctx.upstream['research_summary']; // "research X, then email the findings" — ground on it
   const purpose = ctx.goal.slots.angle?.trim() || ctx.goal.slots.product?.trim() || ctx.goal.slots.emailSubject?.trim() || 'a short, friendly note';
   // Lead grounding (P3): when the recipient is a captured lead resolved by name (find_lead), enrich the
   // draft with the lead's own context — their NAME (so the writer addresses them properly), the product
@@ -797,7 +798,8 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     `Recipient(s): ${to.join(', ')}`,
     leadGrounding,
     concept ? `Context to ground in: ${JSON.stringify(concept).slice(0, 1200)}`
-      : summary ? `Summary to base the email on: ${JSON.stringify(summary).slice(0, 1200)}` : '',
+      : summary ? `Summary to base the email on: ${JSON.stringify(summary).slice(0, 1200)}`
+      : research ? `Research findings to base the email on: ${JSON.stringify(research).slice(0, 1400)}` : '',
     `Write the email entirely in this language: ${language}.`,
   ].filter(Boolean).join('\n');
 
@@ -810,7 +812,7 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'email', model: env.GEMINI_MODEL, usage, runId: ctx.runId });
   return {
     type: 'email_draft',
-    data: { to, subject, body, groundedOn: concept ? 'content_concept' : summary ? 'summary' : 'goal' },
+    data: { to, subject, body, groundedOn: concept ? 'content_concept' : summary ? 'summary' : research ? 'research_summary' : 'goal' },
     cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(EMAIL_WRITER_PROMPT + input, body),
   };
 };

@@ -16,6 +16,7 @@ import { getBrainCache, invalidateBrainCache } from './atria-brain-cache.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
 import { detectLanguage } from '../master/detect-language.ts';
 import { BRAIN_THINKING_BUDGET } from '../thinking-budget.ts';
+import { logger } from '../../lib/logger.ts';
 import type { PriorMessage } from '../master/conversation-author.ts';
 import type { GoalSpec } from '../schemas/goal-spec.ts';
 
@@ -159,8 +160,18 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
       // Wall-clock guard: never let the loop + nested tool LLM calls block POST /runs indefinitely.
       if (Date.now() > deadline) return proposalOrNull(round) ?? gracefulReply(input.message, ctx.searched, tools, round);
 
-      const res = await callGemini(contents);
-      if (!res.ok) return proposalOrNull(round) ?? gracefulReply(input.message, ctx.searched, tools, round);
+      // One transient retry: gemini-2.5-flash intermittently returns a 5xx or an empty-content STOP even
+      // with an explicit thinking budget — a single re-call clears it (this is the "schedule-confirm
+      // randomly errors" flake, BUG-4). Log at warn so the degrade path is diagnosable rather than silent.
+      let res = await callGemini(contents);
+      if (!res.ok) {
+        logger.warn('atria_brain_call_failed', { runId: input.sessionId ?? null, round, status: res.status, willRetry: true });
+        res = await callGemini(contents);
+      }
+      if (!res.ok) {
+        logger.warn('atria_brain_degraded', { runId: input.sessionId ?? null, round, reason: 'gemini_error', status: res.status });
+        return proposalOrNull(round) ?? gracefulReply(input.message, ctx.searched, tools, round);
+      }
       const raw = await res.json();
       // Best-effort ledger — a ledger hiccup must NOT throw into the outer catch and discard a good reply.
       await recordGeminiCall(raw, { ownerId: input.ownerId, surface: 'chat', model: env.GEMINI_MODEL }).catch(() => {});
@@ -172,10 +183,18 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
         // Final answer. A propose_workflow that produced a run outcome wins (flow card path); else reply.
         const proposal = proposalOrNull(round + 1);
         if (proposal) return proposal;
-        const text = textOf(parts);
-        return text
-          ? { kind: 'reply', text, searched: ctx.searched, tools, rounds: round + 1, executeRunId: ctx.executeRunId }
-          : gracefulReply(input.message, ctx.searched, tools, round + 1); // empty text (5xx/safety block) → no junk "…" turn
+        let text = textOf(parts);
+        // Empty-content STOP (no calls, no text) is the other transient behind BUG-4 — one re-call before
+        // degrading, so a good turn isn't thrown away as an apology. Only when there's nothing to lose (no
+        // tool calls happened this round, so re-calling with the same contents is safe/idempotent).
+        if (!text.trim()) {
+          logger.warn('atria_brain_empty_content', { runId: input.sessionId ?? null, round, willRetry: true });
+          const retry = await callGemini(contents);
+          if (retry.ok) { const rraw = await retry.json(); text = textOf(partsOf(rraw)); }
+        }
+        if (text.trim()) return { kind: 'reply', text, searched: ctx.searched, tools, rounds: round + 1, executeRunId: ctx.executeRunId };
+        logger.warn('atria_brain_degraded', { runId: input.sessionId ?? null, round, reason: 'empty_content' });
+        return gracefulReply(input.message, ctx.searched, tools, round + 1); // empty text (5xx/safety block) → no junk "…" turn
       }
 
       // Echo the model's function-call turn, then append each tool result for the next round.
@@ -195,7 +214,8 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
     }
     // Ran out of rounds — return a pending proposal if any, else a graceful reply (NOT a forced plan).
     return proposalOrNull(MAX_ROUNDS) ?? gracefulReply(input.message, ctx.searched, tools, MAX_ROUNDS);
-  } catch {
+  } catch (err) {
+    logger.warn('atria_brain_exception', { runId: input.sessionId ?? null, error: err instanceof Error ? err.message : String(err) });
     return proposalOrNull(0) ?? gracefulReply(input.message, ctx.searched, tools, 0);
   }
 }

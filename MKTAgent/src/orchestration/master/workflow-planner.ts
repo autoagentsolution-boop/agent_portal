@@ -39,8 +39,10 @@ const targetsFromGoal = (goal: GoalSpec): ArtifactType[] => {
   const o = goal.outputs;
   // Email path (P4-lite): a self-contained write+send, NOT the social pipeline. The analyzer forces
   // the social flags off when needsEmail is set, so this owns the plan (email_writer's optional
-  // content_concept is not a target → a standalone email has no upstream).
-  if (o.needsEmail) return ['email_result'];
+  // content_concept is not a target → a standalone email has no upstream). EXCEPTION: "research then
+  // email" keeps research — research_summary is emitted as a target so content_search runs and grounds
+  // the email via email_writer's optional research_summary edge (BUG-7 fix).
+  if (o.needsEmail) return o.needsResearch ? ['research_summary', 'email_result'] : ['email_result'];
 
   // Campaign scope: route to the strategist and STOP at the editable calendar. ideation + strategy
   // ALWAYS ground the strategist (via its optional slots — emitted as targets so they're selected);

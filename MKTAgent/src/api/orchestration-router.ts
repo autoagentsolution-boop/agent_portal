@@ -16,6 +16,7 @@ import { createRunBody, clarifyRunBody, saveRunBody, applyTierBody, killSwitchBo
 import { getKillSwitch, setExternalActionsPaused } from '../system/kill-switch.ts';
 import { recordExternalAction } from '../connectors/audit/external-action-audit-log.ts';
 import { masterAgent } from '../orchestration/master/master-agent.ts';
+import { contentLanguageFor } from '../orchestration/master/detect-language.ts';
 import { goalSpec, type GoalSpec } from '../orchestration/schemas/goal-spec.ts';
 import { workflowPlan, type WorkflowPlan } from '../orchestration/schemas/workflow-plan.ts';
 import { runWorkflow } from '../orchestration/executor/workflow-executor.ts';
@@ -304,6 +305,36 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   const { id, questions } = await persistOutcome(req.userId!, sessionId, outcome.goal, outcome);
   res.status(201);
   await respondRun(res, id, req.userId!, { questions, assistantMessage });
+}));
+
+const summarizeFileBody = z.object({
+  text: z.string().min(1).max(200_000),
+  filename: z.string().max(300).optional(),
+  chatSessionId: z.string().uuid().optional(),
+});
+
+// Summarize an UPLOADED document. Deliberately BYPASSES the conversational brain: raw document text can
+// carry personal/sensitive data (SSNs, medical, card numbers) that trips the chat LLM's safety filter
+// (empty reply → degrade). Instead we build the summarize task goal directly (taskTargets:['summary']),
+// which composes security (Data Guard) → summarize — the security node masks everything before the model
+// summarizes it. The extracted text lands in goal.slots.sourceText, never in an LLM prompt un-scanned.
+orchestrationRouter.post('/summarize-file', asyncHandler(async (req, res) => {
+  const body = parseOr422(res, summarizeFileBody, req.body ?? {});
+  if (!body) return;
+  const label = body.filename?.trim() ? `Summarize “${body.filename.trim()}”` : 'Summarize document';
+  const sessionId = await ensureChatSession(req.userId!, body.chatSessionId, label);
+  const goal = goalSpec.parse({
+    taskTargets: ['summary'],
+    outputs: { needsTextPost: false, needsPublishing: false },
+    slots: { sourceText: body.text, language: contentLanguageFor(body.text, null) },
+    provider: 'atria-upload',
+  });
+  const outcome = masterAgent.planFromGoal(goal, { skipClarification: true });
+  if (outcome.status !== 'planned') return fail(res, 422, 'could_not_plan', 'error' in outcome ? outcome.error : 'plan_error');
+  const { id } = await persistOutcome(req.userId!, sessionId, goal, outcome);
+  const assistantMessage = await recordTurn(sessionId, label, outcome, req.userId!, null);
+  res.status(201);
+  await respondRun(res, id, req.userId!, { assistantMessage });
 }));
 
 // Transparency footnote: when the brain grounded a reply with web search, name the sources it used so

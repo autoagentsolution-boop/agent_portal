@@ -5,7 +5,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ok, fail, parseOr422, asyncHandler } from './http.ts';
-import { analyzeDocuments, SUPPORTED_MIME, type UploadedDoc } from '../product-knowledge/analyze-documents.ts';
+import { analyzeDocuments, extractDocumentText, SUPPORTED_MIME, type UploadedDoc } from '../product-knowledge/analyze-documents.ts';
 import { saveProductReferenceImage, isImageMime } from '../product-knowledge/save-reference-image.ts';
 import { getCampaign, updateCampaign } from '../db/repos/campaign-repo.ts';
 import {
@@ -138,6 +138,37 @@ productKnowledgeRouter.post(
     });
   }),
 );
+
+// Extract RAW text from uploaded documents/images — for the summarize + security (Data Guard) flow, so a
+// user can UPLOAD a large file (PDF/image/TXT/MD) instead of pasting. Returns the extracted text; the chat
+// then proposes a summarize task on it (security masks any personal/sensitive data before summarizing).
+// Reuses this router's larger body limit + base64 transport + SUPPORTED_MIME. Text only — no persistence.
+const extractBody = z.object({
+  files: z.array(z.object({
+    name: z.string().max(300),
+    mimeType: z.string().max(120),
+    dataB64: z.string().min(1).max(MAX_B64_LEN),
+  })).min(1).max(6),
+});
+
+productKnowledgeRouter.post('/extract-text', asyncHandler(async (req, res) => {
+  const body = parseOr422(res, extractBody, req.body ?? {});
+  if (!body) return;
+  const unsupported = body.files.find((f) => !SUPPORTED_MIME.has(f.mimeType));
+  if (unsupported) {
+    return fail(res, 415, 'unsupported_file_type',
+      `"${unsupported.name}" (${unsupported.mimeType}) is not supported. Use PDF, PNG/JPG/WebP, or TXT/Markdown.`);
+  }
+  try {
+    const result = await extractDocumentText(body.files as UploadedDoc[], req.userId!);
+    ok(res, { text: result.text, chars: result.text.length, names: body.files.map((f) => f.name), cost: result.cost });
+  } catch (e) {
+    const msg = String(e instanceof Error ? e.message : e);
+    logger.warn('doc_extract_failed', { error: msg.slice(0, 200) });
+    const status = /no text could be extracted/.test(msg) ? 422 : 502;
+    return fail(res, status, 'extract_failed', msg.slice(0, 200));
+  }
+}));
 
 // Library CRUD (item 6). All owner-scoped. The dropdown at post/campaign level lists these;
 // "import more" re-hits /analyze with productKnowledgeId to merge a new doc into an entry.

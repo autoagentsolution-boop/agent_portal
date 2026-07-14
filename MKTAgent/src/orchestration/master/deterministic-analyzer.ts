@@ -164,13 +164,16 @@ export const parseEmailIntent = (message: string): EmailIntent => {
 };
 
 // Force the social pipeline OFF when the goal is an email — the email_writer→email_agent path owns it.
+// EXCEPTION: research is kept. "Research X, then email the findings" is a legitimate compose — content_search
+// grounds the email_writer (research_summary is one of its optional inputs). Dropping it here was BUG-7: the
+// plan skipped straight to email_writer and the email was written from model knowledge, not real research.
 export const emailOutputs = (base: GoalSpec['outputs']): GoalSpec['outputs'] => ({
   ...base,
   needsEmail: true,
   needsTextPost: false,
   needsIdeation: false,
   needsStrategy: false,
-  needsResearch: false,
+  needsResearch: base.needsResearch,
   needsInfographic: false,
   needsStoryboard: false,
   needsVideo: false,
