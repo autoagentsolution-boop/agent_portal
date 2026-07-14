@@ -293,3 +293,22 @@ Two CC quality-of-life additions on top of the resume-cards feature.
     - `summarize` now DEPENDS ON `security` (`requires: ['security_scan']`), so the backward-chaining planner (`workflow-planner.ts`) always places Data Guard first; `summarize` reads the masked text from the upstream `security_scan` artifact.
     - Reachable via the brain's `propose_task` seam (atria-tools) — same path as the original summarize task; the composition (security→summarize→optionally email_writer) is automatic.
     - The plan-refine removals fix touches the same `propose_workflow` path used by every marketing/email refine turn (reuses `applyRemovals` from goal-merge, previously only wired into the classic master-agent path).
+- **docs(feature-map): record Data Guard node relationships** (653be2e)
+  - `docs/feature-map.md`
+- **feat(summarize): upload a document to summarize + fix flaky brain confirm & research-then-email** (aeb4b2f)
+  - `MKTAgent/src/api/orchestration-router.ts`
+  - `MKTAgent/src/api/product-knowledge-router.ts`
+  - `MKTAgent/src/orchestration/atria/atria-brain.ts`
+  - `MKTAgent/src/orchestration/executor/agent-runners.ts`
+  - `MKTAgent/src/orchestration/master/deterministic-analyzer.ts`
+  - `MKTAgent/src/orchestration/master/workflow-planner.ts`
+  - `MKTAgent/src/orchestration/registry/agent-registry.ts`
+  - `MKTAgent/src/orchestration/verify-email-node.ts`
+  - `MKTAgent/src/product-knowledge/analyze-documents.ts`
+  - `MKTAgent/web/src/api/client.ts`
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+  - Relationships:
+    - Document upload REUSES the product-knowledge Gemini multimodal transport (`extractDocumentText` sits beside `analyzeDocuments`, same `SUPPORTED_MIME`/base64 path) — no new upload infra.
+    - The upload path DELIBERATELY bypasses the Atria brain: `POST /orchestration/summarize-file` builds the `security → summarize` run directly (via `masterAgent.planFromGoal` + `persistOutcome`), because raw PII would trip the chat LLM's safety filter. Depends on the Data Guard node (777d17e) to mask before summarizing.
+    - Composer "+" (OrchestratePanel) → `extractDocumentText` → `summarizeFile` → `applyRun` (same plan-card path a typed request uses).
+    - BUG-4 retry/logging wraps the brain loop's `callGemini` (touches EVERY chat turn); BUG-7 touches the email planning path (`emailOutputs` + email target in `workflow-planner` + `email_writer.optional`) so "research → email" composes `content_search → email_writer → email_agent`.
