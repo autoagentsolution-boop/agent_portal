@@ -248,3 +248,48 @@ Two CC quality-of-life additions on top of the resume-cards feature.
 - **fix(cc): constellation groups form a true circle (equal distance from Atria)** (e339870)
   - `MKTAgent/web/src/components/command-center-page.tsx`
   - `MKTAgent/web/src/styles.css`
+- **docs(changelog): demo-readiness full-fix + constellation circle (2026-07-13)** (95b3656)
+  - `docs/feature-map.md`
+  - `docs/project-changelog.md`
+- **fix(atria): personal email routing, robust schedule splice, voice auto-start** (96fee2e)
+  - `MKTAgent/src/api/orchestration-router.ts`
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/executor/verify-scheduler-node.ts`
+  - `MKTAgent/src/orchestration/master/clarification-engine.ts`
+  - `MKTAgent/src/orchestration/master/conversation-author.ts`
+  - `MKTAgent/src/orchestration/master/goal-merge.ts`
+  - `MKTAgent/src/orchestration/master/workflow-planner.ts`
+  - `MKTAgent/src/orchestration/prompts/atria-brain-prompt.ts`
+  - `MKTAgent/src/orchestration/prompts/resolve-instructions.ts`
+  - `MKTAgent/src/orchestration/verify-instructions-and-memory.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+- **fix(atria): brain declares intent kind (email vs marketing); prime mic on voice launch** (67d9621)
+  - `MKTAgent/src/api/orchestration-router.ts`
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/prompts/atria-brain-prompt.ts`
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+- **fix(voice): auto-start listening reliably (defer past StrictMode double-mount)** (c566347)
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+- **docs(test): observed full-app browser test playbook + turnkey launch harness** (efdd6d4)
+  - `plans/260714-0015-full-app-browser-test/launch-observed-browser.sh`
+  - `plans/260714-0015-full-app-browser-test/plan.md`
+- **feat(atria): Data Guard node masks GDPR/PII before summarize + fix plan-refine removals & plan-card copy** (777d17e)
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/executor/agent-runners.ts`
+  - `MKTAgent/src/orchestration/master/workflow-planner.ts`
+  - `MKTAgent/src/orchestration/registry/agent-registry.ts`
+  - `MKTAgent/src/orchestration/registry/agent-types.ts`
+  - `MKTAgent/src/orchestration/schemas/artifact-schemas.ts`
+  - `MKTAgent/src/orchestration/schemas/goal-spec.ts`
+  - `MKTAgent/src/orchestration/schemas/workflow-plan.ts`
+  - `MKTAgent/src/orchestration/verify-summarize-node.ts`
+  - `MKTAgent/web/src/components/orchestrate-run-cards.tsx`
+  - `MKTAgent/web/src/components/run-dag-view.tsx`
+  - `MKTAgent/web/src/flow/artifact-format.ts`
+  - `plans/reports/test-report-260714-1423-observed-browser-test.md`
+  - Relationships:
+    - `security` (Data Guard) is a new registry node in the SAME composable graph as `summarize`, `scheduler`, etc. — added via a registry entry + runner + PIPELINE_ORDER slot, no planner special-case.
+    - `summarize` now DEPENDS ON `security` (`requires: ['security_scan']`), so the backward-chaining planner (`workflow-planner.ts`) always places Data Guard first; `summarize` reads the masked text from the upstream `security_scan` artifact.
+    - Reachable via the brain's `propose_task` seam (atria-tools) — same path as the original summarize task; the composition (security→summarize→optionally email_writer) is automatic.
+    - The plan-refine removals fix touches the same `propose_workflow` path used by every marketing/email refine turn (reuses `applyRemovals` from goal-merge, previously only wired into the classic master-agent path).
