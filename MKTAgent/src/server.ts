@@ -33,6 +33,8 @@ import { emailRouter } from './api/email-router.ts';
 import { atriaRouter } from './api/atria-router.ts';
 import { impactRouter } from './api/impact-router.ts';
 import { voiceRouter } from './api/voice-router.ts';
+import { adminRouter } from './api/admin-router.ts';
+import { requireSuperAdmin } from './api/middleware-superadmin.ts';
 import { IMAGE_OUTPUT_DIR } from './imagegen/nano-banana.ts';
 import { VIDEO_OUTPUT_DIR } from './video/veo.ts';
 
@@ -124,6 +126,10 @@ app.use('/orchestration', requireAuth, orchestrationRouter);
 // Connections (M2-lite). Read-only view of the caller's social connection status
 // over the existing OAuthToken store; never touches the write path or token values.
 app.use('/connections', requireAuth, connectionsRouter);
+
+// Super-admin console (credit-wallet Phase 03). requireAuth → requireSuperAdmin: a non-admin gets 404,
+// so the surface is invisible. Grants credits + shows the platform-wide capability-request backlog.
+app.use('/admin', requireAuth, requireSuperAdmin, adminRouter);
 
 // Per-user SSE stream (T5). Self-authenticates (Bearer header OR ?token= for the
 // browser EventSource API) so it is NOT behind requireAuth's header-only gate.

@@ -50,6 +50,7 @@ import {
   listScheduledRuns,
 } from '../db/repos/workflow-run-repo.ts';
 import { createCampaign } from '../db/repos/campaign-repo.ts';
+import { getBalance } from '../db/repos/credit-repo.ts';
 import { materializeCalendar } from '../orchestration/master/campaign-materializer.ts';
 import type { CalendarSlot } from '../orchestration/schemas/artifact-schemas.ts';
 import { z } from 'zod';
@@ -136,6 +137,7 @@ const respondRun = async (res: Parameters<typeof ok>[0], id: string, ownerId: st
 type ExecResult =
   | { status: 'running' }
   | { status: 'needs_connection'; requiredActions: RequiredActionDto[] }
+  | { status: 'insufficient_credits'; balance: number }
   | { status: 'error'; code: 404 | 409; error: string; detail?: string };
 
 const executePlannedRun = async (
@@ -148,6 +150,16 @@ const executePlannedRun = async (
   if (run.kind === 'template') return { status: 'error', code: 409, error: 'template_not_executable', detail: 'this flow is a template — create a post to run it' };
   if (run.status === 'running' || run.status === 'needs_approval') return { status: 'error', code: 409, error: 'run_in_flight' };
   if (run.status !== 'planned' && run.status !== 'failed' && run.status !== 'needs_connection') return { status: 'error', code: 409, error: 'run_not_executable' };
+  // Credit gate (credit-wallet Phase 02): a FLOW start is blocked at ≤0 balance — chat/planning stays
+  // free (the brain never routes through here). Ordered BEFORE the connection gate so a broke tenant is
+  // told to top up rather than sent to connect an account they can't use. A run already in flight is
+  // never re-gated (only planned/failed/needs_connection reach here) — the gate is at START only, so an
+  // approved run that ran slightly negative still finishes.
+  const balance = await getBalance(ownerId);
+  if (balance <= 0) {
+    logger.info('wf_execute_gated_insufficient_credits', { runId: run.id, balance });
+    return { status: 'insufficient_credits', balance };
+  }
   const goal = goalSpec.parse(run.goal);
   const plan: WorkflowPlan = workflowPlan.parse(run.plan);
   // Connection gate (§11.6/11.11): resolve every requiresConnection agent's platforms BEFORE spending.
@@ -291,9 +303,15 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
     // return THAT run (now running / needs_connection) so the UI reflects it, with the brain's reply.
     if (turn.executeRunId) {
       const exec = await executePlannedRun(turn.executeRunId, req.userId!);
+      // Credit gate (Phase 02): the brain said "run it" but the wallet is empty — the run stays planned;
+      // tell the user plainly instead of silently not running. Appended to the response only (the flow
+      // card stays on screen, ready to run once topped up).
+      const gated = exec.status === 'insufficient_credits'
+        ? `${text}\n\n⚠️ You're out of credits (balance ${exec.balance}). Ask your admin to top up, then run the flow again.`
+        : text;
       res.status(201);
       return respondRun(res, turn.executeRunId, req.userId!, {
-        assistantMessage: text,
+        assistantMessage: gated,
         requiredActions: exec.status === 'needs_connection' ? exec.requiredActions : undefined,
       });
     }
@@ -468,6 +486,7 @@ orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
 
   const result = await executePlannedRun(req.params.id, req.userId!, { autoPublish, conceptGate });
   if (result.status === 'error') return fail(res, result.code, result.error, result.detail);
+  if (result.status === 'insufficient_credits') return fail(res, 402, 'insufficient_credits', { balance: result.balance });
   if (result.status === 'needs_connection') return respondRun(res, req.params.id, req.userId!, { requiredActions: result.requiredActions });
   return respondRun(res, req.params.id, req.userId!);
 }));
@@ -479,6 +498,9 @@ orchestrationRouter.post('/runs/:id/execute', asyncHandler(async (req, res) => {
 orchestrationRouter.post('/runs/:id/test-run', asyncHandler(async (req, res) => {
   const run = await getRunForOwner(req.params.id, req.userId!);
   if (!run) return fail(res, 404, 'run_not_found');
+  // Credit gate (Phase 02): a test-run still spends real credits — block at ≤0 balance.
+  const testBalance = await getBalance(req.userId!);
+  if (testBalance <= 0) return fail(res, 402, 'insufficient_credits', { balance: testBalance });
   let target = run;
   if (run.kind === 'template') {
     const clone = await cloneTemplateRun(run.id, req.userId!);

@@ -5,7 +5,7 @@
 // post review gate so a stale UI can't double-advance a run.
 import { prisma } from '../client.ts';
 import { Prisma } from '../../../prisma/generated/prisma/client.ts';
-import { creditsFromTokens } from '../../cost/credits.ts';
+import { creditsFromTokens, creditsFromUsd } from '../../cost/credits.ts';
 import { getAgent } from '../../orchestration/registry/agent-registry.ts';
 import type { RunnableAgentId } from '../../orchestration/registry/agent-types.ts';
 import type {
@@ -285,6 +285,16 @@ export const getFlowCostRollup = async (templateId: string, ownerId: string): Pr
     credits: creditsFromTokens(totalTokens),
     runs: runIds.length,
   };
+};
+
+// Total credits a single run consumed = token-passthrough credits + media-USD credits, summed
+// over all its node runs (same basis as impact-metrics). The debit amount for the credit wallet.
+export const runCredits = async (runId: string, ownerId: string): Promise<number> => {
+  const agg = await prisma.workflowNodeRun.aggregate({
+    where: { ownerId, runId },
+    _sum: { totalTokens: true, costUsd: true },
+  });
+  return creditsFromTokens(agg._sum.totalTokens ?? 0) + creditsFromUsd(agg._sum.costUsd ?? 0);
 };
 
 // Per-AGENT rollup across a whole campaign's posts (Atria v2 P0 — the Workspace dashboard's

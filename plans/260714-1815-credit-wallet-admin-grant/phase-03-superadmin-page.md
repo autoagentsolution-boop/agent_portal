@@ -1,6 +1,6 @@
 # Phase 3 — Super-admin page `/superadminatria101`
 
-**Priority:** P1 · **Status:** not started · **Depends on:** Phase 1 (role + repo), Phase 2 (balance read)
+**Priority:** P1 · **Status:** ✅ DONE (2026-07-14, uncommitted) — `middleware-superadmin.ts` (`requireSuperAdmin`→**404** for non-admin), `admin-router.ts` (`GET /admin/tenants`, `POST /admin/grant`, `GET /admin/capability-requests`) mounted `requireAuth→requireSuperAdmin`, `SuperAdminPage.tsx` at `/superadminatria101` (URL-detected in App.tsx, not in nav). Grant flips a 0-balance tenant runnable live. Capability backlog = platform-wide `listAllCapabilityRequests`. Verified 9/9. · **Depends on:** Phase 1 (role + repo), Phase 2 (balance read)
 
 ## Overview
 A hidden, super-admin-only page that does the two super-admin jobs in one place: **grant credits to tenants** and **see Atria's new-node / capability requests** (`mkt_roadmap_demand`).

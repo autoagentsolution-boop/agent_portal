@@ -16,6 +16,7 @@ const SURFACE_LABEL: Record<string, string> = {
 
 export function UsageDashboard({ notify }: Props) {
   const [usage, setUsage] = useState<UsageTotals | null>(null);
+  const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,6 +26,8 @@ export function UsageDashboard({ notify }: Props) {
       if (!r.ok) { notify(`Usage: ${r.error.error}`, 'err'); return; }
       setUsage(r.data);
     });
+    // Remaining wallet balance (credit-wallet Phase 02) — shown alongside cumulative spend below.
+    void api.me().then((r) => { if (r.ok) setBalance(r.data.credits ?? null); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const maxCredits = Math.max(1, ...(usage?.bySurface.map((s) => s.credits) ?? [1]));
@@ -38,6 +41,13 @@ export function UsageDashboard({ notify }: Props) {
           raw tokens and USD on hover for full transparency.
         </p>
       </div>
+
+      {balance !== null && (
+        <div className="usage-balance" style={{ margin: '0.5rem 0 1rem', fontSize: '1.05rem' }}>
+          <span className="muted small">Credits remaining</span>{' '}
+          <strong style={{ color: balance <= 0 ? '#ff6b6b' : undefined }}>◈ {balance.toLocaleString()}</strong>
+        </div>
+      )}
 
       {loading && <div className="muted">Loading…</div>}
 

@@ -13,8 +13,12 @@ import { InstructionEditor } from './components/instruction-editor';
 import { ImpactReport } from './components/impact-report';
 import { CampaignCommandView } from './components/campaign-command-view';
 import { CommandCenterPage } from './components/command-center-page';
+import { SuperAdminPage } from './components/SuperAdminPage';
 import { TopNav } from './components/top-nav';
 import type { Page } from './app-nav';
+
+// Hidden super-admin console route (credit-wallet Phase 03). Detected from the URL on load; never a nav item.
+const SUPERADMIN_PATH = '/superadminatria101';
 import type { WorkspaceSummaryDto } from './api/client';
 import type { DemoMode } from './flow/demo-flow';
 
@@ -22,8 +26,11 @@ import type { DemoMode } from './flow/demo-flow';
 export function App() {
   const auth = useAuth();
   const { toast, show } = useToast();
-  // Command Center is the default landing (Atria v2 P1) — the operating hub, not the chat.
-  const [page, setPage] = useState<Page>('command-center');
+  // Command Center is the default landing (Atria v2 P1) — the operating hub, not the chat. Exception:
+  // a direct hit on the hidden /superadminatria101 URL lands on the super-admin console (server-gated).
+  const [page, setPage] = useState<Page>(
+    typeof window !== 'undefined' && window.location.pathname === SUPERADMIN_PATH ? 'super-admin' : 'command-center',
+  );
   const [activeCampaign, setActiveCampaign] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState<DemoMode>('safe');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -212,7 +219,9 @@ export function App() {
   };
 
   // ── Top-nav data + actions (P1) ────────────────────────────────────────────────────────────────
-  const loadCredits = async () => { const r = await api.getUsage(); if (r.ok) setCredits(r.data.credits ?? null); };
+  // Top-nav pill = remaining WALLET BALANCE (credit-wallet Phase 02), not cumulative spend. /auth/me
+  // returns the live balance; re-read it after each run so the number ticks down as flows debit.
+  const loadCredits = async () => { const r = await api.me(); if (r.ok) setCredits(r.data.credits ?? null); };
   const loadWorkspaces = async () => { const r = await api.listWorkspaces(); if (r.ok) setWorkspaces(r.data); };
 
   // Delete a chat by id (top-nav Chats menu → no event object like the old sidebar row).
@@ -328,6 +337,7 @@ export function App() {
         onNavigate={(p) => { setSelectedRunId(null); if (p !== 'flows') { setActiveCampaign(null); setSelectedPostId(null); } if (p === 'command-center') closeCcChat(); setPage(p); }}
         credits={credits}
         userEmail={auth.user.email}
+        onLogout={() => void auth.logout()}
         workspaces={workspaces}
         onOpenWorkspace={openWorkspaceFromNav}
         onContinueChat={(id) => void selectChat(id)}
@@ -383,6 +393,10 @@ export function App() {
         ) : page === 'instructions' ? (
           <div className="master-home">
             <InstructionEditor scope="workspace" notify={show} />
+          </div>
+        ) : page === 'super-admin' ? (
+          <div className="master-home">
+            <SuperAdminPage notify={show} onCreditsChanged={() => void loadCredits()} />
           </div>
         ) : page === 'impact' ? (
           <div className="master-home atria-home-stack">

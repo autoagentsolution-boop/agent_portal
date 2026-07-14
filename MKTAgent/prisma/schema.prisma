@@ -122,6 +122,9 @@ model User {
   brandVoice   String?    @map("brand_voice")
   brandContext String?    @map("brand_context")
   role        UserRole    @default(owner)
+  // Global super-admin flag (credit-wallet Phase 01). Grants access to /superadminatria101 and
+  // /admin/* endpoints. NOT the per-workspace UserRole above — this is platform-level, one operator.
+  isSuperAdmin Boolean    @default(false) @map("is_super_admin")
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -138,8 +141,31 @@ model User {
   instructions       Instruction[]
   roadmapDemands     RoadmapDemand[]
   memories           UserMemory[]
+  creditLedger       CreditLedger[]
 
   @@map("mkt_user")
+}
+
+// Credit wallet ledger (credit-wallet Phase 01) — append-only source of truth for a tenant's
+// balance. Balance = SUM(delta). Positive deltas = trial/grant (super-admin gives credits);
+// negative = debit (a completed flow run's cost). Ledger-as-truth keeps it auditable; a cached
+// balance column is deferred (YAGNI) — SUM over per-owner rows is cheap at this scale.
+model CreditLedger {
+  id        String   @id @default(uuid()) @db.Uuid
+  ownerId   String   @map("owner_id") @db.Uuid
+  delta     Int      // credits; +grant/+trial, -debit
+  kind      String   // 'trial' | 'grant' | 'debit' | 'adjust'
+  reason    String?  // human note (e.g. "demo grant", "flow run")
+  runId     String?  @map("run_id") @db.Uuid // set on debit rows — idempotency key (one debit per run)
+  grantedBy String?  @map("granted_by") @db.Uuid // super-admin user id on grant rows
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
+  // At most one debit row per run — the idempotency guard for re-entered/resumed runs.
+  @@unique([runId, kind], name: "uq_ledger_run_kind")
+  @@map("mkt_credit_ledger")
 }
 
 // Per-user long-term memory (Atria Core-Intelligence P3) — durable facts Atria recalls across

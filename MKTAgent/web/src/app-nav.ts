@@ -8,4 +8,6 @@ export type Page =
   | 'command-center'
   | 'instructions'
   | 'impact'
-  | 'scheduled';
+  | 'scheduled'
+  // Hidden super-admin console — reachable only by the /superadminatria101 URL, never in the nav.
+  | 'super-admin';

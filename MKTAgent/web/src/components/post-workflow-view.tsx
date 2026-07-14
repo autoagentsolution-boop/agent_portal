@@ -98,7 +98,10 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     setBusy(true);
     try {
       const r = await api.executeRun(run.id);
-      if (!r.ok) { notify(`Execute: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) {
+        if (r.error.status === 402) { notify("You're out of credits — ask your admin to top up, then run again.", 'err'); return; }
+        notify(`Execute: ${r.error.error}`, 'err'); return;
+      }
       // Only optimistically show running when the run actually started (not gated to
       // needs_connection, where no node runs yet).
       setRun(r.data.status === 'running' ? markRunning(r.data, nextRunnableNodeId(r.data.nodes)) : r.data);

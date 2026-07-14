@@ -12,6 +12,7 @@ interface Props {
   onNavigate: (page: Page) => void;
   credits: number | null;
   userEmail: string;
+  onLogout: () => void;
   workspaces: WorkspaceSummaryDto[];
   onOpenWorkspace: (campaignId: string) => void;
   onContinueChat: (chatSessionId: string) => void;
@@ -102,8 +103,9 @@ export function TopNav(props: Props) {
           onExit={() => onNavigate('command-center')}
         />
 
-        <span className="topnav-credit" title="Total credits used">◈ {credits === null ? '—' : credits.toLocaleString()}</span>
+        <span className="topnav-credit" title="Credits remaining">◈ {credits === null ? '—' : credits.toLocaleString()}</span>
         <span className="topnav-user" title={userEmail}>{userEmail}</span>
+        <button className="topnav-item" onClick={props.onLogout} title="Sign out">⎋ <span className="topnav-item-label">Sign out</span></button>
       </div>
     </header>
   );

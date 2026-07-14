@@ -49,3 +49,47 @@ export const recordCapabilityGap = async (
 // All demand rows for an owner (newest first) — the DEV backlog surface. Includes pitched/accepted/requested.
 export const listDemand = (ownerId: string): Promise<RoadmapDemand[]> =>
   prisma.roadmapDemand.findMany({ where: { ownerId }, orderBy: { createdAt: 'desc' } });
+
+// PLATFORM-WIDE capability-request backlog for the super-admin console (credit-wallet Phase 03):
+// every 'requested' gap across ALL tenants, grouped by capability, with request count + tenant reach +
+// first/last seen + the latest drop-in spec. This is the "what to build next" board. Small table, so
+// fetch + reduce in JS rather than a grouped SQL round-trip.
+export interface CapabilityRequestSummary {
+  capabilityId: string;
+  requests: number; // total 'requested' rows for this capability
+  tenants: number; // distinct owners who asked
+  exampleTask: string | null;
+  spec: unknown | null; // latest non-null drop-in spec
+  firstSeen: string;
+  lastSeen: string;
+}
+
+export const listAllCapabilityRequests = async (): Promise<CapabilityRequestSummary[]> => {
+  const rows = await prisma.roadmapDemand.findMany({
+    where: { action: 'requested' },
+    orderBy: { createdAt: 'desc' },
+  });
+  const byCap = new Map<string, { rows: RoadmapDemand[]; owners: Set<string> }>();
+  for (const r of rows) {
+    const g = byCap.get(r.agentId) ?? { rows: [], owners: new Set<string>() };
+    g.rows.push(r);
+    g.owners.add(r.ownerId);
+    byCap.set(r.agentId, g);
+  }
+  return [...byCap.entries()]
+    .map(([capabilityId, g]) => {
+      const spec = g.rows.find((r) => r.spec != null)?.spec ?? null;
+      const example = (spec as { exampleTask?: string } | null)?.exampleTask ?? null;
+      const times = g.rows.map((r) => r.createdAt.getTime());
+      return {
+        capabilityId,
+        requests: g.rows.length,
+        tenants: g.owners.size,
+        exampleTask: example,
+        spec,
+        firstSeen: new Date(Math.min(...times)).toISOString(),
+        lastSeen: new Date(Math.max(...times)).toISOString(),
+      };
+    })
+    .sort((a, b) => b.requests - a.requests);
+};

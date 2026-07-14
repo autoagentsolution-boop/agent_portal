@@ -100,7 +100,10 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
     setBusy(true);
     try {
       const r = await api.executeRun(run.id);
-      if (!r.ok) { notify(`Execute: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) {
+        if (r.error.status === 402) { notify("You're out of credits — ask your admin to top up, then run again.", 'err'); return; }
+        notify(`Execute: ${r.error.error}`, 'err'); return;
+      }
       setRun(r.data); onStatusChange(); notify('Flow executing…');
     } finally { setBusy(false); }
   };

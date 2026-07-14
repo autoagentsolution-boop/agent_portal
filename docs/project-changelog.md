@@ -3,6 +3,30 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-14
+
+### Feat: credit wallet + super-admin grant console (all 3 phases + logout)
+`pivot/video-content-farm`. Plan `plans/260714-1815-credit-wallet-admin-grant`. Turns "credits" from a
+spend-display into a real **wallet** with balance, gating, and a super-admin grant surface. Payments
+still deferred. New-tenant trial = **2000 credits** (user-set). 1 credit = 250 tokens (unchanged).
+- **Ledger (P1)**: new `mkt_credit_ledger` (append-only, balance = SUM(delta); kinds trial/grant/debit/
+  adjust). Idempotency: `@@unique([runId,kind])` = one debit per run (grant/trial rows use runId=null,
+  NULL-distinct). `User.isSuperAdmin` flag. `credit-repo.ts` (getBalance/grantCredits/debitRun/
+  ensureTrialGrant — the trial made race-safe with a tx-scoped `pg_advisory_xact_lock`). Debit fires at
+  a run's TRUE terminal completion, best-effort (a wallet error never fails a completed run). Trial
+  granted idempotently on login. `scripts/set-superadmin.ts` bootstrap.
+- **Gate + UI (P2)**: `executePlannedRun` (+ `/runs/:id/test-run` + the brain's "run it" path) returns
+  **402 `insufficient_credits`** at balance ≤0, ORDERED before the connection gate; chat/planning is
+  never routed here so it stays free. `/auth/me` echoes `credits`(balance) + `isSuperAdmin`. Top-nav
+  pill = remaining balance; Usage page "Credits remaining" line; friendly 402 copy at every execute
+  call-site. **Logout button** wired in the top nav.
+- **Super-admin console (P3)**: `requireSuperAdmin` middleware → **404** for non-admins (surface hidden,
+  not 403). `admin-router.ts`: `GET /admin/tenants`, `POST /admin/grant`, `GET /admin/capability-
+  requests` (platform-wide demand backlog). `SuperAdminPage.tsx` at the hidden `/superadminatria101`
+  route (URL-detected, never in nav).
+- **Verified**: `verify-credit-wallet` 16/16 (incl. concurrent-trial race) + `verify-credit-gating-and-
+  admin-http` 9/9 (live server, real auth/middleware, no LLM/publish spend). Both tsc clean.
+
 ## 2026-07-13
 
 ### Feat: demo-readiness full-fix — Atria brain grounding, email-by-name, voice + strategist UX

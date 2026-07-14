@@ -23,7 +23,9 @@ import {
   setRunStatus,
   setNodeStatus,
   getRunStatusById,
+  runCredits,
 } from '../../db/repos/workflow-run-repo.ts';
+import { debitRun } from '../../db/repos/credit-repo.ts';
 import { getPostByRunId, getPostForOwner, approveReview } from '../../db/repos/post-repo.ts';
 import { platformSupportsAsset } from '../../social/postability.ts';
 import { publishAssetType, distinctAssetTypes, resolvePlatformInput, PostValidationError } from '../../scheduler/resolve-input.ts';
@@ -468,6 +470,19 @@ export const runWorkflow = async (
   }
 
   await setRunStatus(runId, 'completed');
+  // Debit the credit wallet for this run's cost (credit-wallet Phase 01). Idempotent by runId, so a
+  // resumed/re-entered run that completes again charges once. Best-effort: a wallet failure must not
+  // fail an already-completed run — the flow's work is done; a missed debit is recoverable, a false
+  // failure is not. The pre-flight gate (Phase 02) is what actually protects the balance.
+  let debited: number | null = null;
+  try {
+    const credits = await runCredits(runId, ownerId);
+    if (await debitRun(ownerId, credits, runId)) debited = credits;
+  } catch (e) {
+    await logRun('warn', 'wf_credit_debit_failed', { runId, error: String(e instanceof Error ? e.message : e).slice(0, 160) }, ownerId).catch(() => {});
+  }
+  // Success log outside the try: a logging failure here must not mislabel a landed debit as failed.
+  if (debited !== null) await logRun('info', 'wf_credit_debit', { runId, credits: debited }, ownerId).catch(() => {});
   await logRun('info', 'wf_run', { runId, status: 'completed' }, ownerId);
   return { status: 'completed' };
 };

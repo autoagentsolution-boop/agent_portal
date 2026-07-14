@@ -1,6 +1,6 @@
 # Phase 1 — Balance model + super-admin role + debit-on-flow
 
-**Priority:** P0 (foundation) · **Status:** not started
+**Priority:** P0 (foundation) · **Status:** ✅ DONE (2026-07-14, uncommitted) — verify 14/14 green, tsc clean, super-admin bootstrapped for auto.agent.solution@gmail.com. Trial = **2000** (user override).
 
 ## Overview
 Add a real credit **balance** per tenant + an audit **ledger**, a **super-admin** role, a **trial grant** on signup, and **debit** the balance when a flow runs. No gating/UI yet (Phase 2).

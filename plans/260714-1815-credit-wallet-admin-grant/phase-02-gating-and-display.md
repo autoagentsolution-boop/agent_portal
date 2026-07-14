@@ -1,6 +1,6 @@
 # Phase 2 — Gating (block flow at 0, chat free) + balance in UI
 
-**Priority:** P0 · **Status:** not started · **Depends on:** Phase 1
+**Priority:** P0 · **Status:** ✅ DONE (2026-07-14, uncommitted) — 402 gate in `executePlannedRun` + `/test-run` + brain "run it" path; `/auth/me` echoes `credits`(balance)+`isSuperAdmin`; top-nav pill = remaining balance (loadCredits→`api.me()`); Usage page balance line; friendly 402 copy across all 4 execute call-sites. Bonus: **logout button** wired (`TopNav.onLogout`→`auth.logout`). Verified by `verify-credit-gating-and-admin-http` 9/9. · **Depends on:** Phase 1
 
 ## Overview
 Enforce the balance: block starting a FLOW when the tenant can't afford it; keep chat/planning free. Flip the top-right credit number from cumulative SPEND → remaining BALANCE.

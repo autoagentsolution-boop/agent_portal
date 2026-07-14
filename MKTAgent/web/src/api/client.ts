@@ -380,13 +380,44 @@ async function request<T, M = unknown>(path: string, opts: RequestOpts = {}): Pr
 }
 
 // ---- Endpoint helpers (thin, typed) --------------------------------------------
+// isSuperAdmin + credits (remaining wallet balance) are credit-wallet Phase 02 fields, live on /auth/me
+// but not yet in the generated openapi schema → hand-widened at the boundary (same pattern as PostDto).
 export type Me = NonNullable<
   paths['/auth/me']['get']['responses']['200']['content']['application/json']['data']
->;
+> & { isSuperAdmin?: boolean; credits?: number };
+
+// Super-admin console (credit-wallet Phase 03) — routes not in openapi, hand-typed.
+export interface TenantBalanceDto {
+  ownerId: string;
+  email: string;
+  displayName: string | null;
+  isSuperAdmin: boolean;
+  balance: number;
+  granted: number;
+  spent: number;
+  lastActive: string;
+}
+export interface CapabilityRequestDto {
+  capabilityId: string;
+  requests: number;
+  tenants: number;
+  exampleTask: string | null;
+  spec: unknown | null;
+  firstSeen: string;
+  lastSeen: string;
+}
 
 export const api = {
   me: () => request<Me>('/auth/me'),
   logout: () => request<{ loggedOut: boolean }>('/auth/logout', { method: 'POST' }),
+
+  // ---- Super-admin console (credit-wallet Phase 03) — 404 for non-admins ----
+  adminTenants: () => request<TenantBalanceDto[]>('/admin/tenants'),
+  adminGrant: (ownerId: string, credits: number, reason?: string) =>
+    request<{ ownerId: string; granted: number; balanceBefore: number; balance: number }>(
+      '/admin/grant', { method: 'POST', body: { ownerId, credits, ...(reason ? { reason } : {}) } },
+    ),
+  adminCapabilityRequests: () => request<CapabilityRequestDto[]>('/admin/capability-requests'),
 
   parseMasterIntake: (message: string, timezone = Intl.DateTimeFormat().resolvedOptions().timeZone) =>
     request<AgentIntakeDraft>('/agent/intake', { method: 'POST', body: { message, timezone } }),

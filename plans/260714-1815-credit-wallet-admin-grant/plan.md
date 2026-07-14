@@ -12,14 +12,14 @@ Turn "credits" from a **spend display** into a real **balance/wallet** so the su
 - **Gating:** block FLOW execution at balance ≤ 0; **chat/planning stays free** (brain conversational turns are NOT debited/gated).
 - **Balances + grants now, pricing later.**
 - **Admin surface:** hidden in-app page at route `/superadminatria101` (super-admin only).
-- **New tenant starts with a small free trial balance** (proposed 1,000 credits — confirm).
+- **New tenant starts with a free trial balance of 2,000 credits** (user-confirmed 2026-07-14; `TRIAL_CREDITS` in `credit-repo.ts`). Idempotent — granted once on first login, and backfilled to existing tenants on their next login.
 
 ## Phases
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Balance model + super-admin role + debit-on-flow](phase-01-balance-and-debit.md) | ☐ not started |
-| 2 | [Gating (block flow at 0, chat free) + balance in UI](phase-02-gating-and-display.md) | ☐ not started |
-| 3 | [Super-admin page `/superadminatria101` (grant + capability requests)](phase-03-superadmin-page.md) | ☐ not started |
+| 1 | [Balance model + super-admin role + debit-on-flow](phase-01-balance-and-debit.md) | ✅ DONE (verify green, super-admin bootstrapped) |
+| 2 | [Gating (block flow at 0, chat free) + balance in UI](phase-02-gating-and-display.md) | ✅ DONE (402 gate + balance pill/Usage line + logout) |
+| 3 | [Super-admin page `/superadminatria101` (grant + capability requests)](phase-03-superadmin-page.md) | ✅ DONE (requireSuperAdmin→404, admin router, SuperAdminPage) |
 
 ## Key integration points (found)
 - `User` model (`prisma/schema.prisma`) — has `id/email/accountType/defaultLanguage`, **no role/balance**. Add `isSuperAdmin` + credit balance.

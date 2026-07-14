@@ -19,6 +19,7 @@ import { buildConsentUrl, exchangeCodeForIdentity } from '../lib/google-oauth.ts
 import { signSession } from '../lib/auth-jwt.ts';
 import { createSession, revokeSession, sessionTtlMs, SESSION_COOKIE } from '../lib/session.ts';
 import { upsertGoogleUser, getUserById } from '../db/repos/user-repo.ts';
+import { ensureTrialGrant, getBalance } from '../db/repos/credit-repo.ts';
 import { readDriveState, completeDriveConnect } from './drive-connect-router.ts';
 import { env } from '../config/env.ts';
 import { logger } from '../lib/logger.ts';
@@ -91,7 +92,12 @@ authRouter.get(
     try {
       const identity = await exchangeCodeForIdentity(code);
       const user = await upsertGoogleUser(identity);
-      logger.info('auth_login', { userId: user.id, email: user.email });
+      // New-tenant trial (credit-wallet Phase 01): idempotent — grants once on first login, no-op after.
+      const granted = await ensureTrialGrant(user.id).catch((e) => {
+        logger.warn('trial_grant_failed', { userId: user.id, error: String(e).slice(0, 160) });
+        return false;
+      });
+      logger.info('auth_login', { userId: user.id, email: user.email, trialGranted: granted });
 
       // Browser flow (UI_BASE_URL set): opaque session cookie + redirect, no token
       // anywhere the client can read. This is the path the UI uses.
@@ -130,6 +136,8 @@ authRouter.get(
   asyncHandler(async (req, res) => {
     const user = await getUserById(req.userId!);
     if (!user) return fail(res, 404, 'user_not_found');
+    // credits = remaining wallet balance (credit-wallet Phase 02) — the top-nav pill reads this.
+    const credits = await getBalance(user.id).catch(() => 0);
     ok(res, {
       id: user.id,
       email: user.email,
@@ -138,6 +146,8 @@ authRouter.get(
       accountType: user.accountType,
       defaultLanguage: user.defaultLanguage,
       role: user.role,
+      isSuperAdmin: user.isSuperAdmin,
+      credits,
     });
   }),
 );

@@ -298,7 +298,10 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
     setBusy(true);
     try {
       const r = await api.executeRun(run.id);
-      if (!r.ok) { notify(`Chạy flow: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) {
+        if (r.error.status === 402) { notify("You're out of credits — ask your admin to top up, then run the flow again.", 'err'); return; }
+        notify(`Chạy flow: ${r.error.error}`, 'err'); return;
+      }
       if (r.data.status === 'needs_connection') {
         applyRun(r.data);
         notify('Connect a platform before running — open the Connections tab, connect, then run again.', 'err');
@@ -341,7 +344,10 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
     try {
       // A saved flow is a template — clone+run it into a fresh instance, then open THAT instance.
       const r = await api.testRunFlow(run.id);
-      if (!r.ok) { notify(`Run flow: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) {
+        if (r.error.status === 402) { notify("You're out of credits — ask your admin to top up, then run the flow again.", 'err'); return; }
+        notify(`Run flow: ${r.error.error}`, 'err'); return;
+      }
       onOpenFlow(r.data.id);
     } finally { setBusy(false); }
   };
