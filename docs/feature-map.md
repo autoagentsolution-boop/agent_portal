@@ -4,6 +4,16 @@ Living record of features shipped and their real relationships in the app. Each 
 
 ## Features & relationships
 
+### Credit wallet + super-admin grant console (`6c753be`)
+Turns "credits" from a spend-DISPLAY into a real **balance/wallet**: a tenant has a balance, a super-admin grants credits, and flow execution is blocked when the balance hits zero. Payments still deferred. New-tenant trial = 2000 credits.
+- **Ledger-as-truth:** new `mkt_credit_ledger` (`db/repos/credit-repo.ts`) — balance = SUM(delta), kinds trial/grant/debit/adjust. **Reuses the existing credit math** (`cost/credits.ts` `creditsFromTokens`/`creditsFromUsd`) unchanged — the wallet is a NEW layer ON TOP of the display anchor, not a rework. Idempotency: `@@unique([runId,kind])` = exactly one debit per run (grant/trial rows use `runId=null`, NULL-distinct); the trial is race-hardened with a tx-scoped `pg_advisory_xact_lock`.
+- **Debit seam:** `runCredits()` (`db/repos/workflow-run-repo.ts`) aggregates a run's node-run tokens+media → `debitRun` at the executor's TRUE terminal completion (`executor/workflow-executor.ts`, after `setRunStatus('completed')`). Best-effort: a wallet failure never fails an already-completed run. The concept-gate early-return (run→planned) correctly does NOT debit. Chat/brain turns never debit — only the flow executor.
+- **Gate (depends on the balance):** `executePlannedRun` + `/runs/:id/test-run` + the brain's `execute_workflow` "run it" path (`api/orchestration-router.ts`) return **402 `insufficient_credits`** at balance ≤0, ORDERED before the existing connection gate (§11.6) — a broke tenant is told to top up rather than sent to connect an account. `POST /orchestration/runs` conversational turns are never gated (loss-leader).
+- **Identity echo:** `GET /auth/me` (`api/auth-router.ts`) now returns `credits`(=balance) + `isSuperAdmin` (new `User.isSuperAdmin` flag). Top-nav pill flipped from cumulative-spend (`GET /orchestration/usage`) → remaining balance (`web/App.tsx` `loadCredits`→`api.me()`); Usage page adds a balance line; **logout** button wired (`top-nav.tsx`→`useAuth.logout`→existing `POST /auth/logout`).
+- **Super-admin console:** `requireSuperAdmin` (`api/middleware-superadmin.ts`) → **404** for non-admins (surface hidden). `api/admin-router.ts` mounts `/admin/tenants`, `/admin/grant`, `/admin/capability-requests` behind `requireAuth→requireSuperAdmin`. Capability backlog **REUSES the capability-gap mechanism** (`roadmap-demand-repo.listAllCapabilityRequests` over `mkt_roadmap_demand action='requested'` — the same rows the brain's `flag_capability_gap` writes) so the same super-admin who grants credits sees what to build next. `SuperAdminPage.tsx` at the hidden `/superadminatria101` route (URL-detected in App.tsx, never in nav).
+- **Bootstrap:** `scripts/set-superadmin.ts <email>` sets the flag (run for auto.agent.solution@gmail.com).
+- **Guarded by:** `verify-credit-wallet` (16/16, incl. concurrent-trial race) + `verify-credit-gating-and-admin-http` (9/9, live server + real auth/middleware, stops at the connection gate so no LLM/publish spend).
+
 ### Command Center: 2-tier grouped agent constellation (`93d3cdd`)
 The flat ~17-node ring was cluttered; now Atria → group → agent renders as a collapsible hierarchy, default collapsed to 5 group nodes.
 - **Taxonomy (display metadata ONLY):** re-split `agent-groups.ts` from 3 groups (the old "Action" held 8) into 5 phase-based groups — 🧠 Intelligence(4), 🎨 Creative(5), 📢 Delivery(2), 📊 Insight & Growth(4), ⚙️ Core(2: scheduler+summarize). Each runnable agent + vision agent reassigned. **Zero flow impact:** node selection keys on `produces`/`requires` (C1) and the thinking-budget policy (P6) keys on `agentId` — neither reads `group`, so golden 23/23 unaffected.
@@ -334,3 +344,39 @@ Two CC quality-of-life additions on top of the resume-cards feature.
     - Deterministic signal = the PLANNER/REGISTRY failure: `propose_task` (atria-tools) now accepts any capability id and, when `TASK_CAPABILITIES` has no producer, auto-logs the request instead of depending on the brain to separately call `flag_capability_gap` (which it skips ~always).
     - Complements the composable planner (`workflow-planner` backward-chaining): "no node produces this artifact" is exactly the capability-gap the registry already models; this turns that into a recorded demand signal for the DEV backlog.
     - Open follow-up: Case 2 (a user 👎/dislike on a proposed flow → record "wrong flow" demand) not yet built.
+- **docs(feature-map): capability-request recording relationships** (02aec09)
+  - `docs/feature-map.md`
+- **docs(plan): credit wallet + super-admin grant system plan** (2c5ecdc)
+  - `plans/260714-1815-credit-wallet-admin-grant/phase-01-balance-and-debit.md`
+  - `plans/260714-1815-credit-wallet-admin-grant/phase-02-gating-and-display.md`
+  - `plans/260714-1815-credit-wallet-admin-grant/phase-03-superadmin-page.md`
+  - `plans/260714-1815-credit-wallet-admin-grant/plan.md`
+- **feat(credits): real credit wallet + gating + super-admin grant console** (6c753be)
+  - `MKTAgent/prisma/migrations/20260714133747_credit_wallet_and_superadmin/migration.sql`
+  - `MKTAgent/prisma/schema.prisma`
+  - `MKTAgent/src/api/admin-router.ts`
+  - `MKTAgent/src/api/auth-router.ts`
+  - `MKTAgent/src/api/middleware-superadmin.ts`
+  - `MKTAgent/src/api/orchestration-router.ts`
+  - `MKTAgent/src/api/verify-credit-gating-and-admin-http.ts`
+  - `MKTAgent/src/db/repos/credit-repo.ts`
+  - `MKTAgent/src/db/repos/roadmap-demand-repo.ts`
+  - `MKTAgent/src/db/repos/verify-credit-wallet.ts`
+  - `MKTAgent/src/db/repos/workflow-run-repo.ts`
+  - `MKTAgent/src/orchestration/executor/workflow-executor.ts`
+  - `MKTAgent/src/scripts/set-superadmin.ts`
+  - `MKTAgent/src/server.ts`
+  - `MKTAgent/web/src/App.tsx`
+  - `MKTAgent/web/src/api/client.ts`
+  - `MKTAgent/web/src/app-nav.ts`
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+  - `MKTAgent/web/src/components/SuperAdminPage.tsx`
+  - `MKTAgent/web/src/components/UsageDashboard.tsx`
+  - `MKTAgent/web/src/components/post-workflow-view.tsx`
+  - `MKTAgent/web/src/components/saved-flow-detail.tsx`
+  - `MKTAgent/web/src/components/top-nav.tsx`
+  - `docs/project-changelog.md`
+  - `plans/260714-1815-credit-wallet-admin-grant/phase-01-balance-and-debit.md`
+  - `plans/260714-1815-credit-wallet-admin-grant/phase-02-gating-and-display.md`
+  - `plans/260714-1815-credit-wallet-admin-grant/phase-03-superadmin-page.md`
+  - `plans/260714-1815-credit-wallet-admin-grant/plan.md`
