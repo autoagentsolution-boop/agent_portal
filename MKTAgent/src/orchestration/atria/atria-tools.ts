@@ -8,7 +8,7 @@ import { workspaceMetrics } from '../master/report-answer.ts';
 import { recallForMessage } from '../../memory/user-memory.ts';
 import { rememberFreeform, type MemoryKind } from '../../db/repos/user-memory-repo.ts';
 import { requirementAnalyzer } from '../master/requirement-analyzer.ts';
-import { emailOutputs } from '../master/deterministic-analyzer.ts';
+import { emailOutputs, parseRemovals } from '../master/deterministic-analyzer.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
 import { mergeGoals, applyRemovals } from '../master/goal-merge.ts';
 import { contentLanguageFor } from '../master/detect-language.ts';
@@ -109,7 +109,8 @@ export const TOOL_DECLARATIONS = [
   {
     name: 'propose_workflow',
     description:
-      'Use ONLY when the user actually wants to CREATE or RUN something that needs the agent pipeline — a social post/campaign, a video, an email to send, or a research deliverable. Assembles a flow of agent nodes and shows a flow card of which agents will run. It does NOT execute anything; the user reviews and approves first.',
+      'Use when the user wants to CREATE or RUN something that needs the agent pipeline — a social post/campaign, a video, an email to send, or a research deliverable. Assembles a flow of agent nodes and shows a flow card of which agents will run. It does NOT execute anything; the user reviews and approves first. '
+      + 'ALSO call this whenever a flow card is already on screen and the user asks to MODIFY the plan — add a step ("add a video"), REMOVE a step ("remove the video and storyboard", "bỏ infographic"), or change platforms/scope. A refinement MUST go through this tool to actually re-plan: describe the FULL updated goal in goal_description AND state the removal plainly (e.g. "... but WITHOUT a video or storyboard"). Do NOT merely acknowledge a change in words — if you skip this call, the plan on screen stays unchanged and you will have lied to the user about editing it.',
     parameters: {
       type: 'object',
       properties: {
@@ -272,7 +273,15 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         // refinements silently no-op'd while the model still narrated "I removed it" (BUG-1). Prior is left
         // undefined so the goal parse stays byte-identical to the old analyze() path; removals come from the
         // message (LLM or regex parseRemovals) and are applied AFTER the additive merge below.
-        const { goal: analyzed, removals } = await requirementAnalyzer.analyzeWithRemovals(str(args.goal_description) || ctx.message, undefined, ctx.ownerId, ctx.memoryContext, ctx.instructions);
+        const { goal: analyzed, removals: analyzedRemovals } = await requirementAnalyzer.analyzeWithRemovals(str(args.goal_description) || ctx.message, undefined, ctx.ownerId, ctx.memoryContext, ctx.instructions);
+        // Removal intent is read from BOTH the goal_description AND the user's raw message — the brain often
+        // passes only the positive goal in goal_description, so a "remove the video" refine would be lost if
+        // we only looked there. parseRemovals(ctx.message) catches it from the user's actual words. Union.
+        const msgRemovals = parseRemovals(ctx.message);
+        const removals = {
+          disableOutputs: [...new Set([...analyzedRemovals.disableOutputs, ...msgRemovals.disableOutputs])],
+          dropPlatforms: [...new Set([...analyzedRemovals.dropPlatforms, ...msgRemovals.dropPlatforms])],
+        } as typeof analyzedRemovals;
         // The BRAIN (LLM) declares the intent KIND — 'email' (a personal message SENT to a person) vs
         // 'marketing' (a social post / campaign). The regex analyzer only extracts slots; it must NOT decide
         // the TYPE (letting it guess is what mis-routed a birthday greeting into a 5-platform campaign, and
