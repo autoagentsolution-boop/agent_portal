@@ -14,7 +14,7 @@ import { atriaBrainSystemPrompt } from '../prompts/atria-brain-prompt.ts';
 import { TOOL_DECLARATIONS, dispatchTool, type ToolContext } from './atria-tools.ts';
 import { getBrainCache, invalidateBrainCache } from './atria-brain-cache.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
-import { detectLanguage } from '../master/detect-language.ts';
+import { detectLanguage, languageName } from '../master/detect-language.ts';
 import { BRAIN_THINKING_BUDGET } from '../thinking-budget.ts';
 import { logger } from '../../lib/logger.ts';
 import type { PriorMessage } from '../master/conversation-author.ts';
@@ -145,6 +145,17 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
   if (input.instructions?.trim()) preamble.push({ text: input.instructions.trim() });
   if (input.memoryContext?.trim()) preamble.push({ text: input.memoryContext.trim() });
   if (input.voice) preamble.push({ text: '(The user is speaking by voice — reply in 1–2 short, natural spoken sentences. No lists or markdown.)' });
+  // Reply-language pin (recurring bug): the memory/Instructions blocks above are often in the user's
+  // saved language (e.g. Vietnamese), and the model drifts to THAT language even when the user's actual
+  // message is in another (e.g. English). The cached system-prompt LANGUAGE rule loses to the closer,
+  // bulkier context. So restate it HERE, adjacent to the message and naming the detected language, so it
+  // wins. A confident script detection names the language; a Latin/undetermined message just forbids
+  // mirroring the context. This is the LAST preamble item — closest to the user's words.
+  const msgLang = detectLanguage(input.message);
+  const namedLang = languageName(msgLang);
+  preamble.push({ text: namedLang
+    ? `(CRITICAL: Write your entire reply in ${namedLang} — the language of the user's message below. The background context above may be in a different language; IGNORE that for your language choice.)`
+    : `(CRITICAL: Write your entire reply in the SAME language the user wrote their message below in. The background context above may be in a different language such as Vietnamese — do NOT mirror the context; mirror the user's message. If their message is in English, reply in English.)` });
   const userParts = [...preamble, { text: input.message }];
   const contents: GeminiContent[] = [...historyContents(input.prior ?? []), { role: 'user', parts: userParts }];
   const tools: string[] = [];
