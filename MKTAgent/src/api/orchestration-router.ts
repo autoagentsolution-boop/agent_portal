@@ -73,6 +73,8 @@ import { buildLeadAwarenessNote } from '../leads/lead-readiness.ts';
 import { detectCampaignIntent } from '../orchestration/master/campaign-intent.ts';
 import { createCampaignFromFlow } from '../orchestration/master/campaign-from-flow.ts';
 import { parsePlatforms } from '../orchestration/master/deterministic-analyzer.ts';
+import { mergeGoals, applyRemovals } from '../orchestration/master/goal-merge.ts';
+import { requirementAnalyzer } from '../orchestration/master/requirement-analyzer.ts';
 import { resolveConnections } from '../connectors/runtime/connection-resolver.ts';
 import type { RequiredActionDto } from './schemas.ts';
 
@@ -231,6 +233,36 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   // (planned/clarification outcome → flow card + approval gate). Marketing is no longer the default
   // frame; it's one tool the brain invokes only when a task actually needs a capability.
   const existingPreExec = existing && existing.kind !== 'template' && PRE_EXEC.has(existing.status) ? existing : null;
+
+  // Deterministic refine (BUG-1): when the message came from the plan's "Refine" box (the UI knows a flow
+  // card is on screen and the user is editing IT — an explicit signal, NOT a regex guess at intent), re-plan
+  // the run in place directly. The reasoning brain is unreliable for edits here — it frequently just replies
+  // "I'll propose the revised plan shortly" and never calls propose_workflow, so the DAG silently stays
+  // unchanged while the words claim an edit. The delta (add + remove) is analyzed by the SAME LLM analyzer
+  // propose_workflow uses (analyzeWithRemovals) — so no regex intent-classification is reintroduced; the UI
+  // supplies the "this is a refinement" fact, and the analyzer supplies WHAT changed.
+  if (body.refine && existingPreExec && existingPreExec.status === 'planned') {
+    const prior = goalSpec.parse(existingPreExec.goal);
+    // Analyze this turn as a fresh DELTA (no prior context) + removals — identical to what propose_workflow
+    // does, then merge onto the prior goal. The analyzer (LLM, with a regex fallback) decides WHAT changed;
+    // the UI already told us it's a refinement.
+    const { goal: delta, removals } = await requirementAnalyzer.analyzeWithRemovals(body.message, undefined, req.userId!, null, null);
+    const o = delta.outputs;
+    const structuralChange = removals.disableOutputs.length > 0 || removals.dropPlatforms.length > 0
+      || delta.platforms.length > 0 || o.needsVideo || o.needsStoryboard || o.needsInfographic
+      || o.needsIdeation || o.needsStrategy || o.needsResearch || Boolean((delta.slots.product ?? '').trim());
+    // Only short-circuit on a real edit. A non-edit typed in the refine box (a question, "looks good") has
+    // no structural change → fall through to the brain so it answers/converses instead of re-planning.
+    if (structuralChange) {
+      const merged = applyRemovals(mergeGoals(prior, delta), removals);
+      const outcome = masterAgent.planFromGoal(merged, { skipClarification: true });
+      const { questions } = await applyOutcomeToRun(existingPreExec.id, req.userId!, merged, outcome);
+      const assistantMessage = await recordTurn(sessionId, body.message, outcome, req.userId!, null);
+      logger.info('wf_refine_applied', { runId: existingPreExec.id, steps: outcome.status === 'planned' ? outcome.plan.nodes.length : null });
+      res.status(201);
+      return respondRun(res, existingPreExec.id, req.userId!, { questions, assistantMessage });
+    }
+  }
 
   // Recall (P3): durable facts about this user — fed to the brain's memory tool AND the marketing
   // analyzer inside propose_workflow so a known product/brand/audience pre-fills instead of re-asking.

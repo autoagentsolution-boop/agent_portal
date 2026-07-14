@@ -240,6 +240,10 @@ export const createRunBody = z.object({
   // Voice mode: the reply will be read aloud, so the brain keeps it to 1-2 short spoken sentences
   // (shorter reply → faster TTS → less perceived delay).
   voice: z.boolean().optional(),
+  // Plan refinement: set by the UI when the message came from a plan card's "Refine" box (an explicit
+  // "edit the flow on screen" signal). The router then re-plans the run in place deterministically instead
+  // of leaving it to the brain's discretion (which is unreliable for edits, esp. node removals).
+  refine: z.boolean().optional(),
 });
 export type CreateRunBody = z.infer<typeof createRunBody>;
 

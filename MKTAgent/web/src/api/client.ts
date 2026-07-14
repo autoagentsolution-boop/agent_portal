@@ -476,8 +476,8 @@ export const api = {
   publishNow: (id: string) => request<PostDto>(`/posts/${id}/publish-now`, { method: 'POST' }),
 
   // ---- Orchestration (M1 goal-based agent workflows) ----
-  createRun: (message: string, chatSessionId?: string, opts?: { voice?: boolean }) =>
-    request<WorkflowRunDto>('/orchestration/runs', { method: 'POST', body: { message, ...(chatSessionId ? { chatSessionId } : {}), ...(opts?.voice ? { voice: true } : {}) } }),
+  createRun: (message: string, chatSessionId?: string, opts?: { voice?: boolean; refine?: boolean }) =>
+    request<WorkflowRunDto>('/orchestration/runs', { method: 'POST', body: { message, ...(chatSessionId ? { chatSessionId } : {}), ...(opts?.voice ? { voice: true } : {}), ...(opts?.refine ? { refine: true } : {}) } }),
   clarifyRun: (id: string, answers: Record<string, string | string[]>) =>
     request<WorkflowRunDto>(`/orchestration/runs/${id}/clarify`, { method: 'POST', body: { answers } }),
   // Save a planned run as a named Saved Flow (chat "Approve" → name + redirect).

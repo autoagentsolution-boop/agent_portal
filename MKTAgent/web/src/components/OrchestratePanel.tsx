@@ -211,8 +211,12 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
     if (trimmed.length < 3) { notify('Describe your goal first', 'err'); return; }
     setInput(''); setPending(trimmed); setBusy(true);
     try {
+      // A submit while a PLANNED flow card is on screen is a plan refinement (this box is the "Refine the
+      // plan" box) — tell the backend so it re-plans deterministically instead of leaving the edit to the
+      // brain's discretion (which is unreliable for node removals).
+      const isRefine = Boolean(run && run.nodes.length > 0 && run.status === 'planned');
       // Voice mode → tell the backend so Atria keeps the (spoken) reply short (faster TTS, less delay).
-      const r = await api.createRun(trimmed, sessionId ?? undefined, { voice: voiceModeRef.current });
+      const r = await api.createRun(trimmed, sessionId ?? undefined, { voice: voiceModeRef.current, refine: isRefine });
       if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
       push({ role: 'user', content: trimmed });
       // Read-intent ("read the report", "how are campaigns going?") → offer to read Atria's reply
