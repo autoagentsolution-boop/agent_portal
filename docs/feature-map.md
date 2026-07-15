@@ -4,6 +4,29 @@ Living record of features shipped and their real relationships in the app. Each 
 
 ## Features & relationships
 
+### Multi-channel nurture nodes — DM / greeting / comment-capture (DRY-RUN scaffold, `d789bfd`)
+Extends nurture beyond email with three composable node areas, all built as REAL code but fail-closed to **DRY-RUN** (no live credentials exist; a real send needs an explicit token + an off-by-default `ENABLE_LIVE_*` flag).
+- **DM node** (`src/messaging/`): `dm_writer`→`dm_agent` pair **mirrors the email node, NOT the publisher** — `requiresConnection:false` with connectivity checked inside the runner, because messaging credentials aren't `SocialPlatform` tokens. One pair fans to whatsapp/telegram/zalo via an adapter registry (`sendDm`); `isLiveDmSend(channel,hasToken)` is the DRY-RUN guard. New `MessagingChannel` enum (SEPARATE from `SocialPlatform`) + `DmContact`/`DmMessage` (phone/handle encrypted like `Lead` PII). Opt-in refusal is a hard gate. Telegram `/start` webhook.
+- **Greeting node**: `greeting_writer`→`greeting_agent` **reuses the existing social adapters + `invokeAction`** (kill-switch/idempotency via the same `external_action_audit_log` the publisher uses — no new table). Adds ADDITIVE `SocialAdapter.mention?/reply?` per each platform's real API limit (X reply live / mention pre-check-degrade; Threads both; FB mention-tag only; IG unsupported). Central DRY-RUN gate `ENABLE_LIVE_GREETING_SEND`.
+- **Comment-capture hardening**: routes a Meta webhook (`meta-webhook.ts`, `X-Hub-Signature-256` verified, raw-body-safe) into the SAME `captureLead` chokepoint the 30-min poller uses (webhook+poller dedupe to one). `Lead.email` now nullable + `platform`/`platformUserId`/`platformHandle` → **handle-only leads** = the bridge that makes captured commenters valid nurture/DM/greeting targets. X gated behind `ENABLE_X_LEAD_CAPTURE` (free tier = clean no-op); LinkedIn degrades gracefully.
+- **Relationship:** all three plug into the shipped generic scheduler node (`TERMINAL_ACTIONS`) for timed nurture, and target the leads produced by comment-capture. Node wiring follows the same recipe as email/summarize/security (agent-types + workflow-plan enum + registry + runners + artifact-schemas + planner splice). Guarded by `verify-dm-node`, `verify-greeting-node`, `verify-comment-capture` (all DRY, 0 live calls).
+
+### Lead-nurture agent — two-way, human-gated (`e4e8f5c`)
+Turns captured leads from dead rows into an active email relationship: a proactive template drip AND reactive reply handling, with **human approval before EVERY send** (fail-closed). All flags default OFF.
+- **Reuses the validated send path** `email_writer→scheduler→email_agent` — each nurture touch/reply IS one such run; the scheduler park gate IS the "approve each touch." NEW work = state + reply-ingestion + a light brain.
+- **Drip state machine** (`src/nurture/`): `LeadNurtureThread`/`NurtureTouch`, sequence day 0/3/6 (`buildSequence`), atomic-claim driver cron; `advanceOneTouch` polls the parked run's `email_result` to advance. Enroll toggle + `User.nurture*` settings.
+- **Reply loop:** adds `gmail.readonly` scope (users re-consent); `sendGmailAs` now threads (In-Reply-To/References/threadId) + returns ids; `InboundReply` (body encrypted); poller mirrors `comment-poller`.
+- **Nurture brain** (`nurture-brain.ts`): a Gemini function-calling loop mirroring `atria-brain` — classify reply → draft → set state → escalate; **budget-capped** (reuses the P6 thinking-budget policy), product-grounded, fail-closed to escalate on unverifiable price/promise, prompt-injection-hardened (reply = DATA). Opt-out is deterministic (regex before the LLM) + GLOBAL (`NurtureSuppression` checked at enroll + email_agent pre-send + the legacy email panel).
+- **Approval UX:** `nurture-router.ts` + Nurture Inbox (Command-Center `surface:'nurture'`) — approve/edit(`to` never editable)/reject; guardrails (daily-cap, signed `List-Unsubscribe`). Approve calls `runWorkflow({approveNodeId})` directly (NOT the HTTP approve-node route, whose scheduler branch rejects now-instants).
+- **Relationship:** consumes leads from the lead-collector (incl. the new handle-only leads once they have an email); every send rides the same approval gate + credit-debit path as marketing flows; guarded by `verify-nurture-drip`/`-reply-ingestion`/`-brain`/`-e2e` (every send traces to an approval, 0 real sends).
+
+### Gate-after-content + Data Guard chunking + recipient-carry (bug batch, `9f915fa`)
+Five correctness/UX fixes from the observed browser test.
+- **Gate-after-content (BUG-3):** the connection gate no longer parks the whole DAG at `needs_connection` before generating anything — `executePlannedRun`/`test-run` now DEFER the pre-gate when the plan produces a reviewable draft (any node not `requiresConnection` → concept parks at the selection gate), and the executor RE-GATES connection at the publisher boundary (parks `needs_connection` instead of letting `runPublisher` throw). `respondRun` recomputes `requiredActions` so the connect prompt still surfaces. **Un-connected tenants can now review a draft pre-connect** — the message/behavior finally agree.
+- **Data Guard full-document coverage (>40k):** `runSecurity` scans the WHOLE document in windows (fail-closed per window) and concatenates masked output — no tail silently dropped; `runSummarize` map-reduces when the masked text exceeds one window. Extends the shipped Data Guard node, not a rework.
+- **Recipient-carry (S9):** the brain seeds `resolvedLead` from the prior turn's goal so it stops re-asking "who to?" across turns.
+- **UI:** calendar slot fields wrap instead of truncating; the document-attach control now appears on the landing view too (reusing the existing handler).
+
 ### Credit wallet + super-admin grant console (`6c753be`)
 Turns "credits" from a spend-DISPLAY into a real **balance/wallet**: a tenant has a balance, a super-admin grants credits, and flow execution is blocked when the balance hits zero. Payments still deferred. New-tenant trial = 2000 credits.
 - **Ledger-as-truth:** new `mkt_credit_ledger` (`db/repos/credit-repo.ts`) — balance = SUM(delta), kinds trial/grant/debit/adjust. **Reuses the existing credit math** (`cost/credits.ts` `creditsFromTokens`/`creditsFromUsd`) unchanged — the wallet is a NEW layer ON TOP of the display anchor, not a rework. Idempotency: `@@unique([runId,kind])` = exactly one debit per run (grant/trial rows use `runId=null`, NULL-distinct); the trial is race-hardened with a tx-scoped `pg_advisory_xact_lock`.
@@ -380,3 +403,213 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `plans/260714-1815-credit-wallet-admin-grant/phase-02-gating-and-display.md`
   - `plans/260714-1815-credit-wallet-admin-grant/phase-03-superadmin-page.md`
   - `plans/260714-1815-credit-wallet-admin-grant/plan.md`
+- **docs(feature-map): credit wallet + super-admin console relationships** (de16d23)
+  - `docs/feature-map.md`
+- **fix: gate-after-content, Data Guard chunking, recipient-carry, calendar + attach** (9f915fa)
+  - `MKTAgent/src/api/orchestration-router.ts`
+  - `MKTAgent/src/api/verify-credit-gating-and-admin-http.ts`
+  - `MKTAgent/src/orchestration/atria/atria-brain.ts`
+  - `MKTAgent/src/orchestration/executor/agent-runners.ts`
+  - `MKTAgent/src/orchestration/executor/workflow-executor.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
+  - `MKTAgent/src/orchestration/verify-summarize-node.ts`
+  - `MKTAgent/web/src/App.tsx`
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+  - `MKTAgent/web/src/components/content-calendar.tsx`
+  - `MKTAgent/web/src/styles.css`
+- **feat(nurture): two-way human-gated lead-nurture agent** (759ab22)
+  - `FEATURES.md`
+  - `FEATURES2.md`
+  - `MKTAgent/.env.example`
+  - `MKTAgent/prisma/migrations/20260715064909_nurture_threads/migration.sql`
+  - `MKTAgent/prisma/migrations/20260715070741_nurture_replies/migration.sql`
+  - `MKTAgent/prisma/migrations/20260715072447_nurture_brain/migration.sql`
+  - `MKTAgent/prisma/migrations/20260715075719_nurture_settings/migration.sql`
+  - `MKTAgent/prisma/migrations/20260715083349_dm_nurture/migration.sql`
+  - `MKTAgent/prisma/migrations/20260715091730_lead_handle_only/migration.sql`
+  - `MKTAgent/prisma/schema.prisma`
+  - `MKTAgent/src/api/email-router.ts`
+  - `MKTAgent/src/api/leads-router.ts`
+  - `MKTAgent/src/api/nurture-mappers.ts`
+  - `MKTAgent/src/api/nurture-router.ts`
+  - `MKTAgent/src/assets/drive-client.ts`
+  - `MKTAgent/src/config/env.ts`
+  - `MKTAgent/src/db/repos/lead-repo.ts`
+  - `MKTAgent/src/db/repos/post-repo.ts`
+  - `MKTAgent/src/db/repos/user-repo.ts`
+  - `MKTAgent/src/email/gmail-send.ts`
+  - `MKTAgent/src/leads/backfill-lead-pii.ts`
+  - `MKTAgent/src/leads/normalize.ts`
+  - `MKTAgent/src/leads/notify.ts`
+  - `MKTAgent/src/leads/service.ts`
+  - `MKTAgent/src/leads/sources/comment-fetchers/linkedin.ts`
+  - `MKTAgent/src/leads/sources/comment-fetchers/meta.ts`
+  - `MKTAgent/src/leads/sources/comment-fetchers/threads.ts`
+  - `MKTAgent/src/leads/sources/comment-fetchers/x.ts`
+  - `MKTAgent/src/leads/sources/comment-poller.ts`
+  - `MKTAgent/src/leads/sources/meta-webhook.ts`
+  - `MKTAgent/src/leads/sources/verify-comment-capture.ts`
+  - `MKTAgent/src/leads/verify-leads-comments.ts`
+  - `MKTAgent/src/messaging/dm-runners.ts`
+  - `MKTAgent/src/messaging/index.ts`
+  - `MKTAgent/src/messaging/opt-in-repo.ts`
+  - `MKTAgent/src/messaging/telegram-webhook-router.ts`
+  - `MKTAgent/src/messaging/telegram.ts`
+  - `MKTAgent/src/messaging/types.ts`
+  - `MKTAgent/src/messaging/verify-dm-node.ts`
+  - `MKTAgent/src/messaging/whatsapp.ts`
+  - `MKTAgent/src/messaging/zalo.ts`
+  - `MKTAgent/src/nurture/decision-schema.ts`
+  - `MKTAgent/src/nurture/enroll.ts`
+  - `MKTAgent/src/nurture/gmail-read.ts`
+  - `MKTAgent/src/nurture/guardrails.ts`
+  - `MKTAgent/src/nurture/nurture-brain-prompt.ts`
+  - `MKTAgent/src/nurture/nurture-brain.ts`
+  - `MKTAgent/src/nurture/nurture-cron.ts`
+  - `MKTAgent/src/nurture/nurture-reply-cron.ts`
+  - `MKTAgent/src/nurture/nurture-reply-poller.ts`
+  - `MKTAgent/src/nurture/nurture-runner.ts`
+  - `MKTAgent/src/nurture/nurture-thread-repo.ts`
+  - `MKTAgent/src/nurture/nurture-tools.ts`
+  - `MKTAgent/src/nurture/reply-repo.ts`
+  - `MKTAgent/src/nurture/sequence.ts`
+  - `MKTAgent/src/nurture/verify-nurture-brain.ts`
+  - `MKTAgent/src/nurture/verify-nurture-drip.ts`
+  - `MKTAgent/src/nurture/verify-nurture-e2e.ts`
+  - `MKTAgent/src/nurture/verify-reply-ingestion.ts`
+  - `MKTAgent/src/orchestration/executor/agent-runners.ts`
+  - `MKTAgent/src/orchestration/master/deterministic-analyzer.ts`
+  - `MKTAgent/src/orchestration/master/workflow-planner.ts`
+  - `MKTAgent/src/orchestration/registry/agent-registry.ts`
+  - `MKTAgent/src/orchestration/registry/agent-types.ts`
+  - `MKTAgent/src/orchestration/registry/vision-agents.ts`
+  - `MKTAgent/src/orchestration/schemas/artifact-schemas.ts`
+  - `MKTAgent/src/orchestration/schemas/goal-spec.ts`
+  - `MKTAgent/src/orchestration/schemas/workflow-plan.ts`
+  - `MKTAgent/src/orchestration/verify-email-node.ts`
+  - `MKTAgent/src/server.ts`
+  - `MKTAgent/src/social/facebook.ts`
+  - `MKTAgent/src/social/greeting.ts`
+  - `MKTAgent/src/social/instagram.ts`
+  - `MKTAgent/src/social/threads.ts`
+  - `MKTAgent/src/social/types.ts`
+  - `MKTAgent/src/social/verify-greeting-node.ts`
+  - `MKTAgent/src/social/x.ts`
+  - `MKTAgent/web/src/api/client.ts`
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+  - `MKTAgent/web/src/components/nurture-inbox-panel.tsx`
+  - `MKTAgent/web/src/components/nurture-settings-panel.tsx`
+  - `MKTAgent/web/src/components/nurture-thread-timeline.tsx`
+  - `docs/feature-map.md`
+  - `plans/260710-1132-p5-design-neural/plan.md`
+  - `plans/260713-1251-lead-nurture-agent/phase-01-nurture-state-and-drip-engine.md`
+  - `plans/260713-1251-lead-nurture-agent/phase-02-gmail-read-and-reply-ingestion.md`
+  - `plans/260713-1251-lead-nurture-agent/phase-03-nurture-brain-and-conversation.md`
+  - `plans/260713-1251-lead-nurture-agent/phase-04-approval-inbox-guardrails-verify.md`
+  - `plans/260713-1251-lead-nurture-agent/plan.md`
+  - `plans/260713-1251-multichannel-nurture-nodes/decision-checklist.md`
+  - `plans/260713-1251-multichannel-nurture-nodes/phase-01-dm-nurture-nodes.md`
+  - `plans/260713-1251-multichannel-nurture-nodes/phase-02-wall-greeting-engagement-nodes.md`
+  - `plans/260713-1251-multichannel-nurture-nodes/phase-03-lead-capture-extension.md`
+  - `plans/260713-1251-multichannel-nurture-nodes/plan.md`
+  - `plans/260713-1251-multichannel-nurture-nodes/research-synthesis.md`
+  - `plans/reports/debugger-260713-1251-atria-campaign-vs-flow-confusion.md`
+  - `plans/reports/researcher-260713-1251-dm-nurture-apis.md`
+  - `plans/reports/researcher-260713-1251-wall-post-and-comment-capture-apis.md`
+- **feat(nurture): two-way human-gated lead-nurture agent** (e4e8f5c)
+  - `MKTAgent/.env.example`
+  - `MKTAgent/prisma/migrations/20260715064909_nurture_threads/migration.sql`
+  - `MKTAgent/prisma/migrations/20260715070741_nurture_replies/migration.sql`
+  - `MKTAgent/prisma/migrations/20260715072447_nurture_brain/migration.sql`
+  - `MKTAgent/prisma/migrations/20260715075719_nurture_settings/migration.sql`
+  - `MKTAgent/prisma/schema.prisma`
+  - `MKTAgent/src/api/leads-router.ts`
+  - `MKTAgent/src/api/nurture-mappers.ts`
+  - `MKTAgent/src/api/nurture-router.ts`
+  - `MKTAgent/src/config/env.ts`
+  - `MKTAgent/src/db/repos/lead-repo.ts`
+  - `MKTAgent/src/email/gmail-send.ts`
+  - `MKTAgent/src/nurture/decision-schema.ts`
+  - `MKTAgent/src/nurture/enroll.ts`
+  - `MKTAgent/src/nurture/gmail-read.ts`
+  - `MKTAgent/src/nurture/guardrails.ts`
+  - `MKTAgent/src/nurture/nurture-brain-prompt.ts`
+  - `MKTAgent/src/nurture/nurture-brain.ts`
+  - `MKTAgent/src/nurture/nurture-cron.ts`
+  - `MKTAgent/src/nurture/nurture-reply-cron.ts`
+  - `MKTAgent/src/nurture/nurture-reply-poller.ts`
+  - `MKTAgent/src/nurture/nurture-runner.ts`
+  - `MKTAgent/src/nurture/nurture-thread-repo.ts`
+  - `MKTAgent/src/nurture/nurture-tools.ts`
+  - `MKTAgent/src/nurture/reply-repo.ts`
+  - `MKTAgent/src/nurture/sequence.ts`
+  - `MKTAgent/src/nurture/verify-nurture-brain.ts`
+  - `MKTAgent/src/nurture/verify-nurture-drip.ts`
+  - `MKTAgent/src/nurture/verify-nurture-e2e.ts`
+  - `MKTAgent/src/nurture/verify-reply-ingestion.ts`
+  - `MKTAgent/src/orchestration/executor/agent-runners.ts`
+  - `MKTAgent/src/orchestration/schemas/goal-spec.ts`
+  - `MKTAgent/src/server.ts`
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+  - `MKTAgent/web/src/components/nurture-inbox-panel.tsx`
+  - `MKTAgent/web/src/components/nurture-settings-panel.tsx`
+  - `MKTAgent/web/src/components/nurture-thread-timeline.tsx`
+  - `plans/260713-1251-lead-nurture-agent/phase-01-nurture-state-and-drip-engine.md`
+  - `plans/260713-1251-lead-nurture-agent/phase-02-gmail-read-and-reply-ingestion.md`
+  - `plans/260713-1251-lead-nurture-agent/phase-03-nurture-brain-and-conversation.md`
+  - `plans/260713-1251-lead-nurture-agent/phase-04-approval-inbox-guardrails-verify.md`
+  - `plans/260713-1251-lead-nurture-agent/plan.md`
+  - `plans/reports/debugger-260713-1251-atria-campaign-vs-flow-confusion.md`
+- **feat(messaging): multi-channel DM, greeting, and comment-capture nodes (DRY-RUN)** (d789bfd)
+  - `MKTAgent/prisma/migrations/20260715083349_dm_nurture/migration.sql`
+  - `MKTAgent/prisma/migrations/20260715091730_lead_handle_only/migration.sql`
+  - `MKTAgent/src/api/email-router.ts`
+  - `MKTAgent/src/assets/drive-client.ts`
+  - `MKTAgent/src/db/repos/post-repo.ts`
+  - `MKTAgent/src/db/repos/user-repo.ts`
+  - `MKTAgent/src/leads/backfill-lead-pii.ts`
+  - `MKTAgent/src/leads/normalize.ts`
+  - `MKTAgent/src/leads/notify.ts`
+  - `MKTAgent/src/leads/service.ts`
+  - `MKTAgent/src/leads/sources/comment-fetchers/linkedin.ts`
+  - `MKTAgent/src/leads/sources/comment-fetchers/meta.ts`
+  - `MKTAgent/src/leads/sources/comment-fetchers/threads.ts`
+  - `MKTAgent/src/leads/sources/comment-fetchers/x.ts`
+  - `MKTAgent/src/leads/sources/comment-poller.ts`
+  - `MKTAgent/src/leads/sources/meta-webhook.ts`
+  - `MKTAgent/src/leads/sources/verify-comment-capture.ts`
+  - `MKTAgent/src/leads/verify-leads-comments.ts`
+  - `MKTAgent/src/messaging/dm-runners.ts`
+  - `MKTAgent/src/messaging/index.ts`
+  - `MKTAgent/src/messaging/opt-in-repo.ts`
+  - `MKTAgent/src/messaging/telegram-webhook-router.ts`
+  - `MKTAgent/src/messaging/telegram.ts`
+  - `MKTAgent/src/messaging/types.ts`
+  - `MKTAgent/src/messaging/verify-dm-node.ts`
+  - `MKTAgent/src/messaging/whatsapp.ts`
+  - `MKTAgent/src/messaging/zalo.ts`
+  - `MKTAgent/src/orchestration/master/deterministic-analyzer.ts`
+  - `MKTAgent/src/orchestration/master/workflow-planner.ts`
+  - `MKTAgent/src/orchestration/registry/agent-registry.ts`
+  - `MKTAgent/src/orchestration/registry/agent-types.ts`
+  - `MKTAgent/src/orchestration/registry/vision-agents.ts`
+  - `MKTAgent/src/orchestration/schemas/artifact-schemas.ts`
+  - `MKTAgent/src/orchestration/schemas/workflow-plan.ts`
+  - `MKTAgent/src/orchestration/verify-email-node.ts`
+  - `MKTAgent/src/social/facebook.ts`
+  - `MKTAgent/src/social/greeting.ts`
+  - `MKTAgent/src/social/instagram.ts`
+  - `MKTAgent/src/social/threads.ts`
+  - `MKTAgent/src/social/types.ts`
+  - `MKTAgent/src/social/verify-greeting-node.ts`
+  - `MKTAgent/src/social/x.ts`
+  - `MKTAgent/web/src/api/client.ts`
+  - `plans/260713-1251-multichannel-nurture-nodes/decision-checklist.md`
+  - `plans/260713-1251-multichannel-nurture-nodes/phase-01-dm-nurture-nodes.md`
+  - `plans/260713-1251-multichannel-nurture-nodes/phase-02-wall-greeting-engagement-nodes.md`
+  - `plans/260713-1251-multichannel-nurture-nodes/phase-03-lead-capture-extension.md`
+  - `plans/260713-1251-multichannel-nurture-nodes/plan.md`
+  - `plans/260713-1251-multichannel-nurture-nodes/research-synthesis.md`
+  - `plans/reports/researcher-260713-1251-dm-nurture-apis.md`
+  - `plans/reports/researcher-260713-1251-wall-post-and-comment-capture-apis.md`
