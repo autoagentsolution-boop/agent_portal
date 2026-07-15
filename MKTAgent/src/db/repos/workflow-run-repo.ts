@@ -288,13 +288,22 @@ export const getFlowCostRollup = async (templateId: string, ownerId: string): Pr
 };
 
 // Total credits a single run consumed = token-passthrough credits + media-USD credits, summed
-// over all its node runs (same basis as impact-metrics). The debit amount for the credit wallet.
+// over all its node runs (same basis as impact-metrics), PLUS any ad-hoc spend tagged to this
+// run that happened OUTSIDE the DAG — currently just a post /refine (its own Gemini call, not a
+// node run; see copygen/service.ts refineForPost, surface='copygen_refine'). This is the basis
+// for the credit-wallet reconcile debit (credit-repo.reconcileRunDebit): it must reflect EVERY
+// credit the run caused to be spent, in or out of the DAG, or a refine after the flow already
+// completed goes unbilled. 'copygen_refine' is a DISTINCT surface from the generic 'orchestration'
+// one node runners use (which already carries runId) — this avoids double-counting a node's own
+// spend, which is already in workflowNodeRun.
 export const runCredits = async (runId: string, ownerId: string): Promise<number> => {
-  const agg = await prisma.workflowNodeRun.aggregate({
-    where: { ownerId, runId },
-    _sum: { totalTokens: true, costUsd: true },
-  });
-  return creditsFromTokens(agg._sum.totalTokens ?? 0) + creditsFromUsd(agg._sum.costUsd ?? 0);
+  const [nodeAgg, refineAgg] = await Promise.all([
+    prisma.workflowNodeRun.aggregate({ where: { ownerId, runId }, _sum: { totalTokens: true, costUsd: true } }),
+    prisma.llmUsage.aggregate({ where: { ownerId, runId, surface: 'copygen_refine' }, _sum: { totalTokens: true, costUsd: true } }),
+  ]);
+  const totalTokens = (nodeAgg._sum.totalTokens ?? 0) + (refineAgg._sum.totalTokens ?? 0);
+  const costUsd = (nodeAgg._sum.costUsd ?? 0) + (refineAgg._sum.costUsd ?? 0);
+  return creditsFromTokens(totalTokens) + creditsFromUsd(costUsd);
 };
 
 // Per-AGENT rollup across a whole campaign's posts (Atria v2 P0 — the Workspace dashboard's

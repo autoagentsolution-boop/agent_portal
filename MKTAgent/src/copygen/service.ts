@@ -25,6 +25,8 @@ import { logger } from '../lib/logger.ts';
 import { publishPostStatus } from '../events/bus.ts';
 import { env } from '../config/env.ts';
 import { recordGeminiCall } from '../cost/llm-usage.ts';
+import { runCredits } from '../db/repos/workflow-run-repo.ts';
+import { reconcileRunDebit } from '../db/repos/credit-repo.ts';
 
 const LOCK_KEY = 'mkt-copy-gen';
 
@@ -161,8 +163,12 @@ export async function refineForPost(
     const body = buildGeminiBody(post, { instruction, current }, knowledge, await conceptInstructions(post));
     const raw = await callFn(body);
     // Record once per physical refine call (distinct call site from processCopyGen's — a
-    // refine is its own Gemini request, not a re-use of the original generation).
-    await recordGeminiCall(raw, { ownerId: post.ownerId, surface: 'copygen', model: env.GEMINI_MODEL, refId: post.id });
+    // refine is its own Gemini request, not a re-use of the original generation). surface is
+    // 'copygen_refine' (NOT 'copygen') and carries runId — a DELIBERATELY distinct tag from the
+    // original generation's ledger row so workflow-run-repo.runCredits can add refine spend to a
+    // run's wallet cost without double-counting the concept_writer node's own (already-billed)
+    // generation call, which never sets runId on its 'copygen' row.
+    await recordGeminiCall(raw, { ownerId: post.ownerId, surface: 'copygen_refine', model: env.GEMINI_MODEL, refId: post.id, runId: post.runId });
     const result = parseGeminiResponse(raw);
     if (!result.ok) {
       logger.warn('copygen_refine_failed', { postId, error: result.error.slice(0, 200) });
@@ -172,6 +178,19 @@ export async function refineForPost(
     await updatePost(post.id, { copy: result.copy as unknown as object, language: cfg.language, status: 'review', error: null, copyEdited: true });
     await logRun('info', 'mkt_copygen_refine', { id: post.id, instruction: instruction.slice(0, 120) }, post.ownerId);
     publishPostStatus(post.ownerId, { postId: post.id, status: 'review', campaignId: post.campaignId });
+    // Credit-wallet Phase 02 (under-billing fix): a refine's tokens were spent regardless of the
+    // post's flow status — including AFTER the run already `completed`, when the executor's own
+    // reconcile (workflow-executor's finally block) will never fire again for this runId. Reconcile
+    // HERE so the spend is charged immediately. Best-effort: a wallet failure must never fail an
+    // otherwise-successful refine — the pre-flight balance gate is what actually protects the wallet.
+    if (post.runId) {
+      try {
+        const credits = await runCredits(post.runId, post.ownerId);
+        await reconcileRunDebit(post.ownerId, post.runId, credits, 'flow run');
+      } catch (e) {
+        logger.warn('copygen_refine_credit_reconcile_failed', { postId, runId: post.runId, error: String(e).slice(0, 160) });
+      }
+    }
     return { picked: true, postId: post.id, status: 'review' };
   } catch (e) {
     logger.error('copygen_refine_error', { postId, error: String(e).slice(0, 300) });

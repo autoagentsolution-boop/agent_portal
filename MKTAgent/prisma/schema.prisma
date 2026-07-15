@@ -202,23 +202,30 @@ model User {
 
 // Credit wallet ledger (credit-wallet Phase 01) — append-only source of truth for a tenant's
 // balance. Balance = SUM(delta). Positive deltas = trial/grant (super-admin gives credits);
-// negative = debit (a completed flow run's cost). Ledger-as-truth keeps it auditable; a cached
+// negative = debit (a run's accumulated cost). Ledger-as-truth keeps it auditable; a cached
 // balance column is deferred (YAGNI) — SUM over per-owner rows is cheap at this scale.
+// credit-wallet Phase 02 (under-billing fix): a run can be debited MULTIPLE times — once per
+// stop point (park at needs_approval/needs_connection, fail, complete) — each charging only the
+// DELTA above what was already debited for that runId (credit-repo.reconcileRunDebit). The old
+// "one debit row per run" unique index is gone for this reason; idempotency/no-double-charge is
+// now enforced by the reconcile's read-delta-then-insert under a per-run advisory lock, not a DB
+// constraint. Trial idempotency (one per owner) is unaffected — it never used this index (it's
+// guarded by ensureTrialGrant's own advisory lock + count check).
 model CreditLedger {
   id        String   @id @default(uuid()) @db.Uuid
   ownerId   String   @map("owner_id") @db.Uuid
   delta     Int      // credits; +grant/+trial, -debit
   kind      String   // 'trial' | 'grant' | 'debit' | 'adjust'
   reason    String?  // human note (e.g. "demo grant", "flow run")
-  runId     String?  @map("run_id") @db.Uuid // set on debit rows — idempotency key (one debit per run)
+  runId     String?  @map("run_id") @db.Uuid // set on debit rows — MANY debit rows per run allowed now
   grantedBy String?  @map("granted_by") @db.Uuid // super-admin user id on grant rows
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId, createdAt])
-  // At most one debit row per run — the idempotency guard for re-entered/resumed runs.
-  @@unique([runId, kind], name: "uq_ledger_run_kind")
+  // Reconcile reads "already debited for this run" fast (SUM over kind='debit' rows for a runId).
+  @@index([runId, kind])
   @@map("mkt_credit_ledger")
 }
 

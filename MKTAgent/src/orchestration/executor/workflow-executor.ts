@@ -25,7 +25,7 @@ import {
   getRunStatusById,
   runCredits,
 } from '../../db/repos/workflow-run-repo.ts';
-import { debitRun } from '../../db/repos/credit-repo.ts';
+import { reconcileRunDebit } from '../../db/repos/credit-repo.ts';
 import { getPostByRunId, getPostForOwner, approveReview } from '../../db/repos/post-repo.ts';
 import { platformSupportsAsset } from '../../social/postability.ts';
 import { publishAssetType, distinctAssetTypes, resolvePlatformInput, PostValidationError } from '../../scheduler/resolve-input.ts';
@@ -100,6 +100,33 @@ export type ExecuteOutcome =
   | { status: 'aborted'; nodeId: string }
   | { status: 'failed'; nodeId: string; error: string };
 
+// Best-effort credit reconcile — fires on EVERY exit from the try block below (park at
+// needs_approval/needs_connection, fail, abort, or complete), not just completion. A run
+// that halts at a gate has already spent real tokens (e.g. concept generation before the
+// concept-selection gate, or content generation before the post-content connection gate);
+// debiting only at true completion let those runs consume compute for free (credit-wallet
+// Phase 02 fix). Computes the run's TOTAL cost so far and hands it to reconcileRunDebit, which
+// charges only the delta above what's already been debited for this runId — so a run that
+// parks, resumes, and parks/completes again is charged its real cost exactly once, never more.
+// Never throws: a wallet failure must not turn an otherwise-successful step into a thrown
+// error — the pre-flight balance gate (checked before execute) is what actually protects the
+// wallet from a tenant with 0 credits; this is best-effort bookkeeping on top of that.
+const reconcileCredits = async (runId: string, ownerId: string): Promise<void> => {
+  try {
+    // Never charge for a FAILED run (product decision 2026-07-15): a run that errors mid-DAG bills
+    // the tenant nothing, even for nodes that ran before the failure. Park states
+    // (needs_connection/needs_approval — the content is generated + reviewable) and completion still
+    // charge; only a genuine failure is free. Fresh status read: the finally block runs after the
+    // failing path already set the run 'failed'.
+    if ((await getRunStatusById(runId)) === 'failed') return;
+    const credits = await runCredits(runId, ownerId);
+    const debited = await reconcileRunDebit(ownerId, runId, credits);
+    if (debited > 0) await logRun('info', 'wf_credit_debit', { runId, credits: debited }, ownerId).catch(() => {});
+  } catch (e) {
+    await logRun('warn', 'wf_credit_debit_failed', { runId, error: String(e instanceof Error ? e.message : e).slice(0, 160) }, ownerId).catch(() => {});
+  }
+};
+
 // Run (or resume) a run's DAG. The run + nodes already exist in the DB (created at
 // plan time). `goal`/`plan` are the validated snapshots.
 export const runWorkflow = async (
@@ -118,396 +145,392 @@ export const runWorkflow = async (
 
   const runRow = await getRunWithNodes(runId, ownerId);
   if (!runRow) return { status: 'failed', nodeId: '-', error: 'run_not_found' };
-  const nodeRowByPlanId = new Map(runRow.nodes.map((n) => [n.nodeId, n]));
-  const nodeByPlanId = new Map(plan.nodes.map((n) => [n.nodeId, n]));
-  // A cost-gated deliverable (video) is expensive + high-stakes: the user must review the
-  // GENERATED output and explicitly approve publishing — approving the COST gate must not cascade
-  // into auto-publish. So (in human mode) when the plan has a cost gate the publisher is never
-  // auto-waived (separate approvals). Derived from registry `gate: 'cost'`, not a hardcoded id.
-  const hasCostGate = hasGate([...nodeByPlanId.values()].map((n) => n.agentId), 'cost');
 
-  // Atria autonomy grant (Phase 01): this run was pre-authorized by the user (double-confirmed
-  // via the grant endpoint), so it may clear its OWN action gates when guardrails hold. Human mode
-  // (default) is byte-identical to before — every branch below is guarded on `atriaMode`.
-  const atriaMode = runRow.approvalMode === 'atria';
-  const budgetCeiling = env.ATRIA_AUTONOMY_COST_CEILING_USD > 0 ? env.ATRIA_AUTONOMY_COST_CEILING_USD : null;
+  // Everything below that can spend (node execution) or change the run's parked/terminal state
+  // is wrapped so reconcileCredits ALWAYS runs on the way out — however this call exits (an
+  // early `return` on park/fail/abort/completion, or an uncaught throw). This is what closes the
+  // under-billing gap: every stop point gets reconciled, not just `completed`.
+  try {
+    const nodeRowByPlanId = new Map(runRow.nodes.map((n) => [n.nodeId, n]));
+    const nodeByPlanId = new Map(plan.nodes.map((n) => [n.nodeId, n]));
+    // A cost-gated deliverable (video) is expensive + high-stakes: the user must review the
+    // GENERATED output and explicitly approve publishing — approving the COST gate must not cascade
+    // into auto-publish. So (in human mode) when the plan has a cost gate the publisher is never
+    // auto-waived (separate approvals). Derived from registry `gate: 'cost'`, not a hardcoded id.
+    const hasCostGate = hasGate([...nodeByPlanId.values()].map((n) => n.agentId), 'cost');
 
-  // Seed context with artifacts already produced (resume case).
-  const upstream: Partial<Record<ArtifactType, unknown>> = {};
-  let postId: string | undefined;
-  for (const a of await listArtifacts(runId)) {
-    upstream[a.type] = a.data;
-    if (a.type === 'content_concept') postId = (a.data as { postId?: string }).postId;
-  }
-  // Flow-as-template: an instance run is created FOR a pre-existing Post (post.runId).
-  // Seed that postId so concept_writer fills the existing post (+ its campaign) rather
-  // than materializing a new campaign+post. Legacy runs have no attached post → falls
-  // back to concept_writer's create path. The artifact-derived postId (resume) wins.
-  const attachedPost = await getPostByRunId(runId);
-  if (!postId) postId = attachedPost?.id;
-  // The post's chosen media governs WHICH media steps run: skip the ones no target needs, so a
-  // carousel/image post never spends on video and vice-versa (#2). With per-platform asset types
-  // (item 5) this is the DISTINCT set across all targets — a media step runs if it produces ANY
-  // needed type. Empty (post not yet created on a legacy first run) → no gating; run per plan.
-  const neededAssets: AssetType[] = attachedPost ? distinctAssetTypes(attachedPost) : [];
+    // Atria autonomy grant (Phase 01): this run was pre-authorized by the user (double-confirmed
+    // via the grant endpoint), so it may clear its OWN action gates when guardrails hold. Human mode
+    // (default) is byte-identical to before — every branch below is guarded on `atriaMode`.
+    const atriaMode = runRow.approvalMode === 'atria';
+    const budgetCeiling = env.ATRIA_AUTONOMY_COST_CEILING_USD > 0 ? env.ATRIA_AUTONOMY_COST_CEILING_USD : null;
 
-  // Schedule-aware publish (feedback #2): a future scheduledAt means the publisher must NOT
-  // fire inline when the flow reaches it. The user approves, the post is parked `ready` with its
-  // schedule intact, and the scheduler cron publishes at the chosen time. Every in-flow approval
-  // here must PRESERVE that scheduledAt — a raw `new Date()` clobbers it, so the cron then treats
-  // the post as due immediately (the original bug). Only manual /publish-now bypasses the schedule.
-  const approveScheduledAt = attachedPost?.scheduledAt ?? new Date();
-  const isScheduledFuture = (): boolean =>
-    !!attachedPost?.scheduledAt && attachedPost.scheduledAt.getTime() > Date.now();
-
-  // Guardrail snapshot for the atria policy at a given gate. Phase 02 (C1): re-read the post FRESH
-  // at the boundary — the run-start `attachedPost` is null on a fresh goal (post created mid-run),
-  // which is exactly why the primary path never auto-published. Fall back to the snapshot only if
-  // the fresh read misses. connected is re-resolved against the POST's platforms (H4): a token can
-  // expire between the /execute gate and the actual publish. Fail-closed everywhere unproven.
-  const buildGuardrailCtx = async (gate: GateKind): Promise<GuardrailContext> => {
-    const post = (await getPostByRunId(runId)) ?? attachedPost;
-    const cleanlyPostable =
-      !!post && post.platforms.length > 0 &&
-      post.platforms.every((p) => platformSupportsAsset(p, publishAssetType(post, p)));
-    // Real media presence: a target's per-platform input resolves without a PostValidationError
-    // (text needs no media; image/video/carousel need their asset). Reuses the publish validator.
-    const mediaReady =
-      !!post && post.platforms.length > 0 &&
-      post.platforms.every((p) => {
-        try { resolvePlatformInput(post, p); return true; }
-        catch (e) { if (e instanceof PostValidationError) return false; throw e; }
-      });
-    // Connection re-resolve at the boundary (H4) — only for the publish gate (a real external write).
-    let connected = true;
-    if (gate === 'publish' && post && post.platforms.length > 0) {
-      const res = opts.connectionReaderFn
-        ? await resolveConnections(ownerId, { ...goal, platforms: post.platforms }, plan, opts.connectionReaderFn)
-        : await resolveConnections(ownerId, { ...goal, platforms: post.platforms }, plan);
-      connected = res.status === 'resolved';
+    // Seed context with artifacts already produced (resume case).
+    const upstream: Partial<Record<ArtifactType, unknown>> = {};
+    let postId: string | undefined;
+    for (const a of await listArtifacts(runId)) {
+      upstream[a.type] = a.data;
+      if (a.type === 'content_concept') postId = (a.data as { postId?: string }).postId;
     }
-    return {
-      connected,
-      mediaReady,
-      cleanlyPostable,
-      estCostUsd: gate === 'cost' ? videoClipCost(1).costUsd : 0,
-      budgetUsd: budgetCeiling,
-      contentChecksPass: !!postId,
-    };
-  };
-  // Approve a post's review→ready, failing LOUD on a silent no-op (Phase 02 / H1a): approveReview
-  // returns null when the post isn't in `review`. That's fine if it's already ready/past-review
-  // (idempotent resume — the worker owns it); but any OTHER state means the approval silently did
-  // nothing and nothing would publish. Throw so the caller marks the node failed instead.
-  const approveOrThrow = async (pid: string): Promise<void> => {
-    if (await approveReview(pid, ownerId, approveScheduledAt)) return;
-    const st = (await getPostForOwner(pid, ownerId))?.status;
-    if (st === 'ready' || st === 'posting' || st === 'posted' || st === 'partial') return;
-    throw new Error(`publisher: post not approvable (status=${st ?? 'missing'})`);
-  };
-  // Park a granted run at a gate its guardrails did NOT clear: needs a human. Same park mechanism
-  // as human mode (awaiting_approval + run needs_approval, resumable via approve-node) + an audit
-  // row + a notify notice. Never publishes, never fails the run.
-  const atriaHold = async (nodeRowId: string, planNodeId: string, agentId: string, gate: GateKind, reason: string): Promise<ExecuteOutcome> => {
-    await setNodeStatus(nodeRowId, 'awaiting_approval');
-    await setRunStatus(runId, 'needs_approval');
-    await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId, gate, decision: 'hold', reason }, ownerId);
-    publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId, status: 'awaiting_approval', notice: `Atria held for your review — ${reason}` });
-    return { status: 'needs_approval', nodeId: planNodeId };
-  };
+    // Flow-as-template: an instance run is created FOR a pre-existing Post (post.runId).
+    // Seed that postId so concept_writer fills the existing post (+ its campaign) rather
+    // than materializing a new campaign+post. Legacy runs have no attached post → falls
+    // back to concept_writer's create path. The artifact-derived postId (resume) wins.
+    const attachedPost = await getPostByRunId(runId);
+    if (!postId) postId = attachedPost?.id;
+    // The post's chosen media governs WHICH media steps run: skip the ones no target needs, so a
+    // carousel/image post never spends on video and vice-versa (#2). With per-platform asset types
+    // (item 5) this is the DISTINCT set across all targets — a media step runs if it produces ANY
+    // needed type. Empty (post not yet created on a legacy first run) → no gating; run per plan.
+    const neededAssets: AssetType[] = attachedPost ? distinctAssetTypes(attachedPost) : [];
 
-  await setRunStatus(runId, 'running');
+    // Schedule-aware publish (feedback #2): a future scheduledAt means the publisher must NOT
+    // fire inline when the flow reaches it. The user approves, the post is parked `ready` with its
+    // schedule intact, and the scheduler cron publishes at the chosen time. Every in-flow approval
+    // here must PRESERVE that scheduledAt — a raw `new Date()` clobbers it, so the cron then treats
+    // the post as due immediately (the original bug). Only manual /publish-now bypasses the schedule.
+    const approveScheduledAt = attachedPost?.scheduledAt ?? new Date();
+    const isScheduledFuture = (): boolean =>
+      !!attachedPost?.scheduledAt && attachedPost.scheduledAt.getTime() > Date.now();
 
-  // Single-node re-execute: run exactly the requested node and return. Upstream is
-  // already seeded above from stored artifacts, so the node reads the same inputs it
-  // did on the first run. Downstream dependents were reset to pending (stale) by the
-  // caller and are left for the user to re-run — we do NOT cascade here.
-  if (opts.rerunOnly) {
-    const planNode = nodeByPlanId.get(opts.rerunOnly);
-    const nodeRow = nodeRowByPlanId.get(opts.rerunOnly);
-    if (!planNode || !nodeRow) {
-      await setRunStatus(runId, 'failed');
-      return { status: 'failed', nodeId: opts.rerunOnly, error: 'node_not_found' };
-    }
-    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn, researchFn: opts.researchFn, gmailSendFn: opts.gmailSendFn };
-    await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
-    publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'running' });
-    try {
-      const result = await executeNode(planNode, ctx);
-      await setNodeStatus(nodeRow.id, 'completed', { finishedAt: new Date(), outputRefs: [result.artifactId], ...costFields(result) });
-      publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'completed' });
-    } catch (e) {
-      const msg = String(e instanceof Error ? e.message : e).slice(0, 500);
-      await setNodeStatus(nodeRow.id, 'failed', { finishedAt: new Date(), error: msg });
-      await setRunStatus(runId, 'failed');
-      publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'failed', error: msg });
-      await logRun('error', 'wf_node_rerun', { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, error: msg }, ownerId);
-      return { status: 'failed', nodeId: planNode.nodeId, error: msg };
-    }
-    // A re-run regenerates one step; its downstream was reset to pending (stale) by the
-    // caller. Park the run at `planned` — NOT needs_approval — so it is RESUMABLE: the
-    // Execute button reappears (as "Continue"), and running it resumes the main loop
-    // (skips completed nodes, runs the stale downstream, halts at the publisher gate).
-    // Parking at needs_approval was the dead-end bug: no awaiting_approval node existed,
-    // so there was neither an approve button nor an execute button — the run got stuck.
-    await setRunStatus(runId, 'planned');
-    return { status: 'completed' };
-  }
-
-  for (const planNodeId of validated.order) {
-    const planNode = nodeByPlanId.get(planNodeId)!;
-    const nodeRow = nodeRowByPlanId.get(planNodeId)!;
-    if (nodeRow.status === 'completed' || nodeRow.status === 'skipped') continue;
-
-    // Kill switch (run abort): POST /runs/:id/abort flips the run to 'aborted'. The detached
-    // executor honors it at each node boundary — stop cleanly BEFORE spending on the next node.
-    if ((await getRunStatusById(runId)) === 'aborted') {
-      publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'aborted' });
-      return { status: 'aborted', nodeId: planNodeId };
-    }
-
-    // Concept selection gate — RESUME: the run parked here after concept produced its versions.
-    // On approve-node(concept) the user has picked a version (+ optional reference image) → approve
-    // the post (review→ready) so the publisher can claim it, mark the node completed, and continue
-    // to media/publish. A re-execute that doesn't target this node keeps the run parked.
-    if (isSelectionGate(planNode.agentId) && nodeRow.status === 'awaiting_approval') {
-      if (opts.approveNodeId === planNodeId) {
-        if (postId) await approveReview(postId, ownerId, approveScheduledAt);
-        await setNodeStatus(nodeRow.id, 'completed');
-        publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed' });
-        continue;
-      }
-      await setRunStatus(runId, 'needs_approval');
-      return { status: 'needs_approval', nodeId: planNodeId };
-    }
-
-    // Media selection by needed asset types (#2, item 5): skip a media step none of the
-    // targets need — BEFORE the approval halt, so a carousel-only post never stops at the
-    // video gate. A step runs if it produces ANY needed asset type.
-    const wantAssets = MEDIA_AGENT_ASSET[planNode.agentId];
-    if (wantAssets && neededAssets.length > 0 && !wantAssets.some((a) => neededAssets.includes(a as AssetType))) {
-      await setNodeStatus(nodeRow.id, 'skipped');
-      publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'skipped' });
-      continue;
-    }
-
-    // Publish-completeness gate (future-proofing): the publisher must NOT fire while any OTHER
-    // step is still in progress (e.g. a video still generating once the executor runs branches in
-    // parallel). If a non-publisher node isn't terminal, HOLD the run and notify the user which
-    // steps remain — never publish prematurely. In today's sequential executor upstream is already
-    // done by the time we reach the publisher, so this is normally a no-op; it guards the future.
-    if (planNode.agentId === 'publisher') {
-      const fresh = await getRunWithNodes(runId, ownerId);
-      const pending = (fresh?.nodes ?? []).filter(
-        (n) => n.nodeId !== planNodeId && !['completed', 'skipped', 'failed'].includes(n.status),
-      );
-      if (pending.length > 0) {
-        await setNodeStatus(nodeRow.id, 'awaiting_approval');
-        await setRunStatus(runId, 'needs_approval');
-        const remaining = pending.map((n) => n.agentId).join(', ');
-        publishNodeStatus(ownerId, {
-          runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval',
-          notice: `Holding publish — ${pending.length} step(s) still in progress: ${remaining}`,
-        });
-        return { status: 'needs_approval', nodeId: planNodeId };
-      }
-
-      // BUG-3 (gate-after-content): the connection gate is now DEFERRED past content generation, so the
-      // draft is reviewable pre-connect. Re-gate the connection HERE, at the publish boundary — content
-      // is generated + reviewed by now; if the post's target platforms still aren't connected, PARK at
-      // `needs_connection` (never let runPublisher throw on a missing connection). respondRun recomputes
-      // the connect actions on read, so the UI shows the same connect prompt the up-front gate used to.
-      // DRY-RUN (a stub publishFn) needs no real connection, so skip UNLESS a verify explicitly
-      // simulates connection state via connectionReaderFn — the same DI seam the atria gate uses.
-      const gateConnection = !opts.publishFn || !!opts.connectionReaderFn;
-      const freshPost = gateConnection ? (await getPostByRunId(runId)) ?? attachedPost : null;
-      if (freshPost && freshPost.platforms.length > 0) {
-        const conn = opts.connectionReaderFn
-          ? await resolveConnections(ownerId, { ...goal, platforms: freshPost.platforms }, plan, opts.connectionReaderFn)
-          : await resolveConnections(ownerId, { ...goal, platforms: freshPost.platforms }, plan);
-        if (conn.status !== 'resolved') {
-          await setNodeStatus(nodeRow.id, 'awaiting_approval');
-          await setRunStatus(runId, 'needs_connection');
-          publishNodeStatus(ownerId, {
-            runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval',
-            notice: `Connect ${conn.required.map((r) => r.displayName).join(', ')} to publish — your draft is ready and waiting.`,
-          });
-          await logRun('info', 'wf_publish_gated_needs_connection', { runId, nodeId: planNodeId, count: conn.required.length }, ownerId);
-          return { status: 'needs_approval', nodeId: planNodeId };
-        }
-      }
-    }
-
-    // Approval halt: a gated node stops the run UNLESS it's the one just approved. Read the
-    // gating policy from the LIVE registry (not the frozen plan) so a policy change — e.g.
-    // adding the pre-video cost gate — applies to already-planned templates/runs too.
-    const gated = getAgent(planNode.agentId)?.requiresApproval ?? planNode.requiresApproval;
-    // Auto-publish default (item 2): waive the publisher gate when the post is cleanly
-    // postable — every target platform's adapter supports the asset type. The connection
-    // resolver already ran before the DAG, so by here every target IS connected; the only
-    // remaining blocker is asset compatibility (item 1). If some target can't take the asset,
-    // KEEP the gate so the publish review (item 3) surfaces exactly what would be skipped
-    // before anything goes out. The video cost gate (agentId 'video') is separate and always
-    // holds. autoPublish=false restores the manual gate (verify scripts, opt-out).
-    // Auto-publish is suppressed when the run produces a video: approving the video cost gate must
-    // NOT also publish. The user reviews the finished video, then approves the publisher separately.
-    // Default OFF (decision 2026-07-08): halt at the approval gate unless the caller's explicit opt
-    // (UI toggle) OR the goal's NL flag ("đăng luôn", set by the analyzer) enables auto-publish.
-    const autoPublish = (opts.autoPublish ?? goal.autoPublish ?? false) && !hasCostGate;
-    let requiresApproval = gated;
-    // Human auto-publish waiver (unchanged). In atria mode the grant policy is the sole authority
-    // for the publisher gate (see the atria override below), so skip this heuristic entirely.
-    if (!atriaMode && gated && planNode.agentId === 'publisher' && autoPublish) {
-      // Per-platform (item 5): each target may publish its own asset type — auto-run only
-      // when EVERY target's adapter supports ITS asset type; otherwise gate for the review.
-      // Phase 02 (C1): re-read the post FRESH here — the run-start `attachedPost` snapshot is null
-      // on a fresh goal (post created mid-run), which wrongly forced the gate for every fresh-goal
-      // run. The fresh read makes fresh-goal runs auto-publish-eligible like attached-post runs.
+    // Guardrail snapshot for the atria policy at a given gate. Phase 02 (C1): re-read the post FRESH
+    // at the boundary — the run-start `attachedPost` is null on a fresh goal (post created mid-run),
+    // which is exactly why the primary path never auto-published. Fall back to the snapshot only if
+    // the fresh read misses. connected is re-resolved against the POST's platforms (H4): a token can
+    // expire between the /execute gate and the actual publish. Fail-closed everywhere unproven.
+    const buildGuardrailCtx = async (gate: GateKind): Promise<GuardrailContext> => {
       const post = (await getPostByRunId(runId)) ?? attachedPost;
       const cleanlyPostable =
         !!post && post.platforms.length > 0 &&
         post.platforms.every((p) => platformSupportsAsset(p, publishAssetType(post, p)));
-      requiresApproval = !cleanlyPostable; // clean → auto-run; any skip/unknown → gate for review
-    }
-    // Schedule gate (feedback #2): a future-scheduled publisher never publishes inline. First pass
-    // → hold for the user's approval (below). On approval → park the post `ready` with its schedule
-    // preserved and mark this node completed; the scheduler cron owns the actual publish at the
-    // chosen time (findPublishDue guards scheduledAt<=now). Manual /publish-now stays the only
-    // immediate bypass. Without this, an approved cleanly-postable post fires runPublisher NOW.
-    if (planNode.agentId === 'publisher' && isScheduledFuture()) {
-      // A granted run clears the schedule gate autonomously when publish guardrails hold — the
-      // post is parked `ready` with its schedule intact and the scheduler cron (Phase 03) fires it
-      // at the chosen time (only once scheduleConfirmed=true). A guardrail fail falls through to
-      // the atria hold below. Human mode still requires the explicit approve-node click.
-      const scheduleApproved =
-        opts.approveNodeId === planNodeId ||
-        (atriaMode && atriaApprovalPolicy('publish', await buildGuardrailCtx('publish')) === 'approve');
-      if (scheduleApproved) {
-        if (atriaMode && opts.approveNodeId !== planNodeId) {
-          await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId: planNode.agentId, gate: 'publish', decision: 'approve', scheduled: true }, ownerId);
-        }
-        // H1a: approveOrThrow fails loud if the review→ready approval silently no-ops (post stuck
-        // in a non-publishable state) — the scheduler would otherwise never find it due.
-        try {
-          if (postId) await approveOrThrow(postId);
-        } catch (e) {
-          const msg = String(e instanceof Error ? e.message : e).slice(0, 500);
-          await setNodeStatus(nodeRow.id, 'failed', { finishedAt: new Date(), error: msg });
-          await setRunStatus(runId, 'failed');
-          publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'failed', error: msg });
-          return { status: 'failed', nodeId: planNodeId, error: msg };
-        }
-        await setNodeStatus(nodeRow.id, 'completed', { finishedAt: new Date() });
-        publishNodeStatus(ownerId, {
-          runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed',
-          notice: `Scheduled for ${approveScheduledAt.toISOString()} — the scheduler will publish automatically at that time.`,
+      // Real media presence: a target's per-platform input resolves without a PostValidationError
+      // (text needs no media; image/video/carousel need their asset). Reuses the publish validator.
+      const mediaReady =
+        !!post && post.platforms.length > 0 &&
+        post.platforms.every((p) => {
+          try { resolvePlatformInput(post, p); return true; }
+          catch (e) { if (e instanceof PostValidationError) return false; throw e; }
         });
+      // Connection re-resolve at the boundary (H4) — only for the publish gate (a real external write).
+      let connected = true;
+      if (gate === 'publish' && post && post.platforms.length > 0) {
+        const res = opts.connectionReaderFn
+          ? await resolveConnections(ownerId, { ...goal, platforms: post.platforms }, plan, opts.connectionReaderFn)
+          : await resolveConnections(ownerId, { ...goal, platforms: post.platforms }, plan);
+        connected = res.status === 'resolved';
+      }
+      return {
+        connected,
+        mediaReady,
+        cleanlyPostable,
+        estCostUsd: gate === 'cost' ? videoClipCost(1).costUsd : 0,
+        budgetUsd: budgetCeiling,
+        contentChecksPass: !!postId,
+      };
+    };
+    // Approve a post's review→ready, failing LOUD on a silent no-op (Phase 02 / H1a): approveReview
+    // returns null when the post isn't in `review`. That's fine if it's already ready/past-review
+    // (idempotent resume — the worker owns it); but any OTHER state means the approval silently did
+    // nothing and nothing would publish. Throw so the caller marks the node failed instead.
+    const approveOrThrow = async (pid: string): Promise<void> => {
+      if (await approveReview(pid, ownerId, approveScheduledAt)) return;
+      const st = (await getPostForOwner(pid, ownerId))?.status;
+      if (st === 'ready' || st === 'posting' || st === 'posted' || st === 'partial') return;
+      throw new Error(`publisher: post not approvable (status=${st ?? 'missing'})`);
+    };
+    // Park a granted run at a gate its guardrails did NOT clear: needs a human. Same park mechanism
+    // as human mode (awaiting_approval + run needs_approval, resumable via approve-node) + an audit
+    // row + a notify notice. Never publishes, never fails the run.
+    const atriaHold = async (nodeRowId: string, planNodeId: string, agentId: string, gate: GateKind, reason: string): Promise<ExecuteOutcome> => {
+      await setNodeStatus(nodeRowId, 'awaiting_approval');
+      await setRunStatus(runId, 'needs_approval');
+      await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId, gate, decision: 'hold', reason }, ownerId);
+      publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId, status: 'awaiting_approval', notice: `Atria held for your review — ${reason}` });
+      return { status: 'needs_approval', nodeId: planNodeId };
+    };
+
+    await setRunStatus(runId, 'running');
+
+    // Single-node re-execute: run exactly the requested node and return. Upstream is
+    // already seeded above from stored artifacts, so the node reads the same inputs it
+    // did on the first run. Downstream dependents were reset to pending (stale) by the
+    // caller and are left for the user to re-run — we do NOT cascade here.
+    if (opts.rerunOnly) {
+      const planNode = nodeByPlanId.get(opts.rerunOnly);
+      const nodeRow = nodeRowByPlanId.get(opts.rerunOnly);
+      if (!planNode || !nodeRow) {
+        await setRunStatus(runId, 'failed');
+        return { status: 'failed', nodeId: opts.rerunOnly, error: 'node_not_found' };
+      }
+      const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn, researchFn: opts.researchFn, gmailSendFn: opts.gmailSendFn };
+      await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
+      publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'running' });
+      try {
+        const result = await executeNode(planNode, ctx);
+        await setNodeStatus(nodeRow.id, 'completed', { finishedAt: new Date(), outputRefs: [result.artifactId], ...costFields(result) });
+        publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'completed' });
+      } catch (e) {
+        const msg = String(e instanceof Error ? e.message : e).slice(0, 500);
+        await setNodeStatus(nodeRow.id, 'failed', { finishedAt: new Date(), error: msg });
+        await setRunStatus(runId, 'failed');
+        publishNodeStatus(ownerId, { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, status: 'failed', error: msg });
+        await logRun('error', 'wf_node_rerun', { runId, nodeId: planNode.nodeId, agentId: planNode.agentId, error: msg }, ownerId);
+        return { status: 'failed', nodeId: planNode.nodeId, error: msg };
+      }
+      // A re-run regenerates one step; its downstream was reset to pending (stale) by the
+      // caller. Park the run at `planned` — NOT needs_approval — so it is RESUMABLE: the
+      // Execute button reappears (as "Continue"), and running it resumes the main loop
+      // (skips completed nodes, runs the stale downstream, halts at the publisher gate).
+      // Parking at needs_approval was the dead-end bug: no awaiting_approval node existed,
+      // so there was neither an approve button nor an execute button — the run got stuck.
+      await setRunStatus(runId, 'planned');
+      return { status: 'completed' };
+    }
+
+    for (const planNodeId of validated.order) {
+      const planNode = nodeByPlanId.get(planNodeId)!;
+      const nodeRow = nodeRowByPlanId.get(planNodeId)!;
+      if (nodeRow.status === 'completed' || nodeRow.status === 'skipped') continue;
+
+      // Kill switch (run abort): POST /runs/:id/abort flips the run to 'aborted'. The detached
+      // executor honors it at each node boundary — stop cleanly BEFORE spending on the next node.
+      if ((await getRunStatusById(runId)) === 'aborted') {
+        publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'aborted' });
+        return { status: 'aborted', nodeId: planNodeId };
+      }
+
+      // Concept selection gate — RESUME: the run parked here after concept produced its versions.
+      // On approve-node(concept) the user has picked a version (+ optional reference image) → approve
+      // the post (review→ready) so the publisher can claim it, mark the node completed, and continue
+      // to media/publish. A re-execute that doesn't target this node keeps the run parked.
+      if (isSelectionGate(planNode.agentId) && nodeRow.status === 'awaiting_approval') {
+        if (opts.approveNodeId === planNodeId) {
+          if (postId) await approveReview(postId, ownerId, approveScheduledAt);
+          await setNodeStatus(nodeRow.id, 'completed');
+          publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed' });
+          continue;
+        }
+        await setRunStatus(runId, 'needs_approval');
+        return { status: 'needs_approval', nodeId: planNodeId };
+      }
+
+      // Media selection by needed asset types (#2, item 5): skip a media step none of the
+      // targets need — BEFORE the approval halt, so a carousel-only post never stops at the
+      // video gate. A step runs if it produces ANY needed asset type.
+      const wantAssets = MEDIA_AGENT_ASSET[planNode.agentId];
+      if (wantAssets && neededAssets.length > 0 && !wantAssets.some((a) => neededAssets.includes(a as AssetType))) {
+        await setNodeStatus(nodeRow.id, 'skipped');
+        publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'skipped' });
         continue;
       }
-      requiresApproval = true;
-    }
 
-    // Autonomous grant (Phase 01): for a granted run's cost/publish gate, the policy decides —
-    // approve (guardrails hold) → clear the gate and run the node; hold → park + notify + audit,
-    // never publish, never fail. The selection gate is handled at its post-execution park below.
-    // Scheduled-future publishers already resolved above (park `ready`), so this only runs the
-    // publisher inline for IMMEDIATE (non-scheduled) autonomous publishes.
-    if (atriaMode && requiresApproval && opts.approveNodeId !== planNodeId) {
-      const gateKind = agentGate(planNode.agentId);
-      if (gateKind === 'cost' || gateKind === 'publish') {
-        const gctx = await buildGuardrailCtx(gateKind);
-        const decision = atriaApprovalPolicy(gateKind, gctx);
-        if (decision === 'approve') {
-          await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId: planNode.agentId, gate: gateKind, decision, estCostUsd: gctx.estCostUsd, budgetUsd: gctx.budgetUsd }, ownerId);
-          requiresApproval = false;
-        } else {
-          return atriaHold(nodeRow.id, planNodeId, planNode.agentId, gateKind, guardrailHoldReason(gateKind, gctx) ?? 'guardrail not met');
-        }
-      }
-    }
-
-    if (requiresApproval && opts.approveNodeId !== planNodeId) {
-      await setNodeStatus(nodeRow.id, 'awaiting_approval');
-      await setRunStatus(runId, 'needs_approval');
-      // Publisher gate (Phase 02): surface the optimal-time suggestion on the halt event so
-      // the approval UI shows the recommended window BEFORE the user approves. Pure heuristic
-      // (no spend); other gated nodes (the video cost gate) carry no suggestion.
-      const timingSuggestion =
-        planNode.agentId === 'publisher'
-          ? summarizeTiming(
-              suggestPublishTimes({
-                platforms: attachedPost?.platforms ?? goal.platforms,
-                audience: goal.slots.targetAudience ?? null,
-                language: attachedPost?.language ?? goal.slots.language ?? null,
-              }),
-            )
-          : undefined;
-      publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval', timingSuggestion });
-      return { status: 'needs_approval', nodeId: planNodeId };
-    }
-
-    const def = getAgent(planNode.agentId);
-    const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn, researchFn: opts.researchFn, gmailSendFn: opts.gmailSendFn };
-
-    await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
-    publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'running' });
-
-    try {
-      const result = await executeNode(planNode, ctx);
-      upstream[result.type as ArtifactType] = result.data;
-      if (result.postId) postId = result.postId;
-      await setNodeStatus(nodeRow.id, 'completed', {
-        finishedAt: new Date(),
-        outputRefs: [result.artifactId],
-        ...costFields(result),
-      });
-      publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed' });
-      void def;
-
-      // Concept selection gate — PARK: pause right after concept produced its 3-5 versions so the
-      // user picks one (+ optional reference image) before media/publish run. conceptGate=false
-      // (verify scripts / headless) auto-selects version 1 and approves so the flow continues.
-      // Atria (granted): the policy decides — approve auto-selects version 1 (grant covers the
-      // pick); hold parks + notifies. Human mode keeps its conceptGate behavior untouched.
-      if (isSelectionGate(planNode.agentId)) {
-        if (atriaMode) {
-          const gctx = await buildGuardrailCtx('selection');
-          if (atriaApprovalPolicy('selection', gctx) === 'hold') {
-            return atriaHold(nodeRow.id, planNodeId, planNode.agentId, 'selection', guardrailHoldReason('selection', gctx) ?? 'content not produced');
-          }
-          await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId: planNode.agentId, gate: 'selection', decision: 'approve' }, ownerId);
-        } else if (opts.conceptGate ?? true) {
+      // Publish-completeness gate (future-proofing): the publisher must NOT fire while any OTHER
+      // step is still in progress (e.g. a video still generating once the executor runs branches in
+      // parallel). If a non-publisher node isn't terminal, HOLD the run and notify the user which
+      // steps remain — never publish prematurely. In today's sequential executor upstream is already
+      // done by the time we reach the publisher, so this is normally a no-op; it guards the future.
+      if (planNode.agentId === 'publisher') {
+        const fresh = await getRunWithNodes(runId, ownerId);
+        const pending = (fresh?.nodes ?? []).filter(
+          (n) => n.nodeId !== planNodeId && !['completed', 'skipped', 'failed'].includes(n.status),
+        );
+        if (pending.length > 0) {
           await setNodeStatus(nodeRow.id, 'awaiting_approval');
           await setRunStatus(runId, 'needs_approval');
-          publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval' });
+          const remaining = pending.map((n) => n.agentId).join(', ');
+          publishNodeStatus(ownerId, {
+            runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval',
+            notice: `Holding publish — ${pending.length} step(s) still in progress: ${remaining}`,
+          });
           return { status: 'needs_approval', nodeId: planNodeId };
         }
-        if (postId) await approveReview(postId, ownerId, approveScheduledAt);
-      }
-    } catch (e) {
-      const msg = String(e instanceof Error ? e.message : e).slice(0, 500);
-      await setNodeStatus(nodeRow.id, 'failed', { finishedAt: new Date(), error: msg });
-      await setRunStatus(runId, 'failed');
-      publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'failed', error: msg });
-      await logRun('error', 'wf_node', { runId, nodeId: planNodeId, agentId: planNode.agentId, error: msg }, ownerId);
-      return { status: 'failed', nodeId: planNodeId, error: msg };
-    }
-  }
 
-  await setRunStatus(runId, 'completed');
-  // Debit the credit wallet for this run's cost (credit-wallet Phase 01). Idempotent by runId, so a
-  // resumed/re-entered run that completes again charges once. Best-effort: a wallet failure must not
-  // fail an already-completed run — the flow's work is done; a missed debit is recoverable, a false
-  // failure is not. The pre-flight gate (Phase 02) is what actually protects the balance.
-  let debited: number | null = null;
-  try {
-    const credits = await runCredits(runId, ownerId);
-    if (await debitRun(ownerId, credits, runId)) debited = credits;
-  } catch (e) {
-    await logRun('warn', 'wf_credit_debit_failed', { runId, error: String(e instanceof Error ? e.message : e).slice(0, 160) }, ownerId).catch(() => {});
+        // BUG-3 (gate-after-content): the connection gate is now DEFERRED past content generation, so the
+        // draft is reviewable pre-connect. Re-gate the connection HERE, at the publish boundary — content
+        // is generated + reviewed by now; if the post's target platforms still aren't connected, PARK at
+        // `needs_connection` (never let runPublisher throw on a missing connection). respondRun recomputes
+        // the connect actions on read, so the UI shows the same connect prompt the up-front gate used to.
+        // DRY-RUN (a stub publishFn) needs no real connection, so skip UNLESS a verify explicitly
+        // simulates connection state via connectionReaderFn — the same DI seam the atria gate uses.
+        const gateConnection = !opts.publishFn || !!opts.connectionReaderFn;
+        const freshPost = gateConnection ? (await getPostByRunId(runId)) ?? attachedPost : null;
+        if (freshPost && freshPost.platforms.length > 0) {
+          const conn = opts.connectionReaderFn
+            ? await resolveConnections(ownerId, { ...goal, platforms: freshPost.platforms }, plan, opts.connectionReaderFn)
+            : await resolveConnections(ownerId, { ...goal, platforms: freshPost.platforms }, plan);
+          if (conn.status !== 'resolved') {
+            await setNodeStatus(nodeRow.id, 'awaiting_approval');
+            await setRunStatus(runId, 'needs_connection');
+            publishNodeStatus(ownerId, {
+              runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval',
+              notice: `Connect ${conn.required.map((r) => r.displayName).join(', ')} to publish — your draft is ready and waiting.`,
+            });
+            await logRun('info', 'wf_publish_gated_needs_connection', { runId, nodeId: planNodeId, count: conn.required.length }, ownerId);
+            return { status: 'needs_approval', nodeId: planNodeId };
+          }
+        }
+      }
+
+      // Approval halt: a gated node stops the run UNLESS it's the one just approved. Read the
+      // gating policy from the LIVE registry (not the frozen plan) so a policy change — e.g.
+      // adding the pre-video cost gate — applies to already-planned templates/runs too.
+      const gated = getAgent(planNode.agentId)?.requiresApproval ?? planNode.requiresApproval;
+      // Auto-publish default (item 2): waive the publisher gate when the post is cleanly
+      // postable — every target platform's adapter supports the asset type. The connection
+      // resolver already ran before the DAG, so by here every target IS connected; the only
+      // remaining blocker is asset compatibility (item 1). If some target can't take the asset,
+      // KEEP the gate so the publish review (item 3) surfaces exactly what would be skipped
+      // before anything goes out. The video cost gate (agentId 'video') is separate and always
+      // holds. autoPublish=false restores the manual gate (verify scripts, opt-out).
+      // Auto-publish is suppressed when the run produces a video: approving the video cost gate must
+      // NOT also publish. The user reviews the finished video, then approves the publisher separately.
+      // Default OFF (decision 2026-07-08): halt at the approval gate unless the caller's explicit opt
+      // (UI toggle) OR the goal's NL flag ("đăng luôn", set by the analyzer) enables auto-publish.
+      const autoPublish = (opts.autoPublish ?? goal.autoPublish ?? false) && !hasCostGate;
+      let requiresApproval = gated;
+      // Human auto-publish waiver (unchanged). In atria mode the grant policy is the sole authority
+      // for the publisher gate (see the atria override below), so skip this heuristic entirely.
+      if (!atriaMode && gated && planNode.agentId === 'publisher' && autoPublish) {
+        // Per-platform (item 5): each target may publish its own asset type — auto-run only
+        // when EVERY target's adapter supports ITS asset type; otherwise gate for the review.
+        // Phase 02 (C1): re-read the post FRESH here — the run-start `attachedPost` snapshot is null
+        // on a fresh goal (post created mid-run), which wrongly forced the gate for every fresh-goal
+        // run. The fresh read makes fresh-goal runs auto-publish-eligible like attached-post runs.
+        const post = (await getPostByRunId(runId)) ?? attachedPost;
+        const cleanlyPostable =
+          !!post && post.platforms.length > 0 &&
+          post.platforms.every((p) => platformSupportsAsset(p, publishAssetType(post, p)));
+        requiresApproval = !cleanlyPostable; // clean → auto-run; any skip/unknown → gate for review
+      }
+      // Schedule gate (feedback #2): a future-scheduled publisher never publishes inline. First pass
+      // → hold for the user's approval (below). On approval → park the post `ready` with its schedule
+      // preserved and mark this node completed; the scheduler cron owns the actual publish at the
+      // chosen time (findPublishDue guards scheduledAt<=now). Manual /publish-now stays the only
+      // immediate bypass. Without this, an approved cleanly-postable post fires runPublisher NOW.
+      if (planNode.agentId === 'publisher' && isScheduledFuture()) {
+        // A granted run clears the schedule gate autonomously when publish guardrails hold — the
+        // post is parked `ready` with its schedule intact and the scheduler cron (Phase 03) fires it
+        // at the chosen time (only once scheduleConfirmed=true). A guardrail fail falls through to
+        // the atria hold below. Human mode still requires the explicit approve-node click.
+        const scheduleApproved =
+          opts.approveNodeId === planNodeId ||
+          (atriaMode && atriaApprovalPolicy('publish', await buildGuardrailCtx('publish')) === 'approve');
+        if (scheduleApproved) {
+          if (atriaMode && opts.approveNodeId !== planNodeId) {
+            await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId: planNode.agentId, gate: 'publish', decision: 'approve', scheduled: true }, ownerId);
+          }
+          // H1a: approveOrThrow fails loud if the review→ready approval silently no-ops (post stuck
+          // in a non-publishable state) — the scheduler would otherwise never find it due.
+          try {
+            if (postId) await approveOrThrow(postId);
+          } catch (e) {
+            const msg = String(e instanceof Error ? e.message : e).slice(0, 500);
+            await setNodeStatus(nodeRow.id, 'failed', { finishedAt: new Date(), error: msg });
+            await setRunStatus(runId, 'failed');
+            publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'failed', error: msg });
+            return { status: 'failed', nodeId: planNodeId, error: msg };
+          }
+          await setNodeStatus(nodeRow.id, 'completed', { finishedAt: new Date() });
+          publishNodeStatus(ownerId, {
+            runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed',
+            notice: `Scheduled for ${approveScheduledAt.toISOString()} — the scheduler will publish automatically at that time.`,
+          });
+          continue;
+        }
+        requiresApproval = true;
+      }
+
+      // Autonomous grant (Phase 01): for a granted run's cost/publish gate, the policy decides —
+      // approve (guardrails hold) → clear the gate and run the node; hold → park + notify + audit,
+      // never publish, never fail. The selection gate is handled at its post-execution park below.
+      // Scheduled-future publishers already resolved above (park `ready`), so this only runs the
+      // publisher inline for IMMEDIATE (non-scheduled) autonomous publishes.
+      if (atriaMode && requiresApproval && opts.approveNodeId !== planNodeId) {
+        const gateKind = agentGate(planNode.agentId);
+        if (gateKind === 'cost' || gateKind === 'publish') {
+          const gctx = await buildGuardrailCtx(gateKind);
+          const decision = atriaApprovalPolicy(gateKind, gctx);
+          if (decision === 'approve') {
+            await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId: planNode.agentId, gate: gateKind, decision, estCostUsd: gctx.estCostUsd, budgetUsd: gctx.budgetUsd }, ownerId);
+            requiresApproval = false;
+          } else {
+            return atriaHold(nodeRow.id, planNodeId, planNode.agentId, gateKind, guardrailHoldReason(gateKind, gctx) ?? 'guardrail not met');
+          }
+        }
+      }
+
+      if (requiresApproval && opts.approveNodeId !== planNodeId) {
+        await setNodeStatus(nodeRow.id, 'awaiting_approval');
+        await setRunStatus(runId, 'needs_approval');
+        // Publisher gate (Phase 02): surface the optimal-time suggestion on the halt event so
+        // the approval UI shows the recommended window BEFORE the user approves. Pure heuristic
+        // (no spend); other gated nodes (the video cost gate) carry no suggestion.
+        const timingSuggestion =
+          planNode.agentId === 'publisher'
+            ? summarizeTiming(
+                suggestPublishTimes({
+                  platforms: attachedPost?.platforms ?? goal.platforms,
+                  audience: goal.slots.targetAudience ?? null,
+                  language: attachedPost?.language ?? goal.slots.language ?? null,
+                }),
+              )
+            : undefined;
+        publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval', timingSuggestion });
+        return { status: 'needs_approval', nodeId: planNodeId };
+      }
+
+      const def = getAgent(planNode.agentId);
+      const ctx: RunnerContext = { runId, ownerId, goal, upstream, postId, geminiFn: opts.geminiFn, publishFn: opts.publishFn, llmJsonFn: opts.llmJsonFn, imageFn: opts.imageFn, videoFn: opts.videoFn, ttsFn: opts.ttsFn, researchFn: opts.researchFn, gmailSendFn: opts.gmailSendFn };
+
+      await setNodeStatus(nodeRow.id, 'running', { startedAt: new Date() });
+      publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'running' });
+
+      try {
+        const result = await executeNode(planNode, ctx);
+        upstream[result.type as ArtifactType] = result.data;
+        if (result.postId) postId = result.postId;
+        await setNodeStatus(nodeRow.id, 'completed', {
+          finishedAt: new Date(),
+          outputRefs: [result.artifactId],
+          ...costFields(result),
+        });
+        publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'completed' });
+        void def;
+
+        // Concept selection gate — PARK: pause right after concept produced its 3-5 versions so the
+        // user picks one (+ optional reference image) before media/publish run. conceptGate=false
+        // (verify scripts / headless) auto-selects version 1 and approves so the flow continues.
+        // Atria (granted): the policy decides — approve auto-selects version 1 (grant covers the
+        // pick); hold parks + notifies. Human mode keeps its conceptGate behavior untouched.
+        if (isSelectionGate(planNode.agentId)) {
+          if (atriaMode) {
+            const gctx = await buildGuardrailCtx('selection');
+            if (atriaApprovalPolicy('selection', gctx) === 'hold') {
+              return atriaHold(nodeRow.id, planNodeId, planNode.agentId, 'selection', guardrailHoldReason('selection', gctx) ?? 'content not produced');
+            }
+            await logRun('info', 'atria_gate', { runId, nodeId: planNodeId, agentId: planNode.agentId, gate: 'selection', decision: 'approve' }, ownerId);
+          } else if (opts.conceptGate ?? true) {
+            await setNodeStatus(nodeRow.id, 'awaiting_approval');
+            await setRunStatus(runId, 'needs_approval');
+            publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval' });
+            return { status: 'needs_approval', nodeId: planNodeId };
+          }
+          if (postId) await approveReview(postId, ownerId, approveScheduledAt);
+        }
+      } catch (e) {
+        const msg = String(e instanceof Error ? e.message : e).slice(0, 500);
+        await setNodeStatus(nodeRow.id, 'failed', { finishedAt: new Date(), error: msg });
+        await setRunStatus(runId, 'failed');
+        publishNodeStatus(ownerId, { runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'failed', error: msg });
+        await logRun('error', 'wf_node', { runId, nodeId: planNodeId, agentId: planNode.agentId, error: msg }, ownerId);
+        return { status: 'failed', nodeId: planNodeId, error: msg };
+      }
+    }
+
+    await setRunStatus(runId, 'completed');
+    await logRun('info', 'wf_run', { runId, status: 'completed' }, ownerId);
+    return { status: 'completed' };
+  } finally {
+    await reconcileCredits(runId, ownerId);
   }
-  // Success log outside the try: a logging failure here must not mislabel a landed debit as failed.
-  if (debited !== null) await logRun('info', 'wf_credit_debit', { runId, credits: debited }, ownerId).catch(() => {});
-  await logRun('info', 'wf_run', { runId, status: 'completed' }, ownerId);
-  return { status: 'completed' };
 };

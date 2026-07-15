@@ -1,6 +1,7 @@
-// Credit wallet repo (credit-wallet Phase 01). Append-only ledger; balance = SUM(delta).
-// Positive = trial/grant, negative = debit. Idempotency for debits is enforced by the
-// (runId, kind) unique index — a re-entered/resumed run debits at most once.
+// Credit wallet repo (credit-wallet Phase 01, debit reconcile added Phase 02). Append-only
+// ledger; balance = SUM(delta). Positive = trial/grant, negative = debit. A run may now carry
+// MULTIPLE debit rows — one per stop point (park/fail/complete) — each charging only the delta
+// above what was already debited; see reconcileRunDebit below for the no-double-charge guard.
 import { prisma } from '../client.ts';
 import type { CreditLedger } from '../../../prisma/generated/prisma/client.ts';
 
@@ -109,24 +110,33 @@ export const listTenantsWithBalances = async (): Promise<TenantBalance[]> => {
   });
 };
 
-// Debit a completed run's cost. Idempotent by runId via the (runId, kind) unique index: a
-// resumed/re-entered run that reaches completion again will hit the constraint and be skipped.
-// A zero/negative credit run is a no-op (nothing to debit). Returns true if a debit row landed.
-export const debitRun = async (
+// Reconcile a run's debit to its ACTUAL accumulated cost SO FAR (credit-wallet Phase 02 —
+// under-billing fix). A run can spend across MULTIPLE stop points: it parks at a gate
+// (needs_approval / needs_connection) right after spending on concept generation, later
+// resumes and spends more (media/publish), then parks again or completes — debiting only at
+// `completed` (the old debitRun) let a parked-forever run consume real tokens for free. Call
+// this at EVERY stop point (park/fail/complete), passing the run's TOTAL cost so far
+// (workflow-run-repo.runCredits). `toDebit = costSoFar - alreadyDebitedForRun`; only the
+// POSITIVE delta lands as a new debit row, so the sum ever charged for a run equals — and never
+// exceeds — its real accumulated cost. Multiple debit rows per run are now normal (the old
+// (runId, kind) unique index that capped a run at one debit is gone) — balance is still
+// SUM(delta), so correctness doesn't depend on row count. Race-safe: same transaction-scoped
+// advisory-lock pattern as ensureTrialGrant, keyed on runId, so two concurrent stop-points for
+// the same run (e.g. an SSE-driven resume racing a manual re-entry) serialize instead of both
+// reading the same "alreadyDebited" and double-charging. Returns the credits actually debited
+// this call (0 when there's nothing new to charge).
+export const reconcileRunDebit = async (
   ownerId: string,
-  credits: number,
   runId: string,
+  costSoFar: number,
   reason: string | null = 'flow run',
-): Promise<boolean> => {
-  if (credits <= 0) return false;
-  try {
-    await prisma.creditLedger.create({
-      data: { ownerId, delta: -Math.abs(credits), kind: 'debit', runId, reason },
-    });
-    return true;
-  } catch (e) {
-    // P2002 = unique violation → this run was already debited. Idempotent success (no double charge).
-    if (e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === 'P2002') return false;
-    throw e;
-  }
-};
+): Promise<number> =>
+  prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${runId}))`;
+    const agg = await tx.creditLedger.aggregate({ where: { runId, kind: 'debit' }, _sum: { delta: true } });
+    const alreadyDebited = -(agg._sum.delta ?? 0); // debit deltas are stored negative
+    const toDebit = costSoFar - alreadyDebited;
+    if (toDebit <= 0) return 0;
+    await tx.creditLedger.create({ data: { ownerId, delta: -toDebit, kind: 'debit', runId, reason } });
+    return toDebit;
+  });
