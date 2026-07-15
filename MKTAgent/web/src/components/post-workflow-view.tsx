@@ -10,6 +10,7 @@ import { RunDagView } from './run-dag-view';
 import { ConnectionRequired } from './connection-required';
 import { PublishReview } from './publish-review';
 import { ConceptSelectionGate } from './concept-selection-gate';
+import { ConceptCopyEditor, type Copy } from './concept-copy-editor';
 import { formatArtifact } from '../flow/artifact-format';
 
 interface Props {
@@ -28,8 +29,6 @@ const STATUS_HINT: Record<string, string> = {
   scheduled: 'Scheduled — it will resume and run automatically at the confirmed time.',
   cancelled: 'Cancelled — the scheduled run was called off.',
 };
-
-interface Copy { body: string; threads: string; x: string }
 
 // The executor is detached: it emits a node's `running` SSE event within milliseconds of
 // launch — usually BEFORE the browser's EventSource connects, and SSE has no replay. So we
@@ -51,10 +50,6 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   // Live per-node hold notices (nodeId → text) from node.status SSE events — not persisted
   // on the run DTO, so kept separately and reset whenever we switch/reload the run.
   const [notices, setNotices] = useState<Record<string, string>>({});
-  // Concept-copy editors (inline manual edit + LLM refine on the concept_writer artifact).
-  const [editCopy, setEditCopy] = useState<Copy | null>(null);
-  const [refineOpen, setRefineOpen] = useState(false);
-  const [refineText, setRefineText] = useState('');
   // Publish-gate schedule (Fix A): empty → publish now; a future time → park ready, scheduler fires it.
   const [publishAt, setPublishAt] = useState('');
   // Per-post autonomy grant ("⚡ Chuẩn bị", G1): 2-step like the Scheduled/Workspace renderers —
@@ -78,7 +73,12 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
       ? { ...cur, nodes: cur.nodes.map((n) => n.nodeId === ev.nodeId ? { ...n, status: ev.status, error: ev.error ?? n.error } : n) }
       : cur);
     if (ev.notice) setNotices((prev) => ({ ...prev, [ev.nodeId]: ev.notice! }));
-    if (ev.status === 'completed' || ev.status === 'failed') void load();
+    // Reload the run DTO whenever a node reaches a TERMINAL or PARK state — not just completed/failed.
+    // A node that parks `awaiting_approval` (a gate: concept selection, video cost, OR the publisher
+    // connection re-gate from the gate-after-content change) transitions the RUN to needs_approval/
+    // needs_connection. Without refetching, run.status stays optimistically 'running' → the view shows
+    // "Running…" forever and hides the review affordances (edit/refine copy, re-run, connect prompt).
+    if (ev.status === 'completed' || ev.status === 'failed' || ev.status === 'awaiting_approval') void load();
   });
 
   // Atria-granted run left `planned`/`running` is being auto-prepared by the autonomy cron (≤2 min
@@ -129,29 +129,6 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
       // show it running immediately (the response still carries the reset pending node).
       setRun(markRunning(r.data, nodeId));
       notify('Re-running step — downstream steps marked stale');
-    } finally { setBusy(false); }
-  };
-
-  // Save a hand-edited copy (no LLM). Reloads the run so the concept artifact re-renders.
-  const saveCopy = async (postId: string) => {
-    if (!editCopy) return;
-    setBusy(true);
-    try {
-      const r = await api.editCopy(postId, editCopy);
-      if (!r.ok) { notify(`Save copy: ${r.error.error}`, 'err'); return; }
-      setEditCopy(null); notify('Copy updated'); await load();
-    } finally { setBusy(false); }
-  };
-
-  // Refine copy via LLM instruction (targeted edit, keeps audit trail).
-  const refineCopy = async (postId: string) => {
-    const text = refineText.trim();
-    if (!text) return;
-    setBusy(true);
-    try {
-      const r = await api.refine(postId, text);
-      if (!r.ok) { notify(`Refine: ${r.error.error}`, 'err'); return; }
-      setRefineOpen(false); setRefineText(''); notify('Copy refined'); await load();
     } finally { setBusy(false); }
   };
 
@@ -401,38 +378,7 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
 
             {/* Concept copy: edit by hand (no LLM) OR refine via instruction (LLM). */}
             {conceptCopy && conceptPostId && run.status !== 'running' && (
-              <div className="copy-edit-row">
-                {!editCopy && !refineOpen && (
-                  <div className="btn-row">
-                    <button className="btn small" disabled={busy} onClick={() => setEditCopy({ ...conceptCopy })}>✎ Edit copy</button>
-                    <button className="btn small" disabled={busy} onClick={() => setRefineOpen(true)}>✨ Refine with AI</button>
-                  </div>
-                )}
-                {editCopy && (
-                  <div className="copy-editor">
-                    <label>Body</label>
-                    <textarea rows={4} value={editCopy.body} onChange={(e) => setEditCopy({ ...editCopy, body: e.target.value })} />
-                    <label>Threads</label>
-                    <textarea rows={2} value={editCopy.threads} onChange={(e) => setEditCopy({ ...editCopy, threads: e.target.value })} />
-                    <label>X</label>
-                    <textarea rows={2} value={editCopy.x} onChange={(e) => setEditCopy({ ...editCopy, x: e.target.value })} />
-                    <div className="btn-row">
-                      <button className="btn small primary" disabled={busy} onClick={() => void saveCopy(conceptPostId)}>{busy ? 'Saving…' : 'Save copy'}</button>
-                      <button className="btn small" disabled={busy} onClick={() => setEditCopy(null)}>Cancel</button>
-                    </div>
-                  </div>
-                )}
-                {refineOpen && (
-                  <div className="copy-editor">
-                    <label>Refine instruction</label>
-                    <textarea rows={3} autoFocus value={refineText} onChange={(e) => setRefineText(e.target.value)} placeholder="e.g. shorten the hook, add a discount mention, make the tone warmer…" />
-                    <div className="btn-row">
-                      <button className="btn small primary" disabled={busy || !refineText.trim()} onClick={() => void refineCopy(conceptPostId)}>{busy ? 'Refining…' : 'Refine'}</button>
-                      <button className="btn small" disabled={busy} onClick={() => { setRefineOpen(false); setRefineText(''); }}>Cancel</button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <ConceptCopyEditor postId={conceptPostId} copy={conceptCopy} busy={busy} notify={notify} onSaved={() => void load()} />
             )}
           </div>
         )}

@@ -357,6 +357,17 @@ postsRouter.post(
     if (!(await getPostForOwner(req.params.id, req.userId!))) return fail(res, 404, 'post_not_found');
     const post = await editPostCopy(req.params.id, req.userId!, body);
     if (!post) return fail(res, 409, 'not_editable', 'post copy can only be edited in review or ready state');
+    // Same as /refine: editPostCopy only writes post.copy, but the workflow view renders the
+    // run's content_concept artifact — without this the hand-edit appears to silently revert
+    // on the next reload. Mirror the new copy onto the concept artifact.
+    if (post.runId && post.copy) {
+      const arts = await listArtifacts(post.runId);
+      const concept = arts.find((a) => a.type === 'content_concept');
+      if (concept) {
+        const data = (concept.data as Record<string, unknown>) ?? {};
+        await updateArtifactData(concept.id, req.userId!, 'content_concept', { ...data, copy: post.copy }).catch(() => {});
+      }
+    }
     publishPostStatus(req.userId!, { postId: post.id, status: 'review', campaignId: post.campaignId });
     ok(res, toPostDto(post));
   }),

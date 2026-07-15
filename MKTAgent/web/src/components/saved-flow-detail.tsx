@@ -12,7 +12,15 @@ import { ConnectionRequired } from './connection-required';
 import { NodeSetupStatus } from './node-setup-status';
 import { CostStrip } from './cost-strip';
 import { PlanTierCards } from './plan-tier-cards';
+import { ConceptCopyEditor, type Copy } from './concept-copy-editor';
 import { formatArtifact } from '../flow/artifact-format';
+
+// The executor is detached: it emits a node's `running` SSE event within milliseconds of
+// launch — usually BEFORE the browser's EventSource connects, and SSE has no replay. Flip
+// the node that's about to re-run to `running` right off the API response so it doesn't
+// sit on its stale dot until the terminal SSE event lands (mirrors post-workflow-view).
+const markRunning = (run: WorkflowRunDto, nodeId: string | null): WorkflowRunDto =>
+  nodeId ? { ...run, nodes: run.nodes.map((n) => n.nodeId === nodeId ? { ...n, status: 'running' } : n) } : run;
 
 interface Props {
   runId: string;
@@ -85,14 +93,18 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
     } finally { setBusy(false); }
   };
 
-  // Live node status while executing. Terminal events refetch so artifacts land.
+  // Live node status while executing. Terminal AND park events refetch so artifacts land.
+  // A node that parks `awaiting_approval` (concept selection, video cost, or the publisher
+  // gate) transitions the RUN to needs_approval/needs_connection — without refetching here,
+  // run.status stays optimistically 'running' and the view shows "Running…" forever, hiding
+  // the review affordances (edit/refine copy, re-run, approve). Mirrors post-workflow-view.
   const liveId = run && (run.status === 'running' || run.status === 'needs_approval') ? run.id : null;
   useRunEvents(liveId, (ev) => {
     setRun((cur) => cur && cur.id === ev.runId
       ? { ...cur, nodes: cur.nodes.map((n) => n.nodeId === ev.nodeId ? { ...n, status: ev.status, error: ev.error ?? n.error } : n) }
       : cur);
     if (ev.notice) setNotices((prev) => ({ ...prev, [ev.nodeId]: ev.notice! }));
-    if (ev.status === 'completed' || ev.status === 'failed') { void load(); onStatusChange(); }
+    if (ev.status === 'completed' || ev.status === 'failed' || ev.status === 'awaiting_approval') { void load(); onStatusChange(); }
   });
 
   const execute = async () => {
@@ -140,6 +152,20 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
       const r = await api.approveRunNode(run.id, nodeId);
       if (!r.ok) { notify(`Approve: ${r.error.error}`, 'err'); return; }
       setRun(r.data); onStatusChange(); notify('Publishing…');
+    } finally { setBusy(false); }
+  };
+
+  // Re-run a single completed/failed step (e.g. after hand-editing or refining a concept
+  // draft, or to retry a failed one). Mirrors PostWorkflowView's rerun — kept independent
+  // here since this component has its own run/busy state.
+  const rerun = async (nodeId: string) => {
+    if (!run) return;
+    setBusy(true);
+    try {
+      const r = await api.rerunRunNode(run.id, nodeId);
+      if (!r.ok) { notify(`Re-run: ${r.error.error}`, 'err'); return; }
+      setRun(markRunning(r.data, nodeId));
+      notify('Re-running step — downstream steps marked stale');
     } finally { setBusy(false); }
   };
 
@@ -228,6 +254,29 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
   const selectedNodeRun = selectedNode ? run.nodes.find((n) => n.nodeId === selectedNode) : null;
   const selectedArtifact = selectedNode ? run.artifacts.find((a) => a.nodeId === selectedNode) : null;
   const selectedView = selectedArtifact ? formatArtifact(selectedArtifact.type, selectedArtifact.data) : null;
+  // The post backing a standalone flow run (materialized by concept_writer even without a
+  // campaign) — needed to target the copy edit/refine calls. GET responses carry no
+  // createdPostId extra, so fall back to any artifact stamped with one (concept_writer does).
+  const runPostId =
+    run.createdPostId ??
+    (run.artifacts.find((a) => (a.data as { postId?: string } | undefined)?.postId)?.data as
+      | { postId?: string }
+      | undefined)?.postId ??
+    null;
+  // The concept_writer artifact carries the editable copy + its postId (edit/refine target) —
+  // same shape PostWorkflowView reads, so a standalone flow run gets the same controls.
+  const conceptData = selectedArtifact?.type === 'content_concept'
+    ? (selectedArtifact.data as { copy?: Copy; postId?: string } | undefined)
+    : undefined;
+  const conceptPostId = conceptData?.postId ?? runPostId;
+  const conceptCopy = conceptData?.copy ?? null;
+  // The publisher runs via the approval gate, not re-run; only finished steps re-run.
+  const canRerun = Boolean(
+    selectedNodeRun &&
+    selectedNodeRun.agentId !== 'publisher' &&
+    (selectedNodeRun.status === 'completed' || selectedNodeRun.status === 'failed') &&
+    run.status !== 'running',
+  );
 
   return (
     <div className="card compact saved-flow-detail">
@@ -322,6 +371,19 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
             </>
           ) : (
             <p className="muted small">This step hasn't produced output yet — run the flow to populate it.</p>
+          )}
+          {canRerun && (
+            <div className="rerun-row">
+              <button className="btn small" disabled={busy} onClick={() => void rerun(selectedNode!)}>
+                {busy ? 'Re-running…' : '↻ Re-run this step'}
+              </button>
+              <span className="muted small">Regenerates this step. Later steps are marked stale — re-run them too before publishing.</span>
+            </div>
+          )}
+          {/* Concept copy: edit by hand (no LLM) OR refine via instruction (LLM) — reachable
+              before approving the publisher gate, same as PostWorkflowView. */}
+          {conceptCopy && conceptPostId && run.status !== 'running' && (
+            <ConceptCopyEditor postId={conceptPostId} copy={conceptCopy} busy={busy} notify={notify} onSaved={() => void load()} />
           )}
           {selectedNodeRun && (
             <NodeSetupStatus agentId={selectedNodeRun.agentId} onOpenConnections={onOpenConnections} />
