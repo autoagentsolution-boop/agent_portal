@@ -7,12 +7,14 @@
 //   POST /leads/webhook   x-intake-token | x-webhook-secret  → generic JSON lead
 //   POST /leads/form      x-intake-token | x-webhook-secret  → Google-Form-style row
 //   POST /leads/calcom    ?t=<intake> | ?s=<secret>          → Cal.com BOOKING_CREATED
+// GET/POST /leads/unsubscribe ?owner=&email=&token=          → Nurture Inbox one-click unsubscribe
+//                                                                (HMAC-signed link, Phase 04)
 // MANAGE + READ (JWT, tenant-scoped):
 //   POST   /leads/intake-tokens     → mint a token (plaintext returned ONCE)
 //   GET    /leads/intake-tokens     → list this owner's tokens (metadata only)
 //   DELETE /leads/intake-tokens/:id → revoke
 //   GET    /leads                   → this owner's leads
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { ok, fail, parseOr422, asyncHandler } from './http.ts';
 import { listLeadsQuery } from './schemas.ts';
@@ -30,6 +32,8 @@ import { graphCommentFetcher } from '../leads/sources/comment-fetch-graph.ts';
 import { prisma } from '../db/client.ts';
 import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { logger } from '../lib/logger.ts';
+import { verifyUnsubscribeToken } from '../nurture/guardrails.ts';
+import { suppressEmail } from '../nurture/nurture-thread-repo.ts';
 
 export const leadsRouter: Router = Router();
 
@@ -97,6 +101,42 @@ leadsRouter.post(
   }),
 );
 
+// ---- GET/POST /leads/unsubscribe — Nurture Inbox one-click unsubscribe (Phase 04) ----
+// Public (no JWT — the caller is an email client or a lead's browser), but TOKEN-SIGNED: the query
+// carries an HMAC (guardrails.ts issueUnsubscribeToken, minted into the footer link/List-Unsubscribe
+// header at send time) so a forged/guessed (owner,email) pair can never opt someone out. GET serves the
+// literal link a human clicks in the email body (renders a plain confirmation); POST is the same action
+// for a programmatic/one-click caller (RFC 8058 List-Unsubscribe-Post). Idempotent — suppressEmail
+// upserts, so a double-click is a safe no-op.
+const unsubscribeQuery = z.object({
+  owner: z.string().uuid(),
+  email: z.string().email(),
+  token: z.string().min(1),
+});
+
+const handleUnsubscribe = async (req: Request, res: Response, html: boolean): Promise<void> => {
+  const parsed = unsubscribeQuery.safeParse(req.query);
+  if (!parsed.success) {
+    if (html) { res.status(422).type('html').send('<p>This unsubscribe link is malformed.</p>'); return; }
+    fail(res, 422, 'invalid_link');
+    return;
+  }
+  const { owner, email, token } = parsed.data;
+  const emailLower = email.trim().toLowerCase();
+  if (!verifyUnsubscribeToken(owner, emailLower, token)) {
+    if (html) { res.status(401).type('html').send('<p>This unsubscribe link is invalid or has expired.</p>'); return; }
+    fail(res, 401, 'invalid_token');
+    return;
+  }
+  await suppressEmail(owner, emailLower, 'unsubscribe link clicked');
+  logger.info('nurture_unsubscribed', { ownerId: owner });
+  if (html) { res.status(200).type('html').send('<p>You have been unsubscribed and will not receive further emails.</p>'); return; }
+  ok(res, { unsubscribed: true });
+};
+
+leadsRouter.get('/unsubscribe', asyncHandler(async (req, res) => handleUnsubscribe(req, res, true)));
+leadsRouter.post('/unsubscribe', asyncHandler(async (req, res) => handleUnsubscribe(req, res, false)));
+
 // ---- Intake token management (JWT, owner-scoped) ----
 const createTokenBody = z.object({ label: z.string().max(120).optional() });
 
@@ -158,6 +198,12 @@ const toLeadDto = (l: DecryptedLead): Record<string, unknown> => ({
   sourceProduct: l.sourceProduct,
   source: l.source,
   calBookingUid: l.calBookingUid,
+  // Handle-only lead identity (Multichannel Nurture Phase 03): set when a comment matched the
+  // capture keyword without an email — platformHandle is the commenter's display name/username, a
+  // valid nurture/greeting target even though `email` above is ''.
+  platform: l.platform,
+  platformUserId: l.platformUserId,
+  platformHandle: l.platformHandle,
   score: l.score,
   scoreReasons: l.scoreReasons,
   receivedAt: l.receivedAt.toISOString(),

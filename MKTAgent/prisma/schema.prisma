@@ -58,6 +58,26 @@ enum LeadSource {
   comment
 }
 
+// Direct-messaging channel (Multi-channel Nurture Nodes Phase 01) — SEPARATE from SocialPlatform: a
+// DM is 1:1 opt-in, not a social publish, and its credential isn't a per-user OAuthToken row (the
+// whatsapp/telegram/zalo tokens are env-level for now, like the legacy Meta MKT_FB_PAGE_ACCESS_TOKEN
+// pattern, until a per-tenant messaging-connect flow exists). LinkedIn DM is excluded (no API, ban risk).
+enum MessagingChannel {
+  whatsapp
+  telegram
+  zalo
+}
+
+// Opt-in state for one (owner, channel, recipient). `opted_in` is the ONLY state dm_agent may send
+// to (HARD invariant — the node refuses every other state, fail-loud). `none` = never opted in.
+// `expired` = previously opted in but the channel's opt-in window lapsed (e.g. WhatsApp's 24h
+// customer-service window) — must re-opt-in before another send.
+enum DmOptInState {
+  none
+  opted_in
+  expired
+}
+
 enum TokenStatus {
   active
   needs_attention
@@ -100,6 +120,26 @@ enum InstructionSource {
   memory
 }
 
+// Lead Nurture Agent (Phase 01) — per-lead drip thread lifecycle. `active` = the driver plans/sends
+// its next touch when due. `paused`/`opted_out`/`converted` all stop planning (nextPlanAt cleared);
+// distinct labels so the UI (Phase 04) can explain WHY a thread went quiet. `completed` = every touch
+// in the sequence sent. `failed` = a touch's run failed or the lead became unusable — needs a human.
+enum NurtureStatus {
+  active
+  paused
+  converted
+  opted_out
+  completed
+  failed
+}
+
+// `drip` = the template cadence (Phase 01). `conversation` = a lead reply interrupted the drip and
+// the thread now reacts to it instead (Phase 03) — set nowhere yet in Phase 01.
+enum NurtureMode {
+  drip
+  conversation
+}
+
 // A tenant. Identity = email (from Google login). One User owns many Campaigns,
 // Leads and OAuthTokens; every tenant-scoped query filters by this id (T2).
 // Branding + language are config-as-data defaults inherited by campaigns (T3).
@@ -125,6 +165,16 @@ model User {
   // Global super-admin flag (credit-wallet Phase 01). Grants access to /superadminatria101 and
   // /admin/* endpoints. NOT the per-workspace UserRole above — this is platform-level, one operator.
   isSuperAdmin Boolean    @default(false) @map("is_super_admin")
+  // Lead Nurture Agent (Phase 01): per-owner ON/OFF for auto-enrolling captured leads into a drip
+  // thread. Default OFF (decision — noisy auto-enroll risk) until validated; a human still approves
+  // every touch's send either way, so this only gates whether DRAFTS get proactively planned.
+  nurtureEnabled Boolean  @default(false) @map("nurture_enabled")
+  // Nurture Inbox owner settings (Phase 04): how many touches the drip cadence sends and the gap
+  // between them. Snapshotted into each thread's sequenceId AT ENROLL TIME (sequence.ts buildSequence)
+  // so changing these never retroactively alters an already-running thread's cadence. Defaults (3
+  // touches, 3-day gap) reproduce the original hardcoded DEFAULT_SEQUENCE (day 0/3/6).
+  nurtureMaxTouches Int    @default(3) @map("nurture_max_touches")
+  nurtureGapDays    Int    @default(3) @map("nurture_gap_days")
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -142,6 +192,10 @@ model User {
   roadmapDemands     RoadmapDemand[]
   memories           UserMemory[]
   creditLedger       CreditLedger[]
+  nurtureThreads     LeadNurtureThread[]
+  nurtureSuppressions NurtureSuppression[]
+  dmContacts         DmContact[]
+  dmMessages         DmMessage[]
 
   @@map("mkt_user")
 }
@@ -459,8 +513,13 @@ model Lead {
   // name/email/phone/message hold AES-256-GCM ciphertext at rest (§01.2 PII). email_bidx is a
   // keyed HMAC of the lowercased email — the dedupe query runs on THAT (equality on ciphertext
   // is impossible). raw_payload is no longer written (no-excess-storage); kept nullable for old rows.
+  // email is NULLABLE (Multichannel Nurture Phase 03): comment APIs never return email/phone, so a
+  // commenter who typed the capture keyword WITHOUT an email still mints a HANDLE-ONLY lead — honest,
+  // no fabricated contact info. platform/platformUserId/platformHandle (below) are that lead's
+  // identity instead of email; the nurture enroll gate already skips leads with no usable email
+  // (lead-repo.ts listLeadsEligibleForNurture), so a handle-only row simply never email-enrolls.
   name           String?
-  email          String
+  email          String?
   emailBidx      String?    @map("email_bidx")
   phone          String?
   message        String?
@@ -468,6 +527,14 @@ model Lead {
   source         LeadSource
   calBookingUid  String?    @map("cal_booking_uid")
   rawPayload     Json?      @map("raw_payload")
+  // Platform identity (Phase 03) — set only for comment-sourced leads (webhook or poller), the
+  // dedupe key for a handle-only lead: (owner_id, platform, platform_user_id). platformUserId is a
+  // stable opaque id/username (not free-text PII on its own — mirrors cal_booking_uid, stored
+  // plaintext for equality lookups); platformHandle (the commenter's display name/username) IS
+  // encrypted at rest like `name`, since Meta's `from.name` can be a real person's name.
+  platform         SocialPlatform? @map("platform")
+  platformUserId   String?         @map("platform_user_id")
+  platformHandle   String?         @map("platform_handle")
   // Lead score (§01.5 hybrid): a 0-100 quality/intent score. Rule layer sets it on capture;
   // the optional LLM layer (POST /leads/:id/rescore) adjusts it. scoreReasons is the audit
   // trail — [{ layer:'rule'|'llm', reason, delta }] — so a non-tech user sees WHY.
@@ -479,11 +546,185 @@ model Lead {
   nurturedAt     DateTime?  @map("nurtured_at") @db.Timestamptz(6)
 
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // Lead Nurture Agent (Phase 01): at most one drip thread per lead (enforced by the thread's
+  // own [ownerId, leadId] unique index below). Optional — a lead may never be enrolled.
+  nurtureThread LeadNurtureThread?
 
   @@index([emailBidx, receivedAt], name: "ix_lead_email_bidx")
   @@index([calBookingUid], name: "ix_lead_calcom_uid")
   @@index([ownerId], name: "ix_lead_owner")
+  // Handle-only dedupe/lookup (Phase 03) — the SAME commenter seen via both the webhook and the
+  // poller must resolve to one row. Not a DB-unique constraint (mirrors the email dedupe, which is
+  // an app-level 30-day window, not a hard uniqueness rule — a lead may legitimately re-engage later).
+  @@index([ownerId, platform, platformUserId], name: "ix_lead_platform_identity")
   @@map("mkt_lead")
+}
+
+// Lead Nurture Agent (Phase 01) — one thread per lead driving a human-gated template drip. The
+// driver (nurture-runner.ts) atomically claims a due thread (nextPlanAt <= now), plans the next
+// touch, and kicks it off as a normal orchestration run through the EXISTING send path
+// (email_writer → [scheduler] → email_agent) — every touch still halts at that run's approval gate
+// (HARD invariant: no send without a human). `nextPlanAt` doubles as the claim flag: the atomic
+// claim clears it to null so overlapping cron ticks can't double-plan the same thread (mirrors
+// WorkflowRun.claimScheduledDue's find-then-guarded-updateMany pattern).
+model LeadNurtureThread {
+  id          String        @id @default(uuid()) @db.Uuid
+  ownerId     String        @map("owner_id") @db.Uuid
+  // Globally unique (a Lead row already belongs to exactly one owner) — required by Prisma for the
+  // Lead.nurtureThread 1:1 back-relation, and doubles as the idempotent-enroll guard.
+  leadId      String        @unique @map("lead_id") @db.Uuid
+  sequenceId  String        @map("sequence_id") // sequence.ts template key, e.g. "default3"
+  status      NurtureStatus @default(active)
+  mode        NurtureMode   @default(drip)
+  // Count of touches already SENT = the next touch's sequence index (0 = nothing sent yet).
+  touchNumber Int           @default(0) @map("touch_number")
+  // When the driver should next plan+kick off a touch. Null = nothing due (paused / completed /
+  // opted-out / mid-claim). Set to "now" on enroll (touch 0 is immediate).
+  nextPlanAt  DateTime?     @map("next_plan_at") @db.Timestamptz(6)
+  // Gmail threading (Phase 02): captured on send-completion (nurture-runner's advance hook) from the
+  // email_agent's email_result artifact — gmailThreadId is Gmail's own conversation id, lastMessageId
+  // is OUR generated RFC Message-ID of the most recent touch/reply send. The next touch's email_agent
+  // run (agent-runners.ts) reads both back to carry In-Reply-To/References/threadId so every touch +
+  // reply stays in ONE Gmail conversation (HARD invariant #6).
+  gmailThreadId String?     @map("gmail_thread_id")
+  lastMessageId String?     @map("last_message_id")
+  // Reply poller bookkeeping (Phase 02, nurture-reply-poller.ts). lastCheckedAt bounds each poll to
+  // messages newer than the previous sweep; hasUnhandledReply flags a genuine lead reply awaiting the
+  // Phase 03 brain — set true on ingest, left untouched otherwise (Phase 03 clears it once handled).
+  hasUnhandledReply Boolean   @default(false) @map("has_unhandled_reply")
+  lastCheckedAt     DateTime? @map("last_checked_at") @db.Timestamptz(6)
+  // Nurture brain (Phase 03): true when the brain escalated the latest reply (low confidence /
+  // unverifiable claim / genuine ambiguity) — a human must look at the thread before anything auto-
+  // continues. Cleared by the Phase 04 approval-inbox action that resolves it (out of this phase's scope).
+  needsHuman  Boolean       @default(false) @map("needs_human")
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner   User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  lead    Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  touches NurtureTouch[]
+  replies InboundReply[]
+
+  // Driver's due-scan (mirrors ix_wf_run_status_resume).
+  @@index([status, mode, nextPlanAt], name: "ix_nurture_thread_due")
+  @@index([ownerId], name: "ix_nurture_thread_owner")
+  // Nurture brain's reply-claim scan (Phase 03, nurture-thread-repo.claimReplyThread).
+  @@index([hasUnhandledReply], name: "ix_nurture_thread_unhandled_reply")
+  @@map("mkt_nurture_thread")
+}
+
+// One planned/sent touch within a thread's sequence. `runId` is the WorkflowRun drafting + (once
+// approved) sending it — this table never sends anything itself, it only tracks the touch's outcome
+// against that run. status: planned (not yet kicked off) | awaiting_approval (parked at the run's
+// gate) | scheduled (run parked at a confirmed future time) | sent | skipped | failed.
+model NurtureTouch {
+  id          String    @id @default(uuid()) @db.Uuid
+  threadId    String    @map("thread_id") @db.Uuid
+  ownerId     String    @map("owner_id") @db.Uuid
+  index       Int       // sequence position (0, 1, 2, ...)
+  stage       String    // intro | value | cta — sequence.ts STAGE_INTENT key
+  runId       String?   @map("run_id") @db.Uuid
+  status      String    @default("planned")
+  scheduledAt DateTime? @map("scheduled_at") @db.Timestamptz(6)
+  sentAt      DateTime? @map("sent_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  thread LeadNurtureThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, index], name: "ix_nurture_touch_thread_index")
+  // Send-completion poll (nurture-runner's advance sweep) scans touches by status.
+  @@index([status], name: "ix_nurture_touch_status")
+  @@index([runId], name: "ix_nurture_touch_run")
+  @@map("mkt_nurture_touch")
+}
+
+// Lead Nurture Agent (Phase 02) — one ingested inbound Gmail reply within a nurture thread's Gmail
+// conversation. READ-only capture; nothing here sends (HARD invariant #1). gmailMessageId is Gmail's
+// own message id — @unique makes ingestion idempotent (a re-poll of the same message across ticks is
+// a safe no-op, HARD invariant #3). bodyEnc is AES-256-GCM ciphertext at rest (reuses lib/crypto.ts,
+// the same envelope as Lead PII) — the reply body is never stored in plaintext. Phase 03's brain
+// consumes `handled=false` rows to classify + draft a response.
+model InboundReply {
+  id             String   @id @default(uuid()) @db.Uuid
+  threadId       String   @map("thread_id") @db.Uuid
+  gmailMessageId String   @unique @map("gmail_message_id")
+  fromEmail      String   @map("from_email")
+  bodyEnc        String   @map("body_enc")
+  receivedAt     DateTime @map("received_at") @db.Timestamptz(6)
+  handled        Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  thread LeadNurtureThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, handled], name: "ix_inbound_reply_thread_handled")
+  @@map("mkt_inbound_reply")
+}
+
+// Lead Nurture Agent (Phase 03) — ABSOLUTE, GLOBAL opt-out suppression, keyed by the lead's EMAIL
+// (not a lead/thread id) so a re-captured lead with the same address can never be re-enrolled or
+// emailed again, even under a brand-new Lead row. Checked at BOTH enroll (enroll.ts) and pre-send
+// (email_agent runner) — HARD invariant: opt-out is never honored per-thread only.
+model NurtureSuppression {
+  id         String   @id @default(uuid()) @db.Uuid
+  ownerId    String   @map("owner_id") @db.Uuid
+  emailLower String   @map("email_lower") // lowercased + trimmed — the suppression key
+  reason     String?  // audit note, e.g. "reply: unsubscribe"
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, emailLower], name: "uq_nurture_suppression_owner_email")
+  @@map("mkt_nurture_suppression")
+}
+
+// Multi-channel Nurture Nodes Phase 01 — one known recipient on one channel. externalId (phone /
+// chat-id / handle) holds AES-256-GCM ciphertext at rest — the SAME envelope as Lead PII
+// (lib/crypto.ts) — externalIdBidx is its keyed HMAC so dm_agent's opt-in lookup can still run an
+// equality query (ciphertext can't be queried directly, mirrors Lead.emailBidx). At most one row per
+// (owner, channel, recipient).
+model DmContact {
+  id             String           @id @default(uuid()) @db.Uuid
+  ownerId        String           @map("owner_id") @db.Uuid
+  channel        MessagingChannel
+  externalId     String           @map("external_id") // encrypted phone / chat-id / handle
+  externalIdBidx String           @map("external_id_bidx")
+  optInState     DmOptInState     @default(none) @map("opt_in_state")
+  optInAt        DateTime?        @map("opt_in_at") @db.Timestamptz(6)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner    User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  messages DmMessage[]
+
+  @@unique([ownerId, channel, externalIdBidx], name: "uq_dm_contact_owner_channel_recipient")
+  @@index([ownerId], name: "ix_dm_contact_owner")
+  @@map("mkt_dm_contact")
+}
+
+// Multi-channel Nurture Nodes Phase 01 — per-send delivery log (audit trail + double-send guard). At
+// most ONE row per WorkflowRun (unique on runId) — a dm_agent node that is re-entered/resumed sends
+// AT MOST ONCE, mirroring CreditLedger's [runId,kind] debit idempotency guard. bodyEnc is
+// AES-256-GCM ciphertext (the sent message body is never stored — or logged — in plaintext).
+model DmMessage {
+  id                String           @id @default(uuid()) @db.Uuid
+  ownerId           String           @map("owner_id") @db.Uuid
+  contactId         String           @map("contact_id") @db.Uuid
+  channel           MessagingChannel
+  runId             String           @unique @map("run_id") @db.Uuid
+  direction         String           @default("out") // out = Atria→contact (no inbound ingestion this phase)
+  status            String // sent | dry_run | error
+  providerMessageId String?          @map("provider_message_id")
+  bodyEnc           String           @map("body_enc")
+  error             String?
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  owner   User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  contact DmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId], name: "ix_dm_message_contact")
+  @@index([ownerId], name: "ix_dm_message_owner")
+  @@map("mkt_dm_message")
 }
 
 // OAuth token store — replaces the n8n credential vault. token + refreshToken

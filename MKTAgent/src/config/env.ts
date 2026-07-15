@@ -99,6 +99,19 @@ const schema = z.object({
   ENABLE_AUTONOMY_CRON: boolEnv(false),
   AUTONOMY_MAX_PER_TICK: z.coerce.number().int().positive().default(3),
 
+  // Lead Nurture Agent (Phase 01): the driver cron that enrolls eligible leads, plans due touches,
+  // and kicks off their (approval-gated) send runs. OFF by default like the other workers — with it
+  // off, nothing is enrolled/planned even if a per-owner nurtureEnabled toggle is later flipped on.
+  // Every touch still halts at its email_agent/scheduler approval gate regardless of this flag.
+  ENABLE_NURTURE_CRON: boolEnv(false),
+  NURTURE_MAX_PER_TICK: z.coerce.number().int().positive().default(5),
+
+  // Lead Nurture Agent Phase 02: the reply-ingestion cron (reads lead replies via gmail.readonly).
+  // OFF by default like every other worker. An owner who hasn't re-consented to the read scope yet
+  // (or has it off) degrades to Phase 01's one-way drip for that tick — this flag never crashes on a
+  // missing scope, it just gates whether the sweep runs at all.
+  ENABLE_NURTURE_REPLY_CRON: boolEnv(false),
+
   // Impact / value report (Atria Phase 07). The CONFIGURABLE market baseline the Impact report
   // compares Atria's real spend against — a workspace tunes these to its own market. Cost SAVED and
   // reach are ESTIMATES derived from them (clearly labeled in the report); real spend/output/leads
@@ -149,6 +162,11 @@ const schema = z.object({
   META_APP_SECRET: z.string().default(''),
   THREADS_APP_ID: z.string().default(''),
   THREADS_APP_SECRET: z.string().default(''),
+  // Meta comment-capture webhook (Multichannel Nurture Phase 03). The shared secret Meta's App
+  // Dashboard presents back as `hub.verify_token` during the one-time subscribe handshake (GET
+  // /webhooks/meta). Every SUBSEQUENT delivery (POST) is verified by HMAC-SHA256 over the raw body
+  // keyed with META_APP_SECRET (above), NOT this token — see src/leads/sources/meta-webhook.ts.
+  META_WEBHOOK_VERIFY_TOKEN: z.string().default(''),
   // LinkedIn OAuth 2.0 (Sign In with LinkedIn + w_member_social).
   LINKEDIN_CLIENT_ID: z.string().default(''),
   LINKEDIN_CLIENT_SECRET: z.string().default(''),
@@ -156,6 +174,39 @@ const schema = z.object({
   // token refresh provider already reads from process.env.
   X_CLIENT_ID: z.string().default(''),
   X_CLIENT_SECRET: z.string().default(''),
+
+  // Messaging / DM nurture (Multi-channel Nurture Nodes Phase 01). Every channel adapter defaults to
+  // DRY-RUN (feedback_no_burst_social_posts): a real send requires BOTH the channel's token AND this
+  // master flag explicitly on. OFF by default — no live credentials exist yet (2026-07), so every
+  // deployment stays DRY-RUN until deliberately flipped (see src/messaging/types.ts isLiveDmSend).
+  ENABLE_LIVE_DM_SEND: boolEnv(false),
+  // WhatsApp Cloud API (Meta Graph — reuses GRAPH_VERSION above).
+  WHATSAPP_PHONE_NUMBER_ID: z.string().default(''),
+  WHATSAPP_ACCESS_TOKEN: z.string().default(''),
+  // Telegram Bot API.
+  TELEGRAM_BOT_TOKEN: z.string().default(''),
+  // Optional shared secret Telegram echoes back as `X-Telegram-Bot-Api-Secret-Token` (set via the
+  // Bot API's setWebhook `secret_token`) — verifies an inbound /webhook/telegram call really came
+  // from Telegram. Empty → the check is skipped (dev / not-yet-registered webhook).
+  TELEGRAM_WEBHOOK_SECRET: z.string().default(''),
+  // Zalo ZNS — VN-only, needs ZNS template approval (deferred, plan phase-01 verdict 🟡). ENABLE_ZALO
+  // gates it OFF the live-send path even when a token is present (see isLiveDmSend); the adapter code
+  // exists so flipping this + ENABLE_LIVE_DM_SEND is the only change needed once ZNS is approved.
+  ZALO_OA_ACCESS_TOKEN: z.string().default(''),
+  ZALO_TEMPLATE_ID: z.string().default(''),
+  ENABLE_ZALO: boolEnv(false),
+
+  // Wall-greeting mention/reply (Multi-channel Nurture Nodes Phase 02). Brand-new, never
+  // live-tested social-write actions — even a tenant with an already-connected PUBLISH token must
+  // not silently start posting greetings the moment this ships. OFF by default everywhere; see
+  // src/social/greeting.ts's isLiveGreetingSend (mirrors ENABLE_LIVE_DM_SEND's fail-closed gate).
+  ENABLE_LIVE_GREETING_SEND: boolEnv(false),
+
+  // X/Twitter comment-read (Multichannel Nurture Phase 03 hardening) needs a PAID API tier
+  // (recent-search is gated above free). OFF by default so a tenant on the free tier never burns a
+  // 401/403 call every 30-min poll cycle — comment-fetchers/x.ts short-circuits to a clean [] no-op
+  // until this is explicitly flipped on (confirm the connected token's tier first).
+  ENABLE_X_LEAD_CAPTURE: boolEnv(false),
 });
 
 const parsed = schema.safeParse(process.env);

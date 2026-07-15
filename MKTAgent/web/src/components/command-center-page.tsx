@@ -13,6 +13,8 @@ import { MemoryPanel } from './memory-panel';
 import { ImpactReport } from './impact-report';
 import { LeadsPage } from './LeadsPage';
 import { EmailPanel } from './email-panel';
+import { NurtureInboxPanel } from './nurture-inbox-panel';
+import { AtriaSuggestionCards } from './atria-suggestion-cards';
 import { AtriaResumeWorkCards } from './atria-resume-work-cards';
 import { useAgentActivity } from '../hooks/use-agent-activity';
 
@@ -408,6 +410,8 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
               <div className="cc-drawer-body"><LeadsPage notify={notify} /></div>
             ) : panel.kind === 'surface' && panel.surface === 'email' ? (
               <EmailPanel notify={notify} />
+            ) : panel.kind === 'surface' && panel.surface === 'nurture' ? (
+              <NurtureInboxPanel notify={notify} />
             ) : panel.kind === 'surface' ? (
               <AgentSpotlight agent={panel.agent} notify={notify} onOpenWorkspace={(campaignId) => setPanel({ kind: 'workspace', campaignId })} />
             ) : (

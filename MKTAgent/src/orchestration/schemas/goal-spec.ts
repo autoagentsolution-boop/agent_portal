@@ -26,6 +26,16 @@ export const outputFlags = z.object({
   // one-off nurture). Routes to the email_writer → email_agent path INSTEAD of the social pipeline —
   // the analyzer forces the social flags off when this is set. Default false → unchanged for everyone.
   needsEmail: z.boolean().default(false),
+  // DM nurture goal (Multi-channel Nurture Nodes Phase 01): the user wants Atria to WRITE + SEND a
+  // direct message via an opt-in messaging channel (WhatsApp/Telegram/Zalo) — routes to
+  // dm_writer → dm_agent INSTEAD of the social pipeline, mirroring needsEmail. Default false →
+  // unchanged for everyone.
+  needsDirectMessage: z.boolean().default(false),
+  // Wall-greeting goal (Multi-channel Nurture Nodes Phase 02): the user wants Atria to WRITE + POST
+  // a public, person-directed greeting (an @mention in a new post, or a reply to their post) —
+  // routes to greeting_writer → greeting_agent INSTEAD of the social pipeline, mirroring
+  // needsEmail/needsDirectMessage. Default false → unchanged for everyone.
+  needsWallGreeting: z.boolean().default(false),
 });
 export type OutputFlags = z.infer<typeof outputFlags>;
 
@@ -66,6 +76,31 @@ export const goalSlots = z.object({
   // 200k chars so a real uploaded document (extracted to text) fits — the security + summarize runners
   // slice what they feed the model; the whole document is retained here so masking sees all of it.
   sourceText: z.string().max(200_000).nullish(),
+  // Lead Nurture Agent (Phase 01): set ONLY by nurture-runner.ts when a run is one drip TOUCH of a
+  // LeadNurtureThread, not a user-initiated flow. nurtureThreadId traces the run back to its thread
+  // (audit/debugging — the authoritative link is NurtureTouch.runId); nurtureStage records which
+  // sequence stage (intro|value|cta) this touch drafts. Both null for every normal goal.
+  nurtureThreadId: z.string().max(64).nullish(),
+  nurtureStage: z.string().max(40).nullish(),
+  // Nurture brain reply seed (Phase 03): when a reply draft was already produced + guardrailed by the
+  // nurture brain (nurture-brain.ts), email_writer uses it VERBATIM instead of re-generating via its own
+  // LLM call — a second pass on an already-decided, already-guarded draft would only add drift/spend for
+  // no benefit. Both null for every normal (non-reply) email goal.
+  nurtureReplySubject: z.string().max(200).nullish(),
+  nurtureReplyBody: z.string().max(4000).nullish(),
+  // DM nurture goal slots (Multi-channel Nurture Nodes Phase 01). dmChannel selects the
+  // messaging-adapter registry entry (whatsapp|telegram|zalo); dmTo is the recipient phone/chat-id/
+  // handle in the channel's own addressing scheme (validated + opt-in-gated inside the dm_agent
+  // runner, not here — a free-form string keeps this slot channel-agnostic). Only meaningful when
+  // outputs.needsDirectMessage is true.
+  dmChannel: z.string().max(20).nullish(),
+  dmTo: z.string().max(200).nullish(),
+  // Wall-greeting goal slots (Multi-channel Nurture Nodes Phase 02). Exactly one is expected;
+  // greeting_writer prefers a reply (greetPostId) over a standalone mention (greetHandle) when both
+  // are set, since an explicit reply target already carries the context. Only meaningful when
+  // outputs.needsWallGreeting is true.
+  greetHandle: z.string().max(200).nullish(),
+  greetPostId: z.string().max(200).nullish(),
 });
 export type GoalSlots = z.infer<typeof goalSlots>;
 

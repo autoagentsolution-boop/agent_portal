@@ -10,6 +10,8 @@ import { logger } from './lib/logger.ts';
 import { startSchedulerCron, startSchedulerResumeCron } from './scheduler/cron.ts';
 import { startReaperCron } from './scheduler/reaper-cron.ts';
 import { startAutonomyCron } from './orchestration/autonomy/autonomy-cron.ts';
+import { startNurtureCron } from './nurture/nurture-cron.ts';
+import { startNurtureReplyCron } from './nurture/nurture-reply-cron.ts';
 import { startCopyGenCron } from './copygen/cron.ts';
 import { startTokenCron } from './tokens/cron.ts';
 import { startLeadsCron } from './leads/sources/comment-cron.ts';
@@ -30,11 +32,14 @@ import { connectionsRouter } from './api/connections-router.ts';
 import { instructionsRouter } from './api/instructions-router.ts';
 import { memoryRouter } from './api/memory-router.ts';
 import { emailRouter } from './api/email-router.ts';
+import { nurtureRouter } from './api/nurture-router.ts';
 import { atriaRouter } from './api/atria-router.ts';
 import { impactRouter } from './api/impact-router.ts';
 import { voiceRouter } from './api/voice-router.ts';
 import { adminRouter } from './api/admin-router.ts';
 import { requireSuperAdmin } from './api/middleware-superadmin.ts';
+import { telegramWebhookRouter } from './messaging/telegram-webhook-router.ts';
+import { metaWebhookRouter, metaWebhookJsonParser } from './leads/sources/meta-webhook.ts';
 import { IMAGE_OUTPUT_DIR } from './imagegen/nano-banana.ts';
 import { VIDEO_OUTPUT_DIR } from './video/veo.ts';
 
@@ -57,6 +62,12 @@ app.use('/product-knowledge', requireAuth, express.json({ limit: '20mb' }), prod
 // treatment, mounted at /posts BEFORE the global limit. It only claims /:id/reference-image;
 // every other /posts route falls through to the normal 1mb-parsed postsRouter below.
 app.use('/posts', requireAuth, express.json({ limit: '20mb' }), postMediaRouter);
+
+// Meta comment-capture webhook (Multichannel Nurture Phase 03) — public callback whose
+// X-Hub-Signature-256 verify needs the RAW request body bytes, so it gets its OWN json parser
+// (stashes req.rawBody via a `verify` hook) mounted BEFORE the app-wide express.json() below, which
+// would otherwise discard those bytes. GET (verify-challenge) has no body; the parser no-ops on it.
+app.use('/webhooks/meta', metaWebhookJsonParser, metaWebhookRouter);
 
 app.use(express.json({ limit: '1mb' }));
 
@@ -107,6 +118,10 @@ app.use('/memory', requireAuth, memoryRouter);
 // on the Google connect). Draft (LLM) → user review → send one lead at a time (no blast).
 app.use('/email', requireAuth, emailRouter);
 
+// Nurture Inbox (Lead Nurture Agent Phase 04) — thread timeline + approve/edit/reject every proactive
+// touch and reply draft, plus manual pause/convert/opt-out and owner cadence settings.
+app.use('/nurture', requireAuth, nurtureRouter);
+
 // Atria proactive suggestions + roadmap pitches (Phase 06). Read-only nudges derived from the
 // tenant's own history; accepting prefills a flow or logs demand — nothing runs without a grant.
 app.use('/atria', requireAuth, atriaRouter);
@@ -143,6 +158,11 @@ app.use('/voice', requireAuth, voiceRouter);
 // requireAuth mount.
 app.use('/leads', leadsRouter);
 
+// Multi-channel Nurture Nodes (Phase 01) — Telegram /start opt-in intake. Public (Telegram calls it
+// server-to-server, no JWT); self-guards via an optional shared secret header. Inert until a
+// TELEGRAM_BOT_TOKEN + webhook registration exist.
+app.use('/webhook/telegram', telegramWebhookRouter);
+
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   // Malformed JSON body → 400, not a generic 500 (express.json throws a SyntaxError
   // with a `.type` of 'entity.parse.failed').
@@ -170,6 +190,8 @@ const bootstrap = (): void => {
   if (env.ENABLE_SCHEDULER_RESUME) startSchedulerResumeCron();
   if (env.ENABLE_REAPER_CRON) startReaperCron();
   if (env.ENABLE_AUTONOMY_CRON) startAutonomyCron();
+  if (env.ENABLE_NURTURE_CRON) startNurtureCron();
+  if (env.ENABLE_NURTURE_REPLY_CRON) startNurtureReplyCron();
   if (env.ENABLE_COPYGEN_CRON) startCopyGenCron();
   if (env.ENABLE_TOKEN_CRON) startTokenCron();
   if (env.ENABLE_LEADS_CRON) startLeadsCron();

@@ -7,7 +7,7 @@
 import { assetTypeFromOutputs, type GoalSpec } from '../schemas/goal-spec.ts';
 import { distinctAssetTypes } from '../../scheduler/resolve-input.ts';
 import { resolveLinkedKnowledge, resolveLinkedReferenceImage } from '../../db/repos/product-knowledge-repo.ts';
-import { campaignIdeas, strategyBrief, storyboard, videoPrompt, contentCalendar, type ArtifactType } from '../schemas/artifact-schemas.ts';
+import { campaignIdeas, strategyBrief, storyboard, videoPrompt, contentCalendar, greetingDraft, greetingResult, type ArtifactType } from '../schemas/artifact-schemas.ts';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
 import { createPost, getPostForOwner, getPostForCopyGen, attachPostMedia, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
@@ -16,7 +16,16 @@ import { getUserById } from '../../db/repos/user-repo.ts';
 import { generateVariantsForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
 import { sendGmailAs, type GmailSendFn } from '../../email/gmail-send.ts';
+import { runDmWriter, runDmAgent } from '../../messaging/dm-runners.ts';
+import type { DmSendFn } from '../../messaging/types.ts';
+import { greetTo, type GreetFn } from '../../social/greeting.ts';
+import type { MentionInput, ReplyInput } from '../../social/types.ts';
+import { isExternalActionsPaused } from '../../system/kill-switch.ts';
+import { recordExternalAction } from '../../connectors/audit/external-action-audit-log.ts';
+import { findPriorSuccess } from '../../connectors/runtime/idempotency-manager.ts';
 import { getLead, markLeadNurtured } from '../../db/repos/lead-repo.ts';
+import { getThreadById, isEmailSuppressed } from '../../nurture/nurture-thread-repo.ts';
+import { buildUnsubscribeUrl } from '../../nurture/guardrails.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
 import { buildAgentPrompt } from '../prompts/build-agent-prompt.ts';
 import { resolveInstructions } from '../prompts/resolve-instructions.ts';
@@ -75,6 +84,14 @@ export interface RunnerContext {
   // Gmail send seam (email_agent). Stubbed in DRY-RUN verification so no real email is sent;
   // unset → the real owner-Gmail send.
   gmailSendFn?: GmailSendFn;
+  // DM send seam (dm_agent, Multi-channel Nurture Nodes Phase 01). Stubbed in DRY-RUN verification so
+  // 0 real messages go out; unset → sendDm's real registry dispatch, which is STILL DRY-RUN by
+  // default per isLiveDmSend (a live send needs an explicit channel token + ENABLE_LIVE_DM_SEND).
+  dmSendFn?: DmSendFn;
+  // Greeting send seam (greeting_agent, Multi-channel Nurture Nodes Phase 02). Stubbed in DRY-RUN
+  // verification so 0 real posts go out; unset → greetTo's real adapter dispatch, which is STILL
+  // DRY-RUN by default per isLiveGreetingSend (a live post needs ENABLE_LIVE_GREETING_SEND too).
+  greetFn?: GreetFn;
   // The Post row id materialized by concept_writer, reused by publisher.
   postId?: string;
 }
@@ -770,6 +787,16 @@ const EMAIL_WRITER_PROMPT = [
 const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const to = parseRecipients(ctx.goal.slots.emailTo);
   if (!to.length) throw new Error('email_writer: no recipient email address — tell me who to send it to (an @ address).');
+  // Nurture brain reply seed (Phase 03): the brain already classified + drafted + guardrailed this reply
+  // (nurture-brain.ts) — use it VERBATIM, skipping the LLM call entirely, so nothing downstream can drift
+  // from the decision that was actually guarded (and it costs nothing extra).
+  const seededBody = ctx.goal.slots.nurtureReplyBody?.trim();
+  if (seededBody) {
+    return {
+      type: 'email_draft',
+      data: { to, subject: ctx.goal.slots.nurtureReplySubject?.trim() || 'Re: your message', body: seededBody, groundedOn: 'nurture_brain' },
+    };
+  }
   const call = ctx.llmJsonFn ?? callGeminiJson;
   const language = await resolveRunLanguage(ctx);
   const concept = ctx.upstream['content_concept']; // optional grounding (a nurture flow); usually absent
@@ -981,18 +1008,52 @@ const runSummarize = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(SUMMARIZE_PROMPT + source.slice(0, SUMMARIZE_CHARS), summary),
   };
 };
+
+// email_agent: send the reviewed draft via the owner's Gmail. Gated upstream (requiresApproval) so this
+// only runs AFTER the user approved the draft — the no-burst rule applies to email too. Per-recipient
+// outcome; a partial send (some ok, some failed) surfaces as 'partial', a total failure fails the node.
 const runEmailAgent = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const draft = ctx.upstream['email_draft'] as { to?: string[]; subject?: string; body?: string } | undefined;
-  const to = draft?.to?.length ? draft.to : parseRecipients(ctx.goal.slots.emailTo);
+  let to = draft?.to?.length ? draft.to : parseRecipients(ctx.goal.slots.emailTo);
   if (!draft?.body || !to.length) throw new Error('email_agent: no reviewed draft to send.');
   const subject = draft.subject ?? 'A note for you';
 
+  // Pre-send opt-out gate (Phase 03, HARD invariant: opt-out is ABSOLUTE + GLOBAL). Last line of
+  // defense even if a stale approval slips through (e.g. a touch parked before the lead opted out) —
+  // filters any recipient this owner has permanently suppressed. A wholly-suppressed send fails LOUD
+  // rather than silently no-op'ing, so a human sees it instead of assuming it went out.
+  const suppressedFlags = await Promise.all(to.map((addr) => isEmailSuppressed(ctx.ownerId, addr)));
+  const blocked = to.filter((_, i) => suppressedFlags[i]);
+  to = to.filter((_, i) => !suppressedFlags[i]);
+  if (blocked.length) logger.warn('email_agent_suppressed_recipient_blocked', { runId: ctx.runId, blocked: blocked.length });
+  if (!to.length) throw new Error('email_agent: recipient has opted out — send blocked.');
+
+  // Lead Nurture Agent (Phase 02): a touch after the first reuses the SAME Gmail conversation — load
+  // the thread's stored ids and carry them as threadId/In-Reply-To/References so the send collapses
+  // into the existing thread instead of starting a new one (HARD invariant #6). Touch 0 has nothing
+  // stored yet (gmailThreadId null) → falls through to a plain send that starts the conversation.
+  const nurtureThreadId = ctx.goal.slots.nurtureThreadId;
+  const nurtureThread = nurtureThreadId ? await getThreadById(nurtureThreadId) : null;
+  const threading = nurtureThread?.gmailThreadId
+    ? { threadId: nurtureThread.gmailThreadId, inReplyTo: nurtureThread.lastMessageId, references: nurtureThread.lastMessageId }
+    : {};
+
   const sentIds: Record<string, string> = {};
+  const threadIds: Record<string, string> = {};
+  const messageIds: Record<string, string> = {};
   let lastErr: string | null = null;
   for (const addr of to) {
-    const res = await sendGmailAs(ctx.ownerId, { to: addr, subject, body: draft.body }, ctx.gmailSendFn);
-    if (res.ok) sentIds[addr] = res.id ?? 'sent';
-    else lastErr = res.error ?? 'send_failed';
+    // Guardrails (Phase 04): a nurture send (this run carries a nurtureThreadId) always carries a
+    // signed one-click unsubscribe link — a plain birthday/personal email (no nurtureThreadId) never
+    // gets the footer/header, so this stays scoped to the drip/reply flow, not every email the agent
+    // can send.
+    const unsubscribeUrl = nurtureThreadId ? buildUnsubscribeUrl(ctx.ownerId, addr) : null;
+    const res = await sendGmailAs(ctx.ownerId, { to: addr, subject, body: draft.body, ...threading, unsubscribeUrl }, ctx.gmailSendFn);
+    if (res.ok) {
+      sentIds[addr] = res.id ?? 'sent';
+      if (res.threadId) threadIds[addr] = res.threadId;
+      if (res.messageId) messageIds[addr] = res.messageId;
+    } else lastErr = res.error ?? 'send_failed';
   }
   const okCount = Object.keys(sentIds).length;
   if (okCount === 0) throw new Error(`email_agent: send failed (${lastErr ?? 'unknown'})`);
@@ -1004,7 +1065,138 @@ const runEmailAgent = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     void markLeadNurtured(ctx.goal.slots.leadId, ctx.ownerId).catch(() => {});
   }
   logger.info('wf_email_sent', { runId: ctx.runId, recipients: to.length, sent: okCount, status });
-  return { type: 'email_result', data: { to, subject, status, sentIds, error: status === 'partial' ? lastErr : null } };
+  return {
+    type: 'email_result',
+    data: { to, subject, status, sentIds, threadIds, messageIds, error: status === 'partial' ? lastErr : null },
+  };
+};
+
+// ── Wall-greeting path (Multi-channel Nurture Nodes Phase 02): greeting_writer drafts a public,
+// person-directed greeting (an @mention in our own post, or a reply to theirs); greeting_agent posts
+// it to every platform in goal.platforms via the greetTo fan-out (mirrors dm_writer/dm_agent, but
+// multi-platform like the publisher). ─────────────────────────────────────────────────────────────
+const GREETING_WRITER_PROMPT = [
+  "You are Atria's Greeting Writer. Write ONE short, warm, public greeting addressed to a specific",
+  'person — either an @mention in a new post, or a reply to their post. Natural and human, never',
+  'templated or spammy. Plain text only, no hashtags unless the purpose asks for them, well under a',
+  'normal social-post length (~200 characters is safe across platforms). Ground in any provided',
+  'context; invent no facts. Write ENTIRELY in the requested language. Respond ONLY as JSON:',
+  '{"body":"the greeting text"}.',
+].join(' ');
+
+// A reply target (greetPostId) already carries its own context, so it wins over a bare mention
+// target (greetHandle) when a goal somehow sets both. null = neither slot filled — ask the user.
+const resolveGreetingTarget = (ctx: RunnerContext): { action: 'mention' | 'reply'; target: string } | null => {
+  const postId = ctx.goal.slots.greetPostId?.trim();
+  if (postId) return { action: 'reply', target: postId };
+  const handle = ctx.goal.slots.greetHandle?.trim();
+  if (handle) return { action: 'mention', target: handle };
+  return null;
+};
+
+// greeting_writer (LIVE): draft the greeting text. Grounds on an upstream content_concept/summary/
+// research_summary when present, else drafts straight from the goal — mirrors runDmWriter.
+const runGreetingWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const resolved = resolveGreetingTarget(ctx);
+  if (!resolved) throw new Error('greeting_writer: no target — tell me the @handle to mention or the post to reply to.');
+  if (!ctx.goal.platforms.length) throw new Error('greeting_writer: no target platform(s) — choose at least one platform to greet on.');
+
+  const call = ctx.llmJsonFn ?? callGeminiJson;
+  const language = await resolveRunLanguage(ctx);
+  const purpose = ctx.goal.slots.angle?.trim() || ctx.goal.slots.product?.trim() || 'a short, friendly public greeting';
+  const concept = ctx.upstream['content_concept'];
+  const summary = ctx.upstream['summary'];
+  const research = ctx.upstream['research_summary'];
+  const input = [
+    `Purpose / what to say: ${purpose}`,
+    ctx.goal.slots.brandVoice ? `Tone: ${ctx.goal.slots.brandVoice}` : '',
+    `This is a ${resolved.action === 'reply' ? "reply to their post" : 'public @mention'} on ${ctx.goal.platforms.join(', ')} — keep it short and native to a social feed.`,
+    concept ? `Context to ground in: ${JSON.stringify(concept).slice(0, 1000)}`
+      : summary ? `Summary to base the greeting on: ${JSON.stringify(summary).slice(0, 1000)}`
+      : research ? `Research findings to base the greeting on: ${JSON.stringify(research).slice(0, 1200)}` : '',
+    `Write the greeting entirely in this language: ${language}.`,
+  ].filter(Boolean).join('\n');
+
+  let usage: GeminiUsage | null = null;
+  const raw = await call(GREETING_WRITER_PROMPT, input, (u) => { usage = u; });
+  const o = (raw ?? {}) as { body?: unknown };
+  const body = String(o.body ?? '').trim().slice(0, 2000);
+  if (!body) throw new Error('greeting_writer: the draft came back empty — try rephrasing what the greeting should say.');
+  if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'greeting', model: env.GEMINI_MODEL, usage, runId: ctx.runId });
+
+  const groundedOn = concept ? 'content_concept' : summary ? 'summary' : research ? 'research_summary' : 'goal';
+  const parsed = greetingDraft.safeParse({ action: resolved.action, target: resolved.target, body, groundedOn });
+  if (!parsed.success) throw new Error(`greeting_writer: malformed draft (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+  return {
+    type: 'greeting_draft',
+    data: parsed.data,
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(GREETING_WRITER_PROMPT + input, body),
+  };
+};
+
+// greeting_agent: post the reviewed greeting to every targeted platform via the greetTo fan-out.
+// Gated upstream (requiresApproval) — a public greeting is an external write, the same no-burst rule
+// as publish/email/DM. Per-platform outcome (mirrors publisher's posted/partial/error); a TOTAL
+// failure fails the node loudly. Idempotent per (runId, platform) via the SAME external-action audit
+// log the Connector Runtime already writes for publish — no new table for this phase.
+const runGreetingAgent = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const draft = ctx.upstream['greeting_draft'] as { action?: string; target?: string; body?: string } | undefined;
+  const action = draft?.action;
+  const target = draft?.target?.trim();
+  const body = draft?.body?.trim();
+  if (!action || (action !== 'mention' && action !== 'reply') || !target || !body) {
+    throw new Error('greeting_agent: no reviewed draft to post.');
+  }
+  const platforms = ctx.goal.platforms;
+  if (!platforms.length) throw new Error('greeting_agent: no target platform(s) — choose at least one platform to greet on.');
+
+  // Global pause (kill switch, Phase 03 safety layer) — checked once up front, mirroring the
+  // Connector Runtime's pre-network gate: a paused system refuses every greeting, same as a publish.
+  if (await isExternalActionsPaused()) throw new Error('greeting_agent: external actions are paused.');
+
+  const input: MentionInput | ReplyInput = action === 'mention'
+    ? { ownerId: ctx.ownerId, handle: target, body }
+    : { ownerId: ctx.ownerId, postId: target, body };
+
+  const results: Array<{ platform: string; ok: boolean; url: string | null; error: string | null; degraded?: boolean; dryRun?: boolean }> = [];
+  for (const platform of platforms) {
+    // Idempotency (double-post guard): a re-entered/resumed run must post to a given platform AT
+    // MOST ONCE — reuses the connector runtime's audit-log-backed lookup (findPriorSuccess), no new
+    // table. Scoped per (runId, platform) so a partial prior run only skips what already succeeded.
+    const idempotencyKey = `greet:${ctx.runId}:${platform}`;
+    const prior = await findPriorSuccess(ctx.ownerId, idempotencyKey);
+    if (prior) {
+      logger.info('greeting_agent_already_posted', { runId: ctx.runId, platform });
+      results.push({ platform, ok: true, url: prior.externalId, error: null });
+      continue;
+    }
+    const res = await greetTo(platform, action, input, ctx.greetFn);
+    results.push({ platform, ok: res.ok, url: res.url, error: res.error, degraded: res.degraded, dryRun: res.dryRun });
+    await recordExternalAction({
+      ownerId: ctx.ownerId,
+      runId: ctx.runId,
+      platform,
+      actionKey: `social.${action}`,
+      status: res.ok ? 'ok' : 'error',
+      externalId: res.url,
+      error: res.error,
+      detail: { idempotencyKey },
+    }).catch((e) => logger.warn('greeting_audit_write_failed', { runId: ctx.runId, platform, error: String(e).slice(0, 160) }));
+  }
+
+  const okCount = results.filter((r) => r.ok).length;
+  // Fail LOUD (mirrors publisher/email_agent): nothing went out on ANY platform → the node/run must
+  // surface as failed, never a silent `completed`.
+  if (okCount === 0) {
+    const detail = results.map((r) => `${r.platform}: ${r.error ?? 'unknown'}`).join('; ');
+    throw new Error(`greeting_agent: post failed on every platform (${detail})`);
+  }
+  const allDryRun = results.every((r) => r.dryRun === true);
+  const status = allDryRun ? 'dry_run' : okCount < platforms.length ? 'partial' : 'sent';
+  logger.info('wf_greeting_posted', { runId: ctx.runId, action, platforms: platforms.length, ok: okCount, status });
+  const parsed = greetingResult.safeParse({ action, target, status, results });
+  if (!parsed.success) throw new Error(`greeting_agent: malformed result (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+  return { type: 'greeting_result', data: parsed.data };
 };
 
 // scheduler (generic-scheduler node): a trivial, action-free runner. It performs NO external action —
@@ -1033,6 +1225,10 @@ const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOut
   publisher: runPublisher,
   email_writer: runEmailWriter,
   email_agent: runEmailAgent,
+  dm_writer: runDmWriter,
+  dm_agent: runDmAgent,
+  greeting_writer: runGreetingWriter,
+  greeting_agent: runGreetingAgent,
   scheduler: runScheduler,
   security: runSecurity,
   summarize: runSummarize,

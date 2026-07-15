@@ -4,18 +4,25 @@
 // email_bidx (keyed HMAC of the email) since equality on ciphertext is impossible.
 import { prisma } from '../client.ts';
 import { encryptToken, decryptToken, blindIndex } from '../../lib/crypto.ts';
-import type { Lead, LeadSource, Prisma } from '../../../prisma/generated/prisma/client.ts';
+import type { Lead, LeadSource, SocialPlatform, Prisma } from '../../../prisma/generated/prisma/client.ts';
 import type { ScoreReason } from '../../leads/scoring/rule-score.ts';
 
 export interface CreateLeadInput {
   ownerId: string;
   name: string | null;
-  email: string; // plaintext
+  // null → HANDLE-ONLY lead (Multichannel Nurture Phase 03): a comment matched the capture
+  // keyword but the commenter never typed contact info — captureLead requires platform+
+  // platformUserId to be set instead when this is null (see service.ts).
+  email: string | null; // plaintext
   phone: string | null;
   message: string | null;
   sourceProduct: string | null;
   source: LeadSource;
   calBookingUid: string | null;
+  // Platform identity (Phase 03) — comment-sourced leads only (webhook or poller).
+  platform?: SocialPlatform | null;
+  platformUserId?: string | null; // plaintext, mirrors cal_booking_uid (equality key, not free PII)
+  platformHandle?: string | null; // plaintext IN, encrypted at rest below (can be a real name)
   score: number;
   scoreReasons: ScoreReason[];
 }
@@ -25,12 +32,18 @@ export interface DecryptedLead {
   id: string;
   ownerId: string;
   name: string | null;
+  // '' for a handle-only lead (no email captured) — mirrors the historical non-null column so every
+  // existing caller (nurture eligibility, email-agent, search) keeps working unchanged; a blank email
+  // already fails those callers' own `.trim()` / truthiness guards, which is the correct behavior.
   email: string;
   phone: string | null;
   message: string | null;
   sourceProduct: string | null;
   source: LeadSource;
   calBookingUid: string | null;
+  platform: SocialPlatform | null;
+  platformUserId: string | null;
+  platformHandle: string | null;
   score: number | null;
   scoreReasons: ScoreReason[];
   receivedAt: Date;
@@ -54,6 +67,9 @@ export const decryptLead = (l: Lead): DecryptedLead => ({
   sourceProduct: l.sourceProduct,
   source: l.source,
   calBookingUid: l.calBookingUid,
+  platform: l.platform,
+  platformUserId: l.platformUserId,
+  platformHandle: dec(l.platformHandle),
   score: l.score,
   scoreReasons: asReasons(l.scoreReasons),
   receivedAt: l.receivedAt,
@@ -72,13 +88,16 @@ export const createLead = async (input: CreateLeadInput): Promise<Lead> =>
     data: {
       ownerId: input.ownerId,
       name: enc(input.name),
-      email: encryptToken(input.email),
-      emailBidx: blindIndex(input.email),
+      email: enc(input.email), // null → column stays null (handle-only lead, not an empty-string row)
+      emailBidx: input.email ? blindIndex(input.email) : null,
       phone: enc(input.phone),
       message: enc(input.message),
       sourceProduct: input.sourceProduct,
       source: input.source,
       calBookingUid: input.calBookingUid,
+      platform: input.platform ?? null,
+      platformUserId: input.platformUserId ?? null,
+      platformHandle: enc(input.platformHandle ?? null),
       score: input.score,
       scoreReasons: input.scoreReasons as unknown as Prisma.InputJsonValue,
       // raw_payload intentionally NOT written (no-excess-storage §01.2).
@@ -91,6 +110,24 @@ export const isDuplicateByEmail = async (ownerId: string, email: string, sinceDa
   const cutoff = new Date(Date.now() - sinceDays * 24 * 3600 * 1000);
   const hit = await prisma.lead.findFirst({
     where: { ownerId, emailBidx: blindIndex(email), receivedAt: { gte: cutoff } },
+    select: { id: true },
+  });
+  return hit !== null;
+};
+
+// Handle-only dedupe (Phase 03): same commenter (platform + platformUserId) seen within
+// `sinceDays` FOR THIS OWNER — mirrors isDuplicateByEmail's 30-day app-level window so a
+// commenter who re-engages later can still mint a fresh lead. platformUserId is stored plaintext
+// (an opaque id/username, not free-text PII), so this is a direct equality query, no blind index.
+export const isDuplicateByPlatformUser = async (
+  ownerId: string,
+  platform: SocialPlatform,
+  platformUserId: string,
+  sinceDays = 30,
+): Promise<boolean> => {
+  const cutoff = new Date(Date.now() - sinceDays * 24 * 3600 * 1000);
+  const hit = await prisma.lead.findFirst({
+    where: { ownerId, platform, platformUserId, receivedAt: { gte: cutoff } },
     select: { id: true },
   });
   return hit !== null;
@@ -152,6 +189,21 @@ export const searchLeadsByName = async (ownerId: string, q: string, limit = 5): 
   }).filter((x): x is { l: DecryptedLead; score: number } => x !== null);
   scored.sort((a, b) => b.score - a.score || (b.l.score ?? 0) - (a.l.score ?? 0));
   return scored.slice(0, limit).map((x) => x.l);
+};
+
+// Lead Nurture Agent (Phase 01) — candidates for auto-enroll: leads with no thread yet (the
+// LeadNurtureThread.leadId unique index is the idempotency guard; this is just an efficient
+// candidate list so enroll.ts doesn't re-check every lead every sweep). Newest first, bounded so a
+// huge lead table can't blow up one enroll pass; a leftover backlog is picked up on the next tick.
+export const listLeadsEligibleForNurture = async (ownerId: string, limit = 200): Promise<DecryptedLead[]> => {
+  const rows = await prisma.lead.findMany({
+    where: { ownerId, nurtureThread: null },
+    orderBy: { receivedAt: 'desc' },
+    take: limit,
+  });
+  // Defensive: email is a required column, but decrypt() falls back to '' on a corrupt/legacy row —
+  // a handle-only "lead" (no usable email) must never enroll (the sequence can't send it anything).
+  return rows.map(decryptLead).filter((l) => l.email.trim());
 };
 
 // Owner-scoped score write (rescore). Returns the updated decrypted lead, or null on miss.
