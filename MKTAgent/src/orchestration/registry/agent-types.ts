@@ -16,6 +16,13 @@ export type AgentId =
   | 'video'
   // Email path (P4-lite): write an email, then send it (Gmail). Separate from the social pipeline.
   | 'email_writer'
+  // DM nurture path (Multi-channel Nurture Nodes Phase 01): write an opt-in direct message, then
+  // send it via the messaging-adapter registry (WhatsApp/Telegram/Zalo). Mirrors email_writer.
+  | 'dm_writer'
+  // Wall-greeting path (Multi-channel Nurture Nodes Phase 02): write a public, person-directed
+  // greeting (an @mention or a reply), then post it via the social adapters' mention/reply actions.
+  // Mirrors dm_writer.
+  | 'greeting_writer'
   // Utility capability (P1b Phase 05): the first NON-marketing producer node — summarize source text.
   // Proves the registry composes any capability; reachable via a task goal (taskTargets), not marketing flags.
   | 'summarize'
@@ -26,7 +33,7 @@ export type AgentId =
 // `scheduler` is a generic, type-agnostic control node (not an AgentId content producer): the planner
 // splices it before a run's terminal action when the goal carries a confirmed schedule. It performs no
 // external action — it parks the run for a timed re-entry (see the executor + resumeDueRuns cron).
-export type RunnableAgentId = AgentId | 'publisher' | 'email_agent' | 'scheduler';
+export type RunnableAgentId = AgentId | 'publisher' | 'email_agent' | 'scheduler' | 'dm_agent' | 'greeting_agent';
 
 // M1 status: live = wraps an existing production seam; stub = emits a schema-valid
 // placeholder artifact so the DAG runs end-to-end now. Wiring stubs→live is later.

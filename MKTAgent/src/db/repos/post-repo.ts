@@ -7,7 +7,7 @@
 //   • Worker (scheduler/copy-gen cron): UNSCOPED on purpose — a tick processes
 //     every owner's due posts. These never reach a user route.
 import { prisma } from '../client.ts';
-import type { Post, PostStatus, Prisma } from '../../../prisma/generated/prisma/client.ts';
+import type { Post, PostStatus, Prisma, SocialPlatform } from '../../../prisma/generated/prisma/client.ts';
 
 // owner_id is required at create time (denormalized from campaign by the caller).
 export type PostCreate = Prisma.PostUncheckedCreateInput;
@@ -361,3 +361,20 @@ export const deletePost = async (
   });
   return r.count === 1 ? 'ok' : 'locked';
 };
+
+// Meta comment-capture webhook (Multichannel Nurture Phase 03) — resolve the WATCHED post a
+// webhook delivery belongs to, by matching its platform post id inside comment_source_ids (the
+// SAME map the 30-min poller reads, see comment-poller.ts). Unscoped by ownerId on purpose: the
+// webhook is a public callback with no tenant context — the matched post row supplies ownerId once
+// found. A miss (a comment on a post we don't watch, or the collector already stopped) → null; the
+// caller no-ops rather than guessing an owner.
+export type PostWithCampaignProduct = Prisma.PostGetPayload<{ include: { campaign: { select: { product: true } } } }>;
+
+export const findPostByCommentSource = (
+  platform: SocialPlatform,
+  platformPostId: string,
+): Promise<PostWithCampaignProduct | null> =>
+  prisma.post.findFirst({
+    where: { commentSourceIds: { path: [platform], equals: platformPostId } },
+    include: { campaign: { select: { product: true } } },
+  });

@@ -12,7 +12,7 @@ import { getActiveToken, getTokenMeta } from '../tokens/service.ts';
 import { getPublisherAppCred } from '../db/repos/agent-credential-repo.ts';
 import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { assetStore } from '../assets/store.ts';
-import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
+import type { SocialAdapter, PublishInput, PublishResult, MentionInput } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
 
 const G = env.GRAPH_VERSION;
@@ -128,6 +128,33 @@ export const facebookAdapter: SocialAdapter = {
       if (input.assetType === 'carousel') return await publishCarousel(input, token, page);
       if (input.assetType === 'video') return await publishVideo(input, token, page);
       return await publishImage(input, token, page);
+    } catch (e) {
+      return fail(String(e instanceof Error ? e.message : e));
+    }
+  },
+
+  // mention (LIVE, best-effort — Multi-channel Nurture Nodes Phase 02): FB removed personal-profile
+  // posting in 2018, and a true `name_tags` graph tag needs a RESOLVED numeric FB user id, which a
+  // greeting goal only supplies as a free-form handle — so this composes the handle into the post
+  // TEXT ("@handle …") on our own Page feed instead. Real code, just a text mention, not a resolved
+  // platform tag (research verdict: FB RED for anything beyond comment/tag-in-own-post).
+  // `reply` is intentionally NOT implemented: FB has no reply-to-arbitrary-post endpoint, only a
+  // COMMENT on their post (a different resource shape — a comment id, not our own post permalink,
+  // and out of scope for this phase's mention/reply interface). Omitting it makes greetTo degrade
+  // to {ok:false,error:'unsupported'} — never a mismatched/thrown action.
+  async mention(input: MentionInput): Promise<PublishResult> {
+    try {
+      const token = await getActiveToken(input.ownerId, 'facebook');
+      const page = await pageId(input.ownerId);
+      const handle = input.handle.replace(/^@/, '');
+      const message = `@${handle} ${input.body}`.trim();
+      const form = new FormData();
+      form.append('message', message);
+      form.append('access_token', token);
+      const j = await postForm(`https://graph.facebook.com/${G}/${page}/feed`, form);
+      const pid = j?.id;
+      if (pid && !j?.error) return ok(`https://facebook.com/${pid}`, String(pid));
+      return fail(errMsg(j, 'mention post failed'));
     } catch (e) {
       return fail(String(e instanceof Error ? e.message : e));
     }

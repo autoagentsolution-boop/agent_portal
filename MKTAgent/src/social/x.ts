@@ -9,7 +9,7 @@ import { withRetry } from '../lib/retry.ts';
 import { getActiveToken } from '../tokens/service.ts';
 import { assetStore } from '../assets/store.ts';
 import { logger } from '../lib/logger.ts';
-import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
+import type { SocialAdapter, PublishInput, PublishResult, MentionInput, ReplyInput } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
 
 const ok = (url: string, platformPostId: string | null = null, degraded = false): PublishResult => ({ platform: 'x', ok: true, url, error: degraded ? 'image dropped (media tier) — posted text-only' : null, platformPostId, degraded });
@@ -88,6 +88,57 @@ export const xAdapter: SocialAdapter = {
       // text-only. Surface it so the aggregator demotes posted→partial (never a silent clean ok).
       const degraded = Boolean(ref) && mediaId === null;
       return ok(`https://twitter.com/i/web/status/${tid}`, String(tid), degraded);
+    } catch (e) {
+      return fail(String(e instanceof Error ? e.message : e));
+    }
+  },
+
+  // mention (Multi-channel Nurture Nodes Phase 02) — PRE-CHECK degrade, never posts. X's Mar-2026
+  // policy blocks @mentioning someone in a STANDALONE post: a mention is only permitted inside a
+  // reply to a thread they already participate in (see phase-02 research report). Attempting the
+  // call would just be platform-rejected, so this fails gracefully up front instead — surfaces the
+  // constraint as a normal ok:false result, never a thrown/crashed node.
+  async mention(input: MentionInput): Promise<PublishResult> {
+    return fail(
+      `cannot @mention "${input.handle}" in a standalone X post — X (Mar-2026 policy) only allows a ` +
+        'mention inside a reply to a thread they already participate in; use a reply instead',
+    );
+  },
+
+  // reply (LIVE): POST /2/tweets with in_reply_to_tweet_id. X (Mar-2026) also restricts programmatic
+  // replies to accounts that have not already engaged with this one (@mentioned or quoted first) —
+  // there is no endpoint to check that ahead of time, so a rejection is caught here and surfaced as
+  // a plain ok:false result (never a throw), not pre-checked.
+  async reply(input: ReplyInput): Promise<PublishResult> {
+    try {
+      const token = await getActiveToken(input.ownerId, 'x');
+      const auth = { Authorization: `Bearer ${token}` };
+      let text = input.body.trim();
+      if (text.length > 280) {
+        text = text.slice(0, 277);
+        text = text.slice(0, text.lastIndexOf(' ')) + '…';
+      }
+      if (!text) return fail('nothing to reply with');
+      const res = await withRetry(
+        () =>
+          fetch('https://api.twitter.com/2/tweets', {
+            method: 'POST',
+            headers: { ...auth, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, reply: { in_reply_to_tweet_id: input.postId } }),
+          }),
+        { label: 'x_reply' },
+      );
+      const tw = (await res.json()) as any;
+      const tid = tw?.data?.id;
+      if (!res.ok || !tid) {
+        // A 403 here is most often the Mar-2026 prior-engagement rule — note it plainly rather than
+        // surfacing a raw API error, but still as a normal degraded result, no throw.
+        const note = res.status === 403
+          ? ' (X only allows replying to accounts that have engaged with you first — Mar-2026 policy)'
+          : '';
+        return fail(`reply failed: ${res.status} ${JSON.stringify(tw).slice(0, 120)}${note}`);
+      }
+      return ok(`https://twitter.com/i/web/status/${tid}`, String(tid));
     } catch (e) {
       return fail(String(e instanceof Error ? e.message : e));
     }

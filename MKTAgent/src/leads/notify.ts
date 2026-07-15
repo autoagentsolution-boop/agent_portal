@@ -31,7 +31,7 @@ export const notifySales = async (lead: NormalizedLead): Promise<void> => {
       'New marketing lead received.',
       '',
       `Name: ${lead.name}`,
-      `Email: ${lead.email}`,
+      `Email: ${lead.email ?? 'n/a (handle-only lead — captured via comment, no contact info given)'}`,
       `Phone: ${lead.phone}`,
       `Product: ${lead.sourceProduct}`,
       `Platform: ${lead.sourcePlatform}`,

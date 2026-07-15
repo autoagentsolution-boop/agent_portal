@@ -301,6 +301,84 @@ export const AGENTS: AgentDefinition[] = [
     decisionFramework: 'Treat a send as an external write. Present the draft for review; on approval, send via the owner\'s Gmail to each recipient and report per-recipient status. Never auto-blast.',
   },
   {
+    id: 'dm_writer',
+    name: 'DM Writer',
+    description: 'Draft a short, opt-in direct message for WhatsApp, Telegram, or Zalo.',
+    implStatus: 'live',
+    requires: [],
+    // Grounds on a content_concept (a nurture flow), a summary, OR a research_summary when one exists
+    // upstream; a standalone DM (no upstream) drafts from the goal directly — mirrors email_writer.
+    optional: ['content_concept', 'summary', 'research_summary'],
+    produces: ['dm_draft'],
+    requiresConnection: false,
+    requiresApproval: false,
+    emoji: '💬',
+    group: 'creative',
+    vibe: 'Concise, human correspondent: writes a short opt-in DM that never reads as a template blast.',
+    successMetrics: ['a warm, on-purpose message under a DM length budget', 'right tone for the channel/occasion', 'no spammy phrasing'],
+    decisionFramework: 'Read the purpose (occasion, recipient, tone). Write one short, natural message in the user\'s language, sized for a DM (not an email). Ground in any provided context; invent no facts.',
+  },
+  {
+    id: 'dm_agent',
+    name: 'DM Agent',
+    description: "Send the drafted direct message to an opted-in contact (WhatsApp/Telegram/Zalo), after review.",
+    implStatus: 'live',
+    requires: ['dm_draft'],
+    optional: [],
+    produces: ['dm_result'],
+    // The credential here isn't a per-user SocialPlatform token (it's an env-level channel token) and
+    // the send is opt-in-gated per-contact — both checked INSIDE the runner, mirroring email_agent's
+    // requiresConnection:false + in-runner hasGmailConnected check.
+    requiresConnection: false,
+    requiresApproval: true, // external-write gate: the user reviews the draft, then approves the send
+    gate: 'publish',
+    emoji: '📲',
+    group: 'delivery',
+    vibe: 'Careful sender: never blasts — one reviewed message, to one opted-in contact, only after approval.',
+    successMetrics: ['sends only after explicit approval', 'refuses a non-opted-in contact, loudly', 'clear per-send outcome'],
+    decisionFramework: 'Treat a send as an external write. Verify the contact opted in on this channel; present the draft for review; on approval, send via the channel\'s adapter and report the outcome. Never auto-blast.',
+  },
+  {
+    id: 'greeting_writer',
+    name: 'Greeting Writer',
+    description: 'Draft a short, public, person-directed greeting — an @mention or a reply.',
+    implStatus: 'live',
+    requires: [],
+    // Grounds on a content_concept, a summary, OR a research_summary when one exists upstream; a
+    // standalone greeting (no upstream) drafts from the goal directly — mirrors dm_writer.
+    optional: ['content_concept', 'summary', 'research_summary'],
+    produces: ['greeting_draft'],
+    requiresConnection: false,
+    requiresApproval: false,
+    emoji: '👋',
+    group: 'creative',
+    vibe: 'Warm, brief greeter: one public line, addressed to a real person, never a template blast.',
+    successMetrics: ['a warm, on-purpose greeting under a feed-post length budget', 'right tone for a mention vs. a reply', 'no spammy phrasing'],
+    decisionFramework: 'Read the purpose (occasion, target, tone). Write one short, natural greeting in the user\'s language, sized for a public post. Ground in any provided context; invent no facts.',
+  },
+  {
+    id: 'greeting_agent',
+    name: 'Greeting Agent',
+    description: 'Post the reviewed greeting (@mention or reply) to every targeted platform, after review.',
+    implStatus: 'live',
+    requires: ['greeting_draft'],
+    optional: [],
+    produces: ['greeting_result'],
+    // Reuses the SAME SocialPlatform tokens as `publisher`, but connectivity is checked INSIDE the
+    // runner/adapter (getActiveToken) for now rather than the connector-registry gate — mention/reply
+    // are not yet registered connector capabilities there. A follow-up can register
+    // social.mention/social.reply to light up the pre-execution "connect platform" UI gate.
+    requiresConnection: false,
+    requiresApproval: true, // external-write gate: the user reviews the draft, then approves the post
+    gate: 'publish',
+    capabilities: ['social.mention', 'social.reply'],
+    emoji: '📣',
+    group: 'delivery',
+    vibe: 'Careful greeter: never blasts — one reviewed public greeting, to the right target, only after approval.',
+    successMetrics: ['posts only after explicit approval', 'refuses/degrades an unsupported platform action gracefully', 'clear per-platform outcome'],
+    decisionFramework: 'Treat a public post as an external write. Present the draft for review; on approval, post via each platform\'s mention/reply action and report per-platform status. Never auto-blast.',
+  },
+  {
     id: 'scheduler',
     name: 'Scheduler',
     description: 'Hold the run until a confirmed future time, then re-enter the flow to run its next action.',

@@ -2,11 +2,14 @@
 // (mkt-lead-capture "Auth + validate", mkt-calcom-lead "Auth + parse booking",
 // mkt-form-lead "Normalize form row"). Pure functions: validate + map raw inbound
 // shapes → a NormalizedLead. No DB, no network — the service layer persists.
-import type { LeadSource } from '../../prisma/generated/prisma/client.ts';
+import type { LeadSource, SocialPlatform } from '../../prisma/generated/prisma/client.ts';
 
 export interface NormalizedLead {
   name: string;
-  email: string;
+  // null → HANDLE-ONLY lead (Multichannel Nurture Phase 03, comment sources only): comment APIs
+  // never return email/phone, so a commenter who typed the capture keyword without an email still
+  // captures — captureLead requires `platform`+`platformUserId` below to be set when this is null.
+  email: string | null;
   phone: string;
   message: string;
   sourceProduct: string;
@@ -14,6 +17,12 @@ export interface NormalizedLead {
   source: LeadSource;
   calBookingUid: string | null;
   rawPayload: Record<string, unknown>;
+  // Platform identity (Phase 03) — set ONLY by comment sources (webhook + poller), never by
+  // webhook/form/calcom intake. Persisted on the Lead row for handle-only dedupe + as a nurture
+  // target; also carried alongside a typed email (harmless enrichment, not required for dedupe then).
+  platform?: SocialPlatform | null;
+  platformUserId?: string | null;
+  platformHandle?: string | null;
 }
 
 // Discriminated result so the router maps cleanly to HTTP without throwing.

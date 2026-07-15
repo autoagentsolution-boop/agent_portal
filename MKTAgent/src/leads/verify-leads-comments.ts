@@ -40,19 +40,24 @@ async function main() {
   });
   try {
     const fake = async (): Promise<FetchedComment[]> => ([
-      { id: 'c1', authorName: 'Jane Buyer', text: 'Atria AI jane@buyer.com' }, // → lead
-      { id: 'c2', authorName: 'No Email', text: 'Atria AI looks great' },       // keyword, no email → skip
+      { id: 'c1', authorName: 'Jane Buyer', text: 'Atria AI jane@buyer.com' }, // → email-typed lead
+      { id: 'c2', authorName: 'No Email', text: 'Atria AI looks great' },       // keyword, no email → HANDLE-ONLY lead (Phase 03)
       { id: 'c3', authorName: 'Off Topic', text: 'random comment nobody@x.com' },// no keyword → skip
       { id: 'c4', authorName: 'Dupe', text: 'Atria AI jane@buyer.com again' },   // dup email → duplicate
     ]);
     const sum = await pollCommentsForLeads(fake, owner.id);
     ck('poller scanned all comments', sum.commentsScanned === 4, sum);
-    ck('captured exactly 1 lead', sum.leadsCaptured === 1, sum);
+    // Multichannel Nurture Phase 03: a keyword-only comment (no email) now mints a HANDLE-ONLY lead
+    // instead of being skipped — c1 (email) + c2 (handle-only) both capture; c3 has no keyword; c4
+    // dupes c1's email.
+    ck('captured 2 leads (email-typed + handle-only)', sum.leadsCaptured === 2, sum);
     ck('counted 1 duplicate', sum.duplicates === 1, sum);
 
-    const leads = await prisma.lead.findMany({ where: { ownerId: owner.id } });
-    ck('lead landed on the post OWNER', leads.length === 1, leads.length);
-    ck('lead source = comment', leads[0]?.source === 'comment', leads[0]?.source);
+    const leads = await prisma.lead.findMany({ where: { ownerId: owner.id }, orderBy: { receivedAt: 'asc' } });
+    ck('both leads landed on the post OWNER', leads.length === 2, leads.length);
+    ck('every captured lead source = comment', leads.every((l) => l.source === 'comment'), leads.map((l) => l.source));
+    const handleOnly = leads.find((l) => !l.email);
+    ck('the no-email comment became a handle-only lead (no email, has platform identity)', Boolean(handleOnly) && handleOnly?.platform === 'facebook' && handleOnly?.platformUserId === 'No Email', handleOnly);
     ck('other tenant sees no leads (isolation)', (await prisma.lead.count({ where: { ownerId: other.id } })) === 0);
   } finally {
     await prisma.lead.deleteMany({ where: { ownerId: { in: [owner.id, other.id] } } });

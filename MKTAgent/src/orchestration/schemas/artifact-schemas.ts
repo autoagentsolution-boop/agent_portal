@@ -22,6 +22,15 @@ export const artifactType = z.enum([
   'email_draft',
   'email_result',
   'schedule_marker',
+  // DM nurture (Multi-channel Nurture Nodes Phase 01): a drafted, then sent, opt-in direct message
+  // (WhatsApp / Telegram / Zalo). Mirrors email_draft/email_result.
+  'dm_draft',
+  'dm_result',
+  // Wall-greeting (Multi-channel Nurture Nodes Phase 02): a drafted, then posted, public
+  // person-directed greeting (an @mention in our own post, or a reply to theirs) — fanned out to
+  // every goal.platforms target. Mirrors dm_draft/dm_result but multi-platform (like publish_result).
+  'greeting_draft',
+  'greeting_result',
   // Utility capability (P1b Phase 05): summarize — the first NON-marketing producer node, proving the
   // registry is a general composable graph (drop-in via registry entry + runner, no planner change).
   'summary',
@@ -155,13 +164,74 @@ export const emailDraft = z.object({
 });
 
 // email_agent → email_result. Per-recipient send outcome (mirrors publish_result's shape). `dry_run`
-// = the DRY verification/test seam (no real send). `sentIds` maps recipient → Gmail message id.
+// = the DRY verification/test seam (no real send). `sentIds` maps recipient → Gmail's internal
+// message id. `threadIds`/`messageIds` (Lead Nurture Agent Phase 02) map recipient → Gmail's
+// conversation id / OUR generated RFC Message-ID — nurture-runner.ts persists both onto the thread so
+// the NEXT touch's send carries them as threadId/In-Reply-To (HARD invariant #6, single conversation).
 export const emailResult = z.object({
   to: z.array(z.string()).min(1),
   subject: z.string(),
   status: z.enum(['sent', 'partial', 'error', 'dry_run']),
   sentIds: z.record(z.string()).nullable().default(null),
+  threadIds: z.record(z.string()).nullable().default(null),
+  messageIds: z.record(z.string()).nullable().default(null),
   error: z.string().nullable().default(null),
+});
+
+// dm_writer/dm_agent → dm_draft/dm_result (Multi-channel Nurture Nodes Phase 01). Mirrors
+// email_draft/email_result but for a single opt-in DM channel (whatsapp|telegram|zalo) instead of
+// email addresses. `to` is the channel's own recipient address (phone / chat-id / handle).
+export const dmChannel = z.enum(['whatsapp', 'telegram', 'zalo']);
+
+export const dmDraft = z.object({
+  channel: dmChannel,
+  to: z.string().min(1).max(200),
+  body: z.string().min(1).max(4000),
+  groundedOn: z.string().nullable().default(null),
+});
+
+// `dry_run` = the DRY-RUN/verification seam (no real message sent) — mirrors email_result's dry_run.
+export const dmResult = z.object({
+  channel: dmChannel,
+  to: z.string().min(1).max(200),
+  status: z.enum(['sent', 'dry_run', 'error']),
+  platformMessageId: z.string().nullable().default(null),
+  error: z.string().nullable().default(null),
+});
+
+// greeting_writer/greeting_agent → greeting_draft/greeting_result (Multi-channel Nurture Nodes
+// Phase 02). `target` is the @handle (mention) or the platform-native post id (reply) — a free-form
+// string kept action-agnostic, validated inside the runner/adapter, mirroring dm's `to`.
+export const greetingAction = z.enum(['mention', 'reply']);
+
+export const greetingDraft = z.object({
+  action: greetingAction,
+  target: z.string().min(1).max(200),
+  body: z.string().min(1).max(2000),
+  groundedOn: z.string().nullable().default(null),
+});
+
+// One platform's outcome — mirrors PublishResult (src/social/types.ts) so the aggregation logic is
+// the same shape the publisher already uses (multi-platform fan-out, unlike a single-channel DM).
+export const greetingPlatformResult = z.object({
+  platform: socialPlatform,
+  ok: z.boolean(),
+  url: z.string().nullable().default(null),
+  error: z.string().nullable().default(null),
+  degraded: z.boolean().optional(),
+  // True when this platform's outcome was a SIMULATED DRY-RUN (no network call) — see
+  // src/social/greeting.ts's isLiveGreetingSend.
+  dryRun: z.boolean().optional(),
+});
+
+// `dry_run` = every targeted platform was simulated (mirrors dm_result's dry_run). `partial` = some
+// platforms ok, some not (mirrors publish_result). A total failure throws in the runner instead of
+// reaching here (fail-loud, like publisher/email_agent) — so `error` never appears on this artifact.
+export const greetingResult = z.object({
+  action: greetingAction,
+  target: z.string(),
+  status: z.enum(['sent', 'partial', 'dry_run']),
+  results: z.array(greetingPlatformResult).min(1),
 });
 
 // scheduler → schedule_marker (generic-scheduler node). A trivial, action-free marker recording the
@@ -213,6 +283,10 @@ export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
   email_draft: emailDraft,
   email_result: emailResult,
   schedule_marker: scheduleMarker,
+  dm_draft: dmDraft,
+  dm_result: dmResult,
+  greeting_draft: greetingDraft,
+  greeting_result: greetingResult,
   summary: summaryArtifact,
   security_scan: securityScanArtifact,
 };

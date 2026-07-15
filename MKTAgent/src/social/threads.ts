@@ -6,7 +6,7 @@ import { env } from '../config/env.ts';
 import { withRetry } from '../lib/retry.ts';
 import { getActiveToken, getTokenMeta } from '../tokens/service.ts';
 import { assetStore } from '../assets/store.ts';
-import type { SocialAdapter, PublishInput, PublishResult } from './types.ts';
+import type { SocialAdapter, PublishInput, PublishResult, MentionInput, ReplyInput } from './types.ts';
 import type { AssetType } from '../../prisma/generated/prisma/client.ts';
 
 const TV = env.THREADS_VERSION;
@@ -49,6 +49,16 @@ const bearer = (token: string, init: RequestInit = {}): RequestInit => ({
 });
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+// mention text: "@handle greeting…" within Threads' 500-char cap, same truncation rule as threadsText.
+const mentionText = (handle: string, body: string): string => {
+  let t = `@${handle.replace(/^@/, '')} ${body}`.trim();
+  if (t.length > 500) {
+    t = t.slice(0, 497);
+    t = t.slice(0, t.lastIndexOf(' ')) + '…';
+  }
+  return t;
+};
 
 export const threadsAdapter: SocialAdapter = {
   platform: 'threads',
@@ -108,6 +118,59 @@ export const threadsAdapter: SocialAdapter = {
       );
       // Store the NUMERIC mediaId (not the permalink shortcode) — /{id}/replies + liveness resolve it.
       return ok(perma?.permalink ?? `https://www.threads.net/t/${mediaId}`, String(mediaId));
+    } catch (e) {
+      return fail(String(e instanceof Error ? e.message : e));
+    }
+  },
+
+  // mention (LIVE, Multi-channel Nurture Nodes Phase 02): a TEXT container on OUR OWN timeline whose
+  // text opens with "@handle" — Threads allows @mentions inside a post your own account creates
+  // (research: cannot mention "in someone else's context", which this isn't).
+  async mention(input: MentionInput): Promise<PublishResult> {
+    try {
+      const token = await getActiveToken(input.ownerId, 'threads');
+      const user = await userId(input.ownerId);
+      const text = mentionText(input.handle, input.body);
+      const create = await getJson(
+        `https://graph.threads.net/${TV}/${user}/threads?media_type=TEXT&text=${encodeURIComponent(text)}`,
+        bearer(token, { method: 'POST' }),
+      );
+      const cid = create?.id;
+      if (!cid || create?.error) return fail(create?.error?.message ?? 'container create failed');
+      const pub = await getJson(
+        `https://graph.threads.net/${TV}/${user}/threads_publish?creation_id=${encodeURIComponent(cid)}`,
+        bearer(token, { method: 'POST' }),
+      );
+      const mid = pub?.id;
+      if (!mid || pub?.error) return fail(pub?.error?.message ?? 'threads_publish failed');
+      const perma = await getJson(`https://graph.threads.net/${TV}/${mid}?fields=permalink`, bearer(token));
+      return ok(perma?.permalink ?? `https://www.threads.net/t/${mid}`, String(mid));
+    } catch (e) {
+      return fail(String(e instanceof Error ? e.message : e));
+    }
+  },
+
+  // reply (LIVE): same TEXT container flow as mention, plus `reply_to_id` targeting their post.
+  async reply(input: ReplyInput): Promise<PublishResult> {
+    try {
+      const token = await getActiveToken(input.ownerId, 'threads');
+      const user = await userId(input.ownerId);
+      const text = input.body.trim().slice(0, 500);
+      if (!text) return fail('nothing to reply with');
+      const create = await getJson(
+        `https://graph.threads.net/${TV}/${user}/threads?media_type=TEXT&text=${encodeURIComponent(text)}&reply_to_id=${encodeURIComponent(input.postId)}`,
+        bearer(token, { method: 'POST' }),
+      );
+      const cid = create?.id;
+      if (!cid || create?.error) return fail(create?.error?.message ?? 'reply create failed');
+      const pub = await getJson(
+        `https://graph.threads.net/${TV}/${user}/threads_publish?creation_id=${encodeURIComponent(cid)}`,
+        bearer(token, { method: 'POST' }),
+      );
+      const mid = pub?.id;
+      if (!mid || pub?.error) return fail(pub?.error?.message ?? 'threads_publish failed');
+      const perma = await getJson(`https://graph.threads.net/${TV}/${mid}?fields=permalink`, bearer(token));
+      return ok(perma?.permalink ?? `https://www.threads.net/t/${mid}`, String(mid));
     } catch (e) {
       return fail(String(e instanceof Error ? e.message : e));
     }

@@ -60,6 +60,14 @@ async function pollContainer(creationId: string, token: string): Promise<void> {
   throw new Error('IG container did not finish in time');
 }
 
+// mention/reply (Multi-channel Nurture Nodes Phase 02): NEITHER is implemented for IG — both are
+// structurally impossible given this phase's asset-less (text-only) greeting design.
+//   - mention: IG has no text-only post — every IG post requires media (container `image_url`).
+//     A greeting carries no asset, so there is nothing to attach a caption/@mention to.
+//   - reply: IG can only reply to a COMMENT on OUR OWN existing media (POST /{comment-id}/replies),
+//     not to an arbitrary post id — a fundamentally different shape than ReplyInput{postId,body}.
+// Both are simply omitted so greetTo degrades to {ok:false,error:'unsupported'} — never a thrown or
+// mismatched action (research verdict: IG RED for both wall-post and reply-to-arbitrary-post).
 export const instagramAdapter: SocialAdapter = {
   platform: 'instagram',
   supports: ['image'] as AssetType[],

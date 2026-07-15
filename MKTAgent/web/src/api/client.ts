@@ -297,6 +297,47 @@ export interface MemoryFactDto { id: string; kind: string; key: string | null; c
 export interface NurtureLeadDto { id: string; name: string | null; email: string; sourceProduct: string | null; score: number | null; nurturedAt: string | null }
 export interface EmailDraftDto { leadId: string; to: string; subject: string; body: string }
 
+// Nurture Inbox (Lead Nurture Agent Phase 04) — thread timeline + approve/edit/reject every pending
+// touch/reply, manual controls, owner cadence settings. Routes (/nurture) not in openapi yet.
+export interface NurtureThreadListDto {
+  id: string;
+  leadId: string;
+  leadName: string | null;
+  leadEmail: string | null;
+  status: 'active' | 'paused' | 'converted' | 'opted_out' | 'completed' | 'failed';
+  mode: 'drip' | 'conversation';
+  touchNumber: number;
+  nextPlanAt: string | null;
+  hasUnhandledReply: boolean;
+  needsHuman: boolean;
+  updatedAt: string;
+}
+export interface NurtureTouchDto {
+  id: string;
+  index: number;
+  stage: string;
+  status: string;
+  scheduledAt: string | null;
+  sentAt: string | null;
+  runId: string | null;
+}
+export interface NurtureReplyDto { id: string; fromEmail: string; body: string; receivedAt: string; handled: boolean }
+export interface NurturePendingDraftDto {
+  touchId: string;
+  runId: string;
+  gate: 'schedule' | 'send' | null;
+  to: string[] | null;
+  subject: string | null;
+  body: string | null;
+}
+export interface NurtureThreadDetailDto extends NurtureThreadListDto {
+  gmailThreadId: string | null;
+  touches: NurtureTouchDto[];
+  replies: NurtureReplyDto[];
+  pendingDrafts: NurturePendingDraftDto[];
+}
+export interface NurtureSettingsDto { enabled: boolean; maxTouches: number; gapDays: number }
+
 export interface CampaignCostEstimateDto { posts: number; agentCount: number; totalTokens: number; costUsd: number; credits: number }
 export interface CampaignGrantResponse {
   campaignId: string;
@@ -619,6 +660,20 @@ export const api = {
   nurtureLeads: () => request<NurtureLeadDto[]>('/email/leads'),
   draftEmail: (leadId: string) => request<EmailDraftDto>('/email/draft', { method: 'POST', body: { leadId } }),
   sendEmail: (leadId: string, subject: string, body: string) => request<{ leadId: string; sent: boolean; messageId: string | null }>('/email/send', { method: 'POST', body: { leadId, subject, body } }),
+
+  // ---- Nurture Inbox (Lead Nurture Agent Phase 04) — thread timeline + approve/edit/reject ----
+  listNurtureThreads: () => request<NurtureThreadListDto[]>('/nurture/threads'),
+  getNurtureThread: (id: string) => request<NurtureThreadDetailDto>(`/nurture/threads/${id}`),
+  approveNurtureTouch: (threadId: string, touchId: string, edited?: { editedSubject?: string; editedBody?: string }) =>
+    request<NurtureThreadDetailDto>(`/nurture/threads/${threadId}/approve`, { method: 'POST', body: { touchId, ...(edited ?? {}) } }),
+  rejectNurtureTouch: (threadId: string, touchId: string) =>
+    request<NurtureThreadDetailDto>(`/nurture/threads/${threadId}/reject`, { method: 'POST', body: { touchId } }),
+  pauseNurtureThread: (threadId: string) => request<NurtureThreadDetailDto>(`/nurture/threads/${threadId}/pause`, { method: 'POST' }),
+  resumeNurtureThread: (threadId: string) => request<NurtureThreadDetailDto>(`/nurture/threads/${threadId}/resume`, { method: 'POST' }),
+  convertNurtureThread: (threadId: string) => request<NurtureThreadDetailDto>(`/nurture/threads/${threadId}/convert`, { method: 'POST' }),
+  optOutNurtureThread: (threadId: string) => request<NurtureThreadDetailDto>(`/nurture/threads/${threadId}/opt-out`, { method: 'POST' }),
+  getNurtureSettings: () => request<NurtureSettingsDto>('/nurture/settings'),
+  updateNurtureSettings: (patch: Partial<NurtureSettingsDto>) => request<NurtureSettingsDto>('/nurture/settings', { method: 'PUT', body: patch }),
 
   // ---- Memory Agent (Atria v2 P2-2a) — learn copy style from edits ----
   listMemories: () => request<MemoryDto[]>('/memory'),

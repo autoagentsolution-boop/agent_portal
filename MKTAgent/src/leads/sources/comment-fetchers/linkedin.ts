@@ -12,6 +12,12 @@ import { withRetry } from '../../../lib/retry.ts';
 import { logger } from '../../../lib/logger.ts';
 import { PostGoneError, type FetchedComment } from '../comment-poller.ts';
 
+// Phase 03 hardening: a 403 here on the consumer w_member_social tier means comment-READ needs the
+// Community Management / partner-program grant this app doesn't have — a STATIC capability limit,
+// not a transient failure. Logged once at info (not a recurring warn) so it doesn't look like a
+// real error on every 30-min tick; still degrades to a clean [] no-op either way.
+let loggedScopeGap = false;
+
 export const fetchLinkedinComments = async (
   platformPostId: string,
   ownerId: string,
@@ -27,6 +33,13 @@ export const fetchLinkedinComments = async (
   );
   if (res.status === 404) throw new PostGoneError('linkedin', platformPostId);
   const j = (await res.json()) as { elements?: Array<Record<string, unknown>>; message?: string };
+  if (res.status === 403) {
+    if (!loggedScopeGap) {
+      logger.info('linkedin_comments_scope_unavailable', { detail: (j.message ?? '').slice(0, 160) });
+      loggedScopeGap = true;
+    }
+    return [];
+  }
   if (!res.ok) {
     logger.warn('linkedin_comments_error', { status: res.status, error: (j.message ?? '').slice(0, 160) });
     return [];
@@ -34,6 +47,9 @@ export const fetchLinkedinComments = async (
   return (j.elements ?? []).map((c) => ({
     id: String(c.$URN ?? c.id ?? ''),
     authorName: typeof c.actor === 'string' ? c.actor : null,
+    // LinkedIn's `actor` IS a urn:li:... string, not a bare id — kept in authorName (used as the
+    // Phase 03 handle-only identity fallback) rather than double-counted as authorId.
+    authorId: null,
     text: String((c.message as { text?: string } | undefined)?.text ?? ''),
   }));
 };

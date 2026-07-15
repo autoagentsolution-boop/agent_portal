@@ -201,6 +201,15 @@ const inferOutputs = (t: string): GoalSpec['outputs'] => {
     needsVideo: /\b(video|reel|clip|short|tiktok)\b/i.test(t),
     needsPublishing: !/\b(draft only|chỉ nháp|chi nhap|don't publish|do not publish|không đăng|khong dang)\b/i.test(t),
     needsEmail: false, // email intent is detected separately (parseEmailIntent) and OR'd in via emailOutputs()
+    // DM intent isn't detected by this deterministic analyzer yet (Multi-channel Nurture Nodes Phase
+    // 01 wires the flag + planner splice only — routing here is a follow-up, mirrors needsEmail's
+    // history). A goal reaches dm_writer/dm_agent via taskTargets or an explicit GoalSpec today.
+    needsDirectMessage: false,
+    // Wall-greeting intent isn't detected by this deterministic analyzer yet (Multi-channel Nurture
+    // Nodes Phase 02 wires the flag + planner splice only — routing here is a follow-up, mirrors
+    // needsDirectMessage's history). A goal reaches greeting_writer/greeting_agent via taskTargets
+    // or an explicit GoalSpec today.
+    needsWallGreeting: false,
   };
 };
 

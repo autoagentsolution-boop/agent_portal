@@ -7,13 +7,16 @@ async function main() {
   const rows = await prisma.lead.findMany();
   let done = 0, skipped = 0;
   for (const l of rows) {
-    if (isEncrypted(l.email) && l.emailBidx) { skipped++; continue; }
-    const plainEmail = isEncrypted(l.email) ? null : l.email; // already-encrypted email → keep, just ensure bidx below
+    // Phase 03: email is now nullable (handle-only comment leads have none) — nothing to backfill.
+    const email = l.email;
+    if (!email) { skipped++; continue; }
+    if (isEncrypted(email) && l.emailBidx) { skipped++; continue; }
+    const plainEmail = isEncrypted(email) ? null : email; // already-encrypted email → keep, just ensure bidx below
     await prisma.lead.update({
       where: { id: l.id },
       data: {
-        ...(isEncrypted(l.email) ? {} : { email: encryptToken(l.email) }),
-        emailBidx: l.emailBidx ?? blindIndex(plainEmail ?? l.email),
+        ...(isEncrypted(email) ? {} : { email: encryptToken(email) }),
+        emailBidx: l.emailBidx ?? blindIndex(plainEmail ?? email),
         ...(l.name && !isEncrypted(l.name) ? { name: encryptToken(l.name) } : {}),
         ...(l.phone && !isEncrypted(l.phone) ? { phone: encryptToken(l.phone) } : {}),
         ...(l.message && !isEncrypted(l.message) ? { message: encryptToken(l.message) } : {}),

@@ -9,6 +9,7 @@ import { listLeads, getLead, markLeadNurtured } from '../db/repos/lead-repo.ts';
 import { getUserById } from '../db/repos/user-repo.ts';
 import { draftNurtureEmail } from '../email/email-agent.ts';
 import { sendGmailAs, hasGmailConnected } from '../email/gmail-send.ts';
+import { isEmailSuppressed } from '../nurture/nurture-thread-repo.ts';
 import { logRun } from '../db/client.ts';
 
 export const emailRouter: Router = Router();
@@ -58,6 +59,9 @@ emailRouter.post('/send', asyncHandler(async (req, res) => {
   const lead = await getLead(body.leadId, req.userId!);
   if (!lead) return fail(res, 404, 'lead_not_found');
   if (!lead.email) return fail(res, 409, 'lead_has_no_email');
+  // Opt-out is ABSOLUTE + GLOBAL (Phase 03) — this panel sends directly via Gmail, bypassing the
+  // orchestration executor's own pre-send gate, so it needs its own suppression check.
+  if (await isEmailSuppressed(req.userId!, lead.email)) return fail(res, 409, 'lead_opted_out');
 
   const result = await sendGmailAs(req.userId!, { to: lead.email, subject: body.subject, body: body.body });
   if (!result.ok) {

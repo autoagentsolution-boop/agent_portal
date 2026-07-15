@@ -121,11 +121,15 @@ export const driveAuthUrl = (redirectUri: string, state: string): string => {
     access_type: 'offline',
     prompt: 'consent',
     // drive.file → media storage (P3); gmail.send → the Email Agent nurtures leads from the owner's
-    // own Gmail (P2-2c), no third-party ESP. One Google connect covers both (decision 4: keep-Google).
-    // Users who connected BEFORE gmail.send was added must reconnect to grant it (send fails loud until then).
+    // own Gmail (P2-2c), no third-party ESP; gmail.readonly → Lead Nurture Agent Phase 02 reads lead
+    // replies (nurture/gmail-read.ts), scoped by nurture-reply-poller.ts to ONLY the Gmail threads we
+    // started. One Google connect covers all three (decision 4: keep-Google). Users who connected
+    // BEFORE a scope was added must reconnect to grant it — the affected feature fails loud/degrades
+    // gracefully (see hasGmailReadScope) until then, it never silently no-ops.
     scope: [
       'https://www.googleapis.com/auth/drive.file',
       'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/gmail.readonly',
     ],
     state,
   });

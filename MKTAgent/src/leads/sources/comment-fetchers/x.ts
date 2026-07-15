@@ -7,6 +7,11 @@
 // free tier. A 401/403 here means "our access tier can't read replies", which is a static
 // capability limit, not evidence the tweet is gone — return [] (never PostGoneError) so the
 // collector stays active; only a 404 (tweet itself deleted) deactivates it.
+//
+// Phase 03 hardening: gated behind ENABLE_X_LEAD_CAPTURE (default OFF) — a free-tier token would
+// otherwise burn a 401/403 API call every 30-min cron tick for nothing. Flip the flag only once the
+// connected token is confirmed on a tier with recent-search access.
+import { env } from '../../../config/env.ts';
 import { getActiveToken } from '../../../tokens/service.ts';
 import { withRetry } from '../../../lib/retry.ts';
 import { logger } from '../../../lib/logger.ts';
@@ -20,6 +25,8 @@ export const fetchXComments = async (
   platformPostId: string,
   ownerId: string,
 ): Promise<FetchedComment[]> => {
+  if (!env.ENABLE_X_LEAD_CAPTURE) return []; // flag off → clean no-op, not a wasted API call
+
   const token = await getActiveToken(ownerId, 'x');
   const url = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(`conversation_id:${platformPostId}`)}&tweet.fields=author_id,text&expansions=author_id&user.fields=username`;
   const res = await withRetry(
@@ -47,6 +54,7 @@ export const fetchXComments = async (
   return (j.data ?? []).map((t) => ({
     id: t.id,
     authorName: (t.author_id && usersById.get(t.author_id)) || null,
+    authorId: t.author_id || null, // Phase 03 handle-only identity
     text: t.text ?? '',
   }));
 };

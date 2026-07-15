@@ -37,11 +37,42 @@ export interface PublishResult {
   // autonomous run never reads a reduced publish as a clean full success (H1c). Optional; absent =
   // full-fidelity publish.
   degraded?: boolean;
+  // Greeting DRY-RUN marker (Multi-channel Nurture Nodes Phase 02): true when this result is a
+  // SIMULATED mention/reply — no network call was made (src/social/greeting.ts's default live gate,
+  // or a stub greetFn). Always absent/false for publish() and for a real greetTo call.
+  dryRun?: boolean;
 }
+
+// Mention/reply input (Multi-channel Nurture Nodes Phase 02) — a public, person-directed greeting:
+// an @mention in OUR OWN new post, or a reply to THEIR post. Asset-less (text only) by design; `ok`/
+// `fail` reuse PublishResult so the greeting fan-out (src/social/greeting.ts) aggregates identically
+// to publishTo.
+export interface MentionInput {
+  ownerId: string;
+  // The target's handle to @mention, WITHOUT a leading '@' or WITH — adapters normalize it.
+  handle: string;
+  body: string;
+}
+
+export interface ReplyInput {
+  ownerId: string;
+  // The platform's own id of the post being replied to (X tweet id, Threads media id).
+  postId: string;
+  body: string;
+}
+
+// 'mention' = an @mention in our own new post. 'reply' = a reply to their existing post. Mirrors
+// MessagingChannel's plain-TS/zod-enum duality (see artifact-schemas.ts's greetingAction).
+export type GreetAction = 'mention' | 'reply';
 
 export interface SocialAdapter {
   platform: SocialPlatform;
   // Which asset types this adapter can publish (FB: all; others added per phase).
   supports: AssetType[];
   publish(input: PublishInput): Promise<PublishResult>;
+  // Mention/reply (Multi-channel Nurture Nodes Phase 02, ADDITIVE — `publish` is unchanged). A
+  // platform that structurally can't do the action (no arbitrary reply-to-post; no text-only own
+  // post) simply omits it — greetTo degrades to {ok:false,error:'unsupported'}, NEVER throws.
+  mention?(input: MentionInput): Promise<PublishResult>;
+  reply?(input: ReplyInput): Promise<PublishResult>;
 }

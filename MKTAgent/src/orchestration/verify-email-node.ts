@@ -1,7 +1,9 @@
-// Email-node verification (P4-lite) — pure + DRY: no DB, no LLM, no real email. Asserts (1) the analyzer
-// routes an email request to the email_writer→email_agent DAG (no social platforms) while a marketing
-// request is unchanged, and (2) the two runners produce a valid draft and "send" it via a stubbed Gmail
-// (zero real sends). Exits non-zero on any failure.
+// Email-node verification (P4-lite) — DRY: no LLM, no real email. Asserts (1) the analyzer routes an
+// email request to the email_writer→email_agent DAG (no social platforms) while a marketing request is
+// unchanged, and (2) the two runners produce a valid draft and "send" it via a stubbed Gmail (zero real
+// sends). email_agent's pre-send opt-out suppression check (Phase 03) does touch the DB (a cheap lookup
+// against a random, unused ownerId — no matching row, never suppressed) — everything else stays pure.
+// Exits non-zero on any failure.
 import { analyzeDeterministic, emailOutputs } from './master/deterministic-analyzer.ts';
 import { planWorkflow } from './master/workflow-planner.ts';
 import { evaluateClarification } from './master/clarification-engine.ts';
@@ -48,7 +50,10 @@ check('marketing still plans concept_writer→publisher', mktPlan.ok && agentIdL
 console.log('Runners (DRY — stubbed LLM + Gmail, zero real sends)');
 const ctx: RunnerContext = {
   runId: 'test-run',
-  ownerId: 'test-owner',
+  // A well-formed but unregistered UUID — email_agent's pre-send suppression check (Phase 03) now issues
+  // a real (cheap) lookup keyed by ownerId, which requires valid UUID syntax even though no such user
+  // row exists (the lookup simply finds nothing → never suppressed).
+  ownerId: '00000000-0000-4000-8000-000000000001',
   goal: goalSpec.parse({ ...emailGoal }),
   upstream: {},
   // Stub the writer LLM: return a canned draft (no Gemini call / spend).

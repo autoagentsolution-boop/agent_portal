@@ -23,7 +23,7 @@ import { validatePlan } from './workflow-validator.ts';
 const PIPELINE_ORDER: readonly RunnableAgentId[] = [
   'content_search', 'ideation', 'strategy', 'campaign_strategist',
   'security', 'summarize', 'concept_writer', 'infographic', 'storyboard', 'video',
-  'email_writer', 'email_agent', 'publisher',
+  'email_writer', 'email_agent', 'dm_writer', 'dm_agent', 'greeting_writer', 'greeting_agent', 'publisher',
 ];
 
 // The terminal artifact types a goal REQUESTS. Backward-chaining resolves the rest from `requires`.
@@ -43,6 +43,15 @@ const targetsFromGoal = (goal: GoalSpec): ArtifactType[] => {
   // email" keeps research — research_summary is emitted as a target so content_search runs and grounds
   // the email via email_writer's optional research_summary edge (BUG-7 fix).
   if (o.needsEmail) return o.needsResearch ? ['research_summary', 'email_result'] : ['email_result'];
+
+  // DM nurture path (Multi-channel Nurture Nodes Phase 01): a self-contained write+send via an
+  // opt-in messaging channel, NOT the social pipeline — mirrors the email branch above (no
+  // needsResearch grounding wired for DM yet; add it here the same way if/when needed, YAGNI for now).
+  if (o.needsDirectMessage) return ['dm_result'];
+
+  // Wall-greeting path (Multi-channel Nurture Nodes Phase 02): a self-contained write+post of a
+  // public, person-directed greeting, NOT the social pipeline — mirrors the DM branch above.
+  if (o.needsWallGreeting) return ['greeting_result'];
 
   // Campaign scope: route to the strategist and STOP at the editable calendar. ideation + strategy
   // ALWAYS ground the strategist (via its optional slots — emitted as targets so they're selected);
@@ -94,7 +103,7 @@ const selectAgents = (goal: GoalSpec): RunnableAgentId[] => selectByTargets(targ
 // change. Detect it up front (flag-based) and surface the same actionable error as before.
 const isPublishOnly = (goal: GoalSpec): boolean => {
   const o = goal.outputs;
-  return o.needsPublishing && !o.needsEmail && goal.campaignScope === 'single'
+  return o.needsPublishing && !o.needsEmail && !o.needsDirectMessage && !o.needsWallGreeting && goal.campaignScope === 'single'
     && !(o.needsTextPost || o.needsInfographic || o.needsStoryboard || o.needsVideo);
 };
 
@@ -122,8 +131,10 @@ const deriveDeps = (
 };
 
 // The terminal external-action nodes a scheduler is spliced in FRONT of. First consumer is email;
-// publisher is listed so a scheduled social post rides the same generic path once it's proven out.
-const TERMINAL_ACTIONS: ReadonlyArray<RunnableAgentId> = ['email_agent', 'publisher'];
+// dm_agent (Multi-channel Nurture Nodes Phase 01) and greeting_agent (Phase 02) ride the same
+// generic path so a DM/greeting can be timed too; publisher is listed so a scheduled social post
+// rides it once proven out.
+const TERMINAL_ACTIONS: ReadonlyArray<RunnableAgentId> = ['email_agent', 'dm_agent', 'greeting_agent', 'publisher'];
 
 export const planWorkflow = (goal: GoalSpec): PlanResult => {
   const selected = selectAgents(goal);

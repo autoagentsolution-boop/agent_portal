@@ -69,4 +69,17 @@ export const VISION_AGENTS: VisionAgent[] = [
     implStatus: 'live',
     surface: 'email',
   },
+  {
+    id: 'nurture',
+    name: 'Nurture Agent',
+    description: 'Runs a two-way email drip for captured leads — reads replies, drafts responses — with your approval on every send.',
+    emoji: '🌱',
+    group: 'data',
+    vibe: 'A patient relationship-builder who never sends without asking first.',
+    // Lead Nurture Agent Phase 04: shipped — the Nurture Inbox (thread timeline, approve/edit/reject,
+    // manual controls, cadence settings). Distinct from the Email Campaign Agent (one-off nurture send):
+    // this is the multi-touch, reply-aware drip + conversation loop.
+    implStatus: 'live',
+    surface: 'nurture',
+  },
 ];

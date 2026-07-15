@@ -56,6 +56,10 @@ export const fetchMetaComments = async (
     authorName: platform === 'instagram'
       ? (typeof c.username === 'string' ? c.username : null)
       : ((c.from as { name?: string } | undefined)?.name ?? null),
+    // FB's `from` object carries a real user id (Phase 03 handle-only identity); IG's `username`
+    // field alone doesn't expose one without the instagram_manage_comments scope, so authorId stays
+    // null there — the poller/webhook fall back to the username itself as the dedupe identity.
+    authorId: platform === 'facebook' ? ((c.from as { id?: string } | undefined)?.id ?? null) : null,
     text: String((platform === 'instagram' ? c.text : c.message) ?? ''),
   }));
 };

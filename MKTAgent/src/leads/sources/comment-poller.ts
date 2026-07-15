@@ -8,7 +8,11 @@ import { parseComment } from './comment-parse.ts';
 import { logger } from '../../lib/logger.ts';
 import type { SocialPlatform } from '../../../prisma/generated/prisma/client.ts';
 
-export interface FetchedComment { id: string; authorName: string | null; text: string }
+// authorId (Phase 03) — the platform's opaque user id when the fetcher's endpoint exposes one
+// (e.g. Facebook's from.id). Optional: several platforms (Threads replies, IG's public fields)
+// only surface a username, not a numeric id — the poller falls back to authorName as the identity
+// for a handle-only lead in that case (see below), which is still stable enough to dedupe on.
+export interface FetchedComment { id: string; authorName: string | null; authorId?: string | null; text: string }
 // Read comments for one published post on one platform. ownerId lets the fetcher pick the token.
 export type CommentFetcher = (platform: SocialPlatform, platformPostId: string, ownerId: string) => Promise<FetchedComment[]>;
 
@@ -82,7 +86,17 @@ export const pollCommentsForLeads = async (fetcher: CommentFetcher, ownerId?: st
       for (const c of comments) {
         summary.commentsScanned++;
         const parsed = parseComment(c.text, keyword);
-        if (!parsed.matched || !parsed.email) continue;
+        // keywordHit alone (no email) is now capturable too (Phase 03 handle-only lead) — the
+        // keyword is still the consent signal, an email just isn't required to record the handle.
+        if (!parsed.keywordHit) continue;
+        // Identity for dedupe/targeting: prefer the platform's real user id; fall back to the
+        // display name when the fetcher can't surface one (e.g. Threads replies) — only needed for
+        // the handle-only path, an email-typed comment already dedupes on the email itself.
+        const platformUserId = c.authorId || (!parsed.email ? c.authorName : null);
+        if (!parsed.email && !platformUserId) {
+          logger.warn('comment_capture_no_identity', { postId: post.id, platform, commentId: c.id });
+          continue;
+        }
         const outcome = await captureLead({
           name: c.authorName || '',
           email: parsed.email,
@@ -93,6 +107,9 @@ export const pollCommentsForLeads = async (fetcher: CommentFetcher, ownerId?: st
           source: 'comment',
           calBookingUid: null,
           rawPayload: { commentId: c.id, platform, postId: post.id },
+          platform,
+          platformUserId: platformUserId || null,
+          platformHandle: c.authorName,
         }, post.ownerId);
         if (outcome.status === 'created') summary.leadsCaptured++;
         else summary.duplicates++;

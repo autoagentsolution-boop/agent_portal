@@ -36,6 +36,9 @@ export const fetchThreadsComments = async (
   return (j.data ?? []).map((c) => ({
     id: String(c.id ?? ''),
     authorName: typeof c.username === 'string' ? c.username : null,
+    // The replies endpoint's `id,text,username` fields don't surface a numeric user id — Phase 03's
+    // handle-only capture falls back to the username itself as the identity (see comment-poller.ts).
+    authorId: null,
     text: String(c.text ?? ''),
   }));
 };
