@@ -821,9 +821,31 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
 // data (GDPR/PII), returns the source with those spans MASKED plus a plain-language notice. summarize
 // `requires` this, so it always runs first and downstream sees only the masked copy. No external action.
 // The example fields it returns are ALREADY MASKED (the prompt forbids echoing raw values), so no PII lands
-// in the artifact. A large document is sliced to a generous window per call — full-document chunking is a
-// follow-up; today the masked window is what summarize condenses.
-const SECURITY_SCAN_CHARS = 40000;
+// in the artifact. A large document is processed in full: the source is split into windows, each scanned +
+// masked independently, and the masked windows are concatenated — so NO tail is silently dropped and the
+// WHOLE document is protected before it reaches summarize. sourceText is capped upstream (goal-spec, 200k),
+// so this is a bounded number of calls.
+const SECURITY_SCAN_CHARS = 40000; // per-scan window (Gemini call granularity)
+
+// Split text into fixed-size windows (last window may be short). Single window when it already fits.
+const chunkText = (text: string, size: number): string[] => {
+  if (text.length <= size) return [text];
+  const out: string[] = [];
+  for (let i = 0; i < text.length; i += size) out.push(text.slice(i, i + size));
+  return out;
+};
+
+// Sum Gemini usage across chunk calls so cost/usage reflects the WHOLE document, not just the last window.
+const addUsage = (a: GeminiUsage | null, b: GeminiUsage | null): GeminiUsage | null => {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    promptTokens: a.promptTokens + b.promptTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    thoughtTokens: a.thoughtTokens + b.thoughtTokens,
+    cachedTokens: a.cachedTokens + b.cachedTokens,
+  };
+};
 const SECURITY_PROMPT = [
   'You are Atria\'s Data Guard, a GDPR data-protection officer. Scan the SOURCE TEXT for personal or sensitive data.',
   'Categories: personal (names, dates of birth), contact (emails, phones, postal addresses), financial (card/bank/IBAN numbers),',
@@ -836,17 +858,13 @@ const SECURITY_PROMPT = [
 
 const SECURITY_CATEGORIES = new Set(['personal', 'contact', 'financial', 'government_id', 'health', 'credentials', 'other']);
 
-const runSecurity = async (ctx: RunnerContext): Promise<RunnerOutput> => {
-  const source = (ctx.goal.slots.sourceText ?? '').trim();
-  if (!source) throw new Error('security: no source text to scan — provide the document or text to protect.');
-  const call = ctx.llmJsonFn ?? callGeminiJson;
-  const windowed = source.slice(0, SECURITY_SCAN_CHARS);
-  const input = `SOURCE TEXT:\n${windowed}`;
+// Scan + mask ONE window. Fail CLOSED per window: sensitive-but-unmasked throws rather than leak raw source.
+interface SecurityWindow { maskedText: string; findings: { category: string; count: number; example: string }[]; hasSensitive: boolean; usage: GeminiUsage | null }
+const scanSecurityWindow = async (call: LlmJsonFn, window: string): Promise<SecurityWindow> => {
+  const input = `SOURCE TEXT:\n${window}`;
   let usage: GeminiUsage | null = null;
   const raw = await call(SECURITY_PROMPT, input, (u) => { usage = u; });
-  const o = (raw ?? {}) as { hasSensitive?: unknown; findings?: unknown; maskedText?: unknown; notice?: unknown };
-  // Fail CLOSED: if the model returns no maskedText, do NOT pass raw source downstream — fall back to the
-  // original text ONLY when the model also reported nothing sensitive; otherwise surface the failure.
+  const o = (raw ?? {}) as { hasSensitive?: unknown; findings?: unknown; maskedText?: unknown };
   const findings = Array.isArray(o.findings)
     ? o.findings.map((f) => {
         const ff = (f ?? {}) as { category?: unknown; count?: unknown; example?: unknown };
@@ -859,21 +877,52 @@ const runSecurity = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   if (hasSensitive && !maskedRaw.trim()) {
     throw new Error('security: sensitive data was detected but masking failed — refusing to pass the raw source downstream.');
   }
-  const maskedText = (maskedRaw.trim() ? maskedRaw : windowed).slice(0, SECURITY_SCAN_CHARS);
-  const notice = String(o.notice ?? '').trim().slice(0, 2000)
-    || (hasSensitive ? 'Personal or sensitive data was detected and masked before summarizing.' : 'No personal or sensitive data detected.');
+  // A clean window (nothing sensitive) safely falls back to its verbatim text.
+  return { maskedText: maskedRaw.trim() ? maskedRaw : window, findings, hasSensitive, usage };
+};
+
+const runSecurity = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const source = (ctx.goal.slots.sourceText ?? '').trim();
+  if (!source) throw new Error('security: no source text to scan — provide the document or text to protect.');
+  const call = ctx.llmJsonFn ?? callGeminiJson;
+  // Full-document coverage: scan every window sequentially and concatenate the masked output. Every window
+  // is fail-closed, so the WHOLE document is masked — nothing beyond the first window slips through unmasked
+  // or gets silently dropped.
+  const windows = chunkText(source, SECURITY_SCAN_CHARS);
+  const maskedParts: string[] = [];
+  const byCategory = new Map<string, { category: string; count: number; example: string }>();
+  let hasSensitive = false;
+  let usage: GeminiUsage | null = null;
+  for (const w of windows) {
+    const r = await scanSecurityWindow(call, w);
+    maskedParts.push(r.maskedText);
+    hasSensitive = hasSensitive || r.hasSensitive;
+    usage = addUsage(usage, r.usage);
+    for (const f of r.findings) {
+      const prev = byCategory.get(f.category);
+      if (prev) prev.count += f.count;
+      else byCategory.set(f.category, { ...f });
+    }
+  }
+  const findings = [...byCategory.values()].slice(0, 20);
+  const maskedText = maskedParts.join('');
+  const notice = (hasSensitive
+    ? 'Personal or sensitive data was detected and masked before summarizing.'
+    : 'No personal or sensitive data detected.')
+    + (windows.length > 1 ? ` (Scanned the full document in ${windows.length} passes.)` : '');
   if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'security', model: env.GEMINI_MODEL, usage, runId: ctx.runId });
-  if (hasSensitive) logger.info('security_masked', { runId: ctx.runId, categories: findings.map((f) => f.category) });
+  if (hasSensitive) logger.info('security_masked', { runId: ctx.runId, windows: windows.length, categories: findings.map((f) => f.category) });
   return {
     type: 'security_scan',
     data: { hasSensitive, findings, maskedText, notice },
-    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(SECURITY_PROMPT + input, maskedText),
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(SECURITY_PROMPT + source.slice(0, SECURITY_SCAN_CHARS), maskedText),
   };
 };
 
 // summarize (P1b Phase 05) — condenses the task source into a summary + bullets. It reads the MASKED copy
 // produced upstream by the security node (data protection by default), falling back to the raw goal source
 // only if no scan ran. So no personal/sensitive data reaches the summary.
+const SUMMARIZE_CHARS = 20000; // per-summarize window
 const SUMMARIZE_PROMPT = [
   "You are Atria's Summarizer. Read the SOURCE TEXT and write a faithful, concise summary of it.",
   'Capture the core thesis and the few points that matter; drop filler. Invent NOTHING not in the source.',
@@ -881,6 +930,22 @@ const SUMMARIZE_PROMPT = [
   'Write in the SAME language as the source. Respond ONLY as JSON:',
   '{"summary":"a tight paragraph","bullets":["key point","..."]}.',
 ].join(' ');
+// Reduce step: fold the per-section summaries into one coherent summary (map-reduce for large documents).
+const SUMMARIZE_REDUCE_PROMPT = [
+  "You are Atria's Summarizer. The SOURCE TEXT is an ordered set of section summaries of ONE larger document.",
+  'Combine them into a single faithful, non-repetitive summary of the whole document. Invent NOTHING; keep any [CATEGORY] mask tokens as-is.',
+  'Write in the SAME language as the source. Respond ONLY as JSON: {"summary":"a tight paragraph","bullets":["key point","..."]}.',
+].join(' ');
+
+interface SummaryOut { summary: string; bullets: string[]; usage: GeminiUsage | null }
+const summarizeWindow = async (call: LlmJsonFn, prompt: string, text: string): Promise<SummaryOut> => {
+  let usage: GeminiUsage | null = null;
+  const raw = await call(prompt, `SOURCE TEXT:\n${text}`, (u) => { usage = u; });
+  const o = (raw ?? {}) as { summary?: unknown; bullets?: unknown };
+  const summary = String(o.summary ?? '').trim().slice(0, 8000);
+  const bullets = Array.isArray(o.bullets) ? o.bullets.map((b) => String(b).trim()).filter(Boolean).slice(0, 12) : [];
+  return { summary, bullets, usage };
+};
 
 const runSummarize = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const scan = ctx.upstream['security_scan'] as { maskedText?: string; hasSensitive?: boolean } | undefined;
@@ -888,24 +953,34 @@ const runSummarize = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const source = (masked || (ctx.goal.slots.sourceText ?? '').trim());
   if (!source) throw new Error('summarize: no source text to summarize — give me the text or content to condense.');
   const call = ctx.llmJsonFn ?? callGeminiJson;
-  const input = `SOURCE TEXT:\n${source.slice(0, 20000)}`;
+
+  let summary: string;
+  let bullets: string[];
   let usage: GeminiUsage | null = null;
-  const raw = await call(SUMMARIZE_PROMPT, input, (u) => { usage = u; });
-  const o = (raw ?? {}) as { summary?: unknown; bullets?: unknown };
-  const summary = String(o.summary ?? '').trim().slice(0, 8000);
+  if (source.length <= SUMMARIZE_CHARS) {
+    const one = await summarizeWindow(call, SUMMARIZE_PROMPT, source);
+    summary = one.summary; bullets = one.bullets; usage = one.usage;
+  } else {
+    // Map: summarize each window. Reduce: fold the section summaries into the final one. Bounded by the
+    // upstream 200k sourceText cap → ~10 map calls + 1 reduce at most.
+    const parts: string[] = [];
+    for (const w of chunkText(source, SUMMARIZE_CHARS)) {
+      const p = await summarizeWindow(call, SUMMARIZE_PROMPT, w);
+      if (p.summary) parts.push(p.summary);
+      usage = addUsage(usage, p.usage);
+    }
+    if (!parts.length) throw new Error('summarize: the summary came back empty — try again with clearer source text.');
+    const reduced = await summarizeWindow(call, SUMMARIZE_REDUCE_PROMPT, parts.join('\n\n').slice(0, SUMMARIZE_CHARS * 2));
+    summary = reduced.summary; bullets = reduced.bullets; usage = addUsage(usage, reduced.usage);
+  }
   if (!summary) throw new Error('summarize: the summary came back empty — try again with clearer source text.');
-  const bullets = Array.isArray(o.bullets) ? o.bullets.map((b) => String(b).trim()).filter(Boolean).slice(0, 12) : [];
   if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'summarize', model: env.GEMINI_MODEL, usage, runId: ctx.runId });
   return {
     type: 'summary',
     data: { summary, bullets, fromMaskedSource: Boolean(masked) },
-    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(SUMMARIZE_PROMPT + input, summary),
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(SUMMARIZE_PROMPT + source.slice(0, SUMMARIZE_CHARS), summary),
   };
 };
-
-// email_agent: send the reviewed draft via the owner's Gmail. Gated upstream (requiresApproval) so this
-// only runs AFTER the user approved the draft — the no-burst rule applies to email too. Per-recipient
-// outcome; a partial send (some ok, some failed) surfaces as 'partial', a total failure fails the node.
 const runEmailAgent = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const draft = ctx.upstream['email_draft'] as { to?: string[]; subject?: string; body?: string } | undefined;
   const to = draft?.to?.length ? draft.to : parseRecipients(ctx.goal.slots.emailTo);

@@ -57,6 +57,25 @@ async function main(): Promise<void> {
   try { await getRunner('security')({ runId: 't', ownerId: 't', goal: task(['summary']), upstream: {}, llmJsonFn: leakStub as never }); } catch { leakThrew = true; }
   ok(leakThrew, 'fails CLOSED when sensitive data found but masking is empty');
 
+  // Chunking (>40k window): the WHOLE document is scanned across multiple windows and the masked output
+  // covers all of it — the tail past the first window is neither dropped nor passed unmasked.
+  console.log('Security chunking (multi-window full-document coverage)');
+  let scanCalls = 0;
+  const chunkStub = async (_sys: string, input: string): Promise<unknown> => {
+    scanCalls++;
+    const body = String(input).replace(/^SOURCE TEXT:\n/, '');
+    return /SECRET/.test(body)
+      ? { hasSensitive: true, findings: [{ category: 'contact', count: 1, example: 's***' }], maskedText: body.replace(/SECRET/g, '[CONTACT]') }
+      : { hasSensitive: false, findings: [], maskedText: body };
+  };
+  const bigSource = 'x'.repeat(45000) + ' SECRET-TAIL-MARKER';
+  const bigOut = await getRunner('security')({ runId: 't', ownerId: 't', goal: task(['summary'], { sourceText: bigSource }), upstream: {}, llmJsonFn: chunkStub as never });
+  const bigData = bigOut.data as { hasSensitive?: boolean; maskedText?: string };
+  ok(scanCalls >= 2, `document larger than one window is scanned in multiple passes (${scanCalls})`);
+  ok(/TAIL-MARKER/.test(bigData.maskedText ?? ''), 'tail past the first window is present in masked output (not dropped)');
+  ok(!/SECRET/.test(bigData.maskedText ?? '') && /\[CONTACT\]/.test(bigData.maskedText ?? ''), 'sensitive span in the tail window was masked');
+  ok(bigData.hasSensitive === true, 'hasSensitive aggregated across windows');
+
   console.log('Summarize runner (reads the masked upstream copy)');
   const out = await getRunner('summarize')({ runId: 't', ownerId: 't', goal: task(['summary']), upstream: { security_scan: secData }, llmJsonFn: stubLlm as never });
   ok(out.type === 'summary', 'runner produces a summary artifact');

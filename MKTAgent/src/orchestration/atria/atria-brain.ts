@@ -135,7 +135,13 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
     proposal: null,
     executeRunId: null,
     scheduleProposal: null,
-    resolvedLead: null,
+    // S9 (multi-turn recipient carry): a lead resolved on an EARLIER turn is persisted on the pre-exec
+    // run's goal (leadId + emailTo). Seed it here so a later propose_workflow re-affirms the recipient
+    // from the lead record without needing find_lead to run again — the brain stops re-asking "who to?".
+    resolvedLead:
+      input.priorGoal?.slots.leadId && input.priorGoal.slots.emailTo
+        ? { leadId: input.priorGoal.slots.leadId, email: input.priorGoal.slots.emailTo, name: null }
+        : null,
   };
   // Dynamic preamble (P4 instructions + P5a memory) + the voice hint all ride the user turn — NOT the
   // system prompt, which is context-cached and must stay stable/tenant-agnostic. Injecting memory here

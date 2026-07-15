@@ -45,6 +45,10 @@ export function App() {
   const [orchestrateRestore, setOrchestrateRestore] = useState<OrchestrateRestore | null>(null);
   // Command typed on the Command Center, carried once into a fresh Orchestrate composer.
   const [orchestratePrefill, setOrchestratePrefill] = useState<string | null>(null);
+  // A file attached from the Command Center LANDING view (before the chat exists) — handed to the
+  // freshly-opened OrchestratePanel, which consumes it through its EXISTING attach-to-summarize
+  // handler on mount (no duplicated upload logic; see command-center-page.tsx's attach button).
+  const [pendingAttachFiles, setPendingAttachFiles] = useState<File[] | null>(null);
   // Set true only when the CC voice button opens the chat → OrchestratePanel enters hands-free voice
   // mode on mount. Cleared by every other open path so a normal chat never auto-listens.
   const [orchestrateAutoVoice, setOrchestrateAutoVoice] = useState(false);
@@ -108,6 +112,10 @@ export function App() {
   };
 
   const openOrchestrate = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setOrchestratePrefill(null); setOrchestrateAutoVoice(false); setCcChatOpen(true); setPage('command-center'); };
+
+  // Attach button on the CC landing view (no chat open yet) — open a fresh chat, then hand the picked
+  // files to OrchestratePanel so it runs the SAME summarize-file flow the in-chat attach button uses.
+  const attachFromCommandCenter = (files: File[]) => { openOrchestrate(); setPendingAttachFiles(files); };
 
   // CC voice button → open Atria chat straight into hands-free voice mode (mic in, TTS out).
   const launchVoice = () => { setOrchestrateRestore(null); setActiveChatId(null); setSelectedRunId(null); setOrchestratePrefill(null); setOrchestrateAutoVoice(true); setCcChatOpen(true); setPage('command-center'); };
@@ -327,6 +335,8 @@ export function App() {
       onOpenFlow={(runId) => { void loadSavedRuns().then(() => openSavedFlow(runId)); }}
       onResumeChat={(id) => void selectChat(id)}
       onCampaignCreated={(campaignId, postId) => { void openCreatedCampaign(campaignId, postId); }}
+      pendingAttachFiles={pendingAttachFiles}
+      onPendingAttachConsumed={() => setPendingAttachFiles(null)}
     />
   );
 
@@ -352,6 +362,7 @@ export function App() {
         {page === 'command-center' ? (
           <CommandCenterPage
             onLaunch={launchFromCommandCenter}
+            onAttachFiles={attachFromCommandCenter}
             openWorkspaceId={openWorkspaceId}
             onOpenWorkspaceConsumed={() => setOpenWorkspaceId(null)}
             onOpenConnections={() => { setSelectedRunId(null); setPage('connections'); }}

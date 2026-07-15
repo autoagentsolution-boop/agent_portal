@@ -5,7 +5,7 @@
 // Only the Atria core + the command bar hand off to the Orchestrate chat (onLaunch); ⌂ Workspace
 // exits to the classic UI (onExit). Dark theme stays confined to `.command-center`; the drawer is
 // light so embedded post views keep native styling.
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type CSSProperties } from 'react';
 import { api, type AgentCatalog, type AgentNodeDto } from '../api/client';
 import { WorkspacePanel } from './workspace-panel';
 import { AgentSpotlight } from './agent-spotlight';
@@ -13,13 +13,15 @@ import { MemoryPanel } from './memory-panel';
 import { ImpactReport } from './impact-report';
 import { LeadsPage } from './LeadsPage';
 import { EmailPanel } from './email-panel';
-import { AtriaSuggestionCards } from './atria-suggestion-cards';
 import { AtriaResumeWorkCards } from './atria-resume-work-cards';
 import { useAgentActivity } from '../hooks/use-agent-activity';
 
 interface Props {
   // Hand off to the live Orchestrate chat (Atria core / command bar), optionally seeding the composer.
   onLaunch: (prefill?: string) => void;
+  // Attach-to-summarize from the LANDING view (no chat open yet) — opens the chat and hands the picked
+  // files to it (App wires this to the SAME summarize-file handler OrchestratePanel's chat attach uses).
+  onAttachFiles?: (files: File[]) => void;
   // A workspace picked in the global top-nav Workspace menu opens its drawer here (P1). Null = none.
   openWorkspaceId?: string | null;
   onOpenWorkspaceConsumed?: () => void;
@@ -95,8 +97,9 @@ const memberGeo = (g: GroupGeo, j: number, count: number): { left: string; top: 
 // Web Speech API support (Chrome/Edge) — gate the mic button so it never shows a dead control.
 const VOICE_SUPPORTED = typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
 
-export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], resumeRuns = [], onResumeChat, onOpenFlow, onStartVoice, onDismissResume, chatActive = false, chatSlot, voice, notify }: Props) {
+export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], resumeRuns = [], onResumeChat, onOpenFlow, onStartVoice, onDismissResume, chatActive = false, chatSlot, voice, notify }: Props) {
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
+  const attachInputRef = useRef<HTMLInputElement>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [cmd, setCmd] = useState('');
   // Suggestions already acted on — held HERE (CommandCenterPage survives the chat open/close toggle)
@@ -150,6 +153,11 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
   const submit = (e: FormEvent) => {
     e.preventDefault();
     onLaunch(cmd.trim() || undefined);
+  };
+
+  const filesPicked = (files: FileList | null) => {
+    if (!files || !files.length || !onAttachFiles) return;
+    onAttachFiles(Array.from(files));
   };
 
   // Voice launch: PRIME the mic permission INSIDE this click gesture, then open the voice chat. The panel's
@@ -319,6 +327,25 @@ export function CommandCenterPage({ onLaunch, openWorkspaceId, onOpenWorkspaceCo
       })()}
       <form className="cc-cmdbar-wrap" onSubmit={submit}>
         <div className="cc-cmdbar">
+          {onAttachFiles && (
+            <>
+              <button
+                type="button"
+                className="cc-attach"
+                aria-label="Attach a document to summarize"
+                title="Attach a document (PDF, image, TXT/MD) to summarize — sensitive data is masked automatically"
+                onClick={() => attachInputRef.current?.click()}
+              >+</button>
+              <input
+                ref={attachInputRef}
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md,application/pdf,image/png,image/jpeg,image/webp,text/plain,text/markdown"
+                multiple
+                hidden
+                onChange={(e) => { filesPicked(e.target.files); e.target.value = ''; }}
+              />
+            </>
+          )}
           <input
             value={cmd}
             onChange={(e) => setCmd(e.target.value)}

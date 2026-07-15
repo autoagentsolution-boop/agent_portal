@@ -75,18 +75,18 @@ export function ContentCalendar({ runId, slots: initial, notify, onDone }: Props
     <section>
       <h3>Content calendar <span className="muted">({slots.length} posts)</span></h3>
       <p className="muted">Edit anything before scheduling. Approving creates the posts and asks you to confirm once more.</p>
-      <div style={{ display: 'grid', gap: 8, margin: '12px 0' }}>
+      <div className="calendar-slot-list">
         {slots.map((s, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '40px 1fr 1fr 110px 90px 70px 28px', gap: 6, alignItems: 'center', padding: 6, border: '1px solid var(--border)', borderRadius: 6 }}>
-            <span className="muted">#{i + 1}</span>
-            <input value={s.pillar} onChange={(e) => patch(i, { pillar: e.target.value })} placeholder="pillar" />
-            <input value={s.angle} onChange={(e) => patch(i, { angle: e.target.value })} placeholder="angle" />
-            <select value={s.format} onChange={(e) => patch(i, { format: e.target.value as CalendarFormat })}>
+          <div key={i} className="calendar-slot-row">
+            <span className="muted slot-index">#{i + 1}</span>
+            <input className="slot-pillar" value={s.pillar} onChange={(e) => patch(i, { pillar: e.target.value })} placeholder="pillar" />
+            <input className="slot-angle" value={s.angle} onChange={(e) => patch(i, { angle: e.target.value })} placeholder="angle" />
+            <select className="slot-format" value={s.format} onChange={(e) => patch(i, { format: e.target.value as CalendarFormat })}>
               {FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
-            <input value={s.platforms.join(',')} onChange={(e) => patch(i, { platforms: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} placeholder="platforms" title="comma-separated" />
-            <input type="number" min={0} value={s.dayOffset} onChange={(e) => patch(i, { dayOffset: Math.max(0, Number(e.target.value) || 0) })} title="day offset" />
-            <button className="icon-btn" aria-label="Remove slot" onClick={() => removeSlot(i)}>×</button>
+            <input className="slot-platforms" value={s.platforms.join(',')} onChange={(e) => patch(i, { platforms: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} placeholder="platforms" title="comma-separated" />
+            <input className="slot-day" type="number" min={0} value={s.dayOffset} onChange={(e) => patch(i, { dayOffset: Math.max(0, Number(e.target.value) || 0) })} title="day offset" />
+            <button className="icon-btn slot-remove" aria-label="Remove slot" onClick={() => removeSlot(i)}>×</button>
           </div>
         ))}
       </div>

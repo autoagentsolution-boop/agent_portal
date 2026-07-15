@@ -128,7 +128,17 @@ interface RespondExtras { questions?: ClarifyQuestions; assistantMessage?: strin
 const respondRun = async (res: Parameters<typeof ok>[0], id: string, ownerId: string, extras: RespondExtras = {}): Promise<void> => {
   const full = await getRunWithNodes(id, ownerId);
   if (!full) { fail(res as never, 404, 'run_not_found'); return; }
-  ok(res, toRunDto(full, extras));
+  // BUG-3 (gate-after-content): a run can now park at `needs_connection` at the PUBLISH boundary
+  // (the executor), not only up-front. Recompute the connect actions on read so any needs_connection
+  // run — however it got there — surfaces the connect prompt without the caller threading them.
+  let out = extras;
+  if (full.status === 'needs_connection' && !extras.requiredActions) {
+    try {
+      const resolution = await resolveConnections(ownerId, goalSpec.parse(full.goal), workflowPlan.parse(full.plan));
+      if (resolution.status !== 'resolved') out = { ...extras, requiredActions: resolution.required };
+    } catch { /* best-effort: a malformed goal/plan just yields no actions */ }
+  }
+  ok(res, toRunDto(full, out));
 };
 
 // Execute a PLANNED (or re-runnable) instance run: resolve connections, then launch the executor. Shared
@@ -163,11 +173,19 @@ const executePlannedRun = async (
   const goal = goalSpec.parse(run.goal);
   const plan: WorkflowPlan = workflowPlan.parse(run.plan);
   // Connection gate (§11.6/11.11): resolve every requiresConnection agent's platforms BEFORE spending.
+  // BUG-3 (gate-after-content): if the plan produces a reviewable draft first (any node that does NOT
+  // require a connection → copy/concept generates and parks at the selection gate), DEFER the gate so
+  // the user can review the draft pre-connect. The executor re-gates at the publish boundary. Only a
+  // plan with nothing to review first (every node requires a connection) still fast-fails up-front.
   const resolution = await resolveConnections(ownerId, goal, plan);
   if (resolution.status !== 'resolved') {
-    await setRunStatus(run.id, 'needs_connection');
-    logger.info('wf_execute_gated_needs_connection', { runId: run.id, count: resolution.required.length });
-    return { status: 'needs_connection', requiredActions: resolution.required };
+    const producesDraft = plan.nodes.some((n) => !getAgent(n.agentId as Parameters<typeof getAgent>[0])?.requiresConnection);
+    if (!producesDraft) {
+      await setRunStatus(run.id, 'needs_connection');
+      logger.info('wf_execute_gated_needs_connection', { runId: run.id, count: resolution.required.length });
+      return { status: 'needs_connection', requiredActions: resolution.required };
+    }
+    logger.info('wf_execute_deferred_connection_gate', { runId: run.id, count: resolution.required.length });
   }
   // Claim into running before responding so a double-click / double-call can't spawn two executors.
   await setRunStatus(run.id, 'running');
@@ -511,10 +529,16 @@ orchestrationRouter.post('/runs/:id/test-run', asyncHandler(async (req, res) => 
   }
   const goal = goalSpec.parse(target.goal);
   const plan: WorkflowPlan = workflowPlan.parse(target.plan);
+  // BUG-3 (gate-after-content): same deferral as /execute — a test-run that can produce a reviewable
+  // draft first runs so the user sees the copy; the executor re-gates at publish. Only a no-draft plan
+  // fast-fails here.
   const resolution = await resolveConnections(req.userId!, goal, plan);
   if (resolution.status !== 'resolved') {
-    await setRunStatus(target.id, 'needs_connection');
-    return respondRun(res, target.id, req.userId!, { requiredActions: resolution.required });
+    const producesDraft = plan.nodes.some((n) => !getAgent(n.agentId as Parameters<typeof getAgent>[0])?.requiresConnection);
+    if (!producesDraft) {
+      await setRunStatus(target.id, 'needs_connection');
+      return respondRun(res, target.id, req.userId!, { requiredActions: resolution.required });
+    }
   }
   await setRunStatus(target.id, 'running');
   launchWorkflow(target.id, req.userId!, goal, plan, {});

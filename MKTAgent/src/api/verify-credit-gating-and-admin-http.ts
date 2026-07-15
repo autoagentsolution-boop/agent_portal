@@ -75,7 +75,11 @@ async function main(): Promise<void> {
     const me1 = await call('GET', '/auth/me', tToken);
     check('/auth/me reflects granted balance 500', me1.body?.data?.credits === 500, me1.body?.data);
     const exec1 = await call('POST', `/orchestration/runs/${run.id}/execute`, tToken);
-    check('post-grant execute is NOT 402 (credit gate passed → needs_connection)', exec1.status !== 402 && exec1.body?.data?.status === 'needs_connection', { status: exec1.status, runStatus: exec1.body?.data?.status });
+    // Credit gate passed once granted (not 402). BUG-3 (gate-after-content): a plan that can produce a
+    // reviewable draft now RUNS pre-connect (parks at the publish gate later), so accept `running` OR the
+    // legacy `needs_connection` (a no-draft plan) — either proves the credit gate let the run through.
+    const execRunStatus = exec1.body?.data?.status;
+    check('post-grant execute is NOT 402 (credit gate passed)', exec1.status !== 402 && (execRunStatus === 'running' || execRunStatus === 'needs_connection'), { status: exec1.status, runStatus: execRunStatus });
 
     console.log('grant to bad owner → 404');
     const badGrant = await call('POST', '/admin/grant', aToken, { ownerId: '00000000-0000-0000-0000-000000000000', credits: 10 });

@@ -40,6 +40,10 @@ interface Props {
   // Item 2 (Option A): the backend created a campaign under the saved flow from a chat
   // message — navigate to its board (optionally selecting the created post).
   onCampaignCreated: (campaignId: string, postId?: string) => void;
+  // Files attached from the Command Center LANDING view (before this panel existed) — consumed once on
+  // mount through the SAME attach-to-summarize handler the in-chat "+" button uses (no duplicated logic).
+  pendingAttachFiles?: File[] | null;
+  onPendingAttachConsumed?: () => void;
   // Seed the composer once (e.g. a command typed on the Command Center before it
   // redirects here). Only applied on a fresh mount; ignored when restoring a chat.
   initialInput?: string;
@@ -81,7 +85,7 @@ const starters = [
   'Write a short LinkedIn post about our new feature',
 ];
 
-export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, onAutoStarted, autoVoice, onVoiceChange, chats, onResumeChat }, ref) {
+export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, onAutoStarted, autoVoice, onVoiceChange, chats, onResumeChat, pendingAttachFiles, onPendingAttachConsumed }, ref) {
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   // Messages present at mount (restored history) render instantly; only messages added afterwards get
   // the typewriter reveal, and only the newest one (P3 — "alive" feel without re-typing old replies).
@@ -238,11 +242,11 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
     fr.onerror = () => reject(fr.error);
     fr.readAsDataURL(file);
   });
-  const onFilesPicked = async (files: FileList | null) => {
+  const onFilesPicked = async (files: File[] | null) => {
     if (!files || !files.length) return;
     setUploading(true); setBusy(true);
     try {
-      const docs = await Promise.all([...files].slice(0, 6).map(async (f) => ({ name: f.name, mimeType: f.type || 'application/octet-stream', dataB64: await readAsB64(f) })));
+      const docs = await Promise.all(files.slice(0, 6).map(async (f) => ({ name: f.name, mimeType: f.type || 'application/octet-stream', dataB64: await readAsB64(f) })));
       const ext = await api.extractDocumentText(docs);
       if (!ext.ok) { notify(`Upload: ${ext.error.error}`, 'err'); return; }
       const names = ext.data.names.join(', ');
@@ -272,6 +276,18 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
     void start(seed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Consume a file attached on the Command Center LANDING view (before this panel mounted) exactly
+  // once — same ref-guard pattern as autoStart, so a StrictMode dev double-mount can't re-fire the
+  // upload. Runs the EXISTING onFilesPicked handler, so the summarize-file logic is never duplicated.
+  const attachConsumed = useRef(false);
+  useEffect(() => {
+    if (attachConsumed.current || !pendingAttachFiles || !pendingAttachFiles.length) return;
+    attachConsumed.current = true;
+    onPendingAttachConsumed?.();
+    void onFilesPicked(pendingAttachFiles);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAttachFiles]);
 
   // Save names the flow and (P6) returns the Master Agent's guiding offer as
   // assistantMessage. We stay in the chat, surface the offer bubble + action card, and
@@ -463,7 +479,7 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
             accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md,application/pdf,image/png,image/jpeg,image/webp,text/plain,text/markdown"
             multiple
             hidden
-            onChange={(e) => void onFilesPicked(e.target.files)}
+            onChange={(e) => void onFilesPicked(e.target.files ? Array.from(e.target.files) : null)}
           />
           <textarea
             value={input}

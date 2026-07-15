@@ -420,6 +420,27 @@ a { color: var(--accent); }
 .plan-scope.strategist { background: rgba(157,123,255,0.12); border-color: rgba(157,123,255,0.4); }
 .plan-scope.single { background: rgba(255,255,255,0.04); }
 .plan-scope strong { font-size: 13px; }
+
+/* Strategist inline 12-slot calendar editor (content-calendar.tsx) — BUG-8: the old fixed-width grid
+   clipped titles/angles and truncated the comma-separated platform list ("facebook,inst…"). Flex-wrap
+   lets every field claim a sane min-width and, once the row runs out of room (narrow chat card), wrap
+   onto a second line instead of squeezing/clipping the text. */
+.calendar-slot-list { display: grid; gap: 8px; margin: 12px 0; }
+.calendar-slot-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
+  padding: 8px; border: 1px solid var(--border); border-radius: 8px;
+}
+.calendar-slot-row .slot-index { flex: 0 0 auto; min-width: 22px; }
+.calendar-slot-row .slot-pillar, .calendar-slot-row .slot-angle { flex: 1 1 160px; min-width: 140px; }
+.calendar-slot-row .slot-format { flex: 0 1 110px; min-width: 90px; }
+.calendar-slot-row .slot-platforms { flex: 1 1 200px; min-width: 170px; }
+.calendar-slot-row .slot-day { flex: 0 0 76px; min-width: 60px; }
+.calendar-slot-row .slot-remove { flex: 0 0 auto; }
+.calendar-slot-row input, .calendar-slot-row select {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; font-size: 13px; min-height: 30px;
+}
+.calendar-slot-row input:focus, .calendar-slot-row select:focus { outline: none; border-color: #9d7bff; box-shadow: 0 0 0 2px rgba(157,123,255,0.25); }
 .cc-chat-embed .composer-box { background: var(--panel); border: 1px solid var(--border); }
 .cc-chat-embed .composer-box textarea { background: transparent; color: var(--text); }
 .cc-chat-embed .composer-box textarea::placeholder { color: var(--muted); }
@@ -1191,6 +1212,12 @@ a { color: var(--accent); }
   border: 1px solid var(--cc-border-bright); background: rgba(157,123,255,0.10); color: var(--cc-text);
   font-size: 15px; line-height: 1; transition: .2s; }
 .cc-mic:hover { background: rgba(157,123,255,0.22); border-color: var(--cc-violet); transform: scale(1.08); }
+/* Attach-to-summarize on the landing command bar (mirrors the in-chat composer-plus button — same
+   summarize-file flow, just reachable before a chat exists). */
+.cc-attach { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; cursor: pointer;
+  border: 1px solid var(--cc-border); background: transparent; color: var(--cc-text-dim);
+  font-size: 18px; line-height: 1; transition: .2s; }
+.cc-attach:hover { background: rgba(157,123,255,0.14); border-color: var(--cc-border-bright); color: var(--cc-text); }
 .cc-quick { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
 .cc-quick-cmd { font-size: 12px; color: var(--cc-text-dim); border: 1px solid var(--cc-border);
   padding: 8px 14px; border-radius: 20px; background: var(--cc-panel); transition: .2s; }

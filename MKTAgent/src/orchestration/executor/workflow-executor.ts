@@ -311,6 +311,31 @@ export const runWorkflow = async (
         });
         return { status: 'needs_approval', nodeId: planNodeId };
       }
+
+      // BUG-3 (gate-after-content): the connection gate is now DEFERRED past content generation, so the
+      // draft is reviewable pre-connect. Re-gate the connection HERE, at the publish boundary — content
+      // is generated + reviewed by now; if the post's target platforms still aren't connected, PARK at
+      // `needs_connection` (never let runPublisher throw on a missing connection). respondRun recomputes
+      // the connect actions on read, so the UI shows the same connect prompt the up-front gate used to.
+      // DRY-RUN (a stub publishFn) needs no real connection, so skip UNLESS a verify explicitly
+      // simulates connection state via connectionReaderFn — the same DI seam the atria gate uses.
+      const gateConnection = !opts.publishFn || !!opts.connectionReaderFn;
+      const freshPost = gateConnection ? (await getPostByRunId(runId)) ?? attachedPost : null;
+      if (freshPost && freshPost.platforms.length > 0) {
+        const conn = opts.connectionReaderFn
+          ? await resolveConnections(ownerId, { ...goal, platforms: freshPost.platforms }, plan, opts.connectionReaderFn)
+          : await resolveConnections(ownerId, { ...goal, platforms: freshPost.platforms }, plan);
+        if (conn.status !== 'resolved') {
+          await setNodeStatus(nodeRow.id, 'awaiting_approval');
+          await setRunStatus(runId, 'needs_connection');
+          publishNodeStatus(ownerId, {
+            runId, nodeId: planNodeId, agentId: planNode.agentId, status: 'awaiting_approval',
+            notice: `Connect ${conn.required.map((r) => r.displayName).join(', ')} to publish — your draft is ready and waiting.`,
+          });
+          await logRun('info', 'wf_publish_gated_needs_connection', { runId, nodeId: planNodeId, count: conn.required.length }, ownerId);
+          return { status: 'needs_approval', nodeId: planNodeId };
+        }
+      }
     }
 
     // Approval halt: a gated node stops the run UNLESS it's the one just approved. Read the

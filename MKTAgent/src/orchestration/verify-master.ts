@@ -131,7 +131,10 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   check('merge keeps sourceText', Boolean(taskMerged.slots.sourceText), taskMerged.slots.sourceText);
   const taskOut = new MasterAgent().planFromGoal(taskMerged);
   const taskAgents = taskOut.status === 'planned' ? agentIdList(taskOut.plan) : [taskOut.status];
-  check('merged task still selects summarize (not a marketing flow)', JSON.stringify(taskAgents) === JSON.stringify(['summarize']), taskAgents);
+  // Data Guard (2026-07-14): summarize.requires=['security_scan'] → backward-chaining always prepends the
+  // security prescan. The intent of this check is unchanged (still the summarize TASK flow, NOT a marketing
+  // publish flow) — it just now includes the mandatory Data Guard step.
+  check('merged task still selects the summarize task flow (security → summarize, not a marketing flow)', JSON.stringify(taskAgents) === JSON.stringify(['security', 'summarize']), taskAgents);
 
   // Scheduled-email carry: a run persisted on the set_schedule turn holds schedule.confirmed=false; the
   // confirm turn (a bare delta, no new schedule proposal) merges onto it → mergeGoals must keep schedule.at
