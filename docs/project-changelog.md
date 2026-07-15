@@ -3,6 +3,41 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-15
+
+### Fix: bug batch from observed browser tests (`9f915fa`)
+- **BUG-3 gate-after-content**: the connection gate no longer parks the whole DAG before generating —
+  `/execute` + `/test-run` defer the pre-gate when the plan produces a reviewable draft (concept parks at
+  the selection gate); the executor re-gates connection at the publisher boundary (parks `needs_connection`
+  instead of letting `runPublisher` throw); `respondRun` recomputes `requiredActions` on read. Un-connected
+  tenants can now review a draft pre-connect.
+- **Data Guard >40k chunking**: `runSecurity` scans the whole document in windows (fail-closed per window)
+  and concatenates masked output — no tail dropped; `runSummarize` map-reduces beyond one window.
+- **S9 recipient-carry**: the brain seeds `resolvedLead` from the prior turn's goal → stops re-asking "who to?".
+- **Web**: calendar slot fields wrap (no truncation); document-attach control added to the landing view.
+
+### Feat: lead-nurture agent — two-way, human-gated (`e4e8f5c`)
+Drip state machine (day 0/3/6, atomic-claim, park-per-touch) + `gmail.readonly` reply ingestion + threading
++ nurture brain (classify→draft→state, global opt-out, prompt-injection hardened) + Nurture Inbox UI +
+guardrails + e2e. `src/nurture/`. Every send is human-approved; flags default OFF. Live-validated 2026-07-15.
+
+### Feat: multi-channel nurture nodes — DRY-RUN scaffold (`d789bfd`)
+DM node (`dm_writer→dm_agent`, whatsapp/telegram/zalo adapters, `isLiveDmSend` gate, opt-in refusal),
+mention/reply greeting node (additive `SocialAdapter.mention/reply` per each platform's real API limit),
+and comment-capture hardening (signed Meta webhook + handle-only leads + X/LinkedIn gating). All adapters
+default DRY-RUN — no real send without an explicit token + `ENABLE_LIVE_*` flag.
+
+### Fix: live-test findings (`2375f01`, `c981737`)
+- **Copy edit/refine on saved-flow-detail** (`2375f01`): the run-detail view reached via "Approve & run now"
+  (`saved-flow-detail.tsx`) never had the edit/refine controls and stayed stuck on "Running…" (SSE reloaded
+  only on completed/failed). Shared `concept-copy-editor` extracted; edit/refine + rerun + reload-on-park
+  added; `/edit-copy` now syncs the concept artifact so hand edits persist.
+- **Credit reconcile-debit + fail-no-charge** (`c981737`): debit fired only at completion, so parked runs
+  that spent tokens were never charged. New `reconcileRunDebit` (delta above already-debited, advisory-lock
+  serialized) called from a `finally` wrapping the executor body — charges at every park/completion. `/refine`
+  spend now billed. **A failed run charges nothing** (product decision). Migration
+  `credit_wallet_multi_debit_reconcile` drops the one-debit-per-run unique index.
+
 ## 2026-07-14
 
 ### Feat: credit wallet + super-admin grant console (all 3 phases + logout)
