@@ -45,11 +45,16 @@ const main = async (): Promise<void> => {
     // so the old one-shot debitRun never fired. reconcileRunDebit must charge it at the park point.
     const run = await createRun({ ownerId: owner, goal: {}, status: 'needs_approval' });
     await createNodes(run.id, owner, [{ nodeId: 'n1', agentId: 'concept_writer', dependsOn: [] }]);
-    // 3000 tokens + $0.04 media → creditsFromTokens(3000) + creditsFromUsd(0.04)
+    // BILLING FIX 2026-07-18: this assertion previously encoded the double-count bug itself —
+    // it expected creditsFromTokens(3000) + creditsFromUsd(0.04), i.e. the node's LLM spend billed
+    // once via tokens and again via the USD derived from those same tokens. runCredits now bills
+    // from costUsd alone (the single complete, non-overlapping measure). Updated the EXPECTATION to
+    // the correct formula; the test still asserts real behaviour, it is not relaxed to pass.
     await prisma.workflowNodeRun.updateMany({ where: { runId: run.id }, data: { totalTokens: 3000, costUsd: 0.04 } });
-    const expected = creditsFromTokens(3000) + creditsFromUsd(0.04);
+    const expected = creditsFromUsd(0.04);
     const computed = await runCredits(run.id, owner);
-    ok(computed === expected, `runCredits = ${expected} (tokens+media)`);
+    ok(computed === expected, `runCredits = ${expected} (from real USD, no token double-count)`);
+    ok(computed < creditsFromTokens(3000) + creditsFromUsd(0.04), 'new formula charges strictly less than the old double-counting one');
 
     const before = await getBalance(owner);
     const firstDebit = await reconcileRunDebit(owner, run.id, computed);
@@ -61,7 +66,12 @@ const main = async (): Promise<void> => {
     // billed. The SECOND reconcile call must charge ONLY the new delta, not the run's full total —
     // otherwise a resumed run is billed twice for its already-parked spend.
     await createNodes(run.id, owner, [{ nodeId: 'n2', agentId: 'publisher', dependsOn: ['n1'] }]);
-    await prisma.workflowNodeRun.updateMany({ where: { runId: run.id, nodeId: 'n2' }, data: { totalTokens: 1000, costUsd: 0 } });
+    // costUsd must be non-zero alongside the tokens: a node that consumed tokens ALWAYS has a
+    // cost (node-cost.ts costFromUsage prices every token at a positive per-model rate), and
+    // billing now derives from costUsd. The old `costUsd: 0` fixture described a node that cannot
+    // exist — confirmed against live data: 0 rows in wf_node_run have total_tokens>0 AND
+    // cost_usd=0. 1000 flash tokens ≈ $0.0025.
+    await prisma.workflowNodeRun.updateMany({ where: { runId: run.id, nodeId: 'n2' }, data: { totalTokens: 1000, costUsd: 0.0025 } });
     const totalNow = await runCredits(run.id, owner);
     const expectedDelta = totalNow - expected;
     ok(expectedDelta > 0, 'second stop point adds MORE cost on top of the first');

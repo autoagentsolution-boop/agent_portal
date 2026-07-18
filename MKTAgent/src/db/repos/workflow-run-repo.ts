@@ -287,23 +287,46 @@ export const getFlowCostRollup = async (templateId: string, ownerId: string): Pr
   };
 };
 
-// Total credits a single run consumed = token-passthrough credits + media-USD credits, summed
-// over all its node runs (same basis as impact-metrics), PLUS any ad-hoc spend tagged to this
-// run that happened OUTSIDE the DAG — currently just a post /refine (its own Gemini call, not a
-// node run; see copygen/service.ts refineForPost, surface='copygen_refine'). This is the basis
-// for the credit-wallet reconcile debit (credit-repo.reconcileRunDebit): it must reflect EVERY
-// credit the run caused to be spent, in or out of the DAG, or a refine after the flow already
-// completed goes unbilled. 'copygen_refine' is a DISTINCT surface from the generic 'orchestration'
-// one node runners use (which already carries runId) — this avoids double-counting a node's own
-// spend, which is already in workflowNodeRun.
+// Total credits a single run consumed, derived from its REAL USD cost — the single source of
+// truth for the credit-wallet reconcile debit (credit-repo.reconcileRunDebit).
+//
+// BILLING FIX 2026-07-18 (double-count). This used to return
+//   creditsFromTokens(totalTokens) + creditsFromUsd(costUsd)
+// which billed every LLM call TWICE: once via its token count, and again via the USD those same
+// tokens produced — because workflowNodeRun.costUsd is DERIVED from those tokens (node-cost.ts
+// costFromUsage) and also carries media USD, in one blended column (node-cost.ts sumCost merges
+// LLM planning + N image/video generations into a single node row). Measured on live data before
+// the fix: pure-LLM agents were over-debited 2.4-2.8x (ideation 178 credits charged vs 74 real),
+// ~20% DB-wide.
+//
+// The sibling call sites were already correct because they can isolate media: llm-usage.ts and
+// impact-metrics.ts add creditsFromUsd over TOKENLESS rows only (totalTokens=0 ⇒ pure media).
+// That discriminator does NOT work here: a storyboard/video node legitimately has BOTH tokens and
+// media USD in one row, so there is no way to split them from wf_node_run alone, and the
+// mkt_llm_usage ledger can't stand in for the LLM half (it spans surfaces beyond node runs and
+// over-counts on a per-run join — verified empirically, it yields negative implied media cost).
+//
+// So: bill from costUsd alone. It already prices prompt / cached / output / thinking tokens each
+// at their own per-model rate (node-cost.ts costUsdFromUsage) AND includes media USD, so it is
+// both complete and impossible to double-count. This also removes a second, independent error:
+// creditsFromTokens priced EVERY token at the flash OUTPUT rate ($2.50/1M), over-charging
+// prompt-heavy runs even without the double-count (measured actual: $1.40-$2.01/1M).
+//
+// Still includes ad-hoc spend tagged to this run but raised OUTSIDE the DAG — currently just a
+// post /refine (its own Gemini call, not a node run; copygen/service.ts refineForPost,
+// surface='copygen_refine'). That surface is DISTINCT from the generic 'orchestration' one node
+// runners use, so adding it here does not re-count a node's own spend.
+//
+// NOTE: display surfaces (usage dashboard, impact report, plan estimates) still present the
+// token-passthrough scale, so a displayed credit figure will not match this debit exactly. Those
+// are read-only presentation; aligning them is a separate, larger change. Money is correct here.
 export const runCredits = async (runId: string, ownerId: string): Promise<number> => {
   const [nodeAgg, refineAgg] = await Promise.all([
-    prisma.workflowNodeRun.aggregate({ where: { ownerId, runId }, _sum: { totalTokens: true, costUsd: true } }),
-    prisma.llmUsage.aggregate({ where: { ownerId, runId, surface: 'copygen_refine' }, _sum: { totalTokens: true, costUsd: true } }),
+    prisma.workflowNodeRun.aggregate({ where: { ownerId, runId }, _sum: { costUsd: true } }),
+    prisma.llmUsage.aggregate({ where: { ownerId, runId, surface: 'copygen_refine' }, _sum: { costUsd: true } }),
   ]);
-  const totalTokens = (nodeAgg._sum.totalTokens ?? 0) + (refineAgg._sum.totalTokens ?? 0);
   const costUsd = (nodeAgg._sum.costUsd ?? 0) + (refineAgg._sum.costUsd ?? 0);
-  return creditsFromTokens(totalTokens) + creditsFromUsd(costUsd);
+  return creditsFromUsd(costUsd);
 };
 
 // Per-AGENT rollup across a whole campaign's posts (Atria v2 P0 — the Workspace dashboard's
