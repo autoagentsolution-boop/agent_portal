@@ -693,3 +693,5 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `MKTAgent/web/src/api/client.ts`
   - `MKTAgent/web/src/components/UsageDashboard.tsx`
   - `docs/product/06-technical-debt-and-improvements.md`
+- **docs(feature-map): relationships for the credit-scale unification and re-run policy** (1f572d6)
+  - `docs/feature-map.md`
