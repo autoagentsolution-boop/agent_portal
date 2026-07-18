@@ -710,3 +710,7 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `plans/260710-1132-p5-design-neural/plan.md`
 - **chore(feature-map): commit ledger stubs** (335b786)
   - `docs/feature-map.md`
+- **fix(hooks): stop the feature-ledger from logging its own commits** (33e6a83)
+  - `.claude/hooks/__tests__/feature-ledger.test.cjs`
+  - `.claude/hooks/feature-ledger.cjs`
+  - `docs/feature-map.md`
