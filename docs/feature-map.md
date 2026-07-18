@@ -695,3 +695,11 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `docs/product/06-technical-debt-and-improvements.md`
 - **docs(feature-map): relationships for the credit-scale unification and re-run policy** (1f572d6)
   - `docs/feature-map.md`
+- **chore(feature-map): commit ledger stub** (f968456)
+  - `docs/feature-map.md`
+- **@ docs(features): commit the product feature inventory** (cadaa91)
+  - `FEATURES.md`
+  - `docs/feature-map.md`
+- **docs(features): commit the product feature inventory** (9ca029a)
+  - `FEATURES.md`
+  - `docs/feature-map.md`
