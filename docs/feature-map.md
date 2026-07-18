@@ -4,6 +4,19 @@ Living record of features shipped and their real relationships in the app. Each 
 
 ## Features & relationships
 
+### One credit scale + "re-runs are on us" declared as policy (`d931ef1`, `7c399e7`)
+Credits now derive from real USD on EVERY surface — Usage, Impact, plan-tier quotes, per-run displays — the same basis `workflow-run-repo.runCredits` debits. Previously each surface used token passthrough while the wallet billed from USD, so the number a user saw and the number they were charged were different scales (token passthrough priced every token at the flash OUTPUT rate $2.50/1M against a measured actual of $1.40–$2.01/1M).
+- **Relationship — this closes the loop opened by [[the credit double-count fix]] (`33d805b`).** That fix made the *debit* correct; this makes every *display* agree with it. `cost/spend-split.ts` is the single definition both Usage and Impact render, so the two pages cannot disagree about the same run.
+- **Uncovered a second, opposite billing error while building it:** the wallet debits `wf_node_run.cost_usd` (a node's LATEST cost, overwritten on re-run) while `mkt_llm_usage` appends per call — the two diverged 4.5× across tenants. 205 real image generations against ~6 infographic node runs meant re-generation was already free in practice.
+- **Resolved as declared policy, not a fix (owner decision, option (c)):** re-runs are absorbed for the early-adopter period, so users can iterate until output is right. `resetNodes` carries a **DO-NOT-FIX** block so nobody "corrects" the columns and silently re-prices the product; `absorbed.reruns` reports what it costs us; the Usage page sells it as a benefit. **Trigger to switch to accumulation (option (b)): tenant-count growth** — absorbing every retry is goodwill at small scale and an unbounded cost at large scale (~$0.04/image, no ceiling).
+- **Reconciliation is structural:** `charged = nodesNotFailed + refine`, `absorbed = nodesFailed + (runAttached − allNodes) + offRun`; the node basis cancels, so the total always equals `mkt_llm_usage` exactly and the split only reallocates. Live: $3.4410 + $1.9516 = $5.3926 = real spend.
+- **Feeds the 402 credit gate + top-nav balance pill** (both read the debited balance) and the autonomy grant's upfront-cost quote (`cost/plan-estimate.ts`, now also USD-based — fallback token estimates for no-history agents are priced at $2.00/1M so a fresh tenant isn't quoted free).
+
+### Atria degraded-turn honesty (`d931ef1`)
+When the brain can't answer (Gemini 5xx, or the known empty-`""`-content STOP), the reply now names the fault as ours and gives a real retry horizon — *"Atria is having trouble… try again in a few minutes"* — instead of "could you try again in a moment?", which read as though the user's message was at fault and invited an instant retry into the same failure window.
+- **Relationship — `degraded: true` on the turn is the seam that makes the failure countable.** The router logs `atria_reply_degraded` at warn instead of `atria_reply` at info. Previously "Atria replied" and "Atria could not reply" were indistinguishable at the API layer, which is exactly why the `atria_brain_degraded` flakiness stayed invisible until `verify-campaign-reuse-http` caught it (1 pass / 2 fail over 3 runs).
+- **Known-unfixed underneath it:** on a degraded refine the deterministic fallback FORKS a new run instead of refining in place — the user-visible "Atria lost my context and made a new flow" symptom, same class as `project_atria_campaign_flow_confusion_fix_260713`. Documented in doc 09 §3.5; the durable fix is multi-LLM / local-LLM fallback.
+
 ### Inbound rate limits + security headers (`08a1972`)
 First inbound rate limiting in the app — the only limiter before this was OUTBOUND (`connectors/runtime/rate-limit-manager`, spacing publishes to avoid a platform anti-spam ban). `/auth` 10 req/min per IP; `/atria` `/agent` `/orchestration` `/voice` 20 req/min per TENANT.
 - **Relationship — it backstops the credit wallet, which caps amount but not rate.** The 402 pre-flight gate stops a tenant at 0 balance; nothing stopped them reaching 0 at machine speed. Ties to the failed-run-is-free rule (`workflow-executor.ts:119`): a burst of failing runs costs us Gemini tokens and bills the tenant nothing, so rate is our exposure, not theirs.
@@ -674,3 +687,9 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `docs/product/09-today-actionable.md`
 - **docs(feature-map): relationships for the verify runner and inbound rate limits** (bd74e84)
   - `docs/feature-map.md`
+- **feat(cost): declare "re-runs are on us" as policy and report what it absorbs** (7c399e7)
+  - `MKTAgent/src/cost/spend-split.ts`
+  - `MKTAgent/src/db/repos/workflow-run-repo.ts`
+  - `MKTAgent/web/src/api/client.ts`
+  - `MKTAgent/web/src/components/UsageDashboard.tsx`
+  - `docs/product/06-technical-debt-and-improvements.md`
