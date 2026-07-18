@@ -4,6 +4,19 @@ Living record of features shipped and their real relationships in the app. Each 
 
 ## Features & relationships
 
+### Inbound rate limits + security headers (`08a1972`)
+First inbound rate limiting in the app — the only limiter before this was OUTBOUND (`connectors/runtime/rate-limit-manager`, spacing publishes to avoid a platform anti-spam ban). `/auth` 10 req/min per IP; `/atria` `/agent` `/orchestration` `/voice` 20 req/min per TENANT.
+- **Relationship — it backstops the credit wallet, which caps amount but not rate.** The 402 pre-flight gate stops a tenant at 0 balance; nothing stopped them reaching 0 at machine speed. Ties to the failed-run-is-free rule (`workflow-executor.ts:119`): a burst of failing runs costs us Gemini tokens and bills the tenant nothing, so rate is our exposure, not theirs.
+- **Mounted AFTER `requireAuth`** on the LLM routes so the key is the tenant, not the IP — several users behind one office NAT share an IP, and the resource being protected is per-tenant spend.
+- **GETs exempt, and the suite proved why:** the first run under this limiter produced 249 trips, 236 on one `GET /runs/:id` — the run-status poll the UI uses while a flow executes. A real user would have been 429'd out of watching a flow they had already paid for. Writes enqueue LLM work; reads do not. This is the seam to remember if a read-side ceiling is ever added — it must be a separate, looser limiter.
+- **Helmet** ships default headers with no CSP (this process is a JSON API + static media; the SPA is served from `UI_BASE_URL`, so a CSP here governs the wrong surface) and `crossOriginResourcePolicy: cross-origin`, without which every `/media/images` and `/media/videos` asset in the UI breaks.
+
+### Verify runner — one command for the 83 verify scripts (`6b18b1f`, `3aa623c`)
+Nothing ran the verify scripts together and `package.json` had no `test` script, so the project's "run tests before push" rule was unenforceable. `npm run verify` sequences the 68 local ones; `verify:http` boots a server and runs the other 14.
+- **Relationship — it is the gate everything else in this batch was validated through**, and the prerequisite for splitting `agent-runners.ts` (1,237 lines, highest-churn file in the system) without silent breakage.
+- **Found two pre-existing failures nobody could have seen:** `verify-registry` had 4 red checks because its `ASSET_TYPES` allowlist went stale when `text` shipped with the `asset_type_text` migration — now `Record<AssetType, true>`, exhaustive by construction, so adding an enum member breaks tsc until it is listed. `verify-post-from-agent` expected `assetType: 'image'`, an expectation predating Fix D (`413fef0`).
+- **Excludes `verify-image-live`** (one real Nano Banana call, ~$0.06, no guard) unless `--include-costly`, and prints what it skipped so a green run never implies coverage it did not have.
+
 ### Credit billing corrected — runs bill from real USD (`33d805b`)
 Fixes a double-count that over-debited every LLM node **2.4–2.8×**. `runCredits` (`db/repos/workflow-run-repo.ts`) summed `creditsFromTokens(tokens) + creditsFromUsd(costUsd)`, but `wf_node_run.cost_usd` is *derived from* those same tokens (`node-cost.ts costFromUsage`) **and** carries media USD, blended into one column by `sumCost` — so an LLM call was billed once by token count and again by the USD it produced. Now bills from `costUsd` alone: already prices prompt/cached/output/thinking each at its own per-model rate, already includes media, and cannot overlap with itself.
 - **Relationship — this is the wallet's money path, not a display path.** It feeds `credit-repo.reconcileRunDebit`, which the executor calls at EVERY stop point (park / fail / complete, `workflow-executor.ts`), so it governs the balance that the 402 pre-flight gate and the top-nav credit pill read. The autonomy grant's upfront-cost quote (`cost/plan-estimate.ts`) is a *separate* estimate path and still uses token passthrough.
@@ -651,4 +664,11 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `MKTAgent/src/scripts/run-verify.ts`
   - `docs/feature-map.md`
   - `docs/product/06-technical-debt-and-improvements.md`
+  - `docs/product/09-today-actionable.md`
+- **feat(security): helmet headers + inbound rate limits on auth and LLM routes** (08a1972)
+  - `MKTAgent/package-lock.json`
+  - `MKTAgent/package.json`
+  - `MKTAgent/src/api/rate-limits.ts`
+  - `MKTAgent/src/server.ts`
+  - `docs/feature-map.md`
   - `docs/product/09-today-actionable.md`
