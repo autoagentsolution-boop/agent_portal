@@ -51,7 +51,11 @@ async function main(): Promise<void> {
     check('201 created (no clarify — campaign has angle)', r1.status === 201, r1);
     const p1 = r1.body?.data?.post;
     check('status brief', p1?.status === 'brief', p1?.status);
-    check('assetType image', p1?.assetType === 'image', p1?.assetType);
+    // 'text', not 'image' — this expectation predates Fix D (413fef0, 2026-07-08). The message
+    // names no media, parseAssetType returns null, and assetTypeFromOutputs now resolves that to
+    // `text` instead of defaulting to `image`. That default was the bug Fix D existed to kill: an
+    // image-typed post with no image reached the publisher and failed "no asset (image)".
+    check('assetType text (no media requested)', p1?.assetType === 'text', p1?.assetType);
     check('language vi', p1?.language === 'vi', p1?.language);
     check('platforms include instagram', Array.isArray(p1?.platforms) && p1.platforms.includes('instagram'), p1?.platforms);
     check('filled reported', Array.isArray(r1.body?.data?.filled) && r1.body.data.filled.includes('asset type'), r1.body?.data?.filled);

@@ -82,7 +82,7 @@ Zero `TODO`/`FIXME` markers exist alongside substantial known debt — it all li
 
 | Item | Blocked on | Doc |
 |---|---|---|
-| **Asset/platform precondition check** — best-evidenced item found (4 of 6 real failures) | M-sized, and the fix location is a design choice: plan-time refusal vs plan-time repair. Deserves a proper decision. | 06 §3.5 |
+| ~~Asset/platform precondition check~~ — **RETRACTED**, already fixed by `413fef0` (Fix D) on 2026-07-08. All 4 failures predate it, the last by 4 minutes. | Nothing to do. See doc 06 §3.5 for the retraction and the measurement error behind it. | 06 §3.5 |
 | Connected-platform fallback (replacing the fixed `facebook`) | Behaviour change, needs its own verify script | 06 §3.4b |
 | Align display credit scale with the debit scale | 4 call sites + verifies; also a product call on whether displayed numbers may shift | 06 §3.6 |
 | Split `agent-runners.ts` (1,237 lines, 6.2× the project's own limit) | Requires 2.1 to land first — highest-churn file in the system | 06 §3.1 |

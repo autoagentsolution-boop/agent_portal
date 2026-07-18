@@ -149,9 +149,29 @@ The executor runs nodes sequentially. Independent work — per-platform copy var
 
 The FE/BE asset-support matrix is the genuine single-constant extraction — S. Timezone is M and follows doc 03's per-tenant tier.
 
-### 3.5 Asset/platform precondition not validated before spend — **P1, measured, top failure mode**
+### 3.5 ~~Asset/platform precondition not validated before spend~~ — **RETRACTED 2026-07-18: already fixed 10 days ago**
 
-**[verified 2026-07-18 by direct query against the dev DB — 191 runs / 358 node executions]**
+> **This item was wrong.** I measured 6 failed node executions in the dev database, found 4 shared one root cause, and promoted it as "the best-evidenced item in the doc". I did not check whether the failures postdated the fix for them.
+>
+> They didn't. Commit `413fef0` — *"feat(publish): text-only posts (Fix D) — copy-only publishing without media"* — landed **2026-07-08 06:25:45 UTC**. Its commit body describes the exact symptom: *"A text-only flow produced an image-typed post with no image, so the publisher failed 'no asset (image)'."*
+>
+> | Failure | Timestamp (UTC) | vs Fix D |
+> |---|---|---|
+> | `video` — Veo 429 quota | 2026-07-06 03:14 | 2 days before |
+> | `publisher` — no asset (image) | 2026-07-08 05:14 | 71 min before |
+> | `concept_writer` — Prisma error | 2026-07-08 05:40 | 45 min before |
+> | `publisher` — no asset (image) | 2026-07-08 06:00 | 25 min before |
+> | `publisher` — missing input `assets` | 2026-07-08 06:21 | **4 min before** |
+>
+> Every failure predates the fix. The database has recorded **zero** failed node executions since. Fix D added the `text` AssetType end-to-end (schema + migration, `assetTypeFromOutputs` returning `text` when no media flag is set, a copy-only `PublishInput`, the `social.post.text` connector action without `assets` in `requiredInputs`, the capability on FB/X/LinkedIn/Threads, and an Instagram skip via postability).
+>
+> **The lesson, not the item:** a dev database accumulates history. Counting rows in it measures the past, not the present. Any failure-rate claim needs a time bound and a comparison against the fix that addressed it. The $0.21 / ~5.6% "unbilled leak" figure below describes pre-Fix-D history and is **not** an ongoing loss.
+>
+> What survives: the *reasoning* about failed runs being free (`workflow-executor.ts:119`) is still correct, and remains the right economic lens if a failure mode is ever measured on current data.
+
+**Original (incorrect) analysis retained below for the record.**
+
+**[measured 2026-07-18 against the dev DB — 191 runs / 358 node executions, WITHOUT a time bound — this is the error]**
 
 | Failure | Count | Nature |
 |---|---|---|

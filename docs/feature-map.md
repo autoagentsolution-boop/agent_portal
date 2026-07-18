@@ -641,3 +641,8 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `docs/product/08-making-agent-nodes-real-subagents.md`
   - `docs/product/09-today-actionable.md`
   - `docs/product/README.md`
+- **test(verify): add aggregate runner for the 83 verify scripts** (6b18b1f)
+  - `MKTAgent/package.json`
+  - `MKTAgent/src/connectors/registry/verify-registry.ts`
+  - `MKTAgent/src/scripts/run-verify.ts`
+  - `docs/feature-map.md`

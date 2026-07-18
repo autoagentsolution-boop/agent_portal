@@ -100,6 +100,61 @@ const run = (s: Script): Promise<Result> =>
     child.on('error', (e) => { out += `\n[runner] spawn failed: ${e.message}`; finish(-1); });
   });
 
+// ── HTTP tier server lifecycle ───────────────────────────────────────────────────────────────
+// The 14 http-tier scripts need a live server. Booting it here (rather than leaving them to be run
+// by hand) is what gives that 17% of the suite an automated path at all.
+//
+// Reuses an ALREADY-RUNNING server if /health answers, and in that case does not stop it on the way
+// out — killing a server the developer started themselves would be a nasty surprise.
+const PORT = Number(process.env.PORT ?? 7100);
+const HEALTH = `http://localhost:${PORT}/health`;
+const BOOT_TIMEOUT_MS = 60_000;
+
+const healthOk = async (): Promise<boolean> => {
+  try {
+    const res = await fetch(HEALTH, { signal: AbortSignal.timeout(2_000) });
+    return res.ok;
+  } catch { return false; }
+};
+
+interface ServerHandle { stop: () => void; borrowed: boolean }
+
+const startServer = async (): Promise<ServerHandle> => {
+  if (await healthOk()) {
+    console.log(`server: reusing the one already listening on :${PORT} (will leave it running)\n`);
+    return { stop: () => {}, borrowed: true };
+  }
+  console.log(`server: booting on :${PORT} …`);
+  // `npm start` (tsx src/server.ts), not `dev` — the watcher would hold the process open and
+  // restart mid-suite on any file touch. detached so the whole process group can be killed:
+  // tsx spawns a child, and killing only the shell leaves the real listener holding the port.
+  const child = spawn('npm start', { cwd: join(SRC_ROOT, '..'), shell: true, detached: true });
+  let log = '';
+  child.stdout?.on('data', (b: Buffer) => { log += b.toString(); });
+  child.stderr?.on('data', (b: Buffer) => { log += b.toString(); });
+
+  const stop = (): void => {
+    try { process.platform === 'win32' ? spawn(`taskkill /pid ${child.pid} /T /F`, { shell: true }) : process.kill(-child.pid!); }
+    catch { /* already gone */ }
+  };
+
+  const deadline = Date.now() + BOOT_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      console.error(`server: exited early (code ${child.exitCode}). Output:\n${log.slice(-1500)}`);
+      throw new Error('server failed to start');
+    }
+    if (await healthOk()) {
+      console.log(`server: healthy after ${((BOOT_TIMEOUT_MS - (deadline - Date.now())) / 1000).toFixed(1)}s\n`);
+      return { stop, borrowed: false };
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  stop();
+  console.error(`server: /health never answered within ${BOOT_TIMEOUT_MS}ms. Output:\n${log.slice(-1500)}`);
+  throw new Error('server boot timed out');
+};
+
 const main = async (): Promise<void> => {
   const argv = process.argv.slice(2);
   const tierArg = (argv[argv.indexOf('--tier') + 1] ?? 'default') as Tier | 'all' | 'default';
@@ -119,12 +174,20 @@ const main = async (): Promise<void> => {
   for (const s of skippedCostly) console.log(`  SKIPPED (billable, use --include-costly): ${s.rel}`);
   console.log('');
 
+  // Boot only when an http-tier script is actually queued, and always tear down — a suite that
+  // leaves a stray server holding :7100 poisons the next run.
+  const server = queue.some((s) => s.tier === 'http') ? await startServer() : null;
+
   const results: Result[] = [];
-  for (const [i, s] of queue.entries()) {
-    process.stdout.write(`[${String(i + 1).padStart(2)}/${queue.length}] ${s.rel} … `);
-    const r = await run(s);
-    results.push(r);
-    console.log(r.ok ? `ok (${(r.ms / 1000).toFixed(1)}s)` : `FAIL (exit ${r.code})`);
+  try {
+    for (const [i, s] of queue.entries()) {
+      process.stdout.write(`[${String(i + 1).padStart(2)}/${queue.length}] ${s.rel} … `);
+      const r = await run(s);
+      results.push(r);
+      console.log(r.ok ? `ok (${(r.ms / 1000).toFixed(1)}s)` : `FAIL (exit ${r.code})`);
+    }
+  } finally {
+    if (server && !server.borrowed) { server.stop(); console.log('\nserver: stopped'); }
   }
 
   const failed = results.filter((r) => !r.ok);
