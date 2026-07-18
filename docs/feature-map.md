@@ -703,3 +703,8 @@ Two CC quality-of-life additions on top of the resume-cards feature.
 - **docs(features): commit the product feature inventory** (9ca029a)
   - `FEATURES.md`
   - `docs/feature-map.md`
+- **docs(features): commit the product feature inventory** (b7f6435)
+  - `FEATURES.md`
+  - `docs/feature-map.md`
+- **docs(plan): mark P5 neural-skin plan complete** (2f84330)
+  - `plans/260710-1132-p5-design-neural/plan.md`
