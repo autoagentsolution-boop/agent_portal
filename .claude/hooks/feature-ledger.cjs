@@ -41,6 +41,17 @@ process.stdin.on('end', () => {
   }
   if (!hash) return quiet();
 
+  // Self-reference guard: a commit whose ONLY changed file is the ledger itself must not be
+  // logged. Otherwise the hook records its own bookkeeping and dirties the tree again, so
+  // committing that stub produces another stub — an unbounded loop with no natural stop
+  // (observed 2026-07-18: three commits chased it before it was diagnosed).
+  //
+  // Deliberately narrow: `every` (not `some`), so a real commit that happens to touch
+  // feature-map.md alongside code is still logged. Only the pure-ledger commit is skipped.
+  const changed = files ? files.split('\n').filter(Boolean) : [];
+  const LEDGER_REL = 'docs/feature-map.md';
+  if (changed.length > 0 && changed.every((f) => f.replace(/\\/g, '/') === LEDGER_REL)) return quiet();
+
   // Dedup: skip if this hash is already the newest ledger entry.
   let existing = '';
   try {

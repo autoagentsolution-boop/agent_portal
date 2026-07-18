@@ -708,3 +708,5 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `docs/feature-map.md`
 - **docs(plan): mark P5 neural-skin plan complete** (2f84330)
   - `plans/260710-1132-p5-design-neural/plan.md`
+- **chore(feature-map): commit ledger stubs** (335b786)
+  - `docs/feature-map.md`
