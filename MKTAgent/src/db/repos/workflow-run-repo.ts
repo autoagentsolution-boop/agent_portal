@@ -735,6 +735,23 @@ export const listNodes = (runId: string): Promise<WorkflowNodeRun[]> =>
 // Reset a set of nodes back to `pending` (clearing error + timing) so they can re-run.
 // Used by single-node re-execute: the target node plus its transitive dependents (which
 // are now stale). Owner-scoped. Returns the count reset.
+//
+// BILLING POLICY — DO NOT "FIX" THE COST COLUMNS HERE (decision 2026-07-18, option (c) of
+// docs/product/06 §3.8). This deliberately does NOT accumulate promptTokens/outputTokens/
+// totalTokens/costUsd across attempts: the node's next completion OVERWRITES them, so a tenant is
+// billed only for the latest attempt and every earlier one is absorbed by us. Measured at the time
+// of the decision: 205 real image generations against ~6 infographic node runs, i.e. most media
+// re-generation was already free in practice. Making it an explicit, stated policy beats leaving it
+// as an accident of an overwritten column — and "re-runs are on us" is a reasonable stance while the
+// tenant count is small and users are still learning what good output looks like.
+//
+// The cost is visible, not hidden: cost/spend-split.ts reports it as `absorbed.reruns` by diffing
+// the append-only mkt_llm_usage ledger against this per-node basis, and the Usage page shows it.
+//
+// SWITCH TO ACCUMULATION (option (b)) WHEN THE TENANT COUNT GROWS — at that point absorbing every
+// retry stops being a goodwill gesture and starts being an unbounded, un-modelled cost. That change
+// means summing into these columns instead of replacing them, and re-basing every historical run's
+// cost, the Impact report, plan-tier quotes and the autonomy grant's upfront figure.
 export const resetNodes = async (
   runId: string,
   ownerId: string,

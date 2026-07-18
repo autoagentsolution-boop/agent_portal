@@ -286,7 +286,19 @@ The run-attached figures differ by 4.5×, and the wallet charges from the smalle
 
 **This is the opposite direction from the double-count fixed in `33d805b`.** That one over-charged 2.4–2.8× on LLM nodes; this one under-charges on anything re-run, and media re-runs are the expensive case.
 
-**Not fixed — the decision is yours, not an engineering call:**
+### ✅ DECIDED 2026-07-18 — option (c), with a stated trigger for (b)
+
+**Re-runs are on us, deliberately, for the early-adopter period.** The behaviour does not change; what changes is that it is now a *declared policy* instead of an accident of an overwritten column:
+
+- `workflow-run-repo.resetNodes` carries a **DO NOT "FIX" THE COST COLUMNS HERE** block explaining the policy, the measurement behind it, and the migration path — so the next person to read that function doesn't "correct" it and silently re-price the product.
+- `cost/spend-split.ts` reports the absorbed amount as `absorbed.reruns`, computed by diffing the append-only `mkt_llm_usage` ledger against the per-node billing basis. **The cost is visible, not hidden.**
+- The Usage page shows it to the user as a benefit — *"Re-generating a step is on us, so you can iterate until the output is right."*
+
+**Reconciliation is structural, not coincidental.** `charged = nodesNotFailed + refine`, `absorbed = nodesFailed + (runAttached − allNodes) + offRun`; the node basis cancels and the total is always exactly `mkt_llm_usage`. Verified on live data: charged $3.4410 + absorbed $1.9516 = $5.3926 = real spend $5.3926, of which $0.8465 was re-run cost absorbed.
+
+**Trigger for switching to (b):** tenant count growth. Absorbing every retry is a goodwill gesture at small scale and an unbounded, un-modelled cost at large scale — media re-runs are ~$0.04 an image with no ceiling. Switching means accumulating into the node cost columns instead of replacing them, and re-basing every historical run's cost, the Impact report, plan-tier quotes, and the autonomy grant's upfront figure.
+
+**Original options, for the record:**
 
 - **(a) Bill from `mkt_llm_usage`** (append-only, complete). Truthful, but changes what every existing run would have cost and needs a policy on re-runs: is a user who regenerates an image five times charged five times? Most products say yes.
 - **(b) Accumulate `wf_node_run.cost_usd`** instead of overwriting. Keeps the current basis, smaller change, but re-run cost attribution per node becomes historical rather than current — the per-node display would then show cumulative, not last-attempt, cost.
@@ -294,7 +306,7 @@ The run-attached figures differ by 4.5×, and the wallet charges from the smalle
 
 **Blast radius if changed:** every historical run's cost, the Impact report, plan-tier quotes, and the autonomy grant's upfront-cost figure.
 
-**Interim:** the Usage page does **not** display a "charged" total, precisely because it reads `mkt_llm_usage` while the wallet debits `wf_node_run`. It states only what is true under every option above — failed runs and off-run work are never billed.
+**Superseded by the decision above** — the Usage page now displays a charged total, because option (c) closes the gap that made one un-statable: the difference between the two ledgers is exactly the absorbed re-run spend, and it is now reported as such.
 
 ### 3.7 Capability shipped without provisioning **[reported, doc 04]**
 

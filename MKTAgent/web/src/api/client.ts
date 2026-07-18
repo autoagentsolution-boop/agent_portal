@@ -129,9 +129,10 @@ export interface UsageSurfaceTotal {
   credits: number;
   calls: number;
 }
-// Charged vs not-charged spend (server: cost/spend-split.ts). The product rule is that cost is fully
-// transparent and the ONLY spend a tenant isn't billed for is spend on a run that FAILED — so the
-// report shows both halves rather than quietly netting them.
+// Charged vs absorbed spend (server: cost/spend-split.ts). Cost is fully transparent, so the report
+// shows both halves rather than quietly netting them. Three things are absorbed, never billed:
+// failed runs, node re-runs (policy (c), 2026-07-18 — revisit as tenant count grows), and off-run
+// work like chat.
 export interface SpendBucket {
   costUsd: number;
   totalTokens: number;
@@ -139,7 +140,7 @@ export interface SpendBucket {
 }
 export interface SpendSplit {
   charged: SpendBucket;
-  notCharged: SpendBucket & { failedRuns: SpendBucket; offRun: SpendBucket };
+  absorbed: SpendBucket & { failedRuns: SpendBucket; reruns: SpendBucket; offRun: SpendBucket };
 }
 export interface UsageTotals {
   costUsd: number;

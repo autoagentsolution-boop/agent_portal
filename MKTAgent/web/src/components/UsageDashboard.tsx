@@ -60,38 +60,41 @@ export function UsageDashboard({ notify }: Props) {
             secondaryMetric={{ value: usage.calls, label: 'call' }}
           />
 
-          {/* Free work, itemised. Deliberately NOT framed as "charged vs not charged": the wallet
-              debits from wf_node_run while this page reads mkt_llm_usage, and those two ledgers do not
-              currently agree (see docs/product/06 §3.8). Claiming a "charged" total here would state a
-              number the bill does not match. What IS true regardless of that question is the rule
-              below — failures and off-run work are never billed — so that is all this claims.
-              Shown even at zero: a user should be able to confirm they weren't billed for failures
-              rather than infer it from an absence. */}
+          {/* Charged vs absorbed. Every row is shown even at zero: a user should be able to CONFIRM
+              they weren't billed for failures or re-runs, not have to infer it from an absence. */}
           <div className="usage-split">
-            <div className="usage-split-row usage-split-free">
+            <div className="usage-split-row">
               <span className="usage-split-label">
-                <strong>Failed runs</strong>
-                <span className="muted small"> — never charged</span>
+                <strong>Charged</strong>
+                <span className="muted small"> — successful work</span>
               </span>
               <span className="usage-split-value">
-                ${usage.split.notCharged.failedRuns.costUsd.toFixed(3)}
-                <span className="muted small"> · {usage.split.notCharged.failedRuns.totalTokens.toLocaleString()} tokens</span>
+                ◈ {usage.split.charged.credits.toLocaleString()}
+                <span className="muted small">
+                  {' '}· ${usage.split.charged.costUsd.toFixed(3)} · {usage.split.charged.totalTokens.toLocaleString()} tokens
+                </span>
               </span>
             </div>
-            <div className="usage-split-row usage-split-free">
-              <span className="usage-split-label">
-                <strong>Chat &amp; background work</strong>
-                <span className="muted small"> — free</span>
-              </span>
-              <span className="usage-split-value">
-                ${usage.split.notCharged.offRun.costUsd.toFixed(3)}
-                <span className="muted small"> · {usage.split.notCharged.offRun.totalTokens.toLocaleString()} tokens</span>
-              </span>
-            </div>
+            {([
+              ['Failed runs', 'never charged', usage.split.absorbed.failedRuns],
+              ['Re-runs', 'on us', usage.split.absorbed.reruns],
+              ['Chat & background work', 'free', usage.split.absorbed.offRun],
+            ] as const).map(([label, note, b]) => (
+              <div className="usage-split-row usage-split-free" key={label}>
+                <span className="usage-split-label">
+                  <strong>{label}</strong>
+                  <span className="muted small"> — {note}</span>
+                </span>
+                <span className="usage-split-value">
+                  ${b.costUsd.toFixed(3)}
+                  <span className="muted small"> · {b.totalTokens.toLocaleString()} tokens</span>
+                </span>
+              </div>
+            ))}
             <p className="muted small usage-split-note">
-              A run that fails costs you nothing — not even the steps that finished before it broke.
-              Chatting with Atria and background analysis are free too. Everything above is spend we
-              absorbed, already excluded from your balance.
+              You&apos;re billed for successful work only. A run that fails costs you nothing — not even
+              the steps that finished before it broke. Re-generating a step is on us, so you can iterate
+              until the output is right. Chatting with Atria and background analysis are free.
             </p>
           </div>
 
