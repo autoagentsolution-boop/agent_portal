@@ -20,8 +20,11 @@ Toggle app→light and the CC stays dark-violet = the clash. Theme state = `App.
 - P5.4 chunk 2 data-flow dots ✅ committed + browser-verified — CC: violet dot Atria→agent (dispatch,
   ambient idle) + agent-colour dot back on real SSE run (ack); DAG: connector spine + status markers +
   glowing dot flows into running step. User-locked: 2-colour dots, ambient+real-burst, both CC+DAG.
-- REMAINING: P5.3 per-page polish (AI-slop card hierarchy, "Estimated estimate" copy bug, glass-vs-solid)
-  · P5.4 chunk 3 voice-amplitude sync (explicit "later" — core pulse/dot cadence rides TTS narration).
+- P5.3 per-page polish ✅ committed+pushed — centered `.master-home` pages, "Estimated estimate"→"derived",
+  keyset "Load more" pagination for leads + post board.
+- P5.4 chunk 3 voice-amplitude sync ✅ committed+pushed — `voice-viz.ts` Web Audio analyser → `--voice-level`
+  → core glow/orb ride TTS narration. Browser-verified (level tracks waveform 0.016→1.0).
+- **P5 COMPLETE — all phases done + pushed thru `988f281`.**
 
 ## Phases
 - **P5.1 DC1 — Design-system spec** (ui-ux-designer): audit the 3 systems → ONE unified dark-neural
