@@ -78,6 +78,7 @@ import { mergeGoals, applyRemovals } from '../orchestration/master/goal-merge.ts
 import { requirementAnalyzer } from '../orchestration/master/requirement-analyzer.ts';
 import { resolveConnections } from '../connectors/runtime/connection-resolver.ts';
 import type { RequiredActionDto } from './schemas.ts';
+import { platformsOrDefault } from '../social/default-platforms.ts';
 
 export const orchestrationRouter: Router = Router();
 
@@ -609,7 +610,7 @@ orchestrationRouter.post('/runs/:id/materialize-calendar', asyncHandler(async (r
     brandVoice: clean(goal.slots.brandVoice) ?? (isBrand ? 'Professional, trustworthy brand voice' : null),
     brandContext: clean(goal.slots.productDetails),
     language: clean(goal.slots.language),
-    platforms: goal.platforms.length ? goal.platforms : ['facebook'],
+    platforms: platformsOrDefault(goal.platforms),
   });
 
   const result = await materializeCalendar(campaign.id, req.userId!, body.slots as CalendarSlot[]);

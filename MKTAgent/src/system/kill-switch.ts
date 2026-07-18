@@ -24,9 +24,25 @@ export const isExternalActionsPaused = async (): Promise<boolean> => {
     cache = { value, at: now() };
     return value;
   } catch (e) {
-    // On a read fault, FAIL OPEN (don't block publishing on a DB hiccup) but log it.
-    logger.warn('kill_switch_read_failed', { error: String(e).slice(0, 120) });
-    return false;
+    // FAIL CLOSED on a read fault (changed 2026-07-18; this used to return false).
+    //
+    // The switch exists for the moment something is going wrong, and a DB fault correlates
+    // strongly with that moment — failing open meant it stopped working exactly when it was
+    // needed. Worse, the previous behaviour combined with the 3s cache gave a silent resume:
+    // ops toggles the pause, the DB dies, and external actions restart ~3 seconds later with
+    // only a warn line to show for it.
+    //
+    // Prefer the last value we actually read (a stale `false` from a healthy DB is still real
+    // evidence nobody paused anything). With no cached value at all we have no evidence either
+    // way, so refuse — a missed publish is recoverable, an unwanted one is not.
+    //
+    // NOTE: this is defence in depth, not the only line. On today's publish path a DB outage
+    // already blocks the write two lines later at connector-runtime.ts findPriorSuccess (an
+    // unguarded idempotency read that runtimePublishFn always triggers). This closes the hole
+    // for any future invokeAction caller that does NOT pass an idempotencyKey.
+    const fallback = cache?.value ?? true;
+    logger.warn('kill_switch_read_failed', { error: String(e).slice(0, 120), fallbackPaused: fallback });
+    return fallback;
   }
 };
 

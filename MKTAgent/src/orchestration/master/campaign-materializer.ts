@@ -12,6 +12,7 @@ import { createPostForOwner, sweepUnpublishedCampaignPosts } from '../../db/repo
 import { createRun, createNodes } from '../../db/repos/workflow-run-repo.ts';
 import { scheduleCalendar } from '../../scheduler/schedule-calendar.ts';
 import type { Campaign } from '../../../prisma/generated/prisma/client.ts';
+import { platformsOrDefault } from '../../social/default-platforms.ts';
 
 // Map a calendar slot's deliverable to the output flags that drive agent selection. Copy +
 // publishing always on; exactly one media flag (or none for a plain text post).
@@ -26,7 +27,7 @@ const outputsForFormat = (format: CalendarSlot['format']): GoalSpec['outputs'] =
 
 // A single-scope GoalSpec for one slot, grounded in the campaign's product/brand/language.
 const goalForSlot = (campaign: Campaign, slot: CalendarSlot): GoalSpec => {
-  const platforms = slot.platforms.length ? slot.platforms : (campaign.platforms.length ? campaign.platforms : ['facebook']);
+  const platforms = slot.platforms.length ? slot.platforms : platformsOrDefault(campaign.platforms);
   return goalSpec.parse({
     outputs: outputsForFormat(slot.format),
     platforms,

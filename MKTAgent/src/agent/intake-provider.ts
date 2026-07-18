@@ -1,4 +1,5 @@
 import type { AgentIntakeBody, AgentIntakeDraft } from '../api/schemas.ts';
+import { platformsOrDefault } from '../social/default-platforms.ts';
 
 export interface AgentIntakeProvider {
   parse(input: AgentIntakeBody): Promise<AgentIntakeDraft>;
@@ -113,7 +114,7 @@ export class DeterministicAgentIntakeProvider implements AgentIntakeProvider {
         ...(language ? { language } : {}),
         ...(defaultLength ? { defaultLength } : {}),
         ...(brandVoice ? { brandVoice } : {}),
-        platforms: selectedPlatforms.length ? selectedPlatforms : ['facebook'],
+        platforms: platformsOrDefault(selectedPlatforms),
         timezone: input.timezone,
       },
       post: {

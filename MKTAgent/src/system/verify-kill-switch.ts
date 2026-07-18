@@ -40,6 +40,31 @@ async function main(): Promise<void> {
     const afterOff = await invokeAction({ ownerId: user.id, platform: 'facebook', actionKey: 'social.post.image', input: { postId: 'x' } as never });
     ck('not blocked by kill switch after off', afterOff.error !== 'external_actions_paused', afterOff.error);
 
+    // FAIL-CLOSED on a DB read fault (fix 2026-07-18). Force findUnique to throw and assert the
+    // switch reports PAUSED rather than waving actions through. Two branches matter, and the 3s
+    // in-process cache decides which one runs, so each is driven explicitly.
+    {
+      const realFindUnique = prisma.systemFlag.findUnique;
+      const boom = (): never => { throw new Error('simulated DB read fault'); };
+
+      // (a) A value was cached from a healthy read: prefer it. Seed the cache with a real OFF read,
+      //     then fault — a stale `false` from a working DB is still evidence nobody paused anything.
+      await setExternalActionsPaused(false, user.id);
+      await isExternalActionsPaused();
+      (prisma.systemFlag as { findUnique: unknown }).findUnique = boom;
+      ck('read fault with cached OFF → honours the cached value', (await isExternalActionsPaused()) === false);
+      (prisma.systemFlag as { findUnique: unknown }).findUnique = realFindUnique;
+
+      // (b) No cached value at all → no evidence either way → refuse. A missed publish is
+      //     recoverable; an unwanted one is not. Expire the cache by waiting out its 3s TTL.
+      await setExternalActionsPaused(true, user.id);
+      await new Promise((r) => setTimeout(r, 3_100));
+      (prisma.systemFlag as { findUnique: unknown }).findUnique = boom;
+      ck('read fault → never returns not-paused', (await isExternalActionsPaused()) !== false);
+      (prisma.systemFlag as { findUnique: unknown }).findUnique = realFindUnique;
+      await setExternalActionsPaused(false, user.id);
+    }
+
     // Run-abort read: getRunStatusById returns the current status the executor checks between nodes.
     const run = await prisma.workflowRun.create({ data: { ownerId: user.id, status: 'running', goal: {}, plan: { nodes: [] } } });
     ck('getRunStatusById reads running', (await getRunStatusById(run.id)) === 'running');

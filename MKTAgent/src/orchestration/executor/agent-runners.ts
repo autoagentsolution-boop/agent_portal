@@ -47,6 +47,7 @@ import { env } from '../../config/env.ts';
 // alongside the existing NodeCost (which still drives the wf_node_run display); the ledger is the
 // authoritative per-owner total. Record EXACTLY ONCE per physical provider call.
 import { recordLlmUsage, recordMediaCost } from '../../cost/llm-usage.ts';
+import { platformsOrDefault } from '../../social/default-platforms.ts';
 
 // Google's grounded-search billing is a flat surcharge on top of normal token cost
 // (≈$0.035/request after the free tier, 2026-07 public pricing) — see item 4 (researcher).
@@ -230,14 +231,14 @@ const runConceptWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     brandVoice,
     brandContext: clean(goal.slots.productDetails),
     language: clean(goal.slots.language),
-    platforms: goal.platforms.length ? goal.platforms : ['facebook'],
+    platforms: platformsOrDefault(goal.platforms),
   });
   const post = await createPost({
     campaignId: campaign.id,
     ownerId,
     runId: ctx.runId, // link the post to the flow that produced it (DAG under post)
     status: 'brief',
-    platforms: goal.platforms.length ? goal.platforms : ['facebook'],
+    platforms: platformsOrDefault(goal.platforms),
     language: goal.slots.language ?? null,
     lengthSpec: goal.slots.lengthSpec ?? null,
     heroFile: goal.slots.heroFile ?? null,
@@ -479,7 +480,7 @@ const runCampaignStrategist = async (ctx: RunnerContext): Promise<RunnerOutput> 
   const weeks = ctx.goal.duration?.weeks ?? 4;
   const perWeek = ctx.goal.cadence?.postsPerWeek ?? 3;
   const slotCount = Math.max(1, Math.min(60, weeks * perWeek));
-  const platforms = ctx.goal.platforms.length ? ctx.goal.platforms : ['facebook'];
+  const platforms = platformsOrDefault(ctx.goal.platforms);
   const strat = ctx.upstream.strategy_brief as { pillars?: string[]; funnelStage?: string } | undefined;
   const parts = [
     goalContext(ctx, language, await resolveProductKnowledge(ctx)),

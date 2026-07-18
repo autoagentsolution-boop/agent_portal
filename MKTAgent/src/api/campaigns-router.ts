@@ -29,6 +29,7 @@ import { env } from '../config/env.ts';
 import { logger } from '../lib/logger.ts';
 import { metricsForCampaign } from '../impact/impact-metrics.ts';
 import { buildImpactReport } from '../impact/value-model.ts';
+import { DEFAULT_PLATFORMS } from '../social/default-platforms.ts';
 
 export const campaignsRouter: Router = Router();
 
@@ -72,7 +73,7 @@ campaignsRouter.post(
       ? body.platforms
       : flowGoal?.platforms.length
         ? flowGoal.platforms
-        : ['facebook']) as SocialPlatform[];
+        : DEFAULT_PLATFORMS) as SocialPlatform[];
     // ownerId from the JWT — never the body.
     const c = await createCampaign({
       ...body,

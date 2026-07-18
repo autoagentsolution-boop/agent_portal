@@ -9,6 +9,7 @@ import { cloneTemplateRun } from '../../db/repos/workflow-run-repo.ts';
 import { createPostForOwner } from '../../db/repos/post-repo.ts';
 import { getUserById } from '../../db/repos/user-repo.ts';
 import type { Campaign, Post, SocialPlatform, WorkflowRun } from '../../../prisma/generated/prisma/client.ts';
+import { platformsOrDefault } from '../../social/default-platforms.ts';
 
 export interface CampaignFromFlowResult {
   campaign: Campaign;
@@ -31,7 +32,7 @@ export const createCampaignFromFlow = async (
 ): Promise<CampaignFromFlowResult> => {
   const platforms = (platformOverride.length
     ? platformOverride
-    : goal.platforms.length ? goal.platforms : ['facebook']) as SocialPlatform[];
+    : platformsOrDefault(goal.platforms)) as SocialPlatform[];
   const product = clean(names.campaignName) ?? clean(goal.slots.product) ?? 'New campaign';
   // Never leave a campaign language-less (feedback): a null campaign language makes every post fall
   // through to the user default, which read as "ignoring the campaign". Capture the goal's language,
