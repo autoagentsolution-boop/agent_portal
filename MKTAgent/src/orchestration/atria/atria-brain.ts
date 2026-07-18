@@ -26,7 +26,10 @@ import type { GoalSpec } from '../schemas/goal-spec.ts';
 // existing plan card + approval gate drive execution. `searched`/`tools`/`rounds` are surfaced for the
 // source footnote + observability logging.
 export type AtriaTurn =
-  | { kind: 'reply'; text: string; searched: string[]; tools: string[]; rounds: number; executeRunId?: string | null }
+  // `degraded` marks a reply that is an APOLOGY for an upstream model fault, not an answer. Callers
+  // must be able to tell the two apart: a degraded turn should not be logged, counted, or presented as
+  // a normal conversational answer.
+  | { kind: 'reply'; text: string; searched: string[]; tools: string[]; rounds: number; executeRunId?: string | null; degraded?: true }
   | { kind: 'proposal'; outcome: MasterAgentOutcome; searched: string[]; tools: string[]; rounds: number };
 
 export interface AtriaBrainInput {
@@ -111,12 +114,22 @@ async function legacyFallback(input: AtriaBrainInput): Promise<AtriaTurn> {
 
 // Runtime-failure degradation (Gemini down / empty response / deadline). A short apology in the user's
 // language — deliberately NOT a marketing proposal, which would re-box a general request as marketing.
+//
+// Copy names the cause as OUR temporary problem and gives a concrete retry horizon. The previous
+// wording ("could you try again in a moment?") read as though the user's message was at fault and
+// implied an immediate retry — but the trigger is an upstream model fault (a 5xx, or the known
+// empty-`""`-content STOP), and retrying instantly tends to hit the same window. A few minutes is the
+// honest advice.
+//
+// `degraded: true` marks the turn as a NON-ANSWER so callers can tell "Atria replied" from "Atria
+// could not reply" — without it the two are indistinguishable downstream, and a failure gets counted,
+// logged, and shown as a normal conversational answer.
 const gracefulReply = (message: string, searched: string[], tools: string[], rounds: number): AtriaTurn => {
   const vi = detectLanguage(message) === 'vi';
   const text = vi
-    ? 'Xin lỗi, mình đang gặp trục trặc khi xử lý yêu cầu này. Bạn thử lại giúp mình một chút nhé.'
-    : "Sorry — I ran into a problem handling that just now. Could you try again in a moment?";
-  return { kind: 'reply', text, searched, tools, rounds };
+    ? 'Atria đang gặp chút trở ngại nên chưa phản hồi được yêu cầu này. Đây là sự cố tạm thời — bạn thử lại sau ít phút giúp mình nhé.'
+    : 'Atria is having trouble and could not process that request. This is temporary — please try again in a few minutes.';
+  return { kind: 'reply', text, searched, tools, rounds, degraded: true };
 };
 
 // Run the reasoning loop for one user turn. Never throws — bounded by MAX_ROUNDS + a wall-clock budget,

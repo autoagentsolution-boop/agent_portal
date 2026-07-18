@@ -123,8 +123,23 @@ export interface UsageSurfaceTotal {
   surface: string;
   costUsd: number;
   totalTokens: number;
+  // Share of costUsd from tokenless media rows (image/video/TTS bill USD, not tokens). Lets a surface
+  // with high cost against few tokens read as media spend rather than a costing bug.
+  mediaUsd: number;
   credits: number;
   calls: number;
+}
+// Charged vs not-charged spend (server: cost/spend-split.ts). The product rule is that cost is fully
+// transparent and the ONLY spend a tenant isn't billed for is spend on a run that FAILED — so the
+// report shows both halves rather than quietly netting them.
+export interface SpendBucket {
+  costUsd: number;
+  totalTokens: number;
+  credits: number;
+}
+export interface SpendSplit {
+  charged: SpendBucket;
+  notCharged: SpendBucket & { failedRuns: SpendBucket; offRun: SpendBucket };
 }
 export interface UsageTotals {
   costUsd: number;
@@ -135,6 +150,7 @@ export interface UsageTotals {
   credits: number;
   calls: number;
   bySurface: UsageSurfaceTotal[];
+  split: SpendSplit;
 }
 export interface KillSwitchState {
   paused: boolean;

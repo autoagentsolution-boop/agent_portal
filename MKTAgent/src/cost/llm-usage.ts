@@ -5,7 +5,8 @@
 import { prisma } from '../db/client.ts';
 import { logger } from '../lib/logger.ts';
 import { costFromUsage, costUsdFromUsage, type GeminiUsage } from '../orchestration/executor/node-cost.ts';
-import { creditsFromTokens, creditsFromUsd } from './credits.ts';
+import { creditsFromUsd } from './credits.ts';
+import { spendSplitFor, type SpendSplit } from './spend-split.ts';
 
 // Normalize a raw Gemini generateContent response envelope → GeminiUsage. Reads the REAL
 // usageMetadata (incl. thoughtsTokenCount + cachedContentTokenCount) rather than estimating.
@@ -98,6 +99,10 @@ export interface SurfaceTotal {
   surface: string;
   costUsd: number;
   totalTokens: number;
+  // Portion of this surface's costUsd that came from TOKENLESS media rows (image/video/TTS bill USD
+  // with no tokens). Surfaced so a surface showing high cost against few tokens reads as media spend
+  // rather than as a costing bug.
+  mediaUsd: number;
   credits: number;
   calls: number;
 }
@@ -110,11 +115,14 @@ export interface UsageTotals {
   credits: number;
   calls: number;
   bySurface: SurfaceTotal[];
+  // Billed vs not-billed, itemised. Same definition as the Impact report (cost/spend-split.ts), so
+  // the two pages report one number, not two.
+  split: SpendSplit;
 }
 
 // Per-owner spend total + per-surface breakdown — the billing/analysis view.
 export const usageTotals = async (ownerId: string): Promise<UsageTotals> => {
-  const [agg, grouped, mediaGrouped] = await Promise.all([
+  const [agg, grouped, mediaGrouped, split] = await Promise.all([
     prisma.llmUsage.aggregate({
       where: { ownerId },
       _sum: { costUsd: true, totalTokens: true, promptTokens: true, outputTokens: true, thoughtTokens: true },
@@ -134,27 +142,40 @@ export const usageTotals = async (ownerId: string): Promise<UsageTotals> => {
       where: { ownerId, totalTokens: 0 },
       _sum: { costUsd: true },
     }),
+    spendSplitFor(ownerId),
   ]);
-  const mediaUsdBySurface = new Map(mediaGrouped.map((g) => [g.surface, g._sum.costUsd ?? 0]));
   const totalTokens = agg._sum.totalTokens ?? 0;
-  // Credits are ADDITIVE per surface: token passthrough for the LLM tokens PLUS the USD-derived
-  // credits of any tokenless media rows on that surface. Robust even if a surface mixes both.
+  // Credits come from REAL USD, the same basis workflow-run-repo.runCredits debits. This replaces the
+  // old `creditsFromTokens(tokens) + creditsFromUsd(mediaUsd)` split: media USD is already inside
+  // costUsd, so one conversion covers both and the displayed number matches the bill. `mediaGrouped`
+  // is kept only to surface how much of a surface's spend was tokenless media.
+  const mediaUsdBySurface = new Map(mediaGrouped.map((g) => [g.surface, g._sum.costUsd ?? 0]));
   const bySurface = grouped
     .map((g) => {
-      const tokens = g._sum.totalTokens ?? 0;
-      const credits = creditsFromTokens(tokens) + creditsFromUsd(mediaUsdBySurface.get(g.surface) ?? 0);
-      return { surface: g.surface, costUsd: g._sum.costUsd ?? 0, totalTokens: tokens, credits, calls: g._count };
+      const costUsd = g._sum.costUsd ?? 0;
+      return {
+        surface: g.surface,
+        costUsd,
+        totalTokens: g._sum.totalTokens ?? 0,
+        mediaUsd: mediaUsdBySurface.get(g.surface) ?? 0,
+        credits: creditsFromUsd(costUsd),
+        calls: g._count,
+      };
     })
     .sort((a, b) => b.costUsd - a.costUsd);
+  const costUsd = agg._sum.costUsd ?? 0;
   return {
-    costUsd: agg._sum.costUsd ?? 0,
+    costUsd,
     totalTokens,
     promptTokens: agg._sum.promptTokens ?? 0,
     outputTokens: agg._sum.outputTokens ?? 0,
     thoughtTokens: agg._sum.thoughtTokens ?? 0,
-    credits: bySurface.reduce((s, x) => s + x.credits, 0),
+    credits: creditsFromUsd(costUsd),
     calls: agg._count,
     bySurface,
+    // What the tenant was actually billed vs what they were not, itemised. Same shape and same
+    // definition the Impact report renders, so the two pages cannot disagree.
+    split,
   };
 };
 

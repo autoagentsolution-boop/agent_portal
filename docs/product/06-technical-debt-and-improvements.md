@@ -261,6 +261,41 @@ Two test fixtures were corrected, both encoding assumptions that the fix invalid
 
 **Note:** `cost_usd` itself is **correct** — verified by hand against `ideation` (8,497 in / 17,452 out on flash → `8497×0.30/1M + 17452×2.50/1M = $0.04618`, matching the stored value exactly). Input, cached, output, and Gemini thinking tokens are each priced at their own rate per model tier (`node-cost.ts:32-60`). The defect is confined to the credit layer above it.
 
+### 3.8 Two cost ledgers disagree 4.5× and the wallet bills from the smaller one — **P0, needs a decision**
+
+**[verified 2026-07-18 by direct query]**
+
+| Source | USD | What it is |
+|---|---|---|
+| `wf_node_run.cost_usd` | **$3.77** | Per-node current value. **The basis `runCredits` debits.** |
+| `mkt_llm_usage` (runId set) | **$17.13** | Append-only row per LLM/media call |
+| `mkt_llm_usage` (runId null) | $2.20 | Off-run work (chat, intake, voice) |
+
+The run-attached figures differ by 4.5×, and the wallet charges from the smaller one.
+
+**Root cause — `wf_node_run.cost_usd` is overwritten, not accumulated.** It holds a node's *latest* cost; `mkt_llm_usage` appends a row per call. Breakdown of the $17.13:
+
+| Surface | Rows | USD |
+|---|---|---|
+| `infographic` | 205 | $8.19 |
+| `video` | 14 | $5.22 |
+| `orchestration` | 83 | $3.20 |
+| `research` / `storyboard` / `security` | 22 | $0.50 |
+
+205 infographic rows at ~$0.04 each is 205 real image generations, against roughly 6 infographic node runs. **Every re-run erases the prior attempt from the billing basis.** A user who regenerates an image ten times is billed for one.
+
+**This is the opposite direction from the double-count fixed in `33d805b`.** That one over-charged 2.4–2.8× on LLM nodes; this one under-charges on anything re-run, and media re-runs are the expensive case.
+
+**Not fixed — the decision is yours, not an engineering call:**
+
+- **(a) Bill from `mkt_llm_usage`** (append-only, complete). Truthful, but changes what every existing run would have cost and needs a policy on re-runs: is a user who regenerates an image five times charged five times? Most products say yes.
+- **(b) Accumulate `wf_node_run.cost_usd`** instead of overwriting. Keeps the current basis, smaller change, but re-run cost attribution per node becomes historical rather than current — the per-node display would then show cumulative, not last-attempt, cost.
+- **(c) Deliberately absorb re-run cost** as a product decision (a "retries are on us" stance). Legitimate, but it should be a stated policy, not an accident of a column being overwritten.
+
+**Blast radius if changed:** every historical run's cost, the Impact report, plan-tier quotes, and the autonomy grant's upfront-cost figure.
+
+**Interim:** the Usage page does **not** display a "charged" total, precisely because it reads `mkt_llm_usage` while the wallet debits `wf_node_run`. It states only what is true under every option above — failed runs and off-run work are never billed.
+
 ### 3.7 Capability shipped without provisioning **[reported, doc 04]**
 
 DM (WhatsApp/Telegram/Zalo) and public greeting nodes are code-complete with passing verify suites, but have **never executed a live send** — no channel tokens provisioned in any deployment. This is not an engineering defect; the fail-closed `ENABLE_LIVE_*` gating is correct and deliberate.

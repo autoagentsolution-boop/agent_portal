@@ -5,7 +5,7 @@
 // post review gate so a stale UI can't double-advance a run.
 import { prisma } from '../client.ts';
 import { Prisma } from '../../../prisma/generated/prisma/client.ts';
-import { creditsFromTokens, creditsFromUsd } from '../../cost/credits.ts';
+import { creditsFromUsd } from '../../cost/credits.ts';
 import { getAgent } from '../../orchestration/registry/agent-registry.ts';
 import type { RunnableAgentId } from '../../orchestration/registry/agent-types.ts';
 import type {
@@ -282,7 +282,8 @@ export const getFlowCostRollup = async (templateId: string, ownerId: string): Pr
     outputTokens: agg._sum.outputTokens ?? 0,
     totalTokens,
     costUsd: agg._sum.costUsd ?? 0,
-    credits: creditsFromTokens(totalTokens),
+    // USD basis, matching runCredits (the debit) — a run's displayed cost and its bill are one number.
+    credits: creditsFromUsd(agg._sum.costUsd ?? 0),
     runs: runIds.length,
   };
 };
@@ -375,7 +376,7 @@ export const campaignAgentRollup = async (
     byAgent.set(n.agentId, r);
   }
   return [...byAgent.values()]
-    .map((r) => ({ ...r, credits: creditsFromTokens(r.totalTokens) }))
+    .map((r) => ({ ...r, credits: creditsFromUsd(r.costUsd) }))
     .sort((a, b) => b.costUsd - a.costUsd);
 };
 

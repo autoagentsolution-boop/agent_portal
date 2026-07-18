@@ -60,6 +60,41 @@ export function UsageDashboard({ notify }: Props) {
             secondaryMetric={{ value: usage.calls, label: 'call' }}
           />
 
+          {/* Free work, itemised. Deliberately NOT framed as "charged vs not charged": the wallet
+              debits from wf_node_run while this page reads mkt_llm_usage, and those two ledgers do not
+              currently agree (see docs/product/06 §3.8). Claiming a "charged" total here would state a
+              number the bill does not match. What IS true regardless of that question is the rule
+              below — failures and off-run work are never billed — so that is all this claims.
+              Shown even at zero: a user should be able to confirm they weren't billed for failures
+              rather than infer it from an absence. */}
+          <div className="usage-split">
+            <div className="usage-split-row usage-split-free">
+              <span className="usage-split-label">
+                <strong>Failed runs</strong>
+                <span className="muted small"> — never charged</span>
+              </span>
+              <span className="usage-split-value">
+                ${usage.split.notCharged.failedRuns.costUsd.toFixed(3)}
+                <span className="muted small"> · {usage.split.notCharged.failedRuns.totalTokens.toLocaleString()} tokens</span>
+              </span>
+            </div>
+            <div className="usage-split-row usage-split-free">
+              <span className="usage-split-label">
+                <strong>Chat &amp; background work</strong>
+                <span className="muted small"> — free</span>
+              </span>
+              <span className="usage-split-value">
+                ${usage.split.notCharged.offRun.costUsd.toFixed(3)}
+                <span className="muted small"> · {usage.split.notCharged.offRun.totalTokens.toLocaleString()} tokens</span>
+              </span>
+            </div>
+            <p className="muted small usage-split-note">
+              A run that fails costs you nothing — not even the steps that finished before it broke.
+              Chatting with Atria and background analysis are free too. Everything above is spend we
+              absorbed, already excluded from your balance.
+            </p>
+          </div>
+
           <div className="usage-surface-list">
             {usage.bySurface.length === 0 && <p className="muted small">No usage recorded yet.</p>}
             {usage.bySurface.map((s) => (

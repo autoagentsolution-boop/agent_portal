@@ -672,3 +672,5 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `MKTAgent/src/server.ts`
   - `docs/feature-map.md`
   - `docs/product/09-today-actionable.md`
+- **docs(feature-map): relationships for the verify runner and inbound rate limits** (bd74e84)
+  - `docs/feature-map.md`

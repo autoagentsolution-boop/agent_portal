@@ -949,6 +949,16 @@ a { color: var(--accent); }
 /* ---- Usage & credits dashboard (Phase 03) ---- */
 .usage-dashboard { max-width: min(var(--page-max), 100%); margin: 0 auto; padding: var(--page-pad); display: flex; flex-direction: column; gap: 18px; }
 .usage-surface-list { display: flex; flex-direction: column; gap: 12px; }
+/* Charged vs not-charged spend. The not-charged row is deliberately de-emphasised (dimmer, no accent)
+   so the charged figure reads as the bill and the free half reads as reassurance, not as a second
+   number the user has to reconcile. */
+.usage-split { margin: 0.75rem 0 1.25rem; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; }
+.usage-split-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 4px 0; }
+.usage-split-row + .usage-split-row { border-top: 1px dashed var(--border); margin-top: 4px; padding-top: 8px; }
+.usage-split-free { opacity: 0.72; }
+.usage-split-value { white-space: nowrap; }
+.usage-split-note { margin: 8px 0 0; line-height: 1.5; }
+
 .usage-surface-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
 .usage-surface-row:last-child { border-bottom: none; }
 .usage-surface-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }

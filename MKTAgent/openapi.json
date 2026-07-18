@@ -1865,6 +1865,9 @@
           },
           "voice": {
             "type": "boolean"
+          },
+          "refine": {
+            "type": "boolean"
           }
         },
         "required": [

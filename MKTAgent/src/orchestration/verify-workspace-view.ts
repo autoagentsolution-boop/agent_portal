@@ -5,7 +5,7 @@
 import { prisma } from '../db/client.ts';
 import { materializeCalendar } from './master/campaign-materializer.ts';
 import { listWorkspaces, getWorkspace } from './master/workspace-view.ts';
-import { creditsFromTokens } from '../cost/credits.ts';
+import { creditsFromUsd } from '../cost/credits.ts';
 import type { CalendarSlot } from './schemas/artifact-schemas.ts';
 
 let failures = 0;
@@ -56,7 +56,10 @@ async function main(): Promise<void> {
     check('detail: spent agent has display name', Boolean(spent?.name) && spent.name !== spent.agentId, spent?.name);
     check('detail: spent agent has emoji', Boolean(spent?.emoji), spent?.emoji);
     check('detail: spent agent tokens = 1000', spent?.totalTokens === 1000, spent?.totalTokens);
-    check('detail: spent agent credits = creditsFromTokens(1000)', spent?.credits === creditsFromTokens(1000), spent?.credits);
+    // USD basis, not token passthrough. Credits across every surface now derive from real costUsd —
+    // the same number the wallet debits — so this asserts against the node's $0.02, not its 1000
+    // tokens. The old expectation encoded the pre-33d805b token scale.
+    check('detail: spent agent credits = creditsFromUsd(0.02)', spent?.credits === creditsFromUsd(0.02), spent?.credits);
     check('detail: spent agent completed count = 1', spent?.completed === 1, spent?.completed);
 
     // Workspace total == sum of agent cards (dashboard invariant).

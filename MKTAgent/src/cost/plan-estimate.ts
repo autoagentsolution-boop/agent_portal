@@ -3,7 +3,7 @@
 // have no history yet (new install / new agent). Used by the multi-tier plan cards so each tier
 // shows a real estimated credit cost, not a guess.
 import type { AgentCostAverage } from '../db/repos/workflow-run-repo.ts';
-import { creditsFromTokens } from './credits.ts';
+import { creditsFromUsd } from './credits.ts';
 import { imageCost, videoClipCost, ttsCost } from '../orchestration/executor/node-cost.ts';
 
 // Fallback per-agent total-token estimates (order-of-magnitude) when no history exists. LLM
@@ -19,6 +19,13 @@ const DEFAULT_AGENT_TOKENS: Record<string, number> = {
   video: 1_000,
   publisher: 0,
 };
+
+// Blended $/1M tokens used to price the FALLBACK token estimates above. History-backed agents carry
+// their own real avgCostUsd; agents with no history contribute tokens but no USD, and quoting those
+// at $0 would show a fresh tenant a near-free plan. Measured per-agent actuals across pure-LLM nodes
+// run $1.40-$2.01/1M (2026-07-18), so $2.00 quotes at the top of the observed band — an estimate that
+// lands slightly high is a far better failure than one that surprises the user with a bigger bill.
+const FALLBACK_USD_PER_MTOK = 2.0;
 
 // Media agents bill mostly in USD (image/video/tts), not tokens — a floor so a media-heavy tier
 // isn't shown as near-free. Rough per-node USD from node-cost's real constants.
@@ -47,9 +54,15 @@ export const estimateAgents = (agentIds: string[], history: AgentCostAverage[]):
       totalTokens += h.avgTotalTokens;
       costUsd += h.avgCostUsd;
     } else {
-      totalTokens += DEFAULT_AGENT_TOKENS[id] ?? 1_000;
+      const est = DEFAULT_AGENT_TOKENS[id] ?? 1_000;
+      totalTokens += est;
+      // Price the fallback tokens too — otherwise a no-history agent adds tokens with zero USD and,
+      // now that credits derive from USD, would quote as free.
+      costUsd += (est / 1_000_000) * FALLBACK_USD_PER_MTOK;
     }
     costUsd += MEDIA_USD_FLOOR[id] ?? 0; // media spend history doesn't live in tokens
   }
-  return { totalTokens, costUsd, credits: creditsFromTokens(totalTokens), agentCount: agentIds.length };
+  // USD basis — the same scale the wallet debits and the Usage/Impact pages render, so the quote a
+  // user approves and the charge they receive are in one currency.
+  return { totalTokens, costUsd, credits: creditsFromUsd(costUsd), agentCount: agentIds.length };
 };

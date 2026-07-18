@@ -317,7 +317,10 @@ orchestrationRouter.post('/runs', asyncHandler(async (req, res) => {
   if (turn.kind === 'reply') {
     const text = appendSources(turn.text?.trim() || '…', turn.searched);
     await recordAnswerTurn(sessionId, body.message, text);
-    await logRun('info', 'atria_reply', { searched: turn.searched.length, tools: turn.tools, rounds: turn.rounds, midSetup: Boolean(existingPreExec), execute: Boolean(turn.executeRunId) }, req.userId!).catch(() => {});
+    // `degraded` separates "Atria answered" from "Atria could not answer" in the log. Without it an
+    // upstream model fault is indistinguishable from a real conversational reply, which is how the
+    // atria_brain_degraded flakiness stayed invisible at this layer.
+    await logRun(turn.degraded ? 'warn' : 'info', turn.degraded ? 'atria_reply_degraded' : 'atria_reply', { searched: turn.searched.length, tools: turn.tools, rounds: turn.rounds, midSetup: Boolean(existingPreExec), execute: Boolean(turn.executeRunId) }, req.userId!).catch(() => {});
     // "chạy đi" — the brain's execute_workflow ran the plan already on screen. Trigger execution and
     // return THAT run (now running / needs_connection) so the UI reflects it, with the brain's reply.
     if (turn.executeRunId) {

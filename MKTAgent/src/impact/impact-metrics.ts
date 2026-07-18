@@ -3,7 +3,7 @@
 // run timestamps) — no estimates. The value model (value-model.ts) layers the clearly-labeled
 // estimates (cost saved, reach) on top. Reconciles with the Usage page (same mkt_llm_usage ledger).
 import { prisma } from '../db/client.ts';
-import { creditsFromTokens, creditsFromUsd } from '../cost/credits.ts';
+import { creditsFromUsd } from '../cost/credits.ts';
 import { sumFbInsights } from '../analytics/fb-insights.ts';
 import { sumIgInsights } from '../analytics/ig-insights.ts';
 import { sumThreadsInsights } from '../analytics/threads-insights.ts';
@@ -17,7 +17,7 @@ export interface ImpactMetrics {
   mediaPieces: number; // real media generations billed (infographic/storyboard/video ledger rows)
   usdSpent: number; // real spend from the cost ledger
   totalTokens: number;
-  creditsSpent: number; // friendly credits (token passthrough + media USD), same basis as Usage
+  creditsSpent: number; // friendly credits derived from real USD — same basis as the wallet debit and the Usage page
   leadsCaptured: number;
   runMinutes: number; // wall-clock across the contributing runs
   // MEASURED social Insights (P2-2b: FB Page Insights + IG Media Insights). A field is null when NO
@@ -52,9 +52,10 @@ const measuredInsightsFor = async (ownerId: string, posts: PublishedIdRow[]) =>
     sumXInsights(ownerId, platformIdsOf(posts, 'x')),
   ]));
 
-// Credits consistent with the Usage page: token passthrough PLUS credits from tokenless media USD.
-const creditsFor = (totalTokens: number, mediaUsd: number): number =>
-  creditsFromTokens(totalTokens) + creditsFromUsd(mediaUsd);
+// Credits from REAL USD — the same basis the wallet debits (workflow-run-repo.runCredits) and the
+// same one the Usage page now renders. `mediaUsd` no longer needs adding on top: media spend is
+// already inside costUsd, and adding it separately was the double-count fixed in 33d805b.
+const creditsFor = (costUsd: number): number => creditsFromUsd(costUsd);
 
 const emptyMetrics = (): ImpactMetrics => ({
   postsPublished: 0, postsTotal: 0, platforms: [], mediaPieces: 0,
@@ -89,7 +90,6 @@ export async function metricsForCampaign(campaignId: string, ownerId: string): P
   ]);
 
   const totalTokens = agg._sum.totalTokens ?? 0;
-  const mediaCreditUsd = mediaCredit._sum.costUsd ?? 0;
   const insights = await measuredInsightsFor(ownerId, posts);
   return {
     postsPublished: published.length,
@@ -98,7 +98,7 @@ export async function metricsForCampaign(campaignId: string, ownerId: string): P
     mediaPieces: media._count,
     usdSpent: agg._sum.costUsd ?? 0,
     totalTokens,
-    creditsSpent: creditsFor(totalTokens, mediaCreditUsd),
+    creditsSpent: creditsFor(agg._sum.costUsd ?? 0),
     leadsCaptured,
     runMinutes: runMinutesFor(runs),
     measuredReach: insights.measuredReach,
@@ -128,7 +128,6 @@ export async function metricsForPeriod(ownerId: string, since: Date): Promise<Im
   ]);
 
   const totalTokens = agg._sum.totalTokens ?? 0;
-  const mediaCreditUsd = mediaCredit._sum.costUsd ?? 0;
   const insights = await measuredInsightsFor(ownerId, posts);
   return {
     postsPublished: published.length,
@@ -137,7 +136,7 @@ export async function metricsForPeriod(ownerId: string, since: Date): Promise<Im
     mediaPieces: media._count,
     usdSpent: agg._sum.costUsd ?? 0,
     totalTokens,
-    creditsSpent: creditsFor(totalTokens, mediaCreditUsd),
+    creditsSpent: creditsFor(agg._sum.costUsd ?? 0),
     leadsCaptured,
     runMinutes: runMinutesFor(runs),
     measuredReach: insights.measuredReach,
