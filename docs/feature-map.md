@@ -629,3 +629,15 @@ Two CC quality-of-life additions on top of the resume-cards feature.
 - **fix(credits): bill runs from real USD, ending LLM double-count** (33d805b)
   - `MKTAgent/src/db/repos/verify-credit-wallet.ts`
   - `MKTAgent/src/db/repos/workflow-run-repo.ts`
+- **docs(product): full product documentation set from codebase scan** (2665aff)
+  - `docs/feature-map.md`
+  - `docs/product/01-architecture-techstack-layers.md`
+  - `docs/product/02-logic-gates-rules-guardrails.md`
+  - `docs/product/03-hardcoded-inventory-and-flexibility.md`
+  - `docs/product/04-capabilities-and-human-in-the-loop.md`
+  - `docs/product/05-agent-nodes-architecture.md`
+  - `docs/product/06-technical-debt-and-improvements.md`
+  - `docs/product/07-dynamic-subagent-orchestration-gap.md`
+  - `docs/product/08-making-agent-nodes-real-subagents.md`
+  - `docs/product/09-today-actionable.md`
+  - `docs/product/README.md`
