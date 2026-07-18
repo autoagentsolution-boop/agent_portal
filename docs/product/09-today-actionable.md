@@ -78,6 +78,18 @@ Zero `TODO`/`FIXME` markers exist alongside substantial known debt — it all li
 
 ---
 
+## 3.5 Known-red HTTP scripts (as of 2026-07-18)
+
+The http tier runs 11/14 green. The three reds are diagnosed, none caused by the runner, and all predate it — they simply had no automated path before. Recorded here so a red suite is not mistaken for a new break.
+
+| Script | Symptom | Diagnosis |
+|---|---|---|
+| `verify-campaign-reuse-http` | **Flaky** — 1 pass / 2 fail across 3 consecutive runs. "refine stays on the SAME draft run" fails; a fresh run id appears | Server log during the failures: `atria_brain_empty_content` ×3 → `atria_brain_degraded` ×3. Live Gemini intermittently returns `""` (a known quirk, see memory `project_orchestrate_conversational_unify`), the brain degrades to the deterministic path, and **that path forks a new run instead of refining in place**. This is the same user-visible failure class that `project_atria_campaign_flow_confusion_fix_260713` fixed for a different trigger: "Atria lost my context and made a new flow." The test is honest; the degraded path is the problem. |
+| `verify-api` | Hangs — still running past 300s (exit 124), plus 3 red checks: publisher gate not reached, and `thin product → awaiting_clarification` returning `planned` | Clarification not triggering, also LLM-dependent. The hang is undiagnosed. |
+| `verify-connect-form` | `getActiveToken: facebook needs re-auth (status=needs_attention)` | Test writes a FAKE token to a throwaway tenant via the form endpoint, then expects `getActiveToken` to return it through the vault fallback. Instead a record with `status=needs_attention` is found. This is about the **vault-fallback path**, not about real account credentials — using a real/superadmin account would not exercise what this test targets. Needs a behavioural answer: should a form-saved credential produce a record in that state? |
+
+Two of the three are LLM-dependent, which makes them structurally flaky. Worth deciding whether such tests belong in a blocking gate at all, or in a separate advisory tier.
+
 ## 4. NOT today — needs a decision or a bigger change
 
 | Item | Blocked on | Doc |

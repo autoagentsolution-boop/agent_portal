@@ -646,3 +646,9 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `MKTAgent/src/connectors/registry/verify-registry.ts`
   - `MKTAgent/src/scripts/run-verify.ts`
   - `docs/feature-map.md`
+- **test(verify): boot the server for the http tier; retract a bad debt item** (3aa623c)
+  - `MKTAgent/src/api/verify-post-from-agent.ts`
+  - `MKTAgent/src/scripts/run-verify.ts`
+  - `docs/feature-map.md`
+  - `docs/product/06-technical-debt-and-improvements.md`
+  - `docs/product/09-today-actionable.md`

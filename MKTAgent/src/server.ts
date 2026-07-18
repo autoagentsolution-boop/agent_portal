@@ -16,6 +16,8 @@ import { startCopyGenCron } from './copygen/cron.ts';
 import { startTokenCron } from './tokens/cron.ts';
 import { startLeadsCron } from './leads/sources/comment-cron.ts';
 import { requireAuth } from './api/middleware-auth.ts';
+import helmet from 'helmet';
+import { authLimiter, llmLimiter } from './api/rate-limits.ts';
 import { postsRouter } from './api/posts-router.ts';
 import { postMediaRouter } from './api/post-media-router.ts';
 import { campaignsRouter } from './api/campaigns-router.ts';
@@ -44,6 +46,13 @@ import { IMAGE_OUTPUT_DIR } from './imagegen/nano-banana.ts';
 import { VIDEO_OUTPUT_DIR } from './video/veo.ts';
 
 const app = express();
+
+// Security headers. Defaults only — no CSP configured here: this process serves a JSON API plus
+// static media, and the SPA is served separately (UI_BASE_URL), so a CSP set here would govern the
+// wrong surface. crossOriginResourcePolicy is relaxed to cross-origin because /media/images and
+// /media/videos are fetched by the SPA on a different origin; helmet's default (same-origin) would
+// break every image in the UI.
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // CORS for the browser UI (T8). Credentialed (cookie) XHR requires an explicit
 // origin — wildcard is rejected by browsers when credentials:true. Only enabled
@@ -88,7 +97,7 @@ mkdirSync(VIDEO_OUTPUT_DIR, { recursive: true });
 app.use('/media/videos', express.static(VIDEO_OUTPUT_DIR, { fallthrough: false, maxAge: '1h' }));
 
 // Auth (Google login → JWT). Public start/callback; /auth/me self-guards.
-app.use('/auth', authRouter);
+app.use('/auth', authLimiter, authRouter);
 
 // Per-user social connect (T4). /start self-guards with requireAuth; /callback is
 // public (platform redirect, no auth header) but ownerId rides a signed state JWT.
@@ -124,19 +133,19 @@ app.use('/nurture', requireAuth, nurtureRouter);
 
 // Atria proactive suggestions + roadmap pitches (Phase 06). Read-only nudges derived from the
 // tenant's own history; accepting prefills a flow or logs demand — nothing runs without a grant.
-app.use('/atria', requireAuth, atriaRouter);
+app.use('/atria', requireAuth, llmLimiter, atriaRouter);
 
 // Atria impact / value report (Phase 07). Per-period ROI proof (per-campaign lives on /campaigns/:id/impact).
 app.use('/impact', requireAuth, impactRouter);
 
 // Master Agent typed intake. Draft-only parser that helps users set up the flow;
 // writes still happen through the explicit campaign/post APIs after UI confirmation.
-app.use('/agent', requireAuth, agentRouter);
+app.use('/agent', requireAuth, llmLimiter, agentRouter);
 
 // Goal-based agent orchestration (Milestone 1). Master Agent → dynamic DAG plan →
 // executor with an approval gate before any external-write (publisher) node. Runs
 // BESIDE the template intake path; tenant-scoped via requireAuth.
-app.use('/orchestration', requireAuth, orchestrationRouter);
+app.use('/orchestration', requireAuth, llmLimiter, orchestrationRouter);
 
 // Connections (M2-lite). Read-only view of the caller's social connection status
 // over the existing OAuthToken store; never touches the write path or token values.
@@ -151,7 +160,7 @@ app.use('/admin', requireAuth, requireSuperAdmin, adminRouter);
 app.use('/events', eventsRouter);
 
 // Voice / read-aloud (P3). Owner-scoped Gemini TTS; on-demand + cost-tracked.
-app.use('/voice', requireAuth, voiceRouter);
+app.use('/voice', requireAuth, llmLimiter, voiceRouter);
 
 // Leads (T6). Mixed auth: POST intake routes are secret-gated (external funnels
 // have no JWT); GET /leads self-guards with requireAuth. So NOT behind a blanket
