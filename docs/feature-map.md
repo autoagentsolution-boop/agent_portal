@@ -4,6 +4,13 @@ Living record of features shipped and their real relationships in the app. Each 
 
 ## Features & relationships
 
+### Credit billing corrected — runs bill from real USD (`33d805b`)
+Fixes a double-count that over-debited every LLM node **2.4–2.8×**. `runCredits` (`db/repos/workflow-run-repo.ts`) summed `creditsFromTokens(tokens) + creditsFromUsd(costUsd)`, but `wf_node_run.cost_usd` is *derived from* those same tokens (`node-cost.ts costFromUsage`) **and** carries media USD, blended into one column by `sumCost` — so an LLM call was billed once by token count and again by the USD it produced. Now bills from `costUsd` alone: already prices prompt/cached/output/thinking each at its own per-model rate, already includes media, and cannot overlap with itself.
+- **Relationship — this is the wallet's money path, not a display path.** It feeds `credit-repo.reconcileRunDebit`, which the executor calls at EVERY stop point (park / fail / complete, `workflow-executor.ts`), so it governs the balance that the 402 pre-flight gate and the top-nav credit pill read. The autonomy grant's upfront-cost quote (`cost/plan-estimate.ts`) is a *separate* estimate path and still uses token passthrough.
+- **Divergence introduced, deliberately:** display surfaces (Usage dashboard `cost/llm-usage.ts`, Impact `impact/impact-metrics.ts`, plan-tier cards) still present the token-passthrough scale, so a displayed credit figure no longer matches the debit exactly. Those two were already CORRECT in intent — they add `creditsFromUsd` over **tokenless** rows only (`totalTokens=0` ⇒ pure media), a discriminator that cannot work in `wf_node_run` because a storyboard/video node legitimately holds both. Aligning display to the money scale is a separate change.
+- **Secondary error also removed:** `TOKENS_PER_CREDIT` priced every token at the flash OUTPUT rate ($2.50/1M); measured actual is $1.40–$2.01/1M, so prompt-heavy runs were over-charged even before the double-count.
+- **Blast radius:** no ledger migration. Every debit ever written landed on one throwaway test tenant (114 charged vs 52 correct); both real accounts hold untouched 2,000-credit trials. Guarded by `verify-credit-wallet` (two fixtures corrected — one had asserted the double-counting formula itself), `verify-credits`, `verify-llm-usage`, `verify-impact`.
+
 ### Multi-channel nurture nodes — DM / greeting / comment-capture (DRY-RUN scaffold, `d789bfd`)
 Extends nurture beyond email with three composable node areas, all built as REAL code but fail-closed to **DRY-RUN** (no live credentials exist; a real send needs an explicit token + an off-by-default `ENABLE_LIVE_*` flag).
 - **DM node** (`src/messaging/`): `dm_writer`→`dm_agent` pair **mirrors the email node, NOT the publisher** — `requiresConnection:false` with connectivity checked inside the runner, because messaging credentials aren't `SocialPlatform` tokens. One pair fans to whatsapp/telegram/zalo via an adapter registry (`sendDm`); `isLiveDmSend(channel,hasToken)` is the DRY-RUN guard. New `MessagingChannel` enum (SEPARATE from `SocialPlatform`) + `DmContact`/`DmMessage` (phone/handle encrypted like `Lead` PII). Opt-in refusal is a hard gate. Telegram `/start` webhook.
@@ -613,3 +620,12 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `plans/260713-1251-multichannel-nurture-nodes/research-synthesis.md`
   - `plans/reports/researcher-260713-1251-dm-nurture-apis.md`
   - `plans/reports/researcher-260713-1251-wall-post-and-comment-capture-apis.md`
+- **docs(feature-map): describe bug-batch, lead-nurture, and multi-channel nurture relationships** (e338f26)
+  - `docs/feature-map.md`
+- **docs(test): observed live-test retest report (10/10 scripts, 3 fixes)** (cff5339)
+  - `plans/reports/test-report-260715-1747-observed-live-retest.md`
+- **docs(changelog): 2026-07-15 bug batch, lead-nurture, multichannel, live-test fixes** (0bb0475)
+  - `docs/project-changelog.md`
+- **fix(credits): bill runs from real USD, ending LLM double-count** (33d805b)
+  - `MKTAgent/src/db/repos/verify-credit-wallet.ts`
+  - `MKTAgent/src/db/repos/workflow-run-repo.ts`
