@@ -27,6 +27,13 @@ Living record of features shipped and their real relationships in the app. Each 
 - **Enforced on the upper bound only, and the trim direction is load-bearing.** Each extra shot is a real keyframe plus a real Veo clip, so an overshoot bills for a video nobody approved; trimming drops from the **middle** so shot 0 (hook) and the original last shot (CTA) survive. Under-delivery is left alone — it costs less than asked and the gate shows the true runtime.
 - **Reachability was the real gap.** No UI edits goal slots, so `analyzeDeterministic.parseVideoLength` (EN + VI, seconds or minutes) is how a length is expressed. Gated on video intent so "reply within 5 minutes" cannot set a runtime, and kept separate from `parseLength`, which is copy length in words.
 
+### The http verify tier is deterministic, free and green — 85/85 (`ffa9b28`)
+The runner boots the http-tier server with `GEMINI_API_KEY` cleared and spawns its scripts with the same env, so `POST /orchestration/runs` falls back to the deterministic planner instead of the live Atria brain.
+- **Relationship — it exists because the Atria brain became the front door to run creation.** Every message now routes through a live model function-calling loop that decides plan-vs-converse, so scripts asserting deterministic planner/router invariants were really asserting the model's mood: the same message planned on one run and was answered on the next. Three scripts failed intermittently and each run spent real money.
+- **It exposed two real bugs the LLM path had been masking.** `legacyFallback` called `masterAgent.handle` (analyzes in isolation) instead of `refine`, so the no-key path forgot every gathered slot on a follow-up turn. And bare `short` sat in the video keyword list, so *"Short punchy Vietnamese Instagram post"* planned a **Veo video for a text post** — an adjective read as the YouTube format, billable.
+- **Three assertions were stale, not broken — each pinned behaviour deliberately reversed later:** the form-token contract (now liveness-verified on save, fails closed), the richness gate (removed as the "6 rounds to plan" bug), and the connection gate (moved to publish time by gate-after-content). Distinguishing "the product regressed" from "the test froze an old contract" was the bulk of the work; the fixes went in opposite directions accordingly.
+- **Coverage loss is surfaced, not silent.** Sections that need a live model skip themselves, and the runner lifts those lines into its summary — a passing script's output is never printed, so a silent skip would read as full coverage. `verify-api`'s live-execution section is documented as *unreachable in any stable configuration* (keyless: planning solid, execution impossible; keyed: execution possible, planning flakes), with the db-tier stubbed executor tests named as what actually covers it.
+
 ### Provider-spend panel, super-admin only (`37ca544`)
 `GET /admin/provider-spend` + a panel at `/superadminatria101`: rolling 24h/7d/30d/lifetime, a 14-day series, and 30-day by-surface/by-model slices off the existing `mkt_llm_usage` ledger.
 - **Relationship — it is the scoped-down survivor of "pre-flight quota budget".** That was impossible twice over: no daily request wall exists on this account, and **no API exposes the Gemini prepaid balance** (Cloud Billing does not have it; AI Studio's Usage-and-Limits page is the only place it lives). So the panel reports spend and burn rate and **claims no balance** — a test asserts the payload has no `balance`/`remaining`/`runway` field so an inferred one cannot creep in later.
@@ -835,3 +842,12 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `MKTAgent/web/src/components/video-script-review.tsx`
   - `docs/project-changelog.md`
   - `plans/260721-1343-video-length-and-quota-budget/plan.md`
+- **fix(verify): make the http tier deterministic and green (85/85)** (ffa9b28)
+  - `MKTAgent/src/api/verify-post-from-agent.ts`
+  - `MKTAgent/src/orchestration/atria/atria-brain.ts`
+  - `MKTAgent/src/orchestration/master/deterministic-analyzer.ts`
+  - `MKTAgent/src/orchestration/verify-api.ts`
+  - `MKTAgent/src/orchestration/verify-connect-form.ts`
+  - `MKTAgent/src/orchestration/verify-video-script.ts`
+  - `MKTAgent/src/scripts/run-verify.ts`
+  - `docs/project-changelog.md`
