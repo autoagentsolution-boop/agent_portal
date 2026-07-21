@@ -792,3 +792,15 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `MKTAgent/web/src/components/video-script-review.tsx`
   - `MKTAgent/web/src/flow/artifact-format.ts`
   - `MKTAgent/web/src/styles.css`
+- **docs: record the media-quality track, its plans, and session state** (ba7ea2f)
+  - `docs/feature-map.md`
+  - `docs/product/05-agent-nodes-architecture.md`
+  - `docs/project-changelog.md`
+  - `plans/260721-1231-media-quality-video-script-agent/phase-01-infographic-overview-agent.md`
+  - `plans/260721-1231-media-quality-video-script-agent/phase-02-video-script-node.md`
+  - `plans/260721-1231-media-quality-video-script-agent/phase-03-decouple-video-from-storyboard.md`
+  - `plans/260721-1231-media-quality-video-script-agent/phase-04-rewrite-video-runner.md`
+  - `plans/260721-1231-media-quality-video-script-agent/phase-05-verify-and-cost.md`
+  - `plans/260721-1231-media-quality-video-script-agent/plan.md`
+  - `plans/260721-1343-video-length-and-quota-budget/plan.md`
+  - `plans/reports/state-260721-1455-session-handoff.md`
