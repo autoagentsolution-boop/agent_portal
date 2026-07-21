@@ -465,6 +465,19 @@ export interface CapabilityRequestDto {
   lastSeen: string;
 }
 
+// Provider spend = what WE pay Google, NOT tenant credits. No "remaining balance" field exists
+// because no API exposes the Gemini prepaid balance, and costUsd is our price-table estimate
+// recorded at call time, not Google's invoice.
+export interface SpendBucketDto { calls: number; costUsd: number }
+export interface SpendSliceDto { key: string; calls: number; costUsd: number }
+export interface ProviderSpendDto {
+  windows: { last24h: SpendBucketDto; last7d: SpendBucketDto; last30d: SpendBucketDto; lifetime: SpendBucketDto };
+  bySurface: SpendSliceDto[];
+  byModel: SpendSliceDto[];
+  daily: Array<{ day: string; calls: number; costUsd: number }>;
+  generatedAt: string;
+}
+
 export const api = {
   me: () => request<Me>('/auth/me'),
   logout: () => request<{ loggedOut: boolean }>('/auth/logout', { method: 'POST' }),
@@ -476,6 +489,7 @@ export const api = {
       '/admin/grant', { method: 'POST', body: { ownerId, credits, ...(reason ? { reason } : {}) } },
     ),
   adminCapabilityRequests: () => request<CapabilityRequestDto[]>('/admin/capability-requests'),
+  adminProviderSpend: () => request<ProviderSpendDto>('/admin/provider-spend'),
 
   parseMasterIntake: (message: string, timezone = Intl.DateTimeFormat().resolvedOptions().timeZone) =>
     request<AgentIntakeDraft>('/agent/intake', { method: 'POST', body: { message, timezone } }),

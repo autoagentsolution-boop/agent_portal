@@ -5,6 +5,30 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-21
 
+### Feat: provider-spend panel in the super-admin console (quota plan Phase 02)
+`GET /admin/provider-spend` + a panel at `/superadminatria101`. Reports what **we** pay the model
+provider — rolling last-24h / 7d / 30d / lifetime totals, a 14-day daily series, and 30-day
+breakdowns by surface and by model — read off the existing `mkt_llm_usage` ledger. No new table, no
+GCP credentials, no external dependency.
+
+Scoped down from the original "pre-flight quota budget" for two measured reasons: there is no daily
+request wall on this account (see the retraction in the plan), and **no API exposes the Gemini
+prepaid balance** — Cloud Billing API does not have it, and AI Studio's Usage-and-Limits page is the
+only place it exists. So the panel reports spend and burn rate and **claims no remaining balance**;
+a test asserts the payload carries no `balance`/`remaining`/`runway` field, so nobody can later add
+an inferred one by accident. `costUsd` is our price-table estimate at call time, labelled as such in
+the UI rather than presented as billing truth.
+
+Super-admin only by decision — tenants see their own credit cost, never the platform's provider
+bill. `requireSuperAdmin` already 404s the whole `/admin` surface; the non-admin 404 on this route is
+pinned by test. Windows are **rolling**, not calendar days, so they mean the same thing regardless of
+server timezone or which timezone Google closes its billing day in.
+
+New: `db/repos/provider-spend-repo.ts`, `web/src/components/provider-spend-panel.tsx` (split out to
+keep `SuperAdminPage.tsx` focused), `db/repos/verify-provider-spend.ts` — the last one pins the
+window boundaries as deltas against a live baseline, since the ledger is global and holds real
+history.
+
 ### Fix: a depleted prepaid balance no longer ships a silently truncated video
 Follow-up to the quota classifier below, after the free-tier premise was retracted. This deployment
 is on a **paid prepaid** tier, where the realistic stop is not a daily quota but the credit balance

@@ -4,6 +4,7 @@
 // is the real gate; this page's client guard just avoids rendering the surface to a non-admin.
 import { useCallback, useEffect, useState } from 'react';
 import { api, type TenantBalanceDto, type CapabilityRequestDto } from '../api/client';
+import { ProviderSpendPanel } from './provider-spend-panel';
 
 interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
@@ -93,6 +94,8 @@ export function SuperAdminPage({ notify, onCreditsChanged }: Props) {
           </table>
         </div>
       )}
+
+      <ProviderSpendPanel />
 
       <h3 style={{ marginTop: '2rem' }}>Requested capabilities</h3>
       <p className="muted small">What users asked Atria for that doesn't exist yet — the demand backlog. Decide what to build next.</p>

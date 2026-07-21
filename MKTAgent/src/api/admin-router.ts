@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ok, fail, asyncHandler, parseOr422 } from './http.ts';
 import { listTenantsWithBalances, grantCredits, getBalance } from '../db/repos/credit-repo.ts';
 import { listAllCapabilityRequests } from '../db/repos/roadmap-demand-repo.ts';
+import { getProviderSpend } from '../db/repos/provider-spend-repo.ts';
 import { logger } from '../lib/logger.ts';
 
 export const adminRouter: Router = Router();
@@ -40,6 +41,13 @@ adminRouter.post('/grant', asyncHandler(async (req, res) => {
   const balance = await getBalance(body.ownerId);
   logger.info('admin_grant', { by: req.userId, ownerId: body.ownerId, credits: body.credits, balance });
   ok(res, { ownerId: body.ownerId, granted: body.credits, balanceBefore, balance });
+}));
+
+// Provider spend — what WE pay Google, off the mkt_llm_usage ledger. Super-admin only by decision:
+// tenants see their own credit cost, never the platform's provider bill. Reports spend and burn
+// rate only — no "remaining balance", because no API exposes the Gemini prepaid balance.
+adminRouter.get('/provider-spend', asyncHandler(async (_req, res) => {
+  ok(res, await getProviderSpend());
 }));
 
 // Platform-wide capability-request backlog — the "build this next" board.

@@ -90,6 +90,20 @@ async function main(): Promise<void> {
     const caps = await call('GET', '/admin/capability-requests', aToken);
     const hasCap = Array.isArray(caps.body?.data) && caps.body.data.some((c: any) => c.capabilityId === 'transcribe-audio');
     check('super-admin sees the recorded capability request', caps.status === 200 && hasCap, caps.status);
+
+    console.log('provider spend (super-admin only)');
+    const spendDenied = await call('GET', '/admin/provider-spend', tToken);
+    check('non-admin GET /admin/provider-spend → 404 (platform bill stays hidden)', spendDenied.status === 404, spendDenied.status);
+    const spend = await call('GET', '/admin/provider-spend', aToken);
+    const sd = spend.body?.data;
+    check('super-admin GET /admin/provider-spend → 200', spend.status === 200, spend.status);
+    check('spend carries all four windows', ['last24h', 'last7d', 'last30d', 'lifetime'].every((k) => typeof sd?.windows?.[k]?.costUsd === 'number'), sd?.windows);
+    check('spend windows nest: 24h ≤ 7d ≤ 30d ≤ lifetime',
+      sd?.windows?.last24h.costUsd <= sd?.windows?.last7d.costUsd
+      && sd?.windows?.last7d.costUsd <= sd?.windows?.last30d.costUsd
+      && sd?.windows?.last30d.costUsd <= sd?.windows?.lifetime.costUsd, sd?.windows);
+    // The whole point of option A: report spend, never claim a balance we cannot read.
+    check('spend claims NO remaining balance', !JSON.stringify(sd ?? {}).match(/"(balance|remaining|runway)"/i), Object.keys(sd ?? {}));
   } finally {
     await prisma.workflowNodeRun.deleteMany({ where: { ownerId: tenant.id } });
     await prisma.workflowRun.deleteMany({ where: { ownerId: tenant.id } });

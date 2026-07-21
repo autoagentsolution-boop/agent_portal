@@ -1,6 +1,6 @@
 # Video length as a user choice, under a hard quota budget
 
-**Branch:** `pivot/video-content-farm` · **Created:** 2026-07-21 · **Status:** Phase 01 DONE; 02–03 not started
+**Branch:** `pivot/video-content-farm` · **Created:** 2026-07-21 · **Status:** Phases 01–02 DONE (02 scoped down); 03 not started
 
 Follow-on to `plans/260721-1231-media-quality-video-script-agent/` (shipped). Written because a
 controlled live test showed `videoTarget` cannot do what it implies, and because the real ceiling
@@ -105,7 +105,7 @@ Phase files are **not written yet** — this document is the proposal to react t
 | # | Phase | Effort | What it does |
 |---|---|---|---|
 | 01 | Classify RPD vs RPM | S | **DONE 2026-07-21.** `lib/quota-error.ts` reads the `QuotaFailure` `quotaId` + `RetryInfo.retryDelay`. Daily → throw at once (`veo.ts`, `nano-banana.ts`, `withRetry`); per-minute → old backoff, now floored by the provider's own `retryDelay`. `runVideo` re-throws a daily quota naming the model, the N-of-M shot count and the cached remainder, instead of marking it `degraded`. Unknown body shapes classify as per-minute, so the fallback is the old behaviour. `lib/verify-quota-error.ts` + 4 cases in `verify-video-script.ts`; suite 70/70. |
-| 02 | Pre-flight quota budget | M | Track requests spent per day per owner (the `mkt_llm_usage` ledger already records every call with a timestamp — count from it, no new table). Surface "this needs N requests, you have M left" at the cost gate next to the dollar figure. |
+| 02 | Provider-spend panel | M | **DONE 2026-07-21, scoped down.** The original "you have M requests left" is impossible twice over: there is no daily request wall on this account, and no API exposes the prepaid balance. Built instead: `GET /admin/provider-spend` + a panel at `/superadminatria101` — rolling 24h/7d/30d/lifetime, a 14-day series, and 30-day by-surface/by-model slices off `mkt_llm_usage`. Super-admin only. **Claims no remaining balance**, and a test pins that the payload has no `balance`/`remaining`/`runway` field so an inferred one cannot creep in. `db/repos/provider-spend-repo.ts`, `web/src/components/provider-spend-panel.tsx`, `db/repos/verify-provider-spend.ts`. |
 | 03 | User-chosen length | M | Explicit shot-count / length control at setup, shown against remaining quota. `videoTarget` demoted to what it actually does: rhythm + aspect. |
 
 01 → 02 → 03 in order: 03's UI is meaningless without 02's budget, and 02 needs 01's classification
