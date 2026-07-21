@@ -107,8 +107,17 @@ const callGemini = async (contents: GeminiContent[]): Promise<Response> => {
 
 // No-key degradation ONLY: use the deterministic marketing planner so the surface still works without an
 // LLM (returns a proposal outcome, exactly like the old handle path).
+//
+// `priorGoal` MUST be honoured here. It used to call `handle` unconditionally, which analyzes the
+// message in ISOLATION — so a follow-up turn ("also add an infographic") lost every slot the
+// conversation had already gathered and re-asked the required questions, while the LLM path merged
+// correctly via propose_workflow. The degraded path silently forgot the conversation.
+// `refine` is the same merge the brain performs: analyze this turn as a delta, add it to the prior
+// goal, then apply any removals.
 async function legacyFallback(input: AtriaBrainInput): Promise<AtriaTurn> {
-  const outcome = await masterAgent.handle(input.message, input.ownerId, input.memoryContext);
+  const outcome = input.priorGoal
+    ? await masterAgent.refine(input.priorGoal, input.message, input.ownerId, input.memoryContext)
+    : await masterAgent.handle(input.message, input.ownerId, input.memoryContext);
   return { kind: 'proposal', outcome, searched: [], tools: [], rounds: 0 };
 }
 

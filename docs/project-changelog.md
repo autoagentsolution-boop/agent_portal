@@ -5,6 +5,47 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-21
 
+### Fix: the http verify tier is deterministic, free, and green (85/85)
+Three http-tier scripts had been failing — outside the default gate, so nobody tripped over them.
+Each had a different root cause and two were real product bugs.
+
+**Root cause of the flakiness:** `POST /orchestration/runs` routes every message through the Atria
+brain, a live model function-calling loop that decides plan-vs-converse. That judgement is not
+stable — the same message planned on one run and was answered on the next — so the tier failed
+intermittently *and spent real money on every run*. The runner now boots the http server with
+`GEMINI_API_KEY` cleared and spawns its scripts with the same env, so the brain falls back to the
+deterministic planner these scripts were written against (`atria-brain.ts` `legacyFallback`).
+Borrowing an already-running server prints a warning, since a developer's server probably has a key.
+
+**Real bug 1 — `legacyFallback` forgot the conversation.** It called `masterAgent.handle`, which
+analyzes a message in isolation, ignoring the `priorGoal` it was handed. A follow-up turn ("also add
+an infographic") lost every slot already gathered and re-asked the required questions, while the LLM
+path merged correctly. Now calls `masterAgent.refine` when a prior goal exists — the same merge the
+brain performs.
+
+**Real bug 2 — bare `short` meant "video".** `"Short punchy Vietnamese Instagram post"` matched the
+video keyword list, so a text-post request planned — and would have billed — a Veo video. The
+adjective is far more common than the YouTube format; `shorts` (always plural) and `youtube short`
+keep the intent. The pattern lived in three copies and is now one shared `VIDEO_WORDS` constant.
+
+**Three stale assertions**, each pinning behaviour that was deliberately changed later:
+- `verify-connect-form` asserted a pasted token is immediately usable and reads `connected`.
+  `verifyAndRecordFormToken` now liveness-checks a paste and records the verdict, so a *fake* token
+  correctly reports `needs_attention` and `getActiveToken` fails closed. Rewritten to pin that,
+  plus the vault fallback and the deliberate gate/token split.
+- `verify-api` asserted a "richness gate" (product + platform was too thin to plan). That gate was
+  deliberately removed — `void thin;` — because gating a simple request on optional context was the
+  "too strict, 6 rounds to plan" bug. The assertion is inverted: it must plan, and may only offer
+  audience/angle as optional.
+- `verify-api`'s tenants predated the credit gate, so every `/execute` returned 402 and eleven
+  checks cascaded off it. They now get a trial grant; billing is `verify-credit-gating`'s subject.
+
+**Coverage loss is reported, not hidden.** Sections needing a live model (verify-api's DAG
+execution, verify-post-from-agent's intake inference) skip themselves and print why, and the runner
+lifts those lines into its summary — a passing script's output is otherwise never shown, so a
+silent skip would read as full coverage. `--tier all` is now 85/85 in ~4s per http script instead
+of 13–23s.
+
 ### Feat: video length is a user choice (quota plan Phase 03)
 `videoTarget` was measured not to control runtime — same product, only the slot varied: tiktok 24s ·
 reels 24s · youtube 26s · feed 24s. It steered rhythm and aspect and nothing else, while the contract

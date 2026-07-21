@@ -34,6 +34,20 @@ const COSTLY = new Set(['imagegen/verify-image-live.ts']);
 //   • verify-email-node.ts → runEmailAgent → isEmailSuppressed → prisma (nurture-thread-repo.ts)
 const TIER_OVERRIDE: Record<string, Tier> = { 'orchestration/verify-email-node.ts': 'db' };
 
+// The http tier runs against a server booted WITHOUT a Gemini key, and its scripts are spawned with
+// the same env so they can tell.
+//
+// Why: POST /orchestration/runs routes every message through the Atria brain, a live model
+// function-calling loop that decides plan-vs-converse. That judgement is not stable — the same
+// message planned on one run and answered on the next — so three http scripts failed
+// intermittently, and each run spent real money doing it. With no key the brain falls back to the
+// deterministic planner (atria-brain.ts `legacyFallback`), which is what these scripts were written
+// against: same assertions, reproducible, free.
+//
+// Cost: the sections that genuinely need a live model (verify-api's DAG execution) skip themselves
+// and say so, rather than passing hollow. Run them by hand against a keyed server.
+const DETERMINISTIC_ENV: Record<string, string> = { GEMINI_API_KEY: '' };
+
 type Tier = 'unit' | 'db' | 'http';
 interface Script { rel: string; abs: string; tier: Tier }
 
@@ -69,7 +83,7 @@ const discover = async (): Promise<Script[]> => {
   return scripts.sort((a, b) => a.rel.localeCompare(b.rel));
 };
 
-interface Result { rel: string; tier: Tier; ok: boolean; ms: number; code: number | null; tail: string }
+interface Result { rel: string; tier: Tier; ok: boolean; ms: number; code: number | null; tail: string; skips: string[] }
 
 const run = (s: Script): Promise<Result> =>
   new Promise((resolve) => {
@@ -77,7 +91,7 @@ const run = (s: Script): Promise<Result> =>
     // Single command string rather than (cmd, args[]) with shell:true — the array form under a
     // shell concatenates unescaped args (node DEP0190). Paths are repo-internal, and quoting the
     // path keeps Windows' spaces (…/Desktop/Claude/AgentPortal/…) intact.
-    const child = spawn(`npx tsx "${s.abs}"`, { cwd: join(SRC_ROOT, '..'), shell: true });
+    const child = spawn(`npx tsx "${s.abs}"`, { cwd: join(SRC_ROOT, '..'), shell: true, env: { ...process.env, ...(s.tier === 'http' ? DETERMINISTIC_ENV : {}) } });
     let out = '';
     const capture = (b: Buffer): void => { out += b.toString(); };
     child.stdout.on('data', capture);
@@ -94,6 +108,10 @@ const run = (s: Script): Promise<Result> =>
       resolve({
         rel: s.rel, tier: s.tier, ok: code === 0, ms: Date.now() - started, code,
         tail: lines.slice(-12).join('\n'),
+        // A PASSING script's output is never printed, so a section that skipped itself would be
+        // invisible — the suite would read as full coverage while silently testing less. Lift the
+        // skip lines out so they reach the summary.
+        skips: lines.filter((l) => /^\s*SKIP\b/.test(l)).map((l) => l.trim()),
       });
     };
     child.on('close', finish);
@@ -121,14 +139,19 @@ interface ServerHandle { stop: () => void; borrowed: boolean }
 
 const startServer = async (): Promise<ServerHandle> => {
   if (await healthOk()) {
-    console.log(`server: reusing the one already listening on :${PORT} (will leave it running)\n`);
+    console.log(`server: reusing the one already listening on :${PORT} (will leave it running)`);
+    // A borrowed server was started by the developer and probably HAS a Gemini key, which puts the
+    // Atria brain back in the loop and makes plan-vs-converse nondeterministic again. Say so — a
+    // silent reuse is how "it passes for me" happens. Killing their server would be worse.
+    console.log('server: NOTE — a borrowed server may hold a GEMINI_API_KEY; the http tier is only');
+    console.log('        deterministic against a server this runner booted. Stop yours to be sure.\n');
     return { stop: () => {}, borrowed: true };
   }
   console.log(`server: booting on :${PORT} …`);
   // `npm start` (tsx src/server.ts), not `dev` — the watcher would hold the process open and
   // restart mid-suite on any file touch. detached so the whole process group can be killed:
   // tsx spawns a child, and killing only the shell leaves the real listener holding the port.
-  const child = spawn('npm start', { cwd: join(SRC_ROOT, '..'), shell: true, detached: true });
+  const child = spawn('npm start', { cwd: join(SRC_ROOT, '..'), shell: true, detached: true, env: { ...process.env, ...DETERMINISTIC_ENV } });
   let log = '';
   child.stdout?.on('data', (b: Buffer) => { log += b.toString(); });
   child.stderr?.on('data', (b: Buffer) => { log += b.toString(); });
@@ -203,6 +226,11 @@ const main = async (): Promise<void> => {
   }
   if (skippedCostly.length && !includeCostly) {
     console.log(`(${skippedCostly.length} billable script(s) skipped — not covered by this run)`);
+  }
+  const withSkips = results.filter((r) => r.skips.length);
+  if (withSkips.length) {
+    console.log(`\nSections skipped inside passing scripts (NOT covered by this run):`);
+    for (const r of withSkips) for (const s of r.skips) console.log(`  ${r.rel}: ${s.replace(/^SKIP\s*/, '')}`);
   }
   process.exit(failed.length ? 1 : 0);
 };

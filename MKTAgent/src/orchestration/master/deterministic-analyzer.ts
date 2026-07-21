@@ -40,6 +40,14 @@ const parseLength = (t: string): string | null => {
   return t.match(/(\d{2,4})\s*(?:words?|từ)\b/i)?.[1] ?? null;
 };
 
+// Words that mean "make a VIDEO". Bare `short` used to be in here and was a costly false positive:
+// "Short punchy Vietnamese Instagram post" planned — and would have billed — a Veo video for a text
+// post, because an adjective was read as the YouTube format. `shorts` (the format is always plural)
+// and `youtube short` keep that intent without swallowing the adjective. Shared by the output
+// inference, the removal targets and the runtime parser so the three can never drift apart.
+const VIDEO_WORDS = 'video|reel|reels|clip|tiktok|shorts|youtube short';
+const VIDEO_RE = new RegExp(`\\b(${VIDEO_WORDS})\\b`, 'i');
+
 // Target VIDEO RUNTIME in seconds. Separate from parseLength, which is about copy length in words —
 // "a 60 second video" and "a 300 word post" are different requests and used to collide in one slot.
 //
@@ -53,7 +61,7 @@ const parseLength = (t: string): string | null => {
 const VIDEO_LENGTH_MIN_SEC = 12;
 const VIDEO_LENGTH_MAX_SEC = 120;
 const parseVideoLength = (t: string): number | null => {
-  if (!/\b(video|reel|clip|short|tiktok)\b/i.test(t)) return null;
+  if (!VIDEO_RE.test(t)) return null;
   const sec = t.match(/(\d{1,3})\s*(?:s|sec|secs|second|seconds|giây|giay)\b/i)?.[1];
   const min = t.match(/(\d{1,2})\s*(?:m|min|mins|minute|minutes|phút|phut)\b/i)?.[1];
   const raw = sec ? Number(sec) : min ? Number(min) * 60 : null;
@@ -206,7 +214,7 @@ const inferOutputs = (t: string): GoalSpec['outputs'] => {
   // A carousel / multiple images → the storyboard produces the slides (NOT a single
   // infographic). assetTypeFromOutputs then resolves storyboard-only → 'carousel'.
   const carousel = /\b(carousel|multiple images?|nhiều ảnh|nhieu anh|nhiều hình|nhieu hinh|nhiều tấm|nhieu tam|slides?|album)\b/i.test(t);
-  const video = /\b(video|reel|clip|short|tiktok)\b/i.test(t);
+  const video = VIDEO_RE.test(t);
   // "storyboard" / "phân cảnh" name the storyboard deliverable unambiguously. "kịch bản" just means
   // SCRIPT — which is `video_script`'s job now, not storyboard's — so it only implies a storyboard
   // when no video was asked for. Without this split, "kịch bản video" would plan a storyboard the
@@ -265,7 +273,7 @@ const REMOVAL_VERB = wordRe('bỏ|bo|remove|drop|đừng|dung|bớt|bot|không c
 
 const OUTPUT_TARGETS: Array<[RemovableOutput, RegExp]> = [
   ['storyboard', wordRe('storyboard|kịch bản|kich ban|phân cảnh|phan canh')],
-  ['video', wordRe('video|reel|clip|short|tiktok')],
+  ['video', wordRe(VIDEO_WORDS)],
   ['infographic', wordRe('infographic|visual|hình ảnh|hinh anh|ảnh|anh|image|hình|hinh')],
   ['research', wordRe('research|nghiên cứu|nghien cuu|competitor|đối thủ')],
   ['strategy', wordRe('strategy|chiến lược|chien luoc')],

@@ -1,12 +1,20 @@
 // Focused smoke (item 3) — POST /posts/from-agent: the Master Agent extracts the brief
-// from a free-text description so the user never hand-fills the form. Live HTTP against
-// :7100, live Gemini (the requirement analyzer). Self-cleans its throwaway tenant.
+// from a free-text description so the user never hand-fills the form. Live HTTP against :7100.
+// Self-cleans its throwaway tenant.
+//
+// Scenario 1 needs a live model on the SERVER and skips itself without one (see LIVE below);
+// everything else — explicit-format extraction, the clarify round-trip, tenancy and the schema
+// guard — is deterministic and always runs.
 import { prisma } from '../db/client.ts';
 import { signSession } from '../lib/auth-jwt.ts';
 import { env } from '../config/env.ts';
 
 const BASE = `http://localhost:${env.PORT}`;
+// Reflects the SERVER's capability: the verify runner boots the http-tier server with
+// GEMINI_API_KEY cleared and spawns these scripts with the same env.
+const LIVE = Boolean(env.GEMINI_API_KEY);
 let failures = 0;
+let skipped = 0;
 const check = (name: string, cond: boolean, extra?: unknown): void => {
   if (cond) console.log(`  ok   ${name}`);
   else { failures++; console.log(`  FAIL ${name}`, extra !== undefined ? JSON.stringify(extra) : ''); }
@@ -43,22 +51,31 @@ async function main(): Promise<void> {
       data: { ownerId: user.id, product: 'AI Automation Course', angle: 'Learn AI fast', platforms: ['facebook'], language: 'en' },
     });
 
-    // 1. Image, Vietnamese, Instagram — creates directly (campaign supplies angle).
-    const r1 = await call('POST', '/posts/from-agent', token, {
-      campaignId: campaign.id,
-      message: 'Short punchy Vietnamese Instagram post about our AI automation course, upbeat brand voice',
-    });
-    check('201 created (no clarify — campaign has angle)', r1.status === 201, r1);
-    const p1 = r1.body?.data?.post;
-    check('status brief', p1?.status === 'brief', p1?.status);
-    // 'text', not 'image' — this expectation predates Fix D (413fef0, 2026-07-08). The message
-    // names no media, parseAssetType returns null, and assetTypeFromOutputs now resolves that to
-    // `text` instead of defaulting to `image`. That default was the bug Fix D existed to kill: an
-    // image-typed post with no image reached the publisher and failed "no asset (image)".
-    check('assetType text (no media requested)', p1?.assetType === 'text', p1?.assetType);
-    check('language vi', p1?.language === 'vi', p1?.language);
-    check('platforms include instagram', Array.isArray(p1?.platforms) && p1.platforms.includes('instagram'), p1?.platforms);
-    check('filled reported', Array.isArray(r1.body?.data?.filled) && r1.body.data.filled.includes('asset type'), r1.body?.data?.filled);
+    // 1. Vietnamese, Instagram, no media named — creates directly (campaign supplies angle).
+    // NEEDS A LIVE MODEL on the server. The message names no format, so resolving assetType to
+    // `text` (rather than asking) is the LLM intake provider's inference. The deterministic
+    // fallback has no opinion, so it asks "What format for this post?" as a required question —
+    // correct for a keyless server, but a different contract. Skipped rather than asserted loosely.
+    if (!LIVE) {
+      skipped += 1;
+      console.log('  SKIP scenario 1 (no GEMINI_API_KEY) — LLM intake inference of assetType/language');
+    } else {
+      const r1 = await call('POST', '/posts/from-agent', token, {
+        campaignId: campaign.id,
+        message: 'Short punchy Vietnamese Instagram post about our AI automation course, upbeat brand voice',
+      });
+      check('201 created (no clarify — campaign has angle)', r1.status === 201, r1);
+      const p1 = r1.body?.data?.post;
+      check('status brief', p1?.status === 'brief', p1?.status);
+      // 'text', not 'image' — this expectation predates Fix D (413fef0, 2026-07-08). The message
+      // names no media, parseAssetType returns null, and assetTypeFromOutputs now resolves that to
+      // `text` instead of defaulting to `image`. That default was the bug Fix D existed to kill: an
+      // image-typed post with no image reached the publisher and failed "no asset (image)".
+      check('assetType text (no media requested)', p1?.assetType === 'text', p1?.assetType);
+      check('language vi', p1?.language === 'vi', p1?.language);
+      check('platforms include instagram', Array.isArray(p1?.platforms) && p1.platforms.includes('instagram'), p1?.platforms);
+      check('filled reported', Array.isArray(r1.body?.data?.filled) && r1.body.data.filled.includes('asset type'), r1.body?.data?.filled);
+    }
 
     // 2. Message asking for a video → assetType video (campaign angle covers the gate).
     const r2 = await call('POST', '/posts/from-agent', token, {
@@ -100,6 +117,7 @@ async function main(): Promise<void> {
     const r4 = await call('POST', '/posts/from-agent', token, { campaignId: campaign.id, message: 'x' });
     check('422 short message', r4.status === 422, r4.status);
 
+    if (skipped) console.log(`\n(${skipped} section(s) skipped — no GEMINI_API_KEY, LLM intake inference not exercised)`);
     console.log(failures === 0 ? '\nPASS — post from-agent green' : `\nFAIL — ${failures} check(s)`);
   } finally {
     await prisma.post.deleteMany({ where: { ownerId: user.id } });
