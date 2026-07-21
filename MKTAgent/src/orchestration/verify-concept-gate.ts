@@ -27,11 +27,8 @@ const stubGemini: GeminiFn = async () => ({
   ] }) }] } }],
 });
 const stubPublish: PublishFn = async (platform) => ({ platform, ok: true, url: `https://dry-run/${platform}`, error: null });
-const stubLlmJson: LlmJsonFn = async (sys) => {
-  if (/ideation/i.test(sys)) return { ideas: ['A', 'B'], chosen: 'A' };
-  if (/storyboard/i.test(sys)) return { frames: [{ index: 0, imagePrompt: 'p', caption: 'c' }] };
-  return { positioning: 'P', audience: 'Aud', pillars: ['p1'], funnelStage: 'awareness' };
-};
+// Shared across the verify-* scripts so a new agent contract is ONE edit, not six.
+import { stubLlmJson } from './testing/stub-llm-json.ts';
 // Recording image stub: captures the last request so we can assert the reference image drives
 // edit-mode conditioning (slice 2).
 let lastImageReq: { mode?: string; referenceImagePath?: string } | null = null;

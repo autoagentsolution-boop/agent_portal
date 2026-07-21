@@ -13,6 +13,9 @@ export type AgentId =
   | 'concept_writer'
   | 'infographic'
   | 'storyboard'
+  // video_script (2026-07-21): plans the shot list / motion / timing / narration that `video`
+  // renders. Split out of storyboard because a still-frame plan carries neither motion nor speech.
+  | 'video_script'
   | 'video'
   // Email path (P4-lite): write an email, then send it (Gmail). Separate from the social pipeline.
   | 'email_writer'

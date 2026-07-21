@@ -185,6 +185,13 @@ const inferOutputs = (t: string): GoalSpec['outputs'] => {
   // A carousel / multiple images → the storyboard produces the slides (NOT a single
   // infographic). assetTypeFromOutputs then resolves storyboard-only → 'carousel'.
   const carousel = /\b(carousel|multiple images?|nhiều ảnh|nhieu anh|nhiều hình|nhieu hinh|nhiều tấm|nhieu tam|slides?|album)\b/i.test(t);
+  const video = /\b(video|reel|clip|short|tiktok)\b/i.test(t);
+  // "storyboard" / "phân cảnh" name the storyboard deliverable unambiguously. "kịch bản" just means
+  // SCRIPT — which is `video_script`'s job now, not storyboard's — so it only implies a storyboard
+  // when no video was asked for. Without this split, "kịch bản video" would plan a storyboard the
+  // video never consumes, on top of the script it actually wanted.
+  const storyboardWord = /\b(storyboard|phân cảnh|phan canh)\b/i.test(t);
+  const scriptWord = /\b(kịch bản|kich ban)\b/i.test(t);
   return {
     needsIdeation: campaign,
     needsStrategy: campaign,
@@ -194,11 +201,11 @@ const inferOutputs = (t: string): GoalSpec['outputs'] => {
     needsResearch: /\b(research|nghiên cứu|nghien cuu|competitor|đối thủ|market research|nghiên cứu thị trường)\b/i.test(t),
     needsTextPost: true,
     needsInfographic: !carousel && (campaign || /\b(infographic|visual|hình ảnh thông tin|hình ảnh|hinh anh|image)\b/i.test(t)),
-    // Storyboard is independent of video. A video request also implies storyboard (the
-    // planner enforces video ⇒ storyboard), and a carousel needs it for the slides, so any
-    // of those enable it. \b works here (all-ASCII keywords).
-    needsStoryboard: carousel || /\b(video|reel|clip|short|tiktok|storyboard|kịch bản|kich ban|phân cảnh|phan canh)\b/i.test(t),
-    needsVideo: /\b(video|reel|clip|short|tiktok)\b/i.test(t),
+    // Storyboard is independent of video (2026-07-21): a video is planned by `video_script` and
+    // rendered from it, so video keywords no longer enable storyboard — that used to plan (and pay
+    // for) 3-6 frames the video never consumed. A carousel still needs it for the slides.
+    needsStoryboard: carousel || storyboardWord || (scriptWord && !video),
+    needsVideo: video,
     needsPublishing: !/\b(draft only|chỉ nháp|chi nhap|don't publish|do not publish|không đăng|khong dang)\b/i.test(t),
     needsEmail: false, // email intent is detected separately (parseEmailIntent) and OR'd in via emailOutputs()
     // DM intent isn't detected by this deterministic analyzer yet (Multi-channel Nurture Nodes Phase

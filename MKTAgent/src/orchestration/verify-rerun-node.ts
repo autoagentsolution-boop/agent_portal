@@ -28,11 +28,8 @@ const stubGemini: GeminiFn = async () => {
   ] }) }] } }] };
 };
 const stubPublish: PublishFn = async (platform) => ({ platform, ok: true, url: `https://dry-run/${platform}`, error: null });
-const stubLlmJson: LlmJsonFn = async (sys) => {
-  if (/ideation/i.test(sys)) return { ideas: ['A', 'B'], chosen: 'A' };
-  if (/storyboard/i.test(sys)) return { frames: [{ index: 0, imagePrompt: 'Stub frame', caption: 'Stub caption' }] };
-  return { positioning: 'P', audience: 'Aud', pillars: ['p1'], funnelStage: 'awareness' };
-};
+// Shared across the verify-* scripts so a new agent contract is ONE edit, not six.
+import { stubLlmJson } from './testing/stub-llm-json.ts';
 const stubVideo = async () => ({ outputFile: '/tmp/stub-video.mp4', cached: false, durationMs: 0 });
 const stubTts = async () => ({ outputFile: '/tmp/stub-voice.wav', cached: false });
 let imageRuns = 0;

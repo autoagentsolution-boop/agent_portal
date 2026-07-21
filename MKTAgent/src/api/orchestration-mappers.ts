@@ -102,9 +102,10 @@ const applyOutputFormat = (goal: GoalSpec, label: string): void => {
   goal.outputs.needsStrategy = fullCampaign;
   goal.outputs.needsInfographic = (/infographic/.test(l) || fullCampaign) && !carousel;
   goal.outputs.needsVideo = /video/.test(l);
-  // Storyboard is independent + implied by video AND by a carousel choice. Enable it for an
-  // explicit storyboard/carousel choice or any video (planner enforces video ⇒ storyboard too).
-  goal.outputs.needsStoryboard = /storyboard/.test(l) || carousel || goal.outputs.needsVideo;
+  // Storyboard is independent of video (2026-07-21): a video is rendered from `video_script`, not
+  // from still frames, so asking for a video no longer silently plans (and pays for) 3-6 unused
+  // storyboard images. Only an explicit storyboard choice or a carousel enables it.
+  goal.outputs.needsStoryboard = /storyboard/.test(l) || carousel;
   goal.outputs.needsPublishing = true;
 };
 

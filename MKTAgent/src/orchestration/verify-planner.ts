@@ -53,20 +53,36 @@ const mkGoal = (outputs: Partial<GoalSpec['outputs']>, platforms: string[] = ['f
   }
 }
 
-// Variant C — text + infographic + video: full pipeline.
+// Variant C — text + infographic + video: full pipeline. Video is rendered from `video_script`, NOT
+// from storyboard frames (2026-07-21), so no storyboard node appears unless it is asked for.
 {
   console.log('Variant C: text + infographic + video');
   const r = planWorkflow(mkGoal({ needsResearch: true, needsTextPost: true, needsInfographic: true, needsVideo: true, needsPublishing: true }));
   check('plan ok', r.ok, r);
   if (r.ok) {
     const ids = agentIdList(r.plan);
-    check('agents = [content_search, concept_writer, infographic, storyboard, video, publisher]',
-      JSON.stringify(ids) === JSON.stringify(['content_search', 'concept_writer', 'infographic', 'storyboard', 'video', 'publisher']), ids);
+    check('agents = [content_search, concept_writer, infographic, video_script, video, publisher]',
+      JSON.stringify(ids) === JSON.stringify(['content_search', 'concept_writer', 'infographic', 'video_script', 'video', 'publisher']), ids);
     const cw = r.plan.nodes.find((n) => n.agentId === 'concept_writer')!;
+    const vs = r.plan.nodes.find((n) => n.agentId === 'video_script')!;
+    const vid = r.plan.nodes.find((n) => n.agentId === 'video')!;
+    check('video_script depends_on concept_writer', vs.dependsOn.includes(cw.nodeId), vs.dependsOn);
+    check('video depends_on video_script', vid.dependsOn.includes(vs.nodeId), vid.dependsOn);
+    check('no storyboard node in a video-only flow', !ids.includes('storyboard'), ids);
+  }
+}
+
+// Variant C2 — video AND storyboard together: two independent branches off concept_writer.
+{
+  console.log('Variant C2: video + storyboard are independent');
+  const r = planWorkflow(mkGoal({ needsTextPost: true, needsStoryboard: true, needsVideo: true, needsPublishing: true }));
+  check('plan ok', r.ok, r);
+  if (r.ok) {
+    const ids = agentIdList(r.plan);
+    check('both branches present', ids.includes('storyboard') && ids.includes('video_script') && ids.includes('video'), ids);
     const sb = r.plan.nodes.find((n) => n.agentId === 'storyboard')!;
     const vid = r.plan.nodes.find((n) => n.agentId === 'video')!;
-    check('storyboard depends_on concept_writer', sb.dependsOn.includes(cw.nodeId), sb.dependsOn);
-    check('video depends_on storyboard', vid.dependsOn.includes(sb.nodeId), vid.dependsOn);
+    check('video does NOT depend on storyboard', !vid.dependsOn.includes(sb.nodeId), vid.dependsOn);
   }
 }
 

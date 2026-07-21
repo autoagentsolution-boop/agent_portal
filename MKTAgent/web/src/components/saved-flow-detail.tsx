@@ -5,6 +5,7 @@
 // view that node's output as CLEAN TEXT (+ the real generated image) — never raw JSON.
 import { useEffect, useState } from 'react';
 import { api, type PlanTier, type PlanTierId, type WorkflowRunDto, type CalendarSlotDto } from '../api/client';
+import { VideoScriptReview, type VideoScript } from './video-script-review.tsx';
 import { ContentCalendar } from './content-calendar';
 import { useRunEvents } from '../hooks/use-run-events';
 import { RunDagView } from './run-dag-view';
@@ -45,9 +46,10 @@ const AGENT_ROLE: Record<string, string> = {
   content_search: 'Gathers research, references and proof points',
   campaign_strategist: 'Plans a multi-post content calendar you review and edit',
   concept_writer: 'Writes the campaign angle and copy variants',
-  infographic: 'Generates the marketing image',
-  storyboard: 'Plans the video scenes and script',
-  video: 'Produces the video prompt',
+  infographic: 'Designs and generates one image that explains the product at a glance',
+  storyboard: 'Plans the detail frames — also the carousel slides',
+  video_script: 'Writes the shot list, motion, timing and voiceover',
+  video: 'Renders each scripted shot and stitches them into one video',
   publisher: 'Publishes to your connected platforms (approval required)',
 };
 
@@ -236,6 +238,8 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
 
   const gateNode = run.nodes.find((n) => n.status === 'awaiting_approval');
   const publishArtifact = run.artifacts.find((a) => a.type === 'publish_result');
+  // The script shown at the video cost gate (see VideoScriptReview).
+  const videoScript = run.artifacts.find((a) => a.type === 'video_script')?.data as VideoScript | undefined;
   const publishUrls = (publishArtifact?.data as { postUrls?: Record<string, string> | null } | undefined)?.postUrls ?? null;
   const requiredActions = run.requiredActions ?? [];
   // needs_connection with cards loaded is handled by the ConnectionRequired block (its
@@ -346,7 +350,17 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
 
       {run.status === 'needs_approval' && gateNode && gateNode.agentId !== 'campaign_strategist' && (
         <div className="gate-block">
-          <p className="muted small">Paused before <strong>{gateNode.agentId.replace(/_/g, ' ')}</strong> — an external action. Approve to proceed.</p>
+          {/* The video gate is a COST gate, not an external-action gate: nothing leaves the system,
+              but it is the most expensive step we run. Since video renders from `video_script`, no
+              frames exist yet — show the script so the spend is reviewable rather than blind. */}
+          {gateNode.agentId === 'video' && videoScript ? (
+            <>
+              <VideoScriptReview script={videoScript} />
+              <p className="muted small">Video generation is the costly step, so it waits for your OK. Not happy with the cut? Re-run the Video Script step first, then approve.</p>
+            </>
+          ) : (
+            <p className="muted small">Paused before <strong>{gateNode.agentId.replace(/_/g, ' ')}</strong> — an external action. Approve to proceed.</p>
+          )}
           <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId)}>
             {busy ? 'Publishing…' : `Approve ${gateNode.agentId.replace(/_/g, ' ')}`}
           </button>

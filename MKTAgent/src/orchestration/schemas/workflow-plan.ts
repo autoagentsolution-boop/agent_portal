@@ -13,6 +13,7 @@ const runnableAgentId = z.enum([
   'concept_writer',
   'infographic',
   'storyboard',
+  'video_script',
   'video',
   'publisher',
   'email_writer',

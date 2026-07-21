@@ -16,6 +16,11 @@ export const artifactType = z.enum([
   'content_concept',
   'infographic_brief',
   'storyboard',
+  // video_script (2026-07-21): the narrative plan a video is rendered FROM — shot list, per-shot
+  // motion + duration, spoken narration, hook and CTA. Video used to derive all of this from
+  // `storyboard` frames, which are composed for stills; a still-image prompt is not a motion
+  // prompt, so the video node was reading the wrong artifact. video now requires THIS instead.
+  'video_script',
   'video_prompt',
   'publish_result',
   'content_calendar',
@@ -96,10 +101,17 @@ export const contentConcept = z.object({
 
 // infographic_agent → infographic_brief. imageRef points at the generated image
 // (an AssetStore ref, e.g. `local:<path>`); null when no image was produced.
+// aspectRatio + onImageText added 2026-07-21 when the node stopped filling a fixed string template
+// and started PLANNING the visual. Both optional so artifacts stored before that still parse.
 export const infographicBrief = z.object({
   visualBrief: z.string(),
   imagePrompt: z.string(),
   imageRef: z.string().nullable().default(null),
+  // Chosen from the post's target platforms (1:1 feed, 9:16 story/reels, 16:9 landscape).
+  aspectRatio: z.enum(['1:1', '9:16', '16:9']).default('1:1'),
+  // The short text lines the image itself carries, in the run language — an overview explainer is
+  // text-bearing by definition. Empty array = a deliberately text-free visual.
+  onImageText: z.array(z.string()).default([]),
 });
 
 // storyboard_agent → storyboard: a set of REAL generated frame images introducing the
@@ -117,10 +129,52 @@ export const storyboard = z.object({
 
 // video_agent → video_prompt: the REAL rendered video (Veo i2v of the storyboard frames,
 // stitched). videoRef is an AssetStore ref (local:<path>), served at /media/videos.
+// video_script_agent → video_script: the plan the video node RENDERS. Deliberately carries the two
+// things a storyboard frame cannot: `motion` (how the shot changes over time, for Veo) and
+// `narration` (a line written to be SPOKEN, not an image caption). Durations are per-shot so a
+// platform-appropriate total replaces the old hardcoded 8s-per-frame.
+export const videoScript = z.object({
+  // The platform whose length/pacing conventions the script was written for (informational; the
+  // runner does not branch on it — the durations already encode the decision).
+  platform: z.string().default(''),
+  hook: z.string(),
+  cta: z.string(),
+  totalDurationSec: z.number().int().positive(),
+  shots: z
+    .array(
+      z.object({
+        index: z.number().int().nonnegative(),
+        // ENGLISH — generates the keyframe still.
+        imagePrompt: z.string().min(1),
+        // ENGLISH — camera move + subject action + pacing. Drives Veo i2v.
+        motion: z.string().min(1),
+        // RUN LANGUAGE — one line describing what this shot shows and does, for the HUMAN reviewing
+        // the script at the cost gate. imagePrompt/motion are English because the image and video
+        // models perform best in English; showing those raw to the user produced a card that was
+        // half their language and half English. Mirrors infographic's visualBrief/imagePrompt split.
+        // Optional so scripts generated before this field existed still parse.
+        brief: z.string().default(''),
+        // Run language — spoken aloud by TTS.
+        narration: z.string().default(''),
+        // Veo renders only 4, 6 or 8 second clips, and the CONTRACT tells the model exactly that —
+        // but the schema stays permissive on purpose. Rejecting a whole script because one shot came
+        // back as 5 would fail the run over something `snapDuration` fixes for free; the runner
+        // snaps every value before the artifact is persisted, so stored scripts are always valid.
+        durationSec: z.number().int().positive(),
+      }),
+    )
+    .min(1),
+});
+
+// shotCount + degraded added 2026-07-21: a keyframe or clip can fail (the image model returns
+// 200-with-no-image ~1/3 of the time), and silently shipping a 3-shot video from a 6-shot script
+// reads to the user as bad quality rather than partial failure. Optional so older rows still parse.
 export const videoPrompt = z.object({
   videoRef: z.string(),
   durationSec: z.number().int().positive().default(8),
   clipCount: z.number().int().nonnegative().default(1),
+  shotCount: z.number().int().nonnegative().default(0),
+  degraded: z.boolean().default(false),
 });
 
 // publisher_agent → publish_result. Mirrors the scheduler's per-platform outcome.
@@ -277,6 +331,7 @@ export const artifactSchemaFor: Record<ArtifactType, z.ZodTypeAny> = {
   content_concept: contentConcept,
   infographic_brief: infographicBrief,
   storyboard,
+  video_script: videoScript,
   video_prompt: videoPrompt,
   publish_result: publishResult,
   content_calendar: contentCalendar,

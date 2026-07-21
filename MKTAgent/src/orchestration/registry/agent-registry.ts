@@ -158,23 +158,45 @@ export const AGENTS: AgentDefinition[] = [
   {
     id: 'infographic',
     name: 'Infographic Agent',
-    description: 'Produce a visual brief + image prompt from the concept.',
+    // ROLE BOUNDARY (2026-07-21): infographic explains the product as an OVERVIEW in ONE image.
+    // storyboard covers feature DETAIL across several. Keeping these distinct is what stops both
+    // nodes from producing the same generic product beauty shot.
+    description: 'Plan and generate ONE image that explains the product at a glance.',
     implStatus: 'live',
     requires: ['content_concept'],
-    optional: [],
+    optional: ['strategy_brief'],
     produces: ['infographic_brief'],
     requiresConnection: false,
     requiresApproval: false,
     emoji: '🖼️',
     group: 'creative',
-    vibe: 'Visual architect: builds on-brand, text-minimal images that anchor copy and pass visual legibility checks.',
-    successMetrics: ['clean, product-grounded, text-light image prompt', 'visual consistency (color/typography/style)', '90%+ generation success on first attempt'],
-    decisionFramework: 'Use the copy and any brand reference to infer visual identity and aesthetic. Generate one image prompt that reads at thumbnail scale. Verify legibility and brand fit, regenerate frame if needed.',
+    vibe: 'Visual explainer: turns a product into one structured, legible overview image that works at thumbnail scale.',
+    successMetrics: ['a structured overview (problem → solution → benefit), not a decorative product shot', 'readable at thumbnail scale — few words, high contrast, one focal point', 'aspect ratio matched to the target platform'],
+    decisionFramework: 'Read the concept and product knowledge, decide what a viewer must understand in two seconds, then lay that out: focal point, supporting structure, and the few words that carry it. Choose the aspect ratio from the target platforms. Verify it still reads when shrunk to a thumbnail.',
+    promptSections: {
+      role: "You are AgentPortal's infographic designer — you compress a product into ONE image a stranger understands at a glance.",
+      goal: 'Plan a single overview visual: what it shows, how it is laid out, the few words on it, and the aspect ratio for its platform.',
+      capabilities: [
+        'Information hierarchy — deciding the one thing a viewer must grasp first',
+        'Explanatory layout (problem → solution → benefit, labelled breakdowns, before → after)',
+        'Thumbnail legibility: high contrast, minimal words, a single focal point',
+        'Platform-aware framing (1:1 feed, 9:16 story/reels, 16:9 landscape)',
+      ],
+      constraints: [
+        'This is an EXPLAINER, not a beauty shot. If it communicates nothing without a caption, it has failed.',
+        'Text on the image is expected — but few words, short lines, and in the user\'s language.',
+        'Ground every claim in product knowledge; invent no features, numbers or awards.',
+        'It must survive being shrunk to a thumbnail. Reject layouts that only work at full size.',
+      ],
+    },
   },
   {
     id: 'storyboard',
     name: 'Storyboard Agent',
-    description: 'Break the concept into scenes + a video script.',
+    // ROLE BOUNDARY (2026-07-21): storyboard is now feature DETAIL across several images, and the
+    // carousel deliverable. It no longer feeds video — `video_script` owns that, because a frame
+    // composed as a still carries no motion and no spoken line. See docs/product/05.
+    description: 'Break the concept into 3–6 detail frames (also the carousel deliverable).',
     implStatus: 'live',
     requires: ['content_concept'],
     optional: [],
@@ -202,22 +224,59 @@ export const AGENTS: AgentDefinition[] = [
     },
   },
   {
+    // video_script (2026-07-21) — the node that exists so `video` stops guessing. Pure planning:
+    // no media, no spend. The cost gate stays downstream on `video`, where the money actually goes.
+    id: 'video_script',
+    name: 'Video Script Agent',
+    description: 'Write the shot list, motion, timing and voiceover a video is rendered from.',
+    implStatus: 'live',
+    requires: ['content_concept'],
+    optional: ['strategy_brief', 'research_summary'],
+    produces: ['video_script'],
+    requiresConnection: false,
+    requiresApproval: false,
+    emoji: '📝',
+    group: 'creative',
+    vibe: 'Scriptwriter: structures a video as a hook, a middle that earns attention, and a close that asks for something.',
+    successMetrics: ['a hook that lands inside 3 seconds', 'motion described per shot, distinct from the still composition', 'total runtime matched to the platform', 'narration written to be spoken, not read'],
+    decisionFramework: 'Decide the story before the pictures: what hooks in 3 seconds, what the middle must prove, what the close asks for. Then per shot, describe both the frame AND how it moves, write the spoken line, and set a length the platform rewards.',
+    promptSections: {
+      role: "You are AgentPortal's video scriptwriter — you decide what a video SAYS and how it MOVES before a single frame is rendered.",
+      goal: 'Write a shot-by-shot script: keyframe, motion, spoken narration and duration for each shot, opening on a hook and closing on a call to action.',
+      capabilities: [
+        'Short-form retention structure — hook in 3 seconds, payoff in the middle, CTA at the close',
+        'Motion direction: camera movement, subject action and pacing per shot',
+        'Platform-aware runtime (fast cuts for tiktok/reels/shorts, longer holds for youtube/landscape)',
+        'Writing for the ear — narration that sounds natural spoken aloud',
+      ],
+      constraints: [
+        'Motion must describe change over time. Restating the still composition is a failed shot.',
+        'Narration is SPEECH, not an image caption or a written headline.',
+        'Total runtime obeys the shortest targeted platform.',
+        'Ground everything in product knowledge; invent no features or claims.',
+      ],
+    },
+  },
+  {
     id: 'video',
     name: 'Video Agent',
-    description: 'Turn the storyboard into a video generation prompt.',
+    // Consumes `video_script`, NOT `storyboard` (changed 2026-07-21). It renders a keyframe per shot
+    // and animates it with that shot's `motion` for that shot's `durationSec`. Previously it read
+    // storyboard frames and fed their STILL-composition prompt to Veo at a hardcoded 8s each.
+    description: 'Render the script: a keyframe per shot, animated and stitched into one video.',
     implStatus: 'live',
-    requires: ['storyboard'],
+    requires: ['video_script'],
     optional: [],
     produces: ['video_prompt'],
     emoji: '🎥',
     group: 'creative',
-    vibe: 'Motion editor: choreographs frame-to-frame transitions and builds pacing that holds attention.',
-    successMetrics: ['smooth inter-frame transitions', 'pacing that matches copy rhythm', 'voiceover in user language, crisp audio sync'],
-    decisionFramework: 'Convert storyboard frames into motion cues (pan, zoom, fade, cut, hold). Choreograph pacing per platform (TikTok ≠ LinkedIn). Ground voiceover in user language and copy. Generate a video prompt that bridges all frames into one cohesive clip.',
+    vibe: 'Motion editor: renders each scripted shot at its own pace and stitches them into one cohesive clip.',
+    successMetrics: ['each shot animated with its own motion cue', 'runtime equal to the scripted total', 'voiceover in user language, crisp audio sync'],
+    decisionFramework: 'Render a keyframe per scripted shot, anchored to the first for visual consistency, then animate each with its own motion cue and duration. Stitch in shot order and narrate from the scripted lines.',
     requiresConnection: false,
-    // Cost gate: Veo i2v is the most expensive step. Halt BEFORE it so the user reviews the
-    // (already-generated) storyboard frames and can re-run/adjust them before spending on
-    // video. The executor's approval-halt supports this sequential gate (video, then publisher).
+    // Cost gate: Veo i2v is the most expensive step. Halt BEFORE it so the user reviews the SCRIPT
+    // (shots, motion, timing, narration) and can adjust it before spending on video. The executor's
+    // approval-halt supports this sequential gate (video, then publisher).
     requiresApproval: true,
     gate: 'cost',
   },

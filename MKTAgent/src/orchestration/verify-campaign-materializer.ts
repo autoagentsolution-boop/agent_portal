@@ -64,7 +64,10 @@ async function main(): Promise<void> {
     check('materialize: image slot DAG has infographic', (await dagFor(byIndex.get(1)!.runId)).includes('infographic'));
     check('materialize: carousel slot DAG has storyboard', (await dagFor(byIndex.get(2)!.runId)).includes('storyboard'));
     const videoDag = await dagFor(byIndex.get(3)!.runId);
-    check('materialize: video slot DAG has storyboard + video', videoDag.includes('storyboard') && videoDag.includes('video'));
+    // A video slot materializes video_script → video. NOT storyboard: a video is rendered from the
+    // script, so pulling storyboard in would generate and bill frames nothing consumes (2026-07-21).
+    check('materialize: video slot DAG has video_script + video', videoDag.includes('video_script') && videoDag.includes('video'), videoDag);
+    check('materialize: video slot DAG has NO storyboard', !videoDag.includes('storyboard'), videoDag);
 
     // assetType per format on the Post row.
     const posts = await prisma.post.findMany({ where: { campaignId: campaign.id, ownerId: user.id }, orderBy: { createdAt: 'asc' } });

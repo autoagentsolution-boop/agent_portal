@@ -1460,3 +1460,20 @@ a { color: var(--accent); }
 .sched-when { font-variant-numeric: tabular-nums; }
 .sched-copy { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 640px) { .sched-row { grid-template-columns: 70px 1fr; } .sched-platforms, .sched-copy { display: none; } }
+
+/* Video script review — shown at the video cost gate, where the user approves the most expensive
+   step in the system. Before this, the gate said "review the frames above"; frames no longer exist
+   at that point (video renders from the script), so there was nothing on screen to approve. */
+.video-script-review { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; background: rgba(255,255,255,0.02); }
+.vsr-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.vsr-line { margin: 6px 0; }
+.vsr-shots { list-style: none; margin: 10px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.vsr-shot { display: grid; grid-template-columns: 54px 1fr; gap: 10px; padding: 8px; border-radius: var(--radius); background: rgba(255,255,255,0.03); }
+.vsr-shot-head { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.vsr-num { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #0b0b0f; font-size: 12px; font-weight: 700; }
+.vsr-dur { font-size: 11px; font-variant-numeric: tabular-nums; opacity: 0.75; }
+.vsr-shot-body p { margin: 2px 0; }
+.vsr-narration { font-style: italic; }
+.vsr-frame { opacity: 0.7; }
+.vsr-cost { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+@media (max-width: 640px) { .vsr-shot { grid-template-columns: 40px 1fr; } .vsr-frame { display: none; } }

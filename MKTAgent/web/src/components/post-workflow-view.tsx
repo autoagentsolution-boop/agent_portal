@@ -8,6 +8,7 @@ import { api, type WorkflowRunDto } from '../api/client';
 import { useRunEvents } from '../hooks/use-run-events';
 import { RunDagView } from './run-dag-view';
 import { ConnectionRequired } from './connection-required';
+import { VideoScriptReview, type VideoScript } from './video-script-review.tsx';
 import { PublishReview } from './publish-review';
 import { ConceptSelectionGate } from './concept-selection-gate';
 import { ConceptCopyEditor, type Copy } from './concept-copy-editor';
@@ -160,7 +161,7 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   // The needs_approval hint depends on WHICH gate we're at — the video cost-gate reads
   // differently from the publisher external-write gate.
   const statusHint = run.status === 'needs_approval' && gateNode?.agentId === 'video'
-    ? 'Paused before video generation (the costly step) — review the storyboard, then approve.'
+    ? 'Paused before video generation (the costly step) — review the script below, then approve.'
     : run.status === 'needs_approval' && gateNode?.agentId === 'concept_writer'
       ? 'Concept ready — pick the version you like (and optionally add a reference image), then Continue.'
       : STATUS_HINT[run.status] ?? run.status;
@@ -184,6 +185,8 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     (n) => (n.agentId === 'infographic' || n.agentId === 'storyboard') && n.status !== 'skipped',
   );
   const publishArtifact = run.artifacts.find((a) => a.type === 'publish_result');
+  // The script the video gate asks the user to approve (see VideoScriptReview).
+  const videoScript = run.artifacts.find((a) => a.type === 'video_script')?.data as VideoScript | undefined;
   const publishUrls = (publishArtifact?.data as { postUrls?: Record<string, string> | null } | undefined)?.postUrls ?? null;
   const requiredActions = run.requiredActions ?? [];
   // needs_connection with cards handled by the ConnectionRequired block (its own continue
@@ -301,7 +304,16 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
           <div className="gate-block">
             {gateNode.agentId === 'video' ? (
               <>
-                <p className="muted small">Storyboard ready — <strong>review the frames above</strong>. Video generation is the costly step, so it waits for your OK. Not happy with a frame? Re-run the storyboard first, then approve.</p>
+                {/* The script, not frames: video renders FROM video_script now, so nothing has been
+                    generated yet at this gate. Showing the shots is what makes the spend reviewable. */}
+                {videoScript ? (
+                  <>
+                    <VideoScriptReview script={videoScript} />
+                    <p className="muted small">Video generation is the costly step, so it waits for your OK. Not happy with the cut? Re-run the Video Script step first, then approve.</p>
+                  </>
+                ) : (
+                  <p className="muted small">Ready to generate the video. This is the costly step, so it waits for your OK.</p>
+                )}
                 <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId)}>
                   {busy ? 'Starting…' : '▶ Approve — generate video'}
                 </button>

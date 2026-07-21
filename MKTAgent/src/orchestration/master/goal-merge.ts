@@ -117,10 +117,10 @@ export const applyRemovals = (goal: GoalSpec, removals: Removals): GoalSpec => {
   if (disable.has('strategy')) next.outputs.needsStrategy = false;
   if (disable.has('research')) next.outputs.needsResearch = false;
   if (disable.has('infographic')) next.outputs.needsInfographic = false;
-  // Video depends on storyboard: removing VIDEO keeps storyboard (still usable for a post),
-  // but removing STORYBOARD must also drop video (can't produce a video without one).
+  // Storyboard and video are INDEPENDENT deliverables (2026-07-21): video renders from
+  // `video_script`, not from storyboard frames. Disabling one no longer disables the other.
   if (disable.has('video')) next.outputs.needsVideo = false;
-  if (disable.has('storyboard')) { next.outputs.needsStoryboard = false; next.outputs.needsVideo = false; }
+  if (disable.has('storyboard')) next.outputs.needsStoryboard = false;
   if (disable.has('publishing')) next.outputs.needsPublishing = false;
 
   if (removals.dropPlatforms.length) {

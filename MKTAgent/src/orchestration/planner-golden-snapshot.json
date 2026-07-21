@@ -139,7 +139,7 @@
         "requiresApproval": false
       },
       {
-        "agentId": "storyboard",
+        "agentId": "video_script",
         "dependsOn": [
           "n1"
         ],
@@ -156,7 +156,6 @@
         "agentId": "publisher",
         "dependsOn": [
           "n1",
-          "n2",
           "n3"
         ],
         "requiresApproval": true
@@ -173,7 +172,7 @@
         "requiresApproval": false
       },
       {
-        "agentId": "storyboard",
+        "agentId": "video_script",
         "dependsOn": [
           "n1"
         ],
@@ -240,13 +239,16 @@
       {
         "agentId": "infographic",
         "dependsOn": [
+          "n3",
           "n4"
         ],
         "requiresApproval": false
       },
       {
-        "agentId": "storyboard",
+        "agentId": "video_script",
         "dependsOn": [
+          "n1",
+          "n3",
           "n4"
         ],
         "requiresApproval": false
@@ -263,7 +265,6 @@
         "dependsOn": [
           "n4",
           "n5",
-          "n6",
           "n7"
         ],
         "requiresApproval": true
@@ -456,7 +457,7 @@
         "requiresApproval": false
       },
       {
-        "agentId": "storyboard",
+        "agentId": "video_script",
         "dependsOn": [
           "n1"
         ],
@@ -473,7 +474,6 @@
         "agentId": "publisher",
         "dependsOn": [
           "n1",
-          "n2",
           "n3"
         ],
         "requiresApproval": true
@@ -548,7 +548,7 @@
         "requiresApproval": false
       },
       {
-        "agentId": "storyboard",
+        "agentId": "video_script",
         "dependsOn": [
           "n1"
         ],
@@ -565,7 +565,6 @@
         "agentId": "publisher",
         "dependsOn": [
           "n1",
-          "n2",
           "n3"
         ],
         "requiresApproval": true
@@ -604,8 +603,10 @@
         "requiresApproval": false
       },
       {
-        "agentId": "storyboard",
+        "agentId": "video_script",
         "dependsOn": [
+          "n1",
+          "n3",
           "n4"
         ],
         "requiresApproval": false
@@ -621,7 +622,6 @@
         "agentId": "publisher",
         "dependsOn": [
           "n4",
-          "n5",
           "n6"
         ],
         "requiresApproval": true

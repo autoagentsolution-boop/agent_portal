@@ -88,12 +88,15 @@ export const formatArtifact = (type: string, data: unknown): ArtifactView => {
       ].filter((f) => f.value.trim()) };
     }
     case 'infographic_brief':
+      // `imagePrompt` is ENGLISH model input and is deliberately NOT shown: rendering it next to a
+      // localized visualBrief gave the user a panel half in their language and half in English.
+      // `onImageText` IS shown — it is the text that appears on the image, in the run's language.
       return {
         title,
         imageUrl: imageUrlFromRef(d.imageRef),
         fields: [
           { label: 'Visual brief', value: str(d.visualBrief) },
-          { label: 'Image prompt', value: str(d.imagePrompt) },
+          { label: 'On-image text', value: Array.isArray(d.onImageText) ? (d.onImageText as unknown[]).map(str).filter((s) => s.trim()).join('\n') : '' },
         ].filter((f) => f.value.trim()),
       };
     case 'storyboard': {
@@ -106,6 +109,24 @@ export const formatArtifact = (type: string, data: unknown): ArtifactView => {
         fields: captions.length ? [{ label: 'Frames', value: captions.join('\n') }] : [],
       };
     }
+    case 'video_script': {
+      // Only the run-language fields (brief, narration, hook, cta). imagePrompt/motion are English
+      // model input and stay out of the user's view — see the note on infographic_brief above.
+      const shots = Array.isArray(d.shots) ? (d.shots as Array<Record<string, unknown>>) : [];
+      const lines = shots.map((s, i) => {
+        const said = str(s.narration).trim();
+        const what = str(s.brief).trim();
+        return `${i + 1}. (${str(s.durationSec)}s) ${what}${said ? `\n   “${said}”` : ''}`;
+      });
+      return {
+        title,
+        fields: [
+          { label: 'Hook', value: str(d.hook) },
+          { label: `${shots.length} shots · ${str(d.totalDurationSec)}s`, value: lines.join('\n') },
+          { label: 'Call to action', value: str(d.cta) },
+        ].filter((f) => f.value.trim()),
+      };
+    }
     case 'video_prompt':
       return {
         title,
@@ -113,6 +134,8 @@ export const formatArtifact = (type: string, data: unknown): ArtifactView => {
         fields: [
           { label: 'Duration', value: d.durationSec ? `${str(d.durationSec)}s` : '' },
           { label: 'Clips', value: d.clipCount ? `${str(d.clipCount)}` : '' },
+          { label: 'Shots planned', value: d.shotCount ? `${str(d.shotCount)}` : '' },
+          { label: 'Note', value: d.degraded ? 'Some shots could not be rendered — the video is shorter than planned.' : '' },
         ].filter((f) => f.value.trim()),
       };
     case 'content_calendar': {

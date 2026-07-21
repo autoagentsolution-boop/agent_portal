@@ -7,7 +7,7 @@
 import { assetTypeFromOutputs, type GoalSpec } from '../schemas/goal-spec.ts';
 import { distinctAssetTypes } from '../../scheduler/resolve-input.ts';
 import { resolveLinkedKnowledge, resolveLinkedReferenceImage } from '../../db/repos/product-knowledge-repo.ts';
-import { campaignIdeas, strategyBrief, storyboard, videoPrompt, contentCalendar, greetingDraft, greetingResult, type ArtifactType } from '../schemas/artifact-schemas.ts';
+import { campaignIdeas, strategyBrief, infographicBrief, storyboard, videoScript, videoPrompt, contentCalendar, greetingDraft, greetingResult, type ArtifactType } from '../schemas/artifact-schemas.ts';
 import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
 import { createPost, getPostForOwner, getPostForCopyGen, attachPostMedia, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
@@ -77,6 +77,11 @@ export interface RunnerContext {
   videoFn?: (req: VideoRequest) => Promise<VideoResult>;
   // Voiceover (TTS) seam (video agent). Stubbed in DRY-RUN verification.
   ttsFn?: (req: TtsRequest) => Promise<{ outputFile: string; cached: boolean }>;
+  // ffmpeg stitch/mux seam (video agent). Added 2026-07-21 to close a gap in this pattern: every
+  // other media op above was injectable, so a DRY-RUN video run still shelled out to ffmpeg on
+  // stub paths and died. Unset → the real stitchClips/muxAudio.
+  stitchFn?: (clipPaths: string[]) => Promise<string>;
+  muxFn?: (videoPath: string, audioPath: string) => Promise<string>;
   // Web-search seam (researcher agent — Gemini Google-Search grounding). Stubbed in
   // DRY-RUN verification so content_search spends nothing / hits no network. When unset
   // the researcher falls back to its own default grounded call (real API) then to a
@@ -503,59 +508,29 @@ const runCampaignStrategist = async (ctx: RunnerContext): Promise<RunnerOutput> 
   };
 };
 
-// Build an image prompt from the concept/strategy upstream. Two deliberately distinct
-// outputs (the fix for the mixed-language + generic-image bugs):
-//   - imagePrompt  → sent to nano-banana. Kept in ENGLISH on purpose: the image model is
-//                    English-trained and produces best results in English. DO NOT localize
-//                    this — it is not a user-facing string. Packed with real product facts
-//                    (productDetails + concept + strategy) so the scene is specific, not
-//                    generic cubes.
-//   - visualBrief  → stored on the artifact and shown to the USER. Composed in the user's
-//                    language (Vietnamese when goal.language=vi) so the brief never mixes
-//                    English scaffolding around Vietnamese content.
-const buildImagePrompt = (ctx: RunnerContext, resolvedLang: string, knowledge?: string | null): { visualBrief: string; imagePrompt: string } => {
-  const { goal, upstream } = ctx;
-  const concept = upstream.content_concept as { mainAngle?: string; keyMessage?: string } | undefined;
-  const strat = upstream.strategy_brief as { positioning?: string; pillars?: string[] } | undefined;
-  const product = goal.slots.product ?? 'the product';
-  // Prefer resolved knowledge (goal slot → campaign brandContext from analyzed docs).
-  const details = (knowledge ?? goal.slots.productDetails)?.trim();
-  const angle = concept?.mainAngle ?? goal.slots.angle ?? product;
-  const keyMessage = concept?.keyMessage?.trim();
-  const positioning = strat?.positioning?.trim();
-  const pillars = strat?.pillars?.length ? strat.pillars.join(', ') : null;
-  // Setup language (post → campaign → user), NOT the chat language — the user-facing brief
-  // matches the post it belongs to, even if the user chatted in another language.
-  const isVi = /^vi/i.test(resolvedLang);
+// The platforms a media node is planning for, as a prompt line. Used by infographic (aspect ratio)
+// and video_script (runtime budget) — both decisions are platform-dependent and were previously
+// hardcoded. Falls back to a neutral hint so a platform-less goal still plans something sane.
+const platformLine = (ctx: RunnerContext): string =>
+  ctx.goal.platforms.length
+    ? `Target platforms: ${ctx.goal.platforms.join(', ')}.`
+    : 'Target platforms: unspecified — assume a square social feed post.';
 
-  // imagePrompt — ENGLISH, knowledge-rich. Subject derived from real product facts.
-  const subject = details ? `${product} — ${details}` : product;
-  const imagePrompt =
-    `A high-quality, photorealistic marketing image for a social media post about ${subject}. ` +
-    `Visual angle: ${angle}.` +
-    (keyMessage ? ` Key message to evoke: ${keyMessage}.` : '') +
-    (positioning ? ` Positioning: ${positioning}.` : '') +
-    (pillars ? ` Themes: ${pillars}.` : '') +
-    ` Clean, professional composition, vibrant and brand-friendly, no text overlay.`;
-
-  // visualBrief — user-facing, localized. No English scaffolding when lang=vi.
-  const visualBrief = isVi
-    ? [
-        `Hình ảnh marketing cho ${product}.`,
-        details ? `Sản phẩm: ${details}.` : null,
-        positioning ? `Định vị: ${positioning}.` : null,
-        `Góc nhìn: ${angle}.`,
-        pillars ? `Chủ đề: ${pillars}.` : null,
-      ].filter(Boolean).join(' ')
-    : [
-        `Marketing visual for ${product}.`,
-        details ? `Product: ${details}.` : null,
-        positioning ? `Positioning: ${positioning}.` : null,
-        `Angle: ${angle}.`,
-        pillars ? `Themes: ${pillars}.` : null,
-      ].filter(Boolean).join(' ');
-
-  return { visualBrief, imagePrompt };
+// Where a video is destined, as a prompt line. Separate from platformLine because the publish
+// targets and the video's cut are different questions: a post can publish to facebook while the
+// video itself is cut as a TikTok vertical the user uploads by hand.
+const VIDEO_TARGET_HINT: Record<string, string> = {
+  feed: 'in-feed video, 1:1 or 4:5, up to ~60s, opens without sound',
+  reels: 'Instagram Reels, 9:16 vertical, 15-30s, fast cuts',
+  tiktok: 'TikTok, 9:16 vertical, 15-30s, hook must land in the first 2 seconds',
+  shorts: 'YouTube Shorts, 9:16 vertical, under 60s',
+  youtube: 'YouTube landscape, 16:9, may run longer and hold shots longer',
+};
+const videoTargetLine = (ctx: RunnerContext): string => {
+  const t = ctx.goal.slots.videoTarget;
+  return t
+    ? `Video target: ${t} — ${VIDEO_TARGET_HINT[t]}. Cut for THIS, not for the publish platforms.`
+    : 'Video target: unspecified — cut for a short vertical social feed.';
 };
 
 // infographic (LIVE): generate a real image from the concept/strategy and attach it
@@ -571,8 +546,25 @@ const localFilePath = (ref?: string | null): string | null =>
 const imageNodeCost = (image: ImageResult): NodeCost =>
   image.usage ? costFromUsage(image.usage, 'gemini-2.5-flash-image') : imageCost();
 
+// Until 2026-07-21 this node filled a fixed string template — same skeleton and same aesthetic
+// adjectives for every product, with `no text overlay` hardcoded into a node named "infographic".
+// It now PLANS the visual through the same prompt-as-data machinery storyboard uses: layout,
+// on-image text, aspect ratio. Deliverable is unchanged — exactly one image, assetType 'image'.
 const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
-  const { visualBrief, imagePrompt } = buildImagePrompt(ctx, await resolveRunLanguage(ctx), await resolveProductKnowledge(ctx));
+  const call = ctx.llmJsonFn ?? callGeminiJson;
+  const language = await resolveRunLanguage(ctx);
+  const { system } = buildAgentPrompt('infographic', {
+    language,
+    userInstructions: await resolveRunInstructions(ctx, 'infographic'),
+  });
+  const prompt = [goalContext(ctx, language, await resolveProductKnowledge(ctx)), platformLine(ctx)].join('\n');
+  let planUsage: GeminiUsage | null = null;
+  const raw = await call(system, prompt, (u) => { planUsage = u; });
+  const parsed = infographicBrief.omit({ imageRef: true }).safeParse(raw);
+  if (!parsed.success) throw new Error(`infographic: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+  const { visualBrief, imagePrompt, aspectRatio, onImageText } = parsed.data;
+  if (planUsage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'infographic', model: env.GEMINI_MODEL, usage: planUsage, runId: ctx.runId, refId: ctx.postId ?? null });
+
   const gen = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
   // Reference image: the post's own upload (concept gate / brief form) OR the selected product's
   // library image — generate FROM it (edit mode) so the infographic follows the reference; else
@@ -593,7 +585,14 @@ const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     if (image.usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'infographic', model: 'gemini-2.5-flash-image', usage: image.usage, runId: ctx.runId, refId: ctx.postId ?? null });
     else await recordMediaCost({ ownerId: ctx.ownerId, surface: 'infographic', model: 'gemini-2.5-flash-image', costUsd: imgCost.costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
   }
-  return { type: 'infographic_brief', data: { visualBrief, imagePrompt, imageRef: ref }, cost: image.cached ? undefined : imgCost };
+  // Node cost = the planning call + the image. Previously only the image, because there was no
+  // planning call to account for.
+  const planCost = planUsage ? costFromUsage(planUsage, env.GEMINI_MODEL) : estimateLlmCost(system + prompt, JSON.stringify(parsed.data));
+  return {
+    type: 'infographic_brief',
+    data: { visualBrief, imagePrompt, imageRef: ref, aspectRatio, onImageText },
+    cost: sumCost(planCost, image.cached ? undefined : imgCost),
+  };
 };
 
 // storyboard (LIVE): plan 3-6 frames (LLM) then GENERATE a real image per frame. The artifact
@@ -690,54 +689,120 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   return { type: 'storyboard', data: parsed.data, cost };
 };
 
-// video (LIVE): animate each storyboard frame into a Veo clip, then ffmpeg-stitch them (in
-// frame order) into ONE mp4 — the real deliverable. Sets it as the Post hero so publish + review
-// use the video. Veo is slow/paid/rate-limited → clips are rendered serially.
+// Veo renders only these clip lengths; anything else snaps to the nearest.
 const VEO_DURATIONS = [4, 6, 8] as const;
 const snapDuration = (d: number): (typeof VEO_DURATIONS)[number] =>
   VEO_DURATIONS.includes(d as (typeof VEO_DURATIONS)[number])
     ? (d as (typeof VEO_DURATIONS)[number])
     : VEO_DURATIONS.reduce((a, b) => (Math.abs(b - d) < Math.abs(a - d) ? b : a), 8);
 
-const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
-  const sb = ctx.upstream.storyboard as
-    | { frames?: Array<{ index: number; imageRef: string; caption?: string; imagePrompt?: string }> }
-    | undefined;
-  const frames = (sb?.frames ?? []).slice().sort((a, b) => a.index - b.index);
-  if (frames.length === 0) throw new Error('video: no storyboard frames to animate (run storyboard first)');
+// video_script (LIVE — 2026-07-21): plan the video BEFORE any pixel is rendered. Pure LLM, no media
+// spend, no gate — the cost gate stays on `video` downstream where Veo actually charges.
+//
+// Why this node exists: `video` used to read `storyboard` frames, which describe STILL compositions
+// and carry captions written for images. It fed that still-description to a motion model and spoke
+// the image captions aloud. Motion and speech are different jobs from framing, so they get their own
+// planner rather than being inferred from an artifact that never encoded them.
+const runVideoScript = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const call = ctx.llmJsonFn ?? callGeminiJson;
+  const language = await resolveRunLanguage(ctx);
+  const { system } = buildAgentPrompt('video_script', {
+    language,
+    userInstructions: await resolveRunInstructions(ctx, 'video_script'),
+  });
+  const prompt = [goalContext(ctx, language, await resolveProductKnowledge(ctx)), platformLine(ctx), videoTargetLine(ctx)].join('\n');
+  let usage: GeminiUsage | null = null;
+  const raw = await call(system, prompt, (u) => { usage = u; });
+  const parsed = videoScript.safeParse(raw);
+  if (!parsed.success) throw new Error(`video_script: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+  if (usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'video_script', model: env.GEMINI_MODEL, usage, runId: ctx.runId, refId: ctx.postId ?? null });
 
-  const durationSec = snapDuration(8);
+  // Normalise rather than trust: renumber shots in playback order and recompute the total from the
+  // parts. A model that miscounts its own arithmetic would otherwise quote a runtime the renderer
+  // never produces, and totalDurationSec is what the cost gate shows the user.
+  const shots = parsed.data.shots
+    .slice()
+    .sort((a, b) => a.index - b.index)
+    .map((s, i) => ({ ...s, index: i, durationSec: snapDuration(s.durationSec) }));
+  const totalDurationSec = shots.reduce((n, s) => n + s.durationSec, 0);
+
+  return {
+    type: 'video_script',
+    data: { ...parsed.data, shots, totalDurationSec },
+    cost: usage ? costFromUsage(usage, env.GEMINI_MODEL) : estimateLlmCost(system + prompt, JSON.stringify(parsed.data)),
+  };
+};
+
+// video (LIVE): render a keyframe per scripted shot, animate each with ITS OWN motion cue for ITS
+// OWN duration, then ffmpeg-stitch them in shot order into ONE mp4 — the real deliverable. Sets it
+// as the Post hero so publish + review use the video. Veo is slow/paid/rate-limited → serial.
+
+const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
+  const script = ctx.upstream.video_script as
+    | { shots?: Array<{ index: number; imagePrompt: string; motion: string; narration?: string; durationSec: number }> }
+    | undefined;
+  const shots = (script?.shots ?? []).slice().sort((a, b) => a.index - b.index);
+  if (shots.length === 0) throw new Error('video: no video script to render (run the Video Script step first)');
+
+  const genImage = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
   const gen = ctx.videoFn ?? ((req: VideoRequest) => generateVideo(req));
 
+  // Visual consistency, ported from runStoryboard: the FIRST successful keyframe anchors every later
+  // one via edit mode, so the product and look don't drift shot to shot. A user-uploaded reference
+  // (concept gate) or the product library image seeds the anchor so even shot 0 follows it.
+  let anchor: string | null = await resolveReferenceImage(ctx);
+
   const clipPaths: string[] = [];
-  let rendered = 0;
-  for (const f of frames) {
-    const localPath = f.imageRef.startsWith('local:') ? f.imageRef.slice('local:'.length) : f.imageRef;
-    // The frame PNG lives on disk (output/images). It can be absent if the container was
-    // rebuilt/recreated without a persisted output volume — the DB still refs the hash but
-    // the file is gone. Fail with an actionable message instead of a raw ENOENT so the UI
-    // tells the user to re-run Storyboard (which regenerates the frames) before Video.
+  // Seconds of the clips that ACTUALLY rendered. Must be accumulated as we go, not derived from the
+  // first N shots afterwards — when a middle shot fails, the surviving clips are not the leading N,
+  // so slicing the script would report a runtime the file does not have.
+  let renderedSec = 0;
+  let cost: NodeCost | undefined;
+  let failedShots = 0;
+
+  for (const s of shots) {
     try {
-      await access(localPath);
-    } catch {
-      throw new Error('storyboard frame image is missing on disk — re-run the Storyboard step to regenerate the frames, then re-run Video');
-    }
-    const motionPrompt = (f.imagePrompt || f.caption || 'Subtle cinematic camera motion, gentle push-in').trim();
-    const clip = await gen({ referenceImagePath: localPath, prompt: motionPrompt, durationSec });
-    clipPaths.push(clip.outputFile);
-    if (!clip.cached) {
-      rendered++;
-      // One ledger row per real rendered clip (Veo is priced per-second, not flat).
-      await recordMediaCost({ ownerId: ctx.ownerId, surface: 'video', model: VEO_MODEL_ID, costUsd: videoClipCost(1, durationSec).costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+      // 1. Keyframe for this shot. Veo is image-to-video, so every shot needs a still to animate.
+      const keyframe = await genImage(
+        anchor
+          ? { prompt: s.imagePrompt, mode: 'edit', referenceImagePath: anchor }
+          : { prompt: s.imagePrompt, mode: 'text-to-image' },
+      );
+      if (!anchor) anchor = keyframe.outputFile;
+      if (!keyframe.cached) {
+        const frameCost = imageNodeCost(keyframe);
+        cost = sumCost(cost, frameCost);
+        if (keyframe.usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'video', model: 'gemini-2.5-flash-image', usage: keyframe.usage, runId: ctx.runId, refId: ctx.postId ?? null });
+        else await recordMediaCost({ ownerId: ctx.ownerId, surface: 'video', model: 'gemini-2.5-flash-image', costUsd: frameCost.costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+      }
+
+      // 2. Animate it with THIS shot's motion cue for THIS shot's duration. Both used to be
+      //    hardcoded — the still-image prompt and a constant 8s.
+      const durationSec = snapDuration(s.durationSec);
+      const clip = await gen({ referenceImagePath: keyframe.outputFile, prompt: s.motion, durationSec });
+      clipPaths.push(clip.outputFile);
+      renderedSec += durationSec;
+      if (!clip.cached) {
+        // One ledger row per real rendered clip, priced by THIS clip's seconds (Veo is per-second).
+        await recordMediaCost({ ownerId: ctx.ownerId, surface: 'video', model: VEO_MODEL_ID, costUsd: videoClipCost(1, durationSec).costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+        cost = sumCost(cost, videoClipCost(1, durationSec));
+      }
+    } catch (e) {
+      // The image model returns 200-with-no-image ~1/3 of the time. Drop the shot rather than the
+      // whole video — but COUNT it, so a truncated deliverable is reported instead of passing as a
+      // quality problem (see `degraded` on the artifact).
+      failedShots++;
+      logger.warn('video_shot_failed', { index: s.index, error: String(e).slice(0, 160) });
     }
   }
+  if (clipPaths.length === 0) throw new Error('video: no shots could be rendered (image or video model returned nothing)');
 
-  let finalVideo = await stitchClips(clipPaths);
+  let finalVideo = await (ctx.stitchFn ?? stitchClips)(clipPaths);
 
-  // Voiceover: narrate the frame captions (already in the campaign language) and mux the audio
-  // onto the stitched (silent) video. Best-effort — a TTS/mux hiccup falls back to the silent
-  // video rather than failing the whole node.
-  const narration = frames.map((f) => (f.caption ?? '').trim()).filter(Boolean).join(' ');
+  // Voiceover: speak the scripted narration lines (written to be SPOKEN, in the run language) and
+  // mux onto the stitched (silent) video. Previously this concatenated storyboard image captions.
+  // Best-effort — a TTS/mux hiccup falls back to the silent video rather than failing the node.
+  const narration = shots.map((s) => (s.narration ?? '').trim()).filter(Boolean).join(' ');
   let ttsRendered = false;
   if (narration) {
     try {
@@ -748,7 +813,7 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
         // One ledger row per real TTS render (cached voiceover made no provider call).
         await recordMediaCost({ ownerId: ctx.ownerId, surface: 'video', model: 'gemini-2.5-flash-tts', costUsd: ttsCost().costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
       }
-      finalVideo = await muxAudio(finalVideo, audio.outputFile);
+      finalVideo = await (ctx.muxFn ?? muxAudio)(finalVideo, audio.outputFile);
     } catch (e) {
       logger.warn('video_voiceover_failed', { error: String(e).slice(0, 160) });
     }
@@ -763,10 +828,20 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     if (!updated) throw new Error('video: could not attach video to post (locked or not found)');
   }
 
-  const parsed = videoPrompt.safeParse({ videoRef, durationSec, clipCount: clipPaths.length });
+  // durationSec is now the SUM of the rendered shots, not a per-clip constant. `degraded` marks a
+  // video that lost shots to a flaky media model, so the UI can say so instead of the user reading
+  // a short video as poor quality.
+  const parsed = videoPrompt.safeParse({
+    videoRef,
+    durationSec: renderedSec,
+    clipCount: clipPaths.length,
+    shotCount: shots.length,
+    degraded: failedShots > 0,
+  });
   if (!parsed.success) throw new Error(`video: malformed output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
-  // Video node cost = Veo clips + the TTS voiceover (previously uncounted).
-  return { type: 'video_prompt', data: parsed.data, cost: sumCost(videoClipCost(rendered), ttsRendered ? ttsCost() : undefined) };
+  if (failedShots > 0) logger.warn('video_degraded', { planned: shots.length, rendered: clipPaths.length, failed: failedShots });
+  // Node cost = keyframes + Veo clips (accumulated per shot above) + the TTS voiceover.
+  return { type: 'video_prompt', data: parsed.data, cost: sumCost(cost, ttsRendered ? ttsCost() : undefined) };
 };
 
 // ── Email path (P4-lite): email_writer drafts, email_agent sends (approval-gated) ──────────────────
@@ -1222,6 +1297,7 @@ const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOut
   concept_writer: runConceptWriter,
   infographic: runInfographic,
   storyboard: runStoryboard,
+  video_script: runVideoScript,
   video: runVideo,
   publisher: runPublisher,
   email_writer: runEmailWriter,

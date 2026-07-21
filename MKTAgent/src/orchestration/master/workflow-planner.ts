@@ -22,7 +22,7 @@ import { validatePlan } from './workflow-validator.ts';
 // plan-tiers' ORDERED agentIdList dedup stays stable. Nodes not requested are simply filtered out.
 const PIPELINE_ORDER: readonly RunnableAgentId[] = [
   'content_search', 'ideation', 'strategy', 'campaign_strategist',
-  'security', 'summarize', 'concept_writer', 'infographic', 'storyboard', 'video',
+  'security', 'summarize', 'concept_writer', 'infographic', 'storyboard', 'video_script', 'video',
   'email_writer', 'email_agent', 'dm_writer', 'dm_agent', 'greeting_writer', 'greeting_agent', 'publisher',
 ];
 
@@ -73,6 +73,9 @@ const targetsFromGoal = (goal: GoalSpec): ArtifactType[] => {
   if (o.needsTextPost) targets.push('content_concept');
   if (o.needsInfographic) targets.push('infographic_brief');
   if (o.needsStoryboard) targets.push('storyboard');
+  // needsVideo pulls video → video_script by `requires`. It no longer pulls storyboard: a video is
+  // rendered from a script, not from still frames (2026-07-21). A user wanting BOTH a carousel and a
+  // video sets both flags and gets two independent branches off content_concept.
   if (o.needsVideo) targets.push('video_prompt');
   if (o.needsPublishing) targets.push('publish_result');
   return targets;

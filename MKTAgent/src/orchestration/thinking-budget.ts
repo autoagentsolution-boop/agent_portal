@@ -42,6 +42,10 @@ export const thinkingBudgetFor = (agentId: string, ctx?: ThinkingBudgetCtx): num
       return REASONING;
     case 'concept_writer':
     case 'email_writer':
+    // Both plan a visual/narrative deliverable whose quality the user pays for downstream in image
+    // and Veo spend — worth scaling their reasoning with the same quality preference as copy.
+    case 'infographic':
+    case 'video_script':
       return creativeBudget(ctx?.goal?.qualityPref);
     case 'summarize':
       return summarizeBudget(ctx?.goal?.slots?.sourceText);

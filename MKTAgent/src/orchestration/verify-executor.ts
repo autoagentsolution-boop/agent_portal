@@ -34,11 +34,8 @@ const stubGemini: GeminiFn = async () => ({
 const stubPublish: PublishFn = async (platform) => ({ platform, ok: true, url: `https://dry-run/${platform}`, error: null });
 
 // Stub the generic JSON LLM (ideation/strategy) — schema-valid output, no spend.
-const stubLlmJson: LlmJsonFn = async (systemPrompt) => {
-  if (/ideation/i.test(systemPrompt)) return { ideas: ['Stub idea A', 'Stub idea B'], chosen: 'Stub idea A' };
-  if (/storyboard/i.test(systemPrompt)) return { frames: [{ index: 0, imagePrompt: 'Stub frame prompt', caption: 'Stub caption' }] };
-  return { positioning: 'Stub positioning', audience: 'Stub audience', pillars: ['p1', 'p2'], funnelStage: 'awareness' };
-};
+// Shared across the verify-* scripts so a new agent contract is ONE edit, not six.
+import { stubLlmJson } from './testing/stub-llm-json.ts';
 // Stub Veo i2v — return a fake mp4 path WITHOUT rendering a real (slow, paid) video.
 const stubVideo = async () => ({ outputFile: '/tmp/stub-video.mp4', cached: false, durationMs: 0 });
 const stubTts = async () => ({ outputFile: '/tmp/stub-voice.wav', cached: false });
@@ -114,7 +111,13 @@ async function main(): Promise<void> {
     const nodeCost = (agentId: string) => full?.nodes.find((n) => n.agentId === agentId);
     check('ideation recorded tokens', (nodeCost('ideation')?.totalTokens ?? 0) > 0, nodeCost('ideation')?.totalTokens);
     check('concept_writer recorded cost>0', (nodeCost('concept_writer')?.costUsd ?? 0) > 0, nodeCost('concept_writer')?.costUsd);
-    check('infographic recorded flat image cost', Math.abs((nodeCost('infographic')?.costUsd ?? 0) - 0.04) < 1e-9, nodeCost('infographic')?.costUsd);
+    // Infographic cost = the flat image price PLUS its planning LLM call (2026-07-21 — the node
+    // used to fill a fixed string template and had no LLM cost at all). Assert the image price is
+    // still in there and the planning delta stays small, rather than pinning an exact total that
+    // moves with token pricing.
+    const infoCost = nodeCost('infographic')?.costUsd ?? 0;
+    check('infographic cost = image + a small planning call', infoCost > 0.04 && infoCost < 0.05, infoCost);
+    check('infographic recorded planning tokens', (nodeCost('infographic')?.totalTokens ?? 0) > 0, nodeCost('infographic')?.totalTokens);
     check('publisher cost is 0 (no spend)', (nodeCost('publisher')?.costUsd ?? -1) === 0, nodeCost('publisher')?.costUsd);
     const runTotal = (full?.nodes ?? []).reduce((s, n) => s + (n.costUsd ?? 0), 0);
     check('run total cost > 0', runTotal > 0, runTotal);

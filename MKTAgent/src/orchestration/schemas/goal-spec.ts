@@ -16,9 +16,10 @@ export const outputFlags = z.object({
   needsResearch: z.boolean().default(false),
   needsTextPost: z.boolean().default(true), // marketing posts almost always need copy
   needsInfographic: z.boolean().default(false),
-  // Storyboard is an INDEPENDENT deliverable: usable for a post on its own. Video DEPENDS
-  // ON it (video ⇒ storyboard, enforced in the planner), but not vice-versa — removing
-  // video keeps storyboard. Default false so a plain post goal stays minimal.
+  // Storyboard and video are INDEPENDENT deliverables (2026-07-21). Storyboard = feature detail
+  // across 3-6 images, and the carousel deliverable. Video renders from `video_script`, NOT from
+  // storyboard frames — a still-frame plan carries no motion and no spoken line. Asking for one
+  // never implies the other. Default false so a plain post goal stays minimal.
   needsStoryboard: z.boolean().default(false),
   needsVideo: z.boolean().default(false),
   needsPublishing: z.boolean().default(true),
@@ -58,6 +59,12 @@ export const goalSlots = z.object({
   accountType: z.enum(['personal', 'business', 'company']).nullish(),
   language: z.string().max(40).nullish(),
   lengthSpec: z.string().max(40).nullish(),
+  // Where the VIDEO will end up, which decides its pacing, runtime and aspect ratio — deliberately
+  // NOT a `platforms` entry. `platforms` is the publish-target enum (Prisma-backed, one adapter per
+  // value); putting tiktok/youtube there would mean "publish here", and the publisher would fail
+  // with "no target platform can publish this post" — the single most common real failure on record.
+  // This slot only steers video_script's cut. The user downloads and uploads manually.
+  videoTarget: z.enum(['feed', 'reels', 'tiktok', 'shorts', 'youtube']).nullish(),
   // Drive media file id(s) — 1 for image/video, CSV for carousel. The publisher
   // node materializes a Post with this heroFile; an empty heroFile makes the live
   // publish path fail-loud (correct: no media = nothing to post).
