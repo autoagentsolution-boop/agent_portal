@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env } from '../config/env.ts';
 import { logger } from '../lib/logger.ts';
+import { classifyQuotaBody, quotaErrorFrom } from '../lib/quota-error.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const VIDEO_OUTPUT_DIR = path.resolve(__dirname, '..', '..', 'output', 'videos');
@@ -59,10 +60,15 @@ const fileExists = async (p: string): Promise<boolean> => {
 // native audio to suppress anyway). Returns the operation name.
 // Veo Tier-1 allows only ~2 RPM, so a pipeline that renders several clips can trip a
 // transient 429 (RESOURCE_EXHAUSTED) even with plenty of daily quota (RPD) left — the burst,
-// not the day, is the limit. A 429/503 here clears once the rolling-minute window rolls over,
-// so we back off and retry rather than failing the whole video node. Waits span >60s total to
-// outlast the window. (A true daily-quota exhaustion just retries a few times then surfaces.)
+// not the day, is the limit. A per-minute 429/503 clears once the rolling-minute window rolls
+// over, so we back off and retry rather than failing the whole video node. Waits span >60s
+// total to outlast the window.
+//
+// A per-DAY exhaustion is classified out of that path (quota-error.ts) and thrown immediately:
+// it does not clear today, so the four waits were ~3.5 min spent to reach the same failure —
+// and worse, runVideo's per-shot catch then shipped a silently truncated video.
 const RETRYABLE_START = new Set([429, 503]);
+const MAX_BACKOFF_MS = 90_000;
 const MAX_START_RETRIES = 4;
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
@@ -96,12 +102,29 @@ const startVeoOp = async (req: VideoRequest, imgB64: string, apiKey: string): Pr
       }
       throw new Error(`veo_start_400: ${text.slice(0, 400)}`);
     }
-    if (RETRYABLE_START.has(r.status) && attempt < MAX_START_RETRIES) {
+    if (RETRYABLE_START.has(r.status)) {
       const text = await r.text();
-      const waitMs = Math.min(75_000, 25_000 * (attempt + 1)); // 25s, 50s, 75s, 75s — outlasts the 1-min RPM window
-      logger.warn('veo_start_rate_limited_retry', { status: r.status, attempt, waitMs, detail: text.slice(0, 160) });
-      await sleep(waitMs);
-      continue;
+      if (r.status === 429) {
+        const q = classifyQuotaBody(text);
+        if (q.scope === 'daily') {
+          logger.warn('veo_daily_quota_exhausted', { model: MODEL, quotaId: q.quotaId });
+          throw quotaErrorFrom(text, MODEL);
+        }
+        // Honour the provider's own retryDelay when it asks for longer than our schedule.
+        if (attempt < MAX_START_RETRIES) {
+          const backoff = Math.min(75_000, 25_000 * (attempt + 1)); // 25s, 50s, 75s, 75s — outlasts the 1-min RPM window
+          const waitMs = Math.min(MAX_BACKOFF_MS, Math.max(backoff, (q.retryAfterSec ?? 0) * 1000));
+          logger.warn('veo_start_rate_limited_retry', { status: r.status, attempt, waitMs, quotaId: q.quotaId, detail: text.slice(0, 160) });
+          await sleep(waitMs);
+          continue;
+        }
+      } else if (attempt < MAX_START_RETRIES) {
+        const waitMs = Math.min(75_000, 25_000 * (attempt + 1));
+        logger.warn('veo_start_rate_limited_retry', { status: r.status, attempt, waitMs, detail: text.slice(0, 160) });
+        await sleep(waitMs);
+        continue;
+      }
+      throw new Error(`veo_start_${r.status}: ${text.slice(0, 400)}`);
     }
     if (!r.ok) throw new Error(`veo_start_${r.status}: ${(await r.text()).slice(0, 400)}`);
     const op = (await r.json()) as { name?: string };

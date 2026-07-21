@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { env } from '../config/env.ts';
 import { logger } from '../lib/logger.ts';
 import { withRetry } from '../lib/retry.ts';
+import { quotaErrorFrom } from '../lib/quota-error.ts';
 import type { GeminiUsage } from '../orchestration/executor/node-cost.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -78,6 +79,9 @@ const callNanoBanana = async (req: ImageRequest): Promise<{ png: Buffer; usage: 
   });
   if (!response.ok) {
     const body = await response.text();
+    // 429 splits into a transient per-minute burst (retried by withRetry) and a per-day exhaustion
+    // (not retryable today — surfaced immediately so the caller can stop instead of truncating).
+    if (response.status === 429) throw quotaErrorFrom(body, MODEL);
     throw new Error(`nano_banana_http_${response.status}: ${body.slice(0, 300)}`);
   }
   const json = (await response.json()) as {

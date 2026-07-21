@@ -1,6 +1,6 @@
 # Video length as a user choice, under a hard quota budget
 
-**Branch:** `pivot/video-content-farm` · **Created:** 2026-07-21 · **Status:** PROPOSED, not started
+**Branch:** `pivot/video-content-farm` · **Created:** 2026-07-21 · **Status:** Phase 01 DONE; 02–03 not started
 
 Follow-on to `plans/260721-1231-media-quality-video-script-agent/` (shipped). Written because a
 controlled live test showed `videoTarget` cannot do what it implies, and because the real ceiling
@@ -76,7 +76,7 @@ Phase files are **not written yet** — this document is the proposal to react t
 
 | # | Phase | Effort | What it does |
 |---|---|---|---|
-| 01 | Classify RPD vs RPM | S | Read the 429 body (`RESOURCE_EXHAUSTED` quota metric names the limit). A per-day exhaustion stops retrying immediately instead of burning 3.5 min; a per-minute burst keeps today's backoff. Quota errors get their own error class so `runVideo` can refuse to mark them `degraded`. |
+| 01 | Classify RPD vs RPM | S | **DONE 2026-07-21.** `lib/quota-error.ts` reads the `QuotaFailure` `quotaId` + `RetryInfo.retryDelay`. Daily → throw at once (`veo.ts`, `nano-banana.ts`, `withRetry`); per-minute → old backoff, now floored by the provider's own `retryDelay`. `runVideo` re-throws a daily quota naming the model, the N-of-M shot count and the cached remainder, instead of marking it `degraded`. Unknown body shapes classify as per-minute, so the fallback is the old behaviour. `lib/verify-quota-error.ts` + 4 cases in `verify-video-script.ts`; suite 70/70. |
 | 02 | Pre-flight quota budget | M | Track requests spent per day per owner (the `mkt_llm_usage` ledger already records every call with a timestamp — count from it, no new table). Surface "this needs N requests, you have M left" at the cost gate next to the dollar figure. |
 | 03 | User-chosen length | M | Explicit shot-count / length control at setup, shown against remaining quota. `videoTarget` demoted to what it actually does: rhythm + aspect. |
 

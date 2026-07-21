@@ -5,6 +5,38 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-21
 
+### Fix: a daily provider-quota stop no longer ships a silently truncated video
+Gemini's free tier is **3 requests/min and 10/day**, and `runVideo` spends one image + one Veo call
+per shot — so a 5-shot video is the entire daily quota. Both 429 kinds were handled identically:
+
+- **Per-minute burst** — clears in <60s, so backing off was right.
+- **Per-day exhaustion** — does not clear today. `veo.ts` burnt ~3.5 min of backoff (25/50/75/75s)
+  to reach the same failure, and `runVideo`'s per-shot catch then counted it as a flaky shot and
+  returned `degraded: true`. The user waited ~10 minutes and received a 2-shot video with no reason
+  given. That is worse than a clean refusal.
+
+`lib/quota-error.ts` classifies the two by reading the `RESOURCE_EXHAUSTED` payload — the
+`QuotaFailure` violation's `quotaId` (`...PerDayPerProjectPerModel-FreeTier` vs `...PerMinute...`)
+and `RetryInfo.retryDelay`. An unrecognised or non-JSON body classifies as **per-minute**, so an
+unexpected shape degrades to the previous retrying behaviour rather than to a hard stop.
+
+- `withRetry` skips its schedule for a daily error only; per-minute 429s keep the old path (the
+  error carries `status = 429`, so the existing status taxonomy is untouched).
+- `veo.ts` throws immediately on a daily quota, and now honours `retryDelay` as a floor on the
+  per-minute backoff (capped at 90s).
+- `nano-banana.ts` raises the same typed error from its 429 branch.
+- `runVideo` re-throws a daily quota instead of degrading, naming the model, how many of N shots
+  rendered, and that the finished ones are cached — resuming is genuinely free because `veo.ts` and
+  `nano-banana.ts` are content-hash filesystem caches on the persisted `mktagent-media` volume.
+
+`degraded` stays reserved for what it was meant for: the flaky "200 with no image" case.
+Verified by `lib/verify-quota-error.ts` (new) plus four cases added to `verify-video-script.ts`.
+Suite is 70/70.
+
+Phase 01 of `plans/260721-1343-video-length-and-quota-budget/`. Phases 02 (pre-flight quota budget)
+and 03 (user-chosen length) are unstarted and blocked on measuring whether the image model shares
+Veo's 10/day bucket.
+
 ### Feat: `video_script` agent — video decoupled from storyboard
 New 19th registry node. The video DAG becomes `content_concept → video_script → video`; **storyboard
 leaves the video path entirely** and keeps its own job (detail frames + the carousel deliverable).

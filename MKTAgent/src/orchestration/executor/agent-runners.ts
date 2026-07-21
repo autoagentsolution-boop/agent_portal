@@ -37,6 +37,7 @@ import { access } from 'node:fs/promises';
 import { listArtifacts } from './artifact-store.ts';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
 import { logger } from '../../lib/logger.ts';
+import { isDailyQuotaError, QuotaExhaustedError } from '../../lib/quota-error.ts';
 import { estimateLlmCost, imageCost, videoClipCost, ttsCost, sumCost, costFromUsage, type NodeCost, type GeminiUsage } from './node-cost.ts';
 import { runResearch } from '../../agents/researcher/run-research.ts';
 import type { GroundedSearchFn } from '../../agents/researcher/grounded-search.ts';
@@ -788,6 +789,20 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
         cost = sumCost(cost, videoClipCost(1, durationSec));
       }
     } catch (e) {
+      // A daily provider-quota stop is NOT a flaky shot: it will hit every remaining shot too, so
+      // dropping it here shipped a silently truncated video with no explanation. Fail the node
+      // instead, naming quota. Resuming is nearly free — veo.ts and nano-banana.ts are content-hash
+      // filesystem caches on a persisted volume, so a re-run replays the finished shots as cache
+      // hits (no API call, no cost, no quota) and only renders the remainder.
+      if (isDailyQuotaError(e)) {
+        const done = clipPaths.length;
+        logger.warn('video_quota_stop', { model: e.model, rendered: done, planned: shots.length });
+        throw new QuotaExhaustedError(
+          `video: daily provider quota exhausted after rendering ${done} of ${shots.length} shots (${e.model}). ` +
+            `Finished shots are cached — re-run after the quota resets and only the remaining ${shots.length - done} will call the provider.`,
+          { scope: 'daily', model: e.model, quotaId: e.quotaId, retryAfterSec: e.retryAfterSec },
+        );
+      }
       // The image model returns 200-with-no-image ~1/3 of the time. Drop the shot rather than the
       // whole video — but COUNT it, so a truncated deliverable is reported instead of passing as a
       // quality problem (see `degraded` on the artifact).
