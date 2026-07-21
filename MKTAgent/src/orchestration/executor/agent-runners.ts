@@ -520,18 +520,43 @@ const platformLine = (ctx: RunnerContext): string =>
 // Where a video is destined, as a prompt line. Separate from platformLine because the publish
 // targets and the video's cut are different questions: a post can publish to facebook while the
 // video itself is cut as a TikTok vertical the user uploads by hand.
+// Rhythm + aspect ONLY. These hints used to carry runtime claims ("15-30s", "under 60s", "may run
+// longer") and a controlled live test showed they did nothing: same product, only the target varied,
+// and every cut came back 24-26s. Runtime is now `videoLengthSec`, an explicit user choice. Leaving
+// duration language here would put a second, weaker instruction in the prompt competing with it.
 const VIDEO_TARGET_HINT: Record<string, string> = {
-  feed: 'in-feed video, 1:1 or 4:5, up to ~60s, opens without sound',
-  reels: 'Instagram Reels, 9:16 vertical, 15-30s, fast cuts',
-  tiktok: 'TikTok, 9:16 vertical, 15-30s, hook must land in the first 2 seconds',
-  shorts: 'YouTube Shorts, 9:16 vertical, under 60s',
-  youtube: 'YouTube landscape, 16:9, may run longer and hold shots longer',
+  feed: 'in-feed video, 1:1 or 4:5, opens without sound so meaning must survive muted',
+  reels: 'Instagram Reels, 9:16 vertical, fast cuts, high energy',
+  tiktok: 'TikTok, 9:16 vertical, hook must land in the first 2 seconds, native and unpolished',
+  shorts: 'YouTube Shorts, 9:16 vertical, punchy and self-contained',
+  youtube: 'YouTube landscape, 16:9, holds shots longer and breathes between beats',
 };
 const videoTargetLine = (ctx: RunnerContext): string => {
   const t = ctx.goal.slots.videoTarget;
   return t
-    ? `Video target: ${t} — ${VIDEO_TARGET_HINT[t]}. Cut for THIS, not for the publish platforms.`
-    : 'Video target: unspecified — cut for a short vertical social feed.';
+    ? `Video target: ${t} — ${VIDEO_TARGET_HINT[t]}. This sets RHYTHM and ASPECT only; runtime is set separately below. Cut for THIS, not for the publish platforms.`
+    : 'Video target: unspecified — cut for a short vertical social feed (rhythm and aspect only).';
+};
+
+// Veo renders 4/6/8s clips, so a target runtime bounds the shot count: you cannot reach T seconds
+// with fewer than ceil(T/8) shots, nor stay within it with more than floor(T/4).
+export const DEFAULT_VIDEO_LENGTH_SEC = 24;
+export const shotBounds = (targetSec: number): { min: number; max: number } => ({
+  min: Math.max(3, Math.ceil(targetSec / 8)),
+  max: Math.max(3, Math.floor(targetSec / 4)),
+});
+
+// The runtime directive. Always emitted — when the user chose nothing we state the default
+// explicitly rather than leaving the model to invent a length, which is what produced a hard 24s
+// floor-and-ceiling regardless of what anyone asked for.
+const videoLengthLine = (ctx: RunnerContext): string => {
+  const chosen = ctx.goal.slots.videoLengthSec ?? null;
+  const target = chosen ?? DEFAULT_VIDEO_LENGTH_SEC;
+  const { min, max } = shotBounds(target);
+  return [
+    `Video runtime: TARGET ${target} seconds total${chosen ? ' — the user chose this explicitly, honour it' : ' (default; no length was requested)'}.`,
+    `Use ${min} to ${max} shots so the per-shot durations (4, 6 or 8s each) sum to about ${target}s.`,
+  ].join(' ');
 };
 
 // infographic (LIVE): generate a real image from the concept/strategy and attach it
@@ -711,7 +736,7 @@ const runVideoScript = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     language,
     userInstructions: await resolveRunInstructions(ctx, 'video_script'),
   });
-  const prompt = [goalContext(ctx, language, await resolveProductKnowledge(ctx)), platformLine(ctx), videoTargetLine(ctx)].join('\n');
+  const prompt = [goalContext(ctx, language, await resolveProductKnowledge(ctx)), platformLine(ctx), videoTargetLine(ctx), videoLengthLine(ctx)].join('\n');
   let usage: GeminiUsage | null = null;
   const raw = await call(system, prompt, (u) => { usage = u; });
   const parsed = videoScript.safeParse(raw);
@@ -721,10 +746,22 @@ const runVideoScript = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   // Normalise rather than trust: renumber shots in playback order and recompute the total from the
   // parts. A model that miscounts its own arithmetic would otherwise quote a runtime the renderer
   // never produces, and totalDurationSec is what the cost gate shows the user.
-  const shots = parsed.data.shots
+  const ordered = parsed.data.shots
     .slice()
     .sort((a, b) => a.index - b.index)
-    .map((s, i) => ({ ...s, index: i, durationSec: snapDuration(s.durationSec) }));
+    .map((s) => ({ ...s, durationSec: snapDuration(s.durationSec) }));
+
+  // Enforce the UPPER bound only. Every extra shot is a real keyframe + a real Veo clip, so a model
+  // that returns 12 shots for a 24s target bills for a video nobody approved. The last shot carries
+  // the CTA, so trimming drops from the MIDDLE and keeps hook and close intact. Under-delivery is
+  // deliberately not corrected — it costs less than asked, and the gate shows the true runtime.
+  const { max } = shotBounds(ctx.goal.slots.videoLengthSec ?? DEFAULT_VIDEO_LENGTH_SEC);
+  const trimmed = ordered.length > max ? [...ordered.slice(0, max - 1), ordered[ordered.length - 1]!] : ordered;
+  if (trimmed.length < ordered.length) {
+    logger.warn('video_script_shots_trimmed', { returned: ordered.length, kept: trimmed.length, max, targetSec: ctx.goal.slots.videoLengthSec ?? DEFAULT_VIDEO_LENGTH_SEC });
+  }
+
+  const shots = trimmed.map((s, i) => ({ ...s, index: i }));
   const totalDurationSec = shots.reduce((n, s) => n + s.durationSec, 0);
 
   return {

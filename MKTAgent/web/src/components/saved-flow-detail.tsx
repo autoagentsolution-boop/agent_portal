@@ -355,7 +355,7 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
               frames exist yet — show the script so the spend is reviewable rather than blind. */}
           {gateNode.agentId === 'video' && videoScript ? (
             <>
-              <VideoScriptReview script={videoScript} />
+              <VideoScriptReview script={videoScript} requestedSec={(run.goal as { slots?: { videoLengthSec?: number | null } } | null)?.slots?.videoLengthSec ?? null} />
               <p className="muted small">Video generation is the costly step, so it waits for your OK. Not happy with the cut? Re-run the Video Script step first, then approve.</p>
             </>
           ) : (

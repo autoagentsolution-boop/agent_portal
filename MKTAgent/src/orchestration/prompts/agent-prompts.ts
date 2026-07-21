@@ -109,12 +109,12 @@ Return ONLY valid JSON of this exact shape:
     { "index": 0, "imagePrompt": "ENGLISH prompt for the keyframe still: subject, composition, lighting, style", "motion": "ENGLISH description of how this shot MOVES: camera move, subject action, pacing", "brief": "one short line describing this shot, for the human reviewing the script", "narration": "the line spoken over this shot", "durationSec": 4 }
   ]
 }
-- 3 to 6 shots. index starts at 0 and increments by 1 in playback order.
+- SHOT COUNT AND TOTAL RUNTIME ARE SET BY THE "Video runtime" DIRECTIVE ABOVE — obey the shot range and the target total it states. Never substitute your own idea of a good length. index starts at 0 and increments by 1 in playback order.
 - SHOT 0 IS THE HOOK. It must land the "hook" line and its durationSec must be 4. Retention on short video is decided in the first three seconds; do not open with a slow establishing shot.
 - THE FINAL SHOT IS THE CTA and must land the "cta" line.
 - "durationSec" is EXACTLY one of 4, 6 or 8 (the video model renders only these lengths).
 - "totalDurationSec" MUST equal the sum of every shot's durationSec.
-- Cut for the VIDEO TARGET stated above, not for the publish platforms — they answer different questions ("where it gets posted" vs "how it is edited"). Vertical short-form (reels, tiktok, shorts) stays at or under 30 seconds and cuts fast; youtube landscape may run longer and hold shots longer; an in-feed video sits between. Set "platform" to the video target.
+- Cut for the VIDEO TARGET stated above, not for the publish platforms — they answer different questions ("where it gets posted" vs "how it is edited"). The target sets RHYTHM and ASPECT: vertical short-form (reels, tiktok, shorts) cuts fast and hard, youtube landscape holds shots longer, an in-feed video sits between. It does NOT set length — the runtime directive does. Set "platform" to the video target.
 - "motion" describes CHANGE OVER TIME — what the camera does (push in, pan left, orbit, static hold) and what the subject does. It must NOT restate the composition already in "imagePrompt". A shot whose motion is just its imagePrompt reworded is a failed shot.
 - CONSISTENCY IS REQUIRED: begin every "imagePrompt" with one shared style+subject anchor phrase (identical wording), then add what is unique to that shot.
 - LANGUAGE SPLIT — get this exactly right. "imagePrompt" and "motion" are ENGLISH because they are fed to image and video models, which perform best in English; the user never reads them. EVERYTHING the user reads — "hook", "cta", every "narration", and every "brief" — is written ENTIRELY in the LANGUAGE specified above. Never mix the two inside one field.

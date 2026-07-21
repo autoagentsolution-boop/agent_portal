@@ -40,6 +40,27 @@ const parseLength = (t: string): string | null => {
   return t.match(/(\d{2,4})\s*(?:words?|từ)\b/i)?.[1] ?? null;
 };
 
+// Target VIDEO RUNTIME in seconds. Separate from parseLength, which is about copy length in words —
+// "a 60 second video" and "a 300 word post" are different requests and used to collide in one slot.
+//
+// Only fires when a video was actually asked for: a duration in a non-video message ("reply within
+// 2 minutes") must not silently set a video length. Requires an explicit unit so a bare number can
+// never be mistaken for a runtime.
+//
+// CLAMPED, not rejected, to the renderable range (12-120s): a request for 5s or 10min still produces
+// a video rather than failing the whole analysis. The clamp is safe to hide because the user approves
+// the script at the cost gate, where the real runtime and its price are both shown before any spend.
+const VIDEO_LENGTH_MIN_SEC = 12;
+const VIDEO_LENGTH_MAX_SEC = 120;
+const parseVideoLength = (t: string): number | null => {
+  if (!/\b(video|reel|clip|short|tiktok)\b/i.test(t)) return null;
+  const sec = t.match(/(\d{1,3})\s*(?:s|sec|secs|second|seconds|giây|giay)\b/i)?.[1];
+  const min = t.match(/(\d{1,2})\s*(?:m|min|mins|minute|minutes|phút|phut)\b/i)?.[1];
+  const raw = sec ? Number(sec) : min ? Number(min) * 60 : null;
+  if (raw === null || !Number.isFinite(raw) || raw <= 0) return null;
+  return Math.min(VIDEO_LENGTH_MAX_SEC, Math.max(VIDEO_LENGTH_MIN_SEC, Math.round(raw)));
+};
+
 const parseProduct = (m: string): string | null => {
   const explicit = sentenceAfter(m, ['product', 'offer', 'sản phẩm', 'san pham', 'khóa', 'khoa']);
   if (explicit) return explicit;
@@ -276,6 +297,7 @@ export const analyzeDeterministic = (message: string): GoalSpec => {
     targetAudience: sentenceAfter(m, ['audience', 'khách hàng', 'khach hang', 'target', 'đối tượng']) ?? undefined,
     language: parseLanguage(m) ?? undefined,
     lengthSpec: parseLength(m) ?? undefined,
+    videoLengthSec: parseVideoLength(m) ?? undefined,
     emailTo: email.to ?? undefined,
     emailSubject: email.subject ?? undefined,
   };

@@ -5,6 +5,33 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-21
 
+### Feat: video length is a user choice (quota plan Phase 03)
+`videoTarget` was measured not to control runtime — same product, only the slot varied: tiktok 24s ·
+reels 24s · youtube 26s · feed 24s. It steered rhythm and aspect and nothing else, while the contract
+hardcoded "3 to 6 shots", making anything outside 12–48s structurally impossible regardless of what
+was asked for.
+
+New `goal.slots.videoLengthSec` (12–120s). The bounds are a **cost** decision, not a provider limit —
+the free-tier "10 requests/day" premise this was scoped against was retracted. Veo renders 4/6/8s
+clips, so a target bounds the shot count at `ceil(T/8)`–`floor(T/4)`; 24s still yields 3–6, so
+default behaviour is unchanged. A `Video runtime:` directive states the target and range on every
+call — including when nothing was chosen, so the model is never left to invent a length. The contract
+now defers shot count to that directive instead of hardcoding it, and `VIDEO_TARGET_HINT` lost its
+duration claims so a weaker instruction no longer competes with the explicit one.
+
+The runner **enforces the upper bound only**: every extra shot is a real keyframe plus a real Veo
+clip, so a model returning 9 shots against a 24s target would bill for a video nobody approved.
+Trimming drops from the middle and keeps shot 0 (hook) and the original last shot (CTA) — trimming
+the tail would silently delete the close. Under-delivery is deliberately left alone: it costs less
+than asked, and the gate shows the true runtime.
+
+Reachability matters — no UI edits goal slots, so `analyzeDeterministic` now parses a runtime
+(`parseVideoLength`, EN + VI, seconds or minutes). It fires **only when video intent is present**, so
+"reply within 5 minutes" cannot set a video length, and it is kept separate from `parseLength`, which
+is copy length in words. Out-of-range requests clamp rather than fail the whole analysis; the gate
+shows the real length before any spend. The review card names the gap when the delivered runtime
+can't match the request exactly (4/6/8s steps).
+
 ### Feat: provider-spend panel in the super-admin console (quota plan Phase 02)
 `GET /admin/provider-spend` + a panel at `/superadminatria101`. Reports what **we** pay the model
 provider — rolling last-24h / 7d / 30d / lifetime totals, a 14-day daily series, and 30-day

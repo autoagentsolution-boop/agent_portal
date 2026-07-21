@@ -65,6 +65,16 @@ export const goalSlots = z.object({
   // with "no target platform can publish this post" — the single most common real failure on record.
   // This slot only steers video_script's cut. The user downloads and uploads manually.
   videoTarget: z.enum(['feed', 'reels', 'tiktok', 'shorts', 'youtube']).nullish(),
+  // Target RUNTIME of the video, in seconds — the user's choice, because `videoTarget` never
+  // controlled it. Measured 2026-07-21, same product, only the target varied: tiktok 24s · reels 24s
+  // · youtube 26s · feed 24s. It steers rhythm and aspect, nothing else, so length needed its own
+  // slot rather than a hint the model was free to ignore.
+  //
+  // Bounds are a COST decision, not a provider limit (the free-tier "10 requests/day" premise this
+  // was originally scoped against was retracted — see plans/260721-1343-…/plan.md). Veo renders
+  // 4/6/8s clips, so 12s = 3×4 is the shortest coherent hook→CTA arc and 120s = 15×8 is the longest
+  // we let one approval authorise: at ~$0.05/s of Veo plus a keyframe per shot, 120s is ~$6.60.
+  videoLengthSec: z.number().int().min(12).max(120).nullish(),
   // Drive media file id(s) — 1 for image/video, CSV for carousel. The publisher
   // node materializes a Post with this heroFile; an empty heroFile makes the live
   // publish path fail-loud (correct: no media = nothing to post).

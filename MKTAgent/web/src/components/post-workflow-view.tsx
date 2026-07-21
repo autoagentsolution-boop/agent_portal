@@ -308,7 +308,7 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
                     generated yet at this gate. Showing the shots is what makes the spend reviewable. */}
                 {videoScript ? (
                   <>
-                    <VideoScriptReview script={videoScript} />
+                    <VideoScriptReview script={videoScript} requestedSec={(run.goal as { slots?: { videoLengthSec?: number | null } } | null)?.slots?.videoLengthSec ?? null} />
                     <p className="muted small">Video generation is the costly step, so it waits for your OK. Not happy with the cut? Re-run the Video Script step first, then approve.</p>
                   </>
                 ) : (

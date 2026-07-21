@@ -30,12 +30,18 @@ export interface VideoScript {
 // Veo is priced per second of rendered clip. Kept in sync with cost/node-cost.ts `videoClipCost`.
 const VEO_USD_PER_SEC = 0.05;
 
-export function VideoScriptReview({ script }: { script: VideoScript }): JSX.Element | null {
+// `requestedSec` is goal.slots.videoLengthSec — the length the user asked for. Shown next to the
+// delivered runtime ONLY when the two differ: Veo renders 4/6/8s clips, so a 50s request lands on
+// 48s or 52s and the script cannot always hit the number exactly. Saying so is the difference
+// between "the system ignored me" (the old behaviour, where target did nothing) and "it got as
+// close as the renderer allows".
+export function VideoScriptReview({ script, requestedSec }: { script: VideoScript; requestedSec?: number | null }): JSX.Element | null {
   const shots = script.shots ?? [];
   if (!shots.length) return null;
 
   const totalSec = script.totalDurationSec ?? shots.reduce((n, s) => n + s.durationSec, 0);
   const estUsd = totalSec * VEO_USD_PER_SEC;
+  const missedTarget = typeof requestedSec === 'number' && requestedSec !== totalSec;
 
   return (
     <div className="video-script-review">
@@ -43,6 +49,7 @@ export function VideoScriptReview({ script }: { script: VideoScript }): JSX.Elem
         <strong>🎬 Video script</strong>
         <span className="muted small">
           {shots.length} shot{shots.length === 1 ? '' : 's'} · {totalSec}s
+          {missedTarget ? ` (you asked for ${requestedSec}s — clips render in 4/6/8s steps)` : ''}
           {script.platform ? ` · cut for ${script.platform}` : ''}
         </span>
       </div>
