@@ -4,6 +4,32 @@ Living record of features shipped and their real relationships in the app. Each 
 
 ## Features & relationships
 
+### Video renders from a script, not storyboard frames — `video_script` agent (`1492937`)
+19th registry node. The video DAG becomes `content_concept → video_script → video`; storyboard leaves the video path and keeps its own job (detail frames + the carousel deliverable). `video_script` decides the shot list, per-shot motion, per-shot duration, spoken narration, a 3-second hook and a closing CTA. `runVideo` renders its own keyframes and animates each with that shot's motion for that shot's duration.
+- **Relationship — this is the composability claim from [[the composable planner]] (`0295323`) actually being cashed in.** Adding a node was a registry entry + an artifact type + a `PIPELINE_ORDER` slot; the planner derived every edge from `requires`/`produces` with no planner logic written. It is also the extension path `docs/product/08` sanctioned — *add nodes to the registry*, not runtime agent spawning, which doc 07 rejected.
+- **The old coupling was asserted in SEVEN places, not one.** Registry, `requirement-prompt`, `orchestration-mappers`, `goal-merge`, `deterministic-analyzer`, the dedicated verify script, and the golden snapshot. A missed site does not fail loudly — it silently plans and **bills** 3-6 storyboard images the video never consumes, so `verify-storyboard-video-dep` was inverted to assert storyboard is **absent** from a video-only plan. Absence assertions are the point here, not presence.
+- **Inherits the cost gate unchanged, and that mattered to the design.** `video` keeps `requiresApproval: true, gate: 'cost'`; `video_script` generates no media and spends no media budget, so the human still stands in front of every dollar of Veo. This is why the script node was NOT given media generation despite the reviewability cost noted below.
+- **Feeds `thinking-budget.ts` creative tier** (alongside `concept_writer`/`email_writer`) — both new planners scale their reasoning with `goal.qualityPref`, because the quality they decide is paid for downstream in image and Veo spend.
+- **Known regression, deliberately accepted for now:** the gate previously let the user look at *already rendered* frames before approving Veo; now nothing is generated at that point, so approval is blind on visuals. Mitigated by the script review UI below; the real fix (one preview keyframe of shot 0) is decided but unbuilt — see `plans/260721-1343-video-length-and-quota-budget/`.
+- **Blocked from going further by provider quota, not by cost.** Gemini free tier is 3 req/min and 10/day; one 5-shot video is 5 image + 5 Veo calls = the entire daily quota. RPM is already handled (`veo.ts` backs off 25/50/75/75s); RPD is not — it burns ~3.5 min of pointless backoff, throws, and `runVideo`'s per-shot catch turns that into `degraded: true`, shipping a truncated video silently. **This is the top open defect in the video path.**
+
+### Infographic became a real planner (`1492937`)
+The node had **no LLM call at all** — a fixed sentence with slots, identical for every product, with `no text overlay` hardcoded into a node named "infographic". Its registry `decisionFramework` described reasoning that no code performed. It now plans layout, on-image text and aspect ratio through the same prompt-as-data path `storyboard` uses.
+- **Relationship — it consumes the biggest single line of spend.** The context audit measured `infographic` at 43% of all spend ($9.27 of $21.63 over 30 days, $0.040/image). Adding ~500 planning tokens (~$0.0002) to stop that $0.040 image being generic is the cheapest quality lever in the system.
+- **Deliberately did NOT change the deliverable:** still exactly one image, `assetType: 'image'`, publish validation untouched. Letting it emit a multi-panel set would have touched the image↔carousel asset type and the publisher's exactly-1-asset rule — a much larger blast radius for a quality change.
+- **Broke five verify scripts at once and that was the useful signal:** a node that previously made no LLM call now does, so every DRY-RUN stub returning a generic strategy brief failed the new contract. The stub was copy-pasted in 5 files; it is now `orchestration/testing/stub-llm-json.ts`.
+
+### User-facing text is localized; model input stays English (`1492937`)
+Image and video models perform best in English, so `imagePrompt`/`motion` are English by design — but they were being **rendered to users** next to localized narration, so a shot card read half Vietnamese and half English. `artifact-format.ts` had been showing infographic's English `Image prompt` to users well before this change.
+- **Relationship — fourth recurrence of the same bug class**, after [[content language mirrors the chat]] (`bc2c60d`) and the reply-language pin work. Those fixed *which* language; this fixes *which fields are user-facing at all*, which is a different axis and is why the earlier fixes did not prevent it.
+- **The fix is a contract split the codebase already had and had not generalized:** infographic's `visualBrief` (run language) vs `imagePrompt` (English). `video_script` shots gained `brief`. No per-language code — `buildAgentPrompt` pins the resolved run language, verified live in Vietnamese, Indonesian and Korean.
+- **Pinned by asserting on contract TEXT, not behaviour** (`verify-video-script`): every contract carrying both kinds of field must contain `ENGLISH` and `LANGUAGE specified above`. A behavioural test would need a live model; this catches the regression at the source.
+
+### Video cost gate shows what is being approved (`1492937`)
+`web/src/components/video-script-review.tsx` — shots, durations, narration, hook, CTA, estimated Veo spend.
+- **Relationship — it exists because the DAG change invalidated the old gate copy.** "Review the frames above" was true when video rendered from already-generated storyboard frames. With `video_script` upstream, nothing is generated at the gate, so the most expensive step in the system was being approved against an empty screen.
+- **Four renderers needed the change, not one** — both gate blocks (`post-workflow-view`, `saved-flow-detail`), a separate `statusHint` string, and `artifact-format.ts` (no `video_script` case → raw JSON fallback). Found by driving the real UI, not by grep: the first search for the shared gate sentence surfaced only two of the four.
+
 ### One credit scale + "re-runs are on us" declared as policy (`d931ef1`, `7c399e7`)
 Credits now derive from real USD on EVERY surface — Usage, Impact, plan-tier quotes, per-run displays — the same basis `workflow-run-repo.runCredits` debits. Previously each surface used token passthrough while the wallet billed from USD, so the number a user saw and the number they were charged were different scales (token passthrough priced every token at the flash OUTPUT rate $2.50/1M against a measured actual of $1.40–$2.01/1M).
 - **Relationship — this closes the loop opened by [[the credit double-count fix]] (`33d805b`).** That fix made the *debit* correct; this makes every *display* agree with it. `cost/spend-split.ts` is the single definition both Usage and Impact render, so the two pages cannot disagree about the same run.
@@ -714,3 +740,55 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `.claude/hooks/__tests__/feature-ledger.test.cjs`
   - `.claude/hooks/feature-ledger.cjs`
   - `docs/feature-map.md`
+- **@ docs: add a docs index, archive superseded handoffs, record the context audit** (cd2c95b)
+  - `docs/README.md`
+  - `docs/archive/next-session-p6-master-agent-creates-campaigns.md`
+  - `docs/archive/next-session-p6-p8-flow-creation-ux.md`
+  - `docs/archive/next-session-state-260702.md`
+  - `docs/archive/next-session-state-260705.md`
+  - `docs/archive/next-session-state-260706-pm.md`
+  - `docs/archive/next-session-state-260706.md`
+  - `docs/archive/next-session-state-260707.md`
+  - `docs/product/README.md`
+  - `plans/reports/audit-260721-1108-context-memory-cache-economics.md`
+- **docs: add a docs index, archive superseded handoffs, record the context audit** (9e77c36)
+  - `docs/README.md`
+  - `docs/archive/next-session-p6-master-agent-creates-campaigns.md`
+  - `docs/archive/next-session-p6-p8-flow-creation-ux.md`
+  - `docs/archive/next-session-state-260702.md`
+  - `docs/archive/next-session-state-260705.md`
+  - `docs/archive/next-session-state-260706-pm.md`
+  - `docs/archive/next-session-state-260706.md`
+  - `docs/archive/next-session-state-260707.md`
+  - `docs/product/README.md`
+  - `plans/reports/audit-260721-1108-context-memory-cache-economics.md`
+- **feat(orchestration): add video_script agent; render video from a script, not storyboard frames** (1492937)
+  - `MKTAgent/src/api/orchestration-mappers.ts`
+  - `MKTAgent/src/orchestration/executor/agent-runners.ts`
+  - `MKTAgent/src/orchestration/master/deterministic-analyzer.ts`
+  - `MKTAgent/src/orchestration/master/goal-merge.ts`
+  - `MKTAgent/src/orchestration/master/workflow-planner.ts`
+  - `MKTAgent/src/orchestration/planner-golden-snapshot.json`
+  - `MKTAgent/src/orchestration/prompts/agent-prompts.ts`
+  - `MKTAgent/src/orchestration/prompts/requirement-prompt.ts`
+  - `MKTAgent/src/orchestration/registry/agent-registry.ts`
+  - `MKTAgent/src/orchestration/registry/agent-types.ts`
+  - `MKTAgent/src/orchestration/schemas/artifact-schemas.ts`
+  - `MKTAgent/src/orchestration/schemas/goal-spec.ts`
+  - `MKTAgent/src/orchestration/schemas/workflow-plan.ts`
+  - `MKTAgent/src/orchestration/testing/stub-llm-json.ts`
+  - `MKTAgent/src/orchestration/thinking-budget.ts`
+  - `MKTAgent/src/orchestration/verify-campaign-materializer.ts`
+  - `MKTAgent/src/orchestration/verify-concept-gate.ts`
+  - `MKTAgent/src/orchestration/verify-executor.ts`
+  - `MKTAgent/src/orchestration/verify-flow-cost-rollup.ts`
+  - `MKTAgent/src/orchestration/verify-planner.ts`
+  - `MKTAgent/src/orchestration/verify-rerun-node.ts`
+  - `MKTAgent/src/orchestration/verify-storyboard-video-dep.ts`
+  - `MKTAgent/src/orchestration/verify-template-instance.ts`
+  - `MKTAgent/src/orchestration/verify-video-script.ts`
+  - `MKTAgent/web/src/components/post-workflow-view.tsx`
+  - `MKTAgent/web/src/components/saved-flow-detail.tsx`
+  - `MKTAgent/web/src/components/video-script-review.tsx`
+  - `MKTAgent/web/src/flow/artifact-format.ts`
+  - `MKTAgent/web/src/styles.css`

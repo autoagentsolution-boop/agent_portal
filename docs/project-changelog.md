@@ -3,6 +3,68 @@
 Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 `pivot/video-content-farm`). Newest first. Commit hashes are on that branch.
 
+## 2026-07-21
+
+### Feat: `video_script` agent — video decoupled from storyboard
+New 19th registry node. The video DAG becomes `content_concept → video_script → video`; **storyboard
+leaves the video path entirely** and keeps its own job (detail frames + the carousel deliverable).
+
+Why: `video` read `storyboard` frames, which describe STILL compositions and carry captions written
+for images. It fed that still-description to Veo as a motion prompt, spoke the image captions aloud,
+and hardcoded 8s per frame (`snapDuration(8)`), so a 5-frame plan was always exactly 40s. Motion,
+pacing and speech are different jobs from framing, so they now get their own planner.
+
+`video_script` emits per shot: `imagePrompt` + `motion` (English, model input), `brief` + `narration`
+(run language, human-facing), and `durationSec`; plus a mandatory 3-second `hook` and closing `cta`.
+`runVideo` renders its own keyframes (anchor-conditioned for consistency, ported from `runStoryboard`)
+and animates each with that shot's own motion and duration.
+
+`video.requires` was asserted in **7** places — registry, `requirement-prompt.ts`,
+`orchestration-mappers.ts`, `goal-merge.ts`, `deterministic-analyzer.ts`, the dedicated verify script,
+and the golden snapshot. `verify-storyboard-video-dep.ts` is inverted to pin the new invariant and
+asserts storyboard is **absent** from a video-only plan (a stale edge would silently bill 3–6 unused
+images). Golden snapshot regenerated; diff reviewed line by line.
+
+### Feat: infographic is a real overview planner, not a string template
+`runInfographic` had **no LLM call** — a fixed sentence with slots, identical for every product, with
+`no text overlay` hardcoded into a node named "infographic". Its registry `decisionFramework`
+described reasoning that no code performed. It now goes through the same prompt-as-data path
+`storyboard` uses: `promptSections` + an output contract, planning layout, on-image text (expected,
+in the run language) and aspect ratio from the target platforms. Deliverable unchanged — exactly one
+image, `assetType: 'image'`, publish validation untouched.
+
+### Fix: user-facing text mixed English and the run language
+Model-input fields (`imagePrompt`, `motion`) are English because image/video models perform best in
+English — but they were being **rendered to the user** next to localized narration, so a shot card
+read half Vietnamese, half English. `artifact-format.ts` had also been showing infographic's English
+`Image prompt` to users since well before this change.
+
+Fixed by the split the codebase already used for infographic (`visualBrief` localized /`imagePrompt`
+English) and had simply not applied elsewhere: `video_script` shots gained `brief`, and no
+model-input field is rendered. Language-agnostic by construction — `buildAgentPrompt` pins the
+resolved run language, verified live in Vietnamese, Indonesian and Korean. `verify-video-script.ts`
+now asserts the split in the contract text so it cannot regress silently.
+
+### Feat: the video cost gate shows what you are approving
+`web/src/components/video-script-review.tsx` — shots, durations, narration, hook, CTA and estimated
+Veo spend. Previously the gate said *"review the frames above"*, which was true when video rendered
+from already-generated storyboard frames; with the new DAG nothing is generated yet at that point, so
+the user was approving the most expensive step in the system while shown nothing about it.
+
+Four renderers needed updating, not one: both gate blocks (`post-workflow-view`, `saved-flow-detail`),
+a separate `statusHint` string, and `artifact-format.ts` (which had no `video_script` case and fell
+back to raw JSON).
+
+### Other
+- `goal.slots.videoTarget` (`feed|reels|tiktok|shorts|youtube`) steers the video's cut. Deliberately
+  **not** a `platforms` value: that enum is Prisma-backed and means "publish here", so adding
+  tiktok/youtube would make the publisher fail `no target platform can publish this post`.
+- `stitchFn`/`muxFn` added to `RunnerContext`. Every other media op was injectable; ffmpeg was not, so
+  a DRY-RUN video run shelled out on stub paths.
+- `orchestration/testing/stub-llm-json.ts` — the same LLM stub was copy-pasted in 5 verify scripts and
+  all 5 broke at once when a contract was added.
+- Docs: `docs/README.md` index added; 7 superseded `next-session-*` handoffs moved to `docs/archive/`.
+
 ## 2026-07-15
 
 ### Fix: bug batch from observed browser tests (`9f915fa`)

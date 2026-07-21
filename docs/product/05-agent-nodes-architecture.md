@@ -41,7 +41,7 @@ node lives in a *separate* map keyed by the same id (`executor/agent-runners.ts:
 is intentional: the registry stays testable/serializable (no execution logic), and the runner map is the
 only place orchestration touches the rest of the codebase (copy-gen, publish, Gmail, Veo, etc).
 
-`RunnableAgentId` (`agent-types.ts:36`) = `AgentId | 'publisher' | 'email_agent' | 'scheduler' | 'dm_agent' | 'greeting_agent'` — 18 ids total, all declared in `registry/agent-registry.ts:8-439`.
+`RunnableAgentId` (`agent-types.ts:36`) = `AgentId | 'publisher' | 'email_agent' | 'scheduler' | 'dm_agent' | 'greeting_agent'` — 19 ids total (2026-07-21: `video_script` added), all declared in `registry/agent-registry.ts:8-439`.
 
 No agent is ever invented at plan time — the registry is a **closed menu** (comment at `agent-registry.ts:1-5`); both the deterministic marketing planner and Atria's `propose_task` tool can only select from `AGENTS`.
 
@@ -82,7 +82,7 @@ Separately, `ROADMAP_AGENTS` (`registry/roadmap-agents.ts:13-32`) is a **static,
 
 ## 2. Full node catalogue
 
-All 18 `RunnableAgentId`s. Registry file:line from `registry/agent-registry.ts`; runner file:line from `executor/agent-runners.ts` unless noted.
+All 19 `RunnableAgentId`s. Registry file:line from `registry/agent-registry.ts`; runner file:line from `executor/agent-runners.ts` unless noted.
 
 | ID | Display name | Group | Purpose | Requires | Produces | LLM? | Gate | Cost profile | Registry / Runner |
 |---|---|---|---|---|---|---|---|---|---|
@@ -93,7 +93,8 @@ All 18 `RunnableAgentId`s. Registry file:line from `registry/agent-registry.ts`;
 | `concept_writer` | Concept Writing Agent | creative | Campaign angle + 3-5 copy variants | — (`research_summary`, `strategy_brief` optional) | `content_concept` | 1 call via `generateVariantsForPost` (copy-gen engine, external to orchestration) | `selection` (post-produce park) | text tokens | `:120-157` / `:127-250` (delegates to `copygen/service.ts`) |
 | `infographic` | Infographic Agent | creative | Visual brief + 1 generated image | `content_concept` | `infographic_brief` | 0 text LLM calls; 1 image-gen call (nano-banana) | none | flat/token image cost (~$0.04 or real usage) | `:158-173` / `:573-596` |
 | `storyboard` | Storyboard Agent | creative | 3-6 scene plan (LLM) + N generated frame images | `content_concept` | `storyboard` | 1 Gemini JSON call (plan) + 1 image-gen call per frame, sequential loop (NOT agentic — fixed plan-then-render) | none | text (creative-tier budget) + N × image cost | `:174-203` / `:600-690` |
-| `video` | Video Agent | creative | Animate storyboard frames → 1 stitched mp4 + TTS voiceover | `storyboard` | `video_prompt` | 0 text LLM; 1 Veo call per frame + 1 TTS call (procedural loop) | `cost` (pre-execution halt) | $0.05/s × clips (Veo) + $0.02 TTS flat | `:204-223` / `:701-769` |
+| `video_script` | Video Script Agent | creative | Shot list + per-shot motion, duration, narration, hook, CTA | `content_concept` (`strategy_brief`, `research_summary` optional) | `video_script` | 1 Gemini JSON call (creative-tier budget) | none | text only (~600 prompt tokens) | added 2026-07-21 |
+| `video` | Video Agent | creative | Render a keyframe per scripted shot, animate with that shot's motion/duration, stitch + TTS | `video_script` | `video_prompt` | 0 text LLM; 1 image + 1 Veo call per shot + 1 TTS call (procedural loop) | `cost` (pre-execution halt) | $0.05/s × scripted seconds (Veo) + image/shot + $0.02 TTS | `:204-223` / `:701-769` |
 | `publisher` | Publisher Agent | delivery | Publish the post to target platforms | `content_concept` (`infographic_brief`, `video_prompt`, `storyboard` optional) | `publish_result` | 0 LLM; calls `publishPostNow` → connector runtime | `publish` (external write) | $0 orchestration cost (billed as platform API calls) | `:224-264` / `:300-336` |
 | `email_writer` | Email Writer | creative | Draft subject+body email | — (`content_concept`/`summary`/`research_summary` optional) | `email_draft` | 1 Gemini JSON call (skipped entirely if `nurtureReplyBody` was pre-seeded by the nurture brain) | none | creative-tier text tokens | `:265-283` / `:787-845` |
 | `email_agent` | Email Agent | delivery | Send the reviewed draft via owner's Gmail | `email_draft` | `email_result` | 0 LLM; Gmail API send | `publish` | $0 orchestration cost | `:284-302` / `:1015-1072` |
@@ -169,7 +170,7 @@ graph LR
 
 ### 4.1 DAG build → run
 
-1. `planWorkflow(goal)` (§1.2) returns a validated `WorkflowPlan` (`schemas/workflow-plan.ts:29-43`): `{ goal: 'marketing_content', nodes: [{ nodeId, agentId, dependsOn, requiresApproval }] }`. `agentId` is a closed Zod enum (`workflow-plan.ts:8-27`) — 18 members, mirroring `RunnableAgentId`.
+1. `planWorkflow(goal)` (§1.2) returns a validated `WorkflowPlan` (`schemas/workflow-plan.ts:29-43`): `{ goal: 'marketing_content', nodes: [{ nodeId, agentId, dependsOn, requiresApproval }] }`. `agentId` is a closed Zod enum (`workflow-plan.ts:8-27`) — 19 members, mirroring `RunnableAgentId`.
 2. `validatePlan()` (`master/workflow-validator.ts`, called both at plan time and again at every `runWorkflow` entry) topo-sorts and checks input satisfiability + acyclicity.
 3. `runWorkflow(runId, ownerId, goal, plan, opts)` (`executor/workflow-executor.ts:132-536`) iterates `validated.order`, running each node's `RunnerContext` through `executeNode`.
 
@@ -241,7 +242,7 @@ Two-part mechanism, deliberately type-agnostic (no runner knows about "email" vs
 
 **Every registry DAG node is a deterministic, single-shot LLM call or a bare API/service wrapper.** Concretely:
 - Text nodes (`ideation`, `strategy`, `content_search`, `campaign_strategist`, `concept_writer`, `email_writer`, `dm_writer`, `greeting_writer`, `security`, `summarize`) call `callGeminiJson` (or `groundedSearch`) **exactly once** (or, for `security`/`summarize`, a bounded, pre-determined number of chunked calls with no model-driven branching) and parse the JSON response against a fixed Zod schema. There is no `functionDeclarations` array attached to any of these calls — the model cannot invoke a tool, cannot ask a follow-up, cannot decide to do something other than emit the one JSON shape it was told to.
-- Media nodes (`infographic`, `storyboard`, `video`) run **procedural loops written in TypeScript**, not model-driven reasoning loops: storyboard's frame loop and video's clip loop are `for` statements over a fixed plan array, calling the same generation function once per element. The only "decision" resembling adaptivity is storyboard skipping a frame that errored (a hardcoded catch, not the model choosing an alternate strategy).
+- Media nodes (`infographic`, `storyboard`, `video`) run **procedural loops written in TypeScript**, not model-driven reasoning loops: storyboard's frame loop and video's shot loop are `for` statements over a fixed plan array, calling the same generation function once per element. The only "decision" resembling adaptivity is storyboard skipping a frame that errored (a hardcoded catch, not the model choosing an alternate strategy).
 - Action nodes (`publisher`, `email_agent`, `dm_agent`, `greeting_agent`, `scheduler`) call zero text LLMs — they are typed wrappers around existing services (`publishPostNow`, `sendGmailAs`, `sendDm`, `greetTo`) plus deterministic guardrail checks (opt-out, kill switch, idempotency).
 
 The DAG's only "intelligence" beyond the single calls is the **planner** (backward-chaining node selection, a classic non-LLM algorithm) and the **executor's gate policy** (`approval-policy.ts`, also pure deterministic code — even in Atria-autonomy mode, `atriaApprovalPolicy` is a lookup table, not a model call).
