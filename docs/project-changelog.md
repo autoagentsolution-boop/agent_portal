@@ -5,6 +5,25 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-21
 
+### Fix: a depleted prepaid balance no longer ships a silently truncated video
+Follow-up to the quota classifier below, after the free-tier premise was retracted. This deployment
+is on a **paid prepaid** tier, where the realistic stop is not a daily quota but the credit balance
+reaching zero — and per Google's billing doc that arrives as **`429 RESOURCE_EXHAUSTED` with the
+message `Your prepayment credits are depleted`**, carrying *no* quota metadata. Same envelope as an
+ordinary rate limit, so the first classifier would have defaulted it to per-minute, retried it, and
+truncated the video exactly as before.
+
+`QuotaScope` gains `billing`, matched narrowly on `deplet` / `insufficient credit|balance|funds` —
+deliberately **not** on the word "billing", which appears in the ordinary rate-limit copy ("check
+your plan and billing details") and would misclassify every burst as a dead account. Pinned by test.
+`isDailyQuotaError` → `isTerminalQuotaError` (`scope !== 'minute'`): retrying cannot help either a
+spent daily quota or a dead balance. The billing message names the remedy (top up in AI Studio) and
+the blast radius — Google stops **every API key on the billing account**, so this is never a
+video-only outage.
+
+There is **no API to read the prepaid balance**; it is AI Studio UI only. Cloud Billing API does not
+expose it, so a Phase 02 balance pre-flight cannot be built the way it was scoped.
+
 ### Fix: a daily provider-quota stop no longer ships a silently truncated video
 Gemini's free tier is **3 requests/min and 10/day**, and `runVideo` spends one image + one Veo call
 per shot — so a 5-shot video is the entire daily quota. Both 429 kinds were handled identically:

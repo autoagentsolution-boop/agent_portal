@@ -2,7 +2,7 @@
 // retry helper stops retrying a daily exhaustion. Pure — no API, no DB.
 //
 // Bodies below are the real Gemini free-tier 429 shapes (QuotaFailure + RetryInfo details).
-import { classifyQuotaBody, quotaErrorFrom, isDailyQuotaError, QuotaExhaustedError } from './quota-error.ts';
+import { classifyQuotaBody, quotaErrorFrom, isTerminalQuotaError, QuotaExhaustedError } from './quota-error.ts';
 import { withRetry } from './retry.ts';
 
 let failures = 0;
@@ -49,16 +49,39 @@ ck('metric-only per-day naming → daily', classifyQuotaBody(JSON.stringify({ er
   { '@type': 'x/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'gl.googleapis.com/requests_per_model_per_day' }] },
 ] } })).scope === 'daily');
 
+// ── prepaid credit depletion ──────────────────────────────────────────────────────────────────
+// THE failure mode this deployment will actually hit (paid prepaid tier). Google ships it with the
+// SAME 429/RESOURCE_EXHAUSTED envelope as a rate limit and no quota metadata at all, so without the
+// message match it falls through to 'minute', gets retried, and truncates the video again.
+// Shape per https://ai.google.dev/gemini-api/docs/billing + the AI Developers forum report.
+const depleted = JSON.stringify({
+  error: { code: 429, message: 'Your prepayment credits are depleted', status: 'RESOURCE_EXHAUSTED' },
+});
+ck('prepaid depletion → billing (not minute)', classifyQuotaBody(depleted).scope === 'billing', classifyQuotaBody(depleted));
+
+// The ordinary rate-limit copy contains the word "billing" — matching on that would misclassify
+// every RPM burst as a dead account. This pins that it does not.
+const rpmCopy = JSON.stringify({ error: { code: 429, status: 'RESOURCE_EXHAUSTED',
+  message: 'You exceeded your current quota, please check your plan and billing details.',
+  details: [{ '@type': 'x/google.rpc.QuotaFailure', violations: [{ quotaId: 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier' }] }] } });
+ck('"billing details" in rate-limit copy stays minute', classifyQuotaBody(rpmCopy).scope === 'minute', classifyQuotaBody(rpmCopy));
+ck('"insufficient funds" wording → billing', classifyQuotaBody('{"error":{"message":"insufficient funds on billing account"}}').scope === 'billing');
+
 // ── error construction ────────────────────────────────────────────────────────────────────────
 const dayErr = quotaErrorFrom(body('GenerateRequestsPerDayPerProjectPerModel-FreeTier'), 'veo-3.1-lite');
 ck('daily error is a QuotaExhaustedError', dayErr instanceof QuotaExhaustedError);
-ck('daily error passes isDailyQuotaError', isDailyQuotaError(dayErr));
+ck('daily error is terminal', isTerminalQuotaError(dayErr));
 ck('daily message names quota + model', /daily quota/.test(dayErr.message) && /veo-3\.1-lite/.test(dayErr.message), dayErr.message);
 ck('carries status 429 for the retry taxonomy', dayErr.status === 429);
 
+const billErr = quotaErrorFrom(depleted, 'veo-3.1-lite');
+ck('billing error is terminal', isTerminalQuotaError(billErr));
+ck('billing message names the remedy (top up)', /top up/i.test(billErr.message), billErr.message);
+ck('billing message names the blast radius (every API key)', /every API key/i.test(billErr.message), billErr.message);
+
 const minErr = quotaErrorFrom(body('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', '27s'), 'gemini-2.5-flash-image');
-ck('minute error is NOT daily', !isDailyQuotaError(minErr), minErr.scope);
-ck('unrelated error is not daily', !isDailyQuotaError(new Error('nano_banana_http_500')));
+ck('minute error is NOT terminal', !isTerminalQuotaError(minErr), minErr.scope);
+ck('unrelated error is not terminal', !isTerminalQuotaError(new Error('nano_banana_http_500')));
 
 // ── withRetry behaviour: the point of the whole change ────────────────────────────────────────
 const countCalls = async (err: unknown): Promise<number> => {
@@ -70,8 +93,9 @@ const countCalls = async (err: unknown): Promise<number> => {
 };
 
 ck('daily quota → called ONCE, no backoff burnt', (await countCalls(dayErr)) === 1);
+ck('depleted credits → called ONCE, no backoff burnt', (await countCalls(billErr)) === 1);
 ck('per-minute quota → still retried to exhaustion', (await countCalls(minErr)) === 3);
 ck('plain 429 error → still retried', (await countCalls(Object.assign(new Error('boom'), { status: 429 }))) === 3);
 
-console.log(failures ? `\nFAIL — ${failures} quota-classification check(s) red` : '\nPASS — RPD/RPM classification + non-retry of daily quota green');
+console.log(failures ? `\nFAIL — ${failures} quota-classification check(s) red` : '\nPASS — billing/RPD/RPM classification + non-retry of terminal stops green');
 process.exit(failures ? 1 : 0);

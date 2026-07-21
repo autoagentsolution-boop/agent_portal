@@ -38,9 +38,16 @@ framing. It does **not** steer length, because the contract caps shots at 3–6 
 > per the owner's decision the quota/balance figures are **superadmin-visible only**.
 >
 > Phase 01 shipped and is still correct — "a provider stop must fail loud, not silently truncate"
-> holds whatever causes the stop. **Known gap:** a *prepaid-balance* exhaustion has an unknown error
-> shape; the classifier defaults an unrecognised body to `minute`, so it would still retry and could
-> still truncate. That shape has not been measured and must not be guessed.
+> holds whatever causes the stop. ~~Known gap: prepaid-balance exhaustion has an unknown error
+> shape.~~ **CLOSED same day** — the shape is documented, not guessed: `429 RESOURCE_EXHAUSTED` +
+> `"Your prepayment credits are depleted"`, with no quota metadata. `QuotaScope` gained `billing`
+> and it is now a terminal, non-retryable stop. See the changelog entry for 2026-07-21.
+>
+> **Also established: there is NO API to read the prepaid balance.** Cloud Billing API does not
+> expose it and neither does any Gemini endpoint — AI Studio's *Dashboard → Usage and Limits* page
+> is the only place it exists. Two consequences: Phase 02 cannot show a true remaining balance, and
+> **auto-reload (a console setting, not code) is the real defence** against the balance hitting $0,
+> at which point *every API key on the billing account* stops at once.
 
 **2. Quota, not cost, is the binding constraint.** Gemini free tier: **3 requests/min, 10/day.**
 

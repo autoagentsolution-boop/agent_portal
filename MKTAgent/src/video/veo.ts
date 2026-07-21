@@ -64,9 +64,10 @@ const fileExists = async (p: string): Promise<boolean> => {
 // over, so we back off and retry rather than failing the whole video node. Waits span >60s
 // total to outlast the window.
 //
-// A per-DAY exhaustion is classified out of that path (quota-error.ts) and thrown immediately:
-// it does not clear today, so the four waits were ~3.5 min spent to reach the same failure —
-// and worse, runVideo's per-shot catch then shipped a silently truncated video.
+// A per-DAY exhaustion, and a depleted PREPAID BALANCE, are classified out of that path
+// (quota-error.ts) and thrown immediately: neither clears by waiting, so the four waits were
+// ~3.5 min spent to reach the same failure — and worse, runVideo's per-shot catch then shipped a
+// silently truncated video. All three arrive as 429/RESOURCE_EXHAUSTED, hence the classifier.
 const RETRYABLE_START = new Set([429, 503]);
 const MAX_BACKOFF_MS = 90_000;
 const MAX_START_RETRIES = 4;
@@ -106,8 +107,8 @@ const startVeoOp = async (req: VideoRequest, imgB64: string, apiKey: string): Pr
       const text = await r.text();
       if (r.status === 429) {
         const q = classifyQuotaBody(text);
-        if (q.scope === 'daily') {
-          logger.warn('veo_daily_quota_exhausted', { model: MODEL, quotaId: q.quotaId });
+        if (q.scope !== 'minute') {
+          logger.warn('veo_quota_terminal', { model: MODEL, scope: q.scope, quotaId: q.quotaId });
           throw quotaErrorFrom(text, MODEL);
         }
         // Honour the provider's own retryDelay when it asks for longer than our schedule.

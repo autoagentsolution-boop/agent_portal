@@ -1,7 +1,7 @@
 // Exponential-backoff retry for HTTP/network ops. Ported from
 // render-service/src/util/retry.ts — same transient-error taxonomy.
 import { logger } from './logger.ts';
-import { isDailyQuotaError } from './quota-error.ts';
+import { isTerminalQuotaError } from './quota-error.ts';
 
 export interface RetryOptions {
   attempts?: number;
@@ -62,10 +62,11 @@ export const withRetry = async <T>(fn: () => Promise<T>, opts: RetryOptions = {}
       const status = extractStatus(err);
       const network = isNetworkError(err);
       const last = i === attempts - 1;
-      // A daily-quota 429 carries a 429 status but is NOT transient — retrying it wastes the whole
-      // backoff schedule and fails anyway. Per-minute 429s keep the normal path.
+      // A spent daily quota or a depleted prepaid balance carries a 429 status but is NOT transient
+      // — retrying wastes the whole backoff schedule and fails anyway. Per-minute 429s keep the
+      // normal path.
       const shouldRetry =
-        !last && !isDailyQuotaError(err) && (network || (status !== undefined && retryOn.includes(status)));
+        !last && !isTerminalQuotaError(err) && (network || (status !== undefined && retryOn.includes(status)));
       if (!shouldRetry) throw err;
       const delay = baseMs * Math.pow(factor, i);
       logger.warn('retry_scheduled', { label, attempt: i + 1, delay, status, error: String(err).slice(0, 200) });

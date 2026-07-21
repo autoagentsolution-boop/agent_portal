@@ -1,18 +1,26 @@
-// Provider quota classification. A Gemini 429 (RESOURCE_EXHAUSTED) means one of two very different
+// Provider quota classification. A Gemini `429 RESOURCE_EXHAUSTED` means one of THREE very different
 // things and the old code treated them identically:
 //
-//   • per-MINUTE burst  — clears on its own in <60s. Backing off is correct.
+//   • per-MINUTE burst   — clears on its own in <60s. Backing off is correct.
 //   • per-DAY exhaustion — will not clear today. Backing off burns ~3.5 min per call and then fails
 //     anyway, and in runVideo the per-shot catch turned that into a silently truncated video.
+//   • PREPAID CREDITS depleted — never clears without a human topping up the balance. Retrying is
+//     pure waste, and per Google's own billing doc every API key on the billing account stops at
+//     once, so nothing downstream will succeed either.
 //
-// The payload distinguishes them: a QuotaFailure detail carries a `quotaId` such as
+// The payload distinguishes the first two: a QuotaFailure detail carries a `quotaId` such as
 // `GenerateRequestsPerDayPerProjectPerModel-FreeTier` vs `...PerMinutePerProjectPerModel-FreeTier`,
-// and a RetryInfo detail may carry `retryDelay: "27s"`. We read those rather than guessing.
+// and a RetryInfo detail may carry `retryDelay: "27s"`. The third is identified by its message —
+// `"Your prepayment credits are depleted"` — because it ships with the same 429/RESOURCE_EXHAUSTED
+// envelope and no quota metadata at all. That collision is the trap: on a prepaid account (which
+// this deployment is on) an unmatched body would otherwise fall through to 'minute' and retry.
+// See https://ai.google.dev/gemini-api/docs/billing.
 //
-// Default when the body names neither: 'minute'. That preserves the previous (retrying) behaviour,
-// so an unrecognised shape degrades to what we did before rather than to a hard stop.
+// Default when the body names none of them: 'minute'. That preserves the previous (retrying)
+// behaviour, so an unrecognised shape degrades to what we did before rather than to a hard stop.
 
-export type QuotaScope = 'daily' | 'minute';
+// 'billing' and 'daily' are TERMINAL for this call — retrying cannot help. 'minute' is transient.
+export type QuotaScope = 'billing' | 'daily' | 'minute';
 
 export interface QuotaClassification {
   scope: QuotaScope;
@@ -47,6 +55,11 @@ interface ErrorDetail { '@type'?: string; violations?: QuotaViolation[]; retryDe
 
 const PER_DAY = /per[_-]?day/i;
 const PER_MINUTE = /per[_-]?minute/i;
+// Deliberately narrow. The ordinary rate-limit message is "You exceeded your current quota, please
+// check your plan and billing details." — it contains the word "billing", so matching on that would
+// misclassify every RPM burst as a dead account. "depleted" / "insufficient funds" do not appear in
+// the rate-limit copy.
+const CREDITS_DEPLETED = /deplet|insufficient\s+(credit|balance|fund)/i;
 
 const parseRetryDelay = (raw?: string): number | null => {
   const m = /^(\d+(?:\.\d+)?)s$/.exec((raw ?? '').trim());
@@ -78,18 +91,31 @@ export const classifyQuotaBody = (body: string): QuotaClassification => {
     // Non-JSON or truncated body — fall through to the text scan below.
   }
 
+  // Credit depletion outranks any quota metadata: a dead balance is not waited out.
+  if (CREDITS_DEPLETED.test(body)) return { scope: 'billing', quotaId, retryAfterSec: null };
   if (!scope) scope = PER_DAY.test(body) && !PER_MINUTE.test(body) ? 'daily' : 'minute';
   return { scope, quotaId, retryAfterSec };
 };
 
-export const quotaErrorFrom = (body: string, model: string): QuotaExhaustedError => {
-  const c = classifyQuotaBody(body);
-  const message =
-    c.scope === 'daily'
-      ? `provider daily quota exhausted for ${model}${c.quotaId ? ` (${c.quotaId})` : ''} — resets at the provider's next daily reset`
-      : `provider per-minute rate limit hit for ${model}${c.retryAfterSec ? ` (retry in ~${c.retryAfterSec}s)` : ''}`;
-  return new QuotaExhaustedError(message, { scope: c.scope, model, quotaId: c.quotaId, retryAfterSec: c.retryAfterSec });
+const describe = (scope: QuotaScope, model: string, c: QuotaClassification): string => {
+  switch (scope) {
+    case 'billing':
+      // Names the remedy AND the blast radius — Google stops every API key on the billing account,
+      // so the operator must know this is not a video-only outage.
+      return `provider prepaid credits are depleted (hit while calling ${model}) — top up the balance in AI Studio; every API key on this billing account is stopped until then`;
+    case 'daily':
+      return `provider daily quota exhausted for ${model}${c.quotaId ? ` (${c.quotaId})` : ''} — resets at the provider's next daily reset`;
+    case 'minute':
+      return `provider per-minute rate limit hit for ${model}${c.retryAfterSec ? ` (retry in ~${c.retryAfterSec}s)` : ''}`;
+  }
 };
 
-export const isDailyQuotaError = (err: unknown): err is QuotaExhaustedError =>
-  err instanceof QuotaExhaustedError && err.scope === 'daily';
+export const quotaErrorFrom = (body: string, model: string): QuotaExhaustedError => {
+  const c = classifyQuotaBody(body);
+  return new QuotaExhaustedError(describe(c.scope, model, c), { scope: c.scope, model, quotaId: c.quotaId, retryAfterSec: c.retryAfterSec });
+};
+
+// TERMINAL = retrying this call cannot help, so callers must fail loud instead of degrading.
+// Covers both a spent daily quota and a dead prepaid balance; excludes the transient per-minute burst.
+export const isTerminalQuotaError = (err: unknown): err is QuotaExhaustedError =>
+  err instanceof QuotaExhaustedError && err.scope !== 'minute';
