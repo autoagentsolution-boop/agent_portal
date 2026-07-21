@@ -851,3 +851,6 @@ Two CC quality-of-life additions on top of the resume-cards feature.
   - `MKTAgent/src/orchestration/verify-video-script.ts`
   - `MKTAgent/src/scripts/run-verify.ts`
   - `docs/project-changelog.md`
+- **docs: record the http-tier fix and write the pre-test session state** (1a2b496)
+  - `docs/feature-map.md`
+  - `plans/reports/state-260721-1730-session-handoff.md`
