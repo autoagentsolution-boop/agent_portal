@@ -21,6 +21,15 @@ Full-codebase scan of `pivot/video-content-farm`, generated 2026-07-18. Line num
 - **Planning the next quarter:** 06 → 08 → 03
 - **Answering "can Atria build its own agents?":** 05 §5 → 07 → 08
 
+## Docs 07 and 08 answer different questions — read them together
+
+Apart, they sound contradictory. They are not:
+
+- **07** asks *"can Atria invent and spawn agents at runtime, the way a coding agent does?"* — answer: largely no, and mostly shouldn't.
+- **08** asks the narrower question *"can the 18 agents we already have be upgraded in place?"* — answer: yes, but only 2 of 18 need tools, and 6 must stay deterministic functions permanently.
+
+Neither concludes "add agency everywhere." Doc 08's headline recommendation is additionally **retracted by a measurement banner at the top of that file** — read the banner before acting on its Part 4.
+
 ## Autonomy semantics — read this before citing docs 04/06
 
 Frequently misread by scanners and worth stating once, plainly:
