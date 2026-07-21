@@ -21,6 +21,27 @@ It *does* steer rhythm (feed chose 4 longer shots incl. an 8s; tiktok chose 5 sh
 framing. It does **not** steer length, because the contract caps shots at 3–6 and Veo renders at most
 8s — a hard 48s ceiling. "YouTube long-form" is structurally impossible, not a prompting failure.
 
+> ## ⚠ RETRACTED 2026-07-21 — finding 2 below is FALSE for this deployment
+>
+> The "3/min, 10/day ⇒ 1–2 videos per day" premise came from **free-tier documentation, never from
+> measurement**. The account is on a **paid prepaid tier**. Measured from `mkt_llm_usage`:
+>
+> | | claimed ceiling | actually observed 2026-07-21 |
+> |---|---|---|
+> | Veo calls in a day | 10 (whole quota, all models) | **45** |
+> | Veo calls in one hour | ~3 (RPM-bound) | **24** |
+> | all media+LLM calls in a day | — | **426** |
+>
+> Nothing in the ledger has ever hit a daily request wall. **The binding constraint is the prepaid
+> balance, not request count**: $39.54 lifetime, of which **$17.91 was spent on 2026-07-21 alone**
+> — 45% of all-time spend in one day. Phase 02 must therefore budget **money**, not requests, and
+> per the owner's decision the quota/balance figures are **superadmin-visible only**.
+>
+> Phase 01 shipped and is still correct — "a provider stop must fail loud, not silently truncate"
+> holds whatever causes the stop. **Known gap:** a *prepaid-balance* exhaustion has an unknown error
+> shape; the classifier defaults an unrecognised body to `minute`, so it would still retry and could
+> still truncate. That shape has not been measured and must not be guessed.
+
 **2. Quota, not cost, is the binding constraint.** Gemini free tier: **3 requests/min, 10/day.**
 
 `runVideo` renders one keyframe **and** one Veo clip per shot, serially. A 5-shot video is
@@ -94,11 +115,16 @@ to know what "exhausted" means.
 
 ## Open questions
 
-1. Does the image model share the 10/day bucket with Veo, or are they separate? **Must be measured
-   before Phase 02's arithmetic is trusted** — it is the difference between "5 shots costs 10 units"
-   and "5 shots costs 5". Do not guess this.
-2. Is the deployment target staying on the free tier? A paid tier moves the constraint back to money
-   and makes Phase 02 much less urgent (though still correct).
-3. Should a quota-blocked run park and auto-resume tomorrow (the `scheduler` node already parks and
+1. ~~Does the image model share the 10/day bucket with Veo?~~ **ANSWERED 2026-07-21 — the question
+   was malformed.** There is no 10/day bucket on this key: 121 image + 45 Veo calls landed on
+   2026-07-21 with no wall hit. See the retraction box at the top.
+2. ~~Is the deployment target staying on the free tier?~~ **ANSWERED — paid, prepaid.** So Phase 02
+   becomes a *balance* pre-flight, superadmin-only, not a request counter.
+3. **NEW, and now the one that matters:** what does Gemini return when a **prepaid balance** hits
+   zero? Almost certainly not the free-tier `...PerDayPerProjectPerModel-FreeTier` quotaId that
+   Phase 01 keys on. Until that shape is known, `runVideo` can still truncate silently on the one
+   failure this deployment will actually hit. Cannot be measured without exhausting the balance —
+   the alternative is to treat *any* unrecoverable provider stop mid-render as fail-loud.
+4. Should a quota-blocked run park and auto-resume tomorrow (the `scheduler` node already parks and
    the cron already re-enters), rather than fail? Elegant, reuses existing machinery — but a run
    silently sitting for 18 hours needs its own UX.
