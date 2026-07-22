@@ -202,6 +202,14 @@ const schema = z.object({
   // src/social/greeting.ts's isLiveGreetingSend (mirrors ENABLE_LIVE_DM_SEND's fail-closed gate).
   ENABLE_LIVE_GREETING_SEND: boolEnv(false),
 
+  // Live social PUBLISH kill-switch. Unlike the DM/greeting gates above this defaults ON — a
+  // marketing publish is the product's primary path and every deployment depends on it, so a
+  // fail-closed default would be a silent breaking change. Set it false to drive a flow end to end
+  // (planning → assets → cost gate → publisher node) with the platform network call SIMULATED, so an
+  // observed live test exercises the real publisher without posting to a connected page
+  // (feedback_no_burst_social_posts). See src/social/index.ts's isLiveSocialPublish.
+  ENABLE_LIVE_SOCIAL_PUBLISH: boolEnv(true),
+
   // X/Twitter comment-read (Multichannel Nurture Phase 03 hardening) needs a PAID API tier
   // (recent-search is gated above free). OFF by default so a tenant on the free tier never burns a
   // 401/403 call every 30-min poll cycle — comment-fetchers/x.ts short-circuits to a clean [] no-op

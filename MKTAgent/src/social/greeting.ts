@@ -8,7 +8,7 @@
 // must NOT silently start posting greetings the moment this ships — so a real network call only
 // happens when ENABLE_LIVE_GREETING_SEND is explicitly on, on top of the adapter implementing the
 // action. Off by default in every environment until deliberately flipped, post-validation.
-import { getAdapter } from './index.ts';
+import { getAdapter, dryRunResult } from './index.ts';
 import { env } from '../config/env.ts';
 import type { SocialPlatform } from '../../prisma/generated/prisma/client.ts';
 import type { MentionInput, ReplyInput, PublishResult, GreetAction } from './types.ts';
@@ -31,13 +31,8 @@ const unsupported = (platform: SocialPlatform): PublishResult => ({
   error: 'unsupported',
 });
 
-const dryRunResult = (platform: SocialPlatform): PublishResult => {
-  const id = `dryrun-${platform}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  // Both `url` and `platformPostId` carry the synthetic id (mirrors a real publish()'s ok() shape,
-  // which always sets both) — so a caller that persists only `url` (the external-action audit log's
-  // `externalId` column) still has a non-null, stable identifier for the idempotency guard to key on.
-  return { platform, ok: true, url: `dryrun://${id}`, error: null, platformPostId: id, dryRun: true };
-};
+// dryRunResult lives in ./index.ts — the same simulated-success shape now serves both the greeting
+// gate and publishTo's ENABLE_LIVE_SOCIAL_PUBLISH gate.
 
 // One greeting action to one platform. `greetFn` (verification seam) overrides dispatch entirely —
 // a stub never reaches an adapter. Without it: an unknown platform / an action the adapter doesn't

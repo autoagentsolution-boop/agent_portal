@@ -37,9 +37,10 @@ export interface PublishResult {
   // autonomous run never reads a reduced publish as a clean full success (H1c). Optional; absent =
   // full-fidelity publish.
   degraded?: boolean;
-  // Greeting DRY-RUN marker (Multi-channel Nurture Nodes Phase 02): true when this result is a
-  // SIMULATED mention/reply — no network call was made (src/social/greeting.ts's default live gate,
-  // or a stub greetFn). Always absent/false for publish() and for a real greetTo call.
+  // DRY-RUN marker: true when this result is SIMULATED — no network call was made. Two sources:
+  // a mention/reply held by src/social/greeting.ts's default-off live gate (or a stub greetFn), and
+  // a publish held by publishTo's ENABLE_LIVE_SOCIAL_PUBLISH gate (default ON, flipped off for
+  // observed testing). Absent/false means the platform really was called.
   dryRun?: boolean;
 }
 

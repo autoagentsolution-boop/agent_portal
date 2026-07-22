@@ -5,7 +5,7 @@
 //   3) asset layer: publicUrl shape (IG/Threads) + fetchBinary returns the right
 //      bytes/type (FB/LinkedIn/X), incl. the video-vs-image distinction.
 // Liveness already proven by `tokens/cli.ts maintain`; not repeated here.
-import { getAdapter } from './index.ts';
+import { getAdapter, publishTo, isLiveSocialPublish } from './index.ts';
 import { getActiveToken } from '../tokens/service.ts';
 import { SYSTEM_OWNER_ID } from '../db/system-owner.ts';
 import { assetStore } from '../assets/store.ts';
@@ -51,6 +51,27 @@ async function main(): Promise<void> {
       mp4Magic: vid.bytes.slice(4, 8).toString() === 'ftyp',
     },
   };
+
+  // Layer 4: the ENABLE_LIVE_SOCIAL_PUBLISH gate. Only assertable when the flag is OFF — the flag
+  // defaults ON, and calling publishTo with it on would post for real, which is exactly what this
+  // script exists to avoid. Flag on → report the skip rather than fake a pass.
+  if (isLiveSocialPublish()) {
+    report.liveGate = { skipped: 'ENABLE_LIVE_SOCIAL_PUBLISH is on — asserting it would post for real' };
+  } else {
+    const r = await publishTo('facebook', {
+      postId: 'verify-live-gate',
+      ownerId: SYSTEM_OWNER_ID,
+      assetType: 'text',
+      assets: [],
+      body: 'verify',
+      threads: 'verify',
+      x: 'verify',
+    });
+    if (!r.dryRun || !r.ok || !r.url?.startsWith('dryrun://') || !r.platformPostId) {
+      throw new Error(`live gate off but publishTo did not simulate: ${JSON.stringify(r)}`);
+    }
+    report.liveGate = { simulated: true, url: r.url };
+  }
 
   console.log(JSON.stringify(report, null, 2));
 }
