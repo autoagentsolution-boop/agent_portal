@@ -12,6 +12,7 @@ import type { RunnableAgentId } from '../registry/agent-types.ts';
 import { createCampaign } from '../../db/repos/campaign-repo.ts';
 import { createPost, getPostForOwner, getPostForCopyGen, attachPostMedia, setStatus as setPostStatus } from '../../db/repos/post-repo.ts';
 import { resolveCopyConfig, DEFAULT_LANGUAGE } from '../../copygen/resolve-config.ts';
+import { detectLanguage } from '../master/detect-language.ts';
 import { getUserById } from '../../db/repos/user-repo.ts';
 import { generateVariantsForPost, type GeminiFn } from '../../copygen/service.ts';
 import { publishPostNow, type PublishFn } from '../../scheduler/tick.ts';
@@ -927,7 +928,6 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     };
   }
   const call = ctx.llmJsonFn ?? callGeminiJson;
-  const language = await resolveRunLanguage(ctx);
   const concept = ctx.upstream['content_concept']; // optional grounding (a nurture flow); usually absent
   const summary = ctx.upstream['summary']; // summarize → email composition: base the email on the summary
   const research = ctx.upstream['research_summary']; // "research X, then email the findings" — ground on it
@@ -937,9 +937,11 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   // they came in on, and their message. This personalizes a birthday/nurture note WITHOUT forcing the
   // sales-nurture framing (draftNurtureEmail's job); the purpose still drives what the email says.
   let leadGrounding = '';
+  let leadMessage: string | null = null;
   if (ctx.goal.slots.leadId) {
     const lead = await getLead(ctx.goal.slots.leadId, ctx.ownerId).catch(() => null);
     if (lead) {
+      leadMessage = lead.message?.trim() || null;
       leadGrounding = [
         `Recipient name: ${lead.name ?? '(unknown — do not guess a name)'}`,
         lead.sourceProduct ? `They first showed interest in: ${lead.sourceProduct}` : '',
@@ -947,6 +949,25 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
       ].filter(Boolean).join('\n');
     }
   }
+  // An email to a LEAD is a message to a COUNTERPARTY, so it must be in THEIR language — not the
+  // workspace default. `resolveRunLanguage` ends at `user.defaultLanguage`, which is why an Indonesian
+  // lead was sent a Vietnamese first touch (F13): the nurture goal carries no language slot at all, so
+  // every lead was nurtured in the owner's language. Order of authority:
+  //   1. An explicit/chat-derived goal language — the owner said what language this content is in.
+  //   2. The lead's own message, named when its script is unambiguous (vi/th/ja/ko/zh/ru/ar/…).
+  //   3. Latin-script lead message — no code can tell id from en, so instruct the model to MIRROR the
+  //      message quoted in the prompt above rather than pinning a language it can't know. Same fallback
+  //      the chat reply path uses (conversation-author's languageDirective).
+  //   4. No lead context → the existing owner-default chain, unchanged.
+  const requested = ctx.goal.slots.language?.trim();
+  const leadScript = leadMessage ? detectLanguage(leadMessage) : null;
+  const languageDirective = requested
+    ? `Write the email entirely in this language: ${requested}.`
+    : leadScript
+      ? `Write the email entirely in this language: ${leadScript}.`
+      : leadMessage
+        ? 'Write the email entirely in the SAME language as the recipient\'s own message quoted above. Detect it from their words; do not default to English or to any other language.'
+        : `Write the email entirely in this language: ${await resolveRunLanguage(ctx)}.`;
   const input = [
     `Purpose / what to say: ${purpose}`,
     ctx.goal.slots.emailSubject ? `Requested subject: ${ctx.goal.slots.emailSubject}` : '',
@@ -956,7 +977,7 @@ const runEmailWriter = async (ctx: RunnerContext): Promise<RunnerOutput> => {
     concept ? `Context to ground in: ${JSON.stringify(concept).slice(0, 1200)}`
       : summary ? `Summary to base the email on: ${JSON.stringify(summary).slice(0, 1200)}`
       : research ? `Research findings to base the email on: ${JSON.stringify(research).slice(0, 1400)}` : '',
-    `Write the email entirely in this language: ${language}.`,
+    languageDirective,
   ].filter(Boolean).join('\n');
 
   let usage: GeminiUsage | null = null;

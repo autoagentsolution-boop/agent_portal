@@ -77,6 +77,35 @@ async function main(): Promise<void> {
     await getRunner('email_writer')({ runId: 'r', ownerId: user.id, goal: plainGoal, upstream: {}, llmJsonFn: captureLlm as never });
     ok(!captured.includes('Recipient name:'), 'no leadId → no lead grounding line', captured.slice(0, 120));
 
+    // An email to a LEAD goes to a COUNTERPARTY, so it must be in THEIR language. The workspace default
+    // (`user.defaultLanguage`, 'en' for this fixture) is NOT an acceptable answer when the lead's own
+    // words are available — that fallback is what sent an Indonesian lead a Vietnamese first touch (F13).
+    console.log('runEmailWriter recipient-language contract (the lead\'s language, not the workspace default)');
+    const langLead = async (name: string, email: string, message: string) => {
+      const lead = await createLead({ ownerId: user.id, name, email, phone: null, message, sourceProduct: 'Atria', source: 'form', calBookingUid: null, score: 60, scoreReasons: [] });
+      captured = '';
+      const goal = goalSpec.parse({ outputs: { needsEmail: true, needsTextPost: false, needsPublishing: false }, slots: { emailTo: email, angle: 'a warm thank-you', leadId: lead.id }, provider: 'test' });
+      await getRunner('email_writer')({ runId: 'r', ownerId: user.id, goal, upstream: {}, llmJsonFn: captureLlm as never });
+      return captured;
+    };
+
+    // Non-Latin lead message → the script detector names it outright.
+    const viPrompt = await langLead('Tuan', 'tuan@example.com', 'Tôi muốn tìm hiểu thêm về khóa học của bạn');
+    ok(viPrompt.includes('in this language: vi'), 'Vietnamese lead → writer pinned to vi', viPrompt.slice(-160));
+    ok(!viPrompt.includes('in this language: en'), 'Vietnamese lead → workspace default NOT used', viPrompt.slice(-160));
+
+    // Latin-script lead message: no code can tell Indonesian from English, so the writer must be told to
+    // MIRROR the quoted message — pinning any named language here is the F13 defect.
+    const idPrompt = await langLead('Budi', 'budi@example.com', 'Saya tertarik dengan kursus ini, tolong kirim harga dan jadwalnya');
+    ok(idPrompt.includes('SAME language as the recipient'), 'Latin-script lead → writer told to mirror the lead', idPrompt.slice(-200));
+    ok(!/in this language: (en|vi)\./.test(idPrompt), 'Latin-script lead → no language pinned from the workspace default', idPrompt.slice(-200));
+
+    // The owner stating a language still wins — that is their explicit intent for this content.
+    captured = '';
+    const askedGoal = goalSpec.parse({ outputs: { needsEmail: true, needsTextPost: false, needsPublishing: false }, slots: { emailTo: 'lam@example.com', angle: 'a note', leadId: lam.id, language: 'ko' }, provider: 'test' });
+    await getRunner('email_writer')({ runId: 'r', ownerId: user.id, goal: askedGoal, upstream: {}, llmJsonFn: captureLlm as never });
+    ok(captured.includes('in this language: ko'), 'an explicit goal language still wins over the lead', captured.slice(-160));
+
     console.log('runEmailAgent nurture stamp (stubbed Gmail — 0 real send)');
     const sendStub: GmailSendFn = async () => ({ id: 'stub-msg-1' });
     const sendGoal = goalSpec.parse({ outputs: { needsEmail: true, needsTextPost: false, needsPublishing: false }, slots: { emailTo: 'lam@example.com', leadId: lam.id, language: 'en' }, provider: 'test' });
