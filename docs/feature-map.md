@@ -105,6 +105,7 @@ Turns captured leads from dead rows into an active email relationship: a proacti
 - **Nurture brain** (`nurture-brain.ts`): a Gemini function-calling loop mirroring `atria-brain` — classify reply → draft → set state → escalate; **budget-capped** (reuses the P6 thinking-budget policy), product-grounded, fail-closed to escalate on unverifiable price/promise, prompt-injection-hardened (reply = DATA). Opt-out is deterministic (regex before the LLM) + GLOBAL (`NurtureSuppression` checked at enroll + email_agent pre-send + the legacy email panel).
 - **Approval UX:** `nurture-router.ts` + Nurture Inbox (Command-Center `surface:'nurture'`) — approve/edit(`to` never editable)/reject; guardrails (daily-cap, signed `List-Unsubscribe`). Approve calls `runWorkflow({approveNodeId})` directly (NOT the HTTP approve-node route, whose scheduler branch rejects now-instants).
 - **Relationship:** consumes leads from the lead-collector (incl. the new handle-only leads once they have an email); every send rides the same approval gate + credit-debit path as marketing flows; guarded by `verify-nurture-drip`/`-reply-ingestion`/`-brain`/`-e2e` (every send traces to an approval, 0 real sends).
+- **Speaks the LEAD's language (`c473868`).** Live-observed defect: an Indonesian lead received a Vietnamese first touch. `buildTouchGoal` sets recipient/angle/stage but never `slots.language`, so `resolveRunLanguage` fell through to `user.defaultLanguage` — every lead was nurtured in the owner's language regardless of what they wrote in. `runEmailWriter` now resolves a **counterparty** language from the counterparty: explicit goal language → the lead's message when its script is unambiguous → *mirror the quoted message* for Latin script (no code separates `id` from `en`) → owner default only when there is no lead. **Touches:** the same `email_writer` node the one-off Email Agent and birthday/chat emails use, so a chat-derived language still wins there (script-4 behaviour preserved). **Guarded by:** `verify-nurture-email-from-chat` (+5, all failing pre-fix). Sibling gaps left open deliberately: `dm-runners` has no counterparty context to mirror, and the task path (`orchestration-router.ts:401`) still defaults Latin to `'en'` — both tracked in the i18n plan.
 
 ### Gate-after-content + Data Guard chunking + recipient-carry (bug batch, `9f915fa`)
 Five correctness/UX fixes from the observed browser test.
@@ -895,4 +896,24 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `MKTAgent/src/orchestration/verify-nurture-email-from-chat.ts`
   - `MKTAgent/src/orchestration/verify-summarize-node.ts`
 - **docs: record script 4 of the observed live test** (66136f5)
+  - `plans/reports/test-260722-1744-script4-and-f7-fix.md`
+- **fix(nurture): write emails to a lead in the LEAD's language, not the workspace default** (c473868)
+  - `MKTAgent/src/orchestration/executor/agent-runners.ts`
+  - `MKTAgent/src/orchestration/verify-nurture-email-from-chat.ts`
+- **fix(ui): stop shipping half-translated controls while an i18n layer is planned** (8cef557)
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+  - `MKTAgent/web/src/components/impact-report.tsx`
+  - `MKTAgent/web/src/components/post-workflow-view.tsx`
+  - `MKTAgent/web/src/components/scheduled-view.tsx`
+  - `MKTAgent/web/src/components/workspace-panel.tsx`
+  - `MKTAgent/web/src/hooks/use-speech-recognition.ts`
+- **docs: language-localization audit + the i18n plan that follows from it** (bd45da9)
+  - `plans/260722-1949-i18n-full-surface/phase-01-locale-foundation.md`
+  - `plans/260722-1949-i18n-full-surface/phase-02-api-message-envelope.md`
+  - `plans/260722-1949-i18n-full-surface/phase-03-migrate-act-on-tier.md`
+  - `plans/260722-1949-i18n-full-surface/phase-04-translation-pipeline.md`
+  - `plans/260722-1949-i18n-full-surface/phase-05-enforcement.md`
+  - `plans/260722-1949-i18n-full-surface/phase-06-chrome-tier.md`
+  - `plans/260722-1949-i18n-full-surface/plan.md`
+  - `plans/reports/audit-260722-1949-language-localization-gap.md`
   - `plans/reports/test-260722-1744-script4-and-f7-fix.md`
