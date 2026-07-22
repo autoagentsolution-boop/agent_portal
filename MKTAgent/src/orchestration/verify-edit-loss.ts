@@ -5,6 +5,8 @@ import { createCampaign } from '../db/repos/campaign-repo.ts';
 import { createPost, getPostForOwner, editPostCopy } from '../db/repos/post-repo.ts';
 import { getRunner } from './executor/agent-runners.ts';
 import { goalSpec } from './schemas/goal-spec.ts';
+import { putArtifact, listArtifacts } from './executor/artifact-store.ts';
+import { mirrorCopyOntoConcept, deriveKeyMessage } from '../api/concept-mirror.ts';
 import type { GeminiFn } from '../copygen/service.ts';
 
 let failures = 0;
@@ -63,6 +65,30 @@ async function main(): Promise<void> {
     await prisma.post.update({ where: { id: p3 }, data: { status: 'rework' } });
     const out3 = await runConcept(p3);
     ck('rework regenerates despite copyEdited', (out3.data as { copy?: { body?: string } }).copy?.body === 'REGENERATED body', (out3.data as { copy?: { body?: string } }).copy?.body);
+
+    // 5) MIRROR: /refine, /edit-copy and /select-variant push new copy onto the content_concept
+    // artifact — and must RE-DERIVE keyMessage with it. keyMessage is a snapshot of the body taken at
+    // generation time, and runStoryboard briefs frames/video keyframes on it; mirroring only `copy`
+    // left it pinned to the pre-edit text, so a refined post produced keyframes for the OLD message.
+    const art = await putArtifact(runId, user.id, 'n-mirror', 'content_concept', {
+      mainAngle: 'angle',
+      keyMessage: 'STALE original message',
+      copy: { body: 'original', threads: 't', x: 'x' },
+      postId: p3,
+    });
+    const NEW_COPY = { body: 'REFINED body — 40% off, ends Friday', threads: 'nt', x: 'nx' };
+    await mirrorCopyOntoConcept(runId, user.id, NEW_COPY);
+    const mirrored = (await listArtifacts(runId)).find((a) => a.id === art.id)?.data as
+      | { keyMessage?: string; copy?: { body?: string }; mainAngle?: string }
+      | undefined;
+    ck('mirror writes the new copy', mirrored?.copy?.body === NEW_COPY.body, mirrored?.copy?.body);
+    ck('mirror RE-DERIVES keyMessage from the new body', mirrored?.keyMessage === deriveKeyMessage(NEW_COPY.body), mirrored?.keyMessage);
+    ck('mirror preserves unrelated fields', mirrored?.mainAngle === 'angle', mirrored?.mainAngle);
+
+    // A non-copy shape must be skipped, not written as a malformed artifact.
+    await mirrorCopyOntoConcept(runId, user.id, 'not a copy bag');
+    const after = (await listArtifacts(runId)).find((a) => a.id === art.id)?.data as { copy?: { body?: string } } | undefined;
+    ck('mirror skips a malformed copy value', after?.copy?.body === NEW_COPY.body, after?.copy?.body);
   } finally {
     await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
     console.log('cleanup: throwaway tenant removed');

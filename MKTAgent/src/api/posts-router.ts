@@ -21,8 +21,10 @@ import { checkPostLinks } from '../leads/sources/post-liveness.ts';
 
 // How long a lead collector watches a post before it expires (bounds polling overhead).
 const COLLECTOR_TTL_DAYS = 30;
+
 import { toPostDto, toPostDetailDto } from './mappers.ts';
 import { listArtifacts, updateArtifactData } from '../orchestration/executor/artifact-store.ts';
+import { mirrorCopyOntoConcept } from './concept-mirror.ts';
 import { checkPostability } from '../social/postability.ts';
 import { publishAssetType } from '../scheduler/resolve-input.ts';
 import { resolveConnectionStates } from './connection-state.ts';
@@ -291,16 +293,8 @@ postsRouter.post(
     if (r.status !== 'review') return fail(res, 500, 'copygen_error');
     const post = await getPostForOwner(req.params.id, req.userId!);
     // refineForPost only writes post.copy — but the workflow view renders the run's content_concept
-    // artifact, so without this the refined/translated copy never surfaces (feedback #1). Mirror
-    // /select-variant: push the new copy onto the concept artifact so a reload shows the change.
-    if (post?.runId && post.copy) {
-      const arts = await listArtifacts(post.runId);
-      const concept = arts.find((a) => a.type === 'content_concept');
-      if (concept) {
-        const data = (concept.data as Record<string, unknown>) ?? {};
-        await updateArtifactData(concept.id, req.userId!, 'content_concept', { ...data, copy: post.copy }).catch(() => {});
-      }
-    }
+    // artifact, so without this the refined/translated copy never surfaces (feedback #1).
+    if (post?.runId && post.copy) await mirrorCopyOntoConcept(post.runId, req.userId!, post.copy);
     ok(res, post ? toPostDto(post) : { id: req.params.id, status: 'review' });
   }),
 );
@@ -359,15 +353,8 @@ postsRouter.post(
     if (!post) return fail(res, 409, 'not_editable', 'post copy can only be edited in review or ready state');
     // Same as /refine: editPostCopy only writes post.copy, but the workflow view renders the
     // run's content_concept artifact — without this the hand-edit appears to silently revert
-    // on the next reload. Mirror the new copy onto the concept artifact.
-    if (post.runId && post.copy) {
-      const arts = await listArtifacts(post.runId);
-      const concept = arts.find((a) => a.type === 'content_concept');
-      if (concept) {
-        const data = (concept.data as Record<string, unknown>) ?? {};
-        await updateArtifactData(concept.id, req.userId!, 'content_concept', { ...data, copy: post.copy }).catch(() => {});
-      }
-    }
+    // on the next reload.
+    if (post.runId && post.copy) await mirrorCopyOntoConcept(post.runId, req.userId!, post.copy);
     publishPostStatus(req.userId!, { postId: post.id, status: 'review', campaignId: post.campaignId });
     ok(res, toPostDto(post));
   }),
@@ -393,9 +380,7 @@ postsRouter.post(
     if (!chosen) return fail(res, 422, 'invalid_version', `no version at index ${body.index}`);
     const updated = await editPostCopy(post.id, req.userId!, chosen);
     if (!updated) return fail(res, 409, 'not_editable', 'versions can only be chosen before publishing');
-    if (concept) {
-      await updateArtifactData(concept.id, req.userId!, 'content_concept', { ...data, copy: chosen, chosen: body.index }).catch(() => {});
-    }
+    if (concept) await mirrorCopyOntoConcept(post.runId, req.userId!, chosen, { chosen: body.index });
     publishPostStatus(req.userId!, { postId: post.id, status: 'review', campaignId: post.campaignId });
     ok(res, toPostDto(updated));
   }),
