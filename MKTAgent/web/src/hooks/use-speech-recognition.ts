@@ -91,7 +91,9 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Sp
     const Ctor = getCtor();
     if (!Ctor) return;
     const rec = new Ctor();
-    rec.lang = optsRef.current.lang ?? 'vi-VN';
+    // Follow the caller, else the BROWSER's own locale. Hardcoding 'vi-VN' made every non-Vietnamese
+    // user's speech transcribe against a Vietnamese acoustic model — their words came back as garbage.
+    rec.lang = optsRef.current.lang ?? navigator.language ?? 'en-US';
     rec.continuous = false; // push-to-talk: auto-end on silence
     rec.interimResults = true;
     rec.maxAlternatives = 1;

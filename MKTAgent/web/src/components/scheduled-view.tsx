@@ -115,8 +115,8 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
         grantFor?.postId === p.id ? (
           <span className="ws-grant-confirm">
             ≈ {grantFor.credits.toLocaleString()} cr?
-            <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant()}>Xác nhận</button>
-            <button className="ws-grant-no" disabled={granting} onClick={() => setGrantFor(null)}>Huỷ</button>
+            <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant()}>Confirm</button>
+            <button className="ws-grant-no" disabled={granting} onClick={() => setGrantFor(null)}>Cancel</button>
           </span>
         ) : (
           <button className="ws-grant-btn" disabled={granting} title="Grant Atria autonomy to prepare, then stop at review" onClick={() => void startGrant(p.id)}>⚡ Prepare</button>
@@ -149,7 +149,7 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
                   <span className="ws-grant-confirm">
                     <input type="datetime-local" value={reschedVal} onChange={(e) => setReschedVal(e.target.value)} />
                     <button className="ws-grant-yes" disabled={busy} onClick={() => void saveReschedule(r.id)}>Save</button>
-                    <button className="ws-grant-no" disabled={busy} onClick={() => setReschedFor(null)}>Huỷ</button>
+                    <button className="ws-grant-no" disabled={busy} onClick={() => setReschedFor(null)}>Cancel</button>
                   </span>
                 ) : (
                   <span>

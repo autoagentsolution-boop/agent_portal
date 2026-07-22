@@ -159,8 +159,8 @@ export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBo
                   grantFor?.postId === p.postId ? (
                     <span className="ws-grant-confirm">
                       ≈ {grantFor.credits.toLocaleString()} cr?
-                      <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant()}>Xác nhận</button>
-                      <button className="ws-grant-no" disabled={granting} onClick={() => setGrantFor(null)}>Huỷ</button>
+                      <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant()}>Confirm</button>
+                      <button className="ws-grant-no" disabled={granting} onClick={() => setGrantFor(null)}>Cancel</button>
                     </span>
                   ) : (
                     <button

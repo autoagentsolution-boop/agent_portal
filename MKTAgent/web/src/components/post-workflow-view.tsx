@@ -245,8 +245,8 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
           grantPending ? (
             <span className="ws-grant-confirm">
               ≈ {grantPending.credits.toLocaleString()} cr?
-              <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant(runPostId!)}>Xác nhận</button>
-              <button className="ws-grant-no" disabled={granting} onClick={() => setGrantPending(null)}>Huỷ</button>
+              <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant(runPostId!)}>Confirm</button>
+              <button className="ws-grant-no" disabled={granting} onClick={() => setGrantPending(null)}>Cancel</button>
             </span>
           ) : (
             <button className="btn small" disabled={granting} title="Grant Atria autonomy to prepare and auto-publish on schedule" onClick={() => void startGrant(runPostId!)}>

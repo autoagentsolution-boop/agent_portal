@@ -109,7 +109,9 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
   const startRef = useRef<(t: string) => void>(() => {}); // set after start() is defined (avoids TDZ cycle)
 
   const sr = useSpeechRecognition({
-    lang: 'vi-VN', // VN-first app; Web Speech still handles common English. Server STT is the upgrade path.
+    // Omit `lang` → the hook follows the browser locale. Pinning 'vi-VN' assumed a VN-first user base,
+    // but the product ships 31 content languages: an Indonesian or Korean speaker was being transcribed
+    // against a Vietnamese model. Server STT is still the upgrade path for real multi-language voice.
     visualize: true, // core rides mic amplitude while listening
     onInterim: (t) => setInput(t), // live transcript into the composer
     onFinal: (t) => { setInput(''); startRef.current(t); }, // silence-end → auto-send

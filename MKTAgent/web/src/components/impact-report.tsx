@@ -44,7 +44,7 @@ export function ImpactReport({ campaignId, period = '30d' }: Props) {
   // the report aloud. Kept short (a few sentences) to bound TTS latency + cost.
   const narration = [
     report.headline,
-    `Đã chi ${money(metrics.usdSpent)}, khoảng ${metrics.creditsSpent} credit.`,
+    `Spent ${money(metrics.usdSpent)}, about ${metrics.creditsSpent} credits.`,
     `${metrics.postsPublished} posts on ${metrics.platforms.length} platforms.`,
     metrics.leadsCaptured > 0 ? `Captured ${metrics.leadsCaptured} leads.` : '',
     metrics.measuredReach !== null ? `Measured reach ${metrics.measuredReach.toLocaleString()}.` : '',
