@@ -880,3 +880,6 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `MKTAgent/src/api/posts-router.ts`
   - `MKTAgent/src/orchestration/verify-edit-loss.ts`
   - `plans/reports/test-260722-1622-observed-live-test.md`
+- **docs: record the observed live test — scripts 1-3, seven findings, resume recipe** (429d7d0)
+  - `docs/feature-map.md`
+  - `plans/reports/test-260722-1622-observed-live-test.md`
