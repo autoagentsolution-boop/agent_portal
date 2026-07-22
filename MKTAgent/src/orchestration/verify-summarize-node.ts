@@ -17,7 +17,7 @@ const ok = (cond: boolean, label: string): void => { console.log(`  ${cond ? 'ok
 const chain = (g: GoalSpec): string[] => { const r = planWorkflow(g); return r.ok ? r.plan.nodes.map((n) => n.agentId) : [`ERR:${r.error}`]; };
 const task = (targets: string[], slots: Record<string, unknown> = {}): GoalSpec =>
   goalSpec.parse({ taskTargets: targets, outputs: { needsTextPost: false, needsPublishing: false }, slots: { sourceText: 'A long article about tea farming and its economics. Contact Jane Doe at jane@example.com or +1 555 0100.', ...slots }, provider: 'atria-task' });
-const baseCtx = (): ToolContext => ({ ownerId: 't', message: 'summarize this', memoryContext: null, instructions: null, sessionId: null, priorGoal: null, existingRunId: null, searched: [], proposal: null, executeRunId: null, scheduleProposal: null, resolvedLead: null });
+const baseCtx = (): ToolContext => ({ ownerId: 't', message: 'summarize this', memoryContext: null, instructions: null, sessionId: null, priorGoal: null, existingRunId: null, searched: [], proposal: null, executeRunId: null, scheduleProposal: null, resolvedLead: null, messageLanguage: null });
 
 // Stub LLM: returns a security-scan shape for the Data Guard prompt, a summary shape otherwise — so the
 // executor test exercises the REAL two-node masking→summarize flow without any spend.

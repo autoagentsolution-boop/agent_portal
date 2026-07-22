@@ -22,7 +22,7 @@ const ok = (cond: boolean, label: string, extra?: unknown): void => {
 
 const baseCtx = (ownerId: string): ToolContext => ({
   ownerId, message: 'email a lead', memoryContext: null, instructions: null, sessionId: null, priorGoal: null,
-  existingRunId: null, searched: [], proposal: null, executeRunId: null, scheduleProposal: null, resolvedLead: null,
+  existingRunId: null, searched: [], proposal: null, executeRunId: null, scheduleProposal: null, resolvedLead: null, messageLanguage: null,
 });
 
 const seedLead = (ownerId: string, name: string, email: string) => createLead({

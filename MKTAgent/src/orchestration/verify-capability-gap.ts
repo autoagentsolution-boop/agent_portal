@@ -15,7 +15,7 @@ const ok = (cond: boolean, label: string): void => {
 
 const baseCtx = (ownerId: string, message: string): ToolContext => ({
   ownerId, message, memoryContext: null, instructions: null, sessionId: null, priorGoal: null,
-  existingRunId: null, searched: [], proposal: null, executeRunId: null, scheduleProposal: null, resolvedLead: null,
+  existingRunId: null, searched: [], proposal: null, executeRunId: null, scheduleProposal: null, resolvedLead: null, messageLanguage: null,
 });
 
 async function main(): Promise<void> {

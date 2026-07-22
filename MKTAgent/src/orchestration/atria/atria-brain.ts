@@ -11,7 +11,7 @@
 import { env } from '../../config/env.ts';
 import { recordGeminiCall } from '../../cost/llm-usage.ts';
 import { atriaBrainSystemPrompt } from '../prompts/atria-brain-prompt.ts';
-import { TOOL_DECLARATIONS, dispatchTool, type ToolContext } from './atria-tools.ts';
+import { TOOL_DECLARATIONS, dispatchTool, rescueScheduleProposal, type ToolContext } from './atria-tools.ts';
 import { getBrainCache, invalidateBrainCache } from './atria-brain-cache.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
 import { detectLanguage, languageName } from '../master/detect-language.ts';
@@ -157,6 +157,7 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
     proposal: null,
     executeRunId: null,
     scheduleProposal: null,
+    messageLanguage: null,
     // S9 (multi-turn recipient carry): a lead resolved on an EARLIER turn is persisted on the pre-exec
     // run's goal (leadId + emailTo). Seed it here so a later propose_workflow re-affirms the recipient
     // from the lead record without needing find_lead to run again — the brain stops re-asking "who to?".
@@ -222,6 +223,18 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
         // Final answer. A propose_workflow that produced a run outcome wins (flow card path); else reply.
         const proposal = proposalOrNull(round + 1);
         if (proposal) return proposal;
+        // Schedule rescue: set_schedule parsed an instant this turn but the brain is ending the turn without
+        // calling propose_workflow — which its own tool note requires in the SAME turn. `scheduleProposal`
+        // lives only in `ctx`, and a reply-only turn persists an `answered` run with a null goal (excluded
+        // from PRE_EXEC), so the instant would be unrecoverable next turn — while Atria has already read the
+        // time back to the user. Build the draft flow deterministically instead, exactly as the refine path
+        // re-plans when the brain skips propose_workflow (orchestration-router.ts:268). The schedule rides it
+        // UNconfirmed, so the user still confirms before any scheduler node is spliced.
+        const rescued = await rescueScheduleProposal(ctx);
+        if (rescued) {
+          logger.info('atria_schedule_rescued', { runId: input.sessionId ?? null, round, at: ctx.scheduleProposal?.at ?? null });
+          return { kind: 'proposal', outcome: rescued.outcome, searched: ctx.searched, tools, rounds: round + 1 };
+        }
         let text = textOf(parts);
         // Empty-content STOP (no calls, no text) is the other transient behind BUG-4 — one re-call before
         // degrading, so a good turn isn't thrown away as an apology. Only when there's nothing to lose (no

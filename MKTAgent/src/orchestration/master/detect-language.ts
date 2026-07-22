@@ -71,18 +71,40 @@ export const languageName = (code: string | null | undefined): string | null => 
   return NAMES[c] ?? code ?? null;
 };
 
+// Codes the script probes above (plus Vietnamese, via its diacritics/function words) can identify on
+// their own. Used as a REJECT list for the model-declared language: if `detectLanguage` returned null,
+// the message provably contains none of these scripts, so a declaration of one contradicts the text and
+// is the memory-bleed we deliberately ignore (recalled VN facts making the model claim 'vi' on an
+// English chat). Derived from SCRIPT_PROBES so a new probe extends this automatically.
+const SCRIPT_DETECTABLE = new Set([...SCRIPT_PROBES.map(([code]) => code), 'vi']);
+
+// A model-declared language is trusted ONLY where the detector is blind: Latin script, no VN markers.
+// That is exactly the gap that made Indonesian/Malay/Filipino/French/Spanish/German/Portuguese/Italian
+// silently produce English content — the writing system cannot tell them apart, so code must defer to
+// the model that actually read the words. Anything the detector could have caught itself is refused.
+const latinDeclared = (declared: string | null | undefined): string | null => {
+  // Base subtag only — models answer 'id' but also 'id-ID' / 'pt-BR', and downstream prompts want the code.
+  const code = (declared ?? '').trim().toLowerCase().split(/[-_]/)[0] ?? '';
+  if (!/^[a-z]{2,3}$/.test(code) || SCRIPT_DETECTABLE.has(code)) return null;
+  return code;
+};
+
 // The authoritative CONTENT language for a run — mirrors the language the user is actually communicating
 // in, so a memory-inferred 'vi' can't force Vietnamese onto an English (or Thai, …) conversation. Rules:
 //   1. A confident detection of the CURRENT message wins (VN/Thai/JP/… by script — kills memory bleed and
 //      lets a later refine that states a detectable language override the flow's language).
 //   2. Otherwise (Latin/ambiguous message) keep the flow's ESTABLISHED prior language.
-//   3. First turn with no prior → English (mirror a Latin chat), never the VN account default.
-// `prior` MUST be the previously-established goal language (ctx.priorGoal), NEVER this turn's analyzer
-// output — the analyzer's inferred language is the untrustworthy signal we deliberately ignore. Because
-// turn 1 already resolves via this function, a carried 'vi' can only mean a genuinely VN conversation, so
-// keeping it is safe. A per-node form field / explicit form override still wins downstream.
-export const contentLanguageFor = (message: string, prior: string | null | undefined): string => {
+//   3. First turn with no prior → the language the MODEL read off this message (`declared`), filtered by
+//      latinDeclared so only the Latin-script blind spot is trusted.
+//   4. Nothing usable → English (mirror a Latin chat), never the VN account default.
+// `prior` MUST be the previously-established goal language (ctx.priorGoal), NEVER the requirement
+// analyzer's inferred slot — that one is filled from recalled memory as readily as from the message.
+// `declared` is different: it is the conversational brain naming the language of THIS message, the same
+// signal it uses to write its own reply — which is why the reply was Indonesian while the copy was
+// English. Because turn 1 already resolves via this function, a carried 'vi' can only mean a genuinely
+// VN conversation, so keeping it is safe. A per-node form field / explicit form override still wins.
+export const contentLanguageFor = (message: string, prior: string | null | undefined, declared?: string | null): string => {
   const detected = detectLanguage(message);
   if (detected) return detected;
-  return (prior ?? '').trim().toLowerCase() || 'en';
+  return (prior ?? '').trim().toLowerCase() || latinDeclared(declared) || 'en';
 };

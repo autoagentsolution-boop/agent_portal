@@ -8,7 +8,7 @@ import { workspaceMetrics } from '../master/report-answer.ts';
 import { recallForMessage } from '../../memory/user-memory.ts';
 import { rememberFreeform, type MemoryKind } from '../../db/repos/user-memory-repo.ts';
 import { requirementAnalyzer } from '../master/requirement-analyzer.ts';
-import { emailOutputs, parseRemovals } from '../master/deterministic-analyzer.ts';
+import { emailOutputs, parseRemovals, parseEmailIntent } from '../master/deterministic-analyzer.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
 import { mergeGoals, applyRemovals } from '../master/goal-merge.ts';
 import { contentLanguageFor } from '../master/detect-language.ts';
@@ -43,6 +43,11 @@ export interface ToolContext {
   // email recipient FROM THE LEAD RECORD (authoritative — never a model-typed address) + carry leadId.
   // Only set on an unambiguous single match; >1 matches leave this null so the brain asks which one.
   resolvedLead: { leadId: string; email: string; name: string | null } | null;
+  // The language the BRAIN read off this turn's message (`message_language` on any tool call). The only
+  // signal that separates Indonesian from English — same Latin script, so no code can tell them apart.
+  // Captured on the CONTEXT rather than read per-call so the schedule-rescue path below (which the brain
+  // never routed through) resolves the same language the user is actually chatting in.
+  messageLanguage: string | null;
 }
 
 // Supported NON-marketing utility capabilities → the terminal artifact each produces. propose_task plans
@@ -125,8 +130,13 @@ export const TOOL_DECLARATIONS = [
           description:
             "YOU decide the intent type — do not leave it to guesswork. 'email' = a personal message SENT to a person (a birthday/greeting/thank-you/nurture note, or any email to someone). 'marketing' = a social post, campaign, ad, or marketing content published to platforms. A birthday greeting for a named person is 'email', NOT 'marketing'. Always set this so the flow is built correctly.",
         },
+        message_language: {
+          type: 'string',
+          description:
+            "The ISO 639-1 code of the language the USER'S OWN MESSAGE is written in — the same language you are replying in (e.g. 'id' Indonesian, 'vi' Vietnamese, 'fr' French, 'en' English). Read it off their words ONLY; background context/memory above may be in another language — ignore that. This sets the language of the CONTENT that gets generated, so getting it wrong ships a post in the wrong language.",
+        },
       },
-      required: ['goal_description', 'kind'],
+      required: ['goal_description', 'kind', 'message_language'],
     },
   },
   {
@@ -135,8 +145,11 @@ export const TOOL_DECLARATIONS = [
       'Parse a natural-language time ("tomorrow morning", "next Mon 9am", "sáng mai") into ONE exact absolute instant, so a later action (e.g. sending an email) can happen at that time. Call this when the user wants an action to run at a specific FUTURE time. It returns the exact instant + timezone for you to read back and ask the user to confirm — it schedules NOTHING by itself. IMPORTANT: in the SAME turn, right after this, also call propose_workflow so the draft flow is created and the parsed time is carried on it (still UNconfirmed); then read the time back and ask the user to confirm. After they confirm, call propose_workflow again — the flow then includes the ⏰ scheduler step.',
     parameters: {
       type: 'object',
-      properties: { when_phrase: { type: 'string', description: 'The time expression exactly as the user said it.' } },
-      required: ['when_phrase'],
+      properties: {
+        when_phrase: { type: 'string', description: 'The time expression exactly as the user said it.' },
+        message_language: { type: 'string', description: "ISO 639-1 code of the language the USER'S message is written in — the language the scheduled content will be written in. Ignore the language of any background context above." },
+      },
+      required: ['when_phrase', 'message_language'],
     },
   },
   {
@@ -164,8 +177,9 @@ export const TOOL_DECLARATIONS = [
       properties: {
         capability: { type: 'string', description: 'Short kebab-case verb for the task the user wants done to the content, e.g. "summarize", "translate", "transcribe-audio", "analyze-spreadsheet", "convert-to-slides". Pass what they asked for even if you are unsure it is supported — the system decides and logs a gap if not.' },
         source_text: { type: 'string', description: 'The text/content to run the capability on (e.g. the document). Provide it verbatim — for summarize, the security node masks sensitive spans downstream, so do not pre-redact.' },
+        message_language: { type: 'string', description: "ISO 639-1 code of the language the USER'S request is written in (not the source text's) — the language the summary/result should come back in. Ignore the language of any background context above." },
       },
-      required: ['capability', 'source_text'],
+      required: ['capability', 'source_text', 'message_language'],
     },
   },
   {
@@ -189,6 +203,10 @@ export const TOOL_DECLARATIONS = [
 // Dispatch one tool call. Returns a plain JSON-serializable result (never throws — a thrown tool
 // degrades to an {error} the model can reason about instead of breaking the loop).
 export async function dispatchTool(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<unknown> {
+  // Latest declaration wins, but never let a blank overwrite a good one — the brain declares the language
+  // on the tools that need it, and the value must survive for the whole turn.
+  const declared = str(args.message_language).trim();
+  if (declared) ctx.messageLanguage = declared;
   try {
     switch (name) {
       case 'web_search': {
@@ -332,8 +350,10 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         // Content language mirrors the language the user is actually chatting in — derived from THIS
         // message + the flow's established prior language, never the analyzer's inferred slot (a stale
         // 'vi' bled from recalled memory would otherwise force Vietnamese onto an English conversation).
-        // A detectable language in a later refine turn overrides; the analyzer's own guess is ignored.
-        goal = goalSpec.parse({ ...goal, slots: { ...goal.slots, language: contentLanguageFor(ctx.message, ctx.priorGoal?.slots.language ?? null) } });
+        // A detectable language in a later refine turn overrides. `message_language` is the BRAIN's own
+        // read of this message — the only signal that can tell Indonesian from English (same Latin
+        // script), and it is filtered to Latin-blind-spot codes so it cannot re-open the memory bleed.
+        goal = goalSpec.parse({ ...goal, slots: { ...goal.slots, language: contentLanguageFor(ctx.message, ctx.priorGoal?.slots.language ?? null, ctx.messageLanguage) } });
         // Lead-resolved recipient (P3): when find_lead matched a single lead this turn AND this is an email
         // goal, set the recipient FROM THE LEAD RECORD (never the model's text) + carry leadId so the writer
         // grounds on the lead and the send stamps nurturedAt. Non-email goals ignore it.
@@ -367,7 +387,7 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
           taskTargets: [target],
           outputs: { needsTextPost: false, needsPublishing: false },
           // Summary language mirrors the chat, same rule as propose_workflow (no prior task-lang to carry).
-          slots: { sourceText, language: contentLanguageFor(ctx.message, ctx.priorGoal?.slots.language ?? null) },
+          slots: { sourceText, language: contentLanguageFor(ctx.message, ctx.priorGoal?.slots.language ?? null, ctx.messageLanguage) },
           provider: 'atria-task',
         });
         const outcome = masterAgent.planFromGoal(goal, { skipClarification: true });
@@ -405,4 +425,20 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// Deterministic propose_workflow for a turn that parsed a schedule but never proposed anything (see the
+// call site in atria-brain.ts). The KIND comes from `parseEmailIntent` rather than the brain, so this is a
+// rescue, not a replacement: it only runs when the alternative is losing the schedule outright. Returns
+// the proposal when one was built, else null (no schedule parsed, already proposed, or the plan failed).
+export async function rescueScheduleProposal(ctx: ToolContext): Promise<{ goal: GoalSpec; outcome: MasterAgentOutcome } | null> {
+  if (!ctx.scheduleProposal || ctx.proposal) return null;
+  await dispatchTool('propose_workflow', {
+    goal_description: ctx.message,
+    kind: parseEmailIntent(ctx.message).isEmail ? 'email' : 'marketing',
+    message_language: ctx.messageLanguage ?? '',
+  }, ctx);
+  // dispatchTool MUTATES ctx.proposal; the cast drops the narrowing TS still holds from the guard above.
+  const built = ctx.proposal as ToolContext['proposal'];
+  return built && built.outcome.status !== 'plan_error' ? built : null;
 }

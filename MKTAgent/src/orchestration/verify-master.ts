@@ -282,6 +282,24 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   check('neutral refine keeps established vi', contentLanguageFor('proceed', 'vi') === 'vi');
   check('detectable refine overrides the flow language', contentLanguageFor('thêm ảnh nữa', 'en') === 'vi');
   check('inferred vi slot is ignored on an English chat', contentLanguageFor('yes please proceed', null) === 'en');
+
+  // F7: Latin-script languages the script detector cannot see. The brain's declared message language is
+  // the ONLY signal here — without it every one of these silently produced English content.
+  console.log('contentLanguageFor (model-declared language — Latin-script blind spot)');
+  check('Indonesian chat → id', contentLanguageFor('Buat satu postingan Facebook untuk produk saya', null, 'id') === 'id');
+  check('French chat → fr', contentLanguageFor('Rédige un court post LinkedIn sur notre nouvelle fonctionnalité', null, 'fr') === 'fr');
+  check('Spanish chat → es', contentLanguageFor('Escribe una publicación para Instagram', null, 'es') === 'es');
+  check('declared en stays en', contentLanguageFor('write a short post about our launch', null, 'en') === 'en');
+  check('BCP-47 region tag is narrowed to the base code', contentLanguageFor('Escribe una publicación', null, 'es-MX') === 'es');
+  // Anti-bleed: anything the detector could have caught itself is refused, because detectLanguage
+  // already returned null on this message — the claim contradicts the text (recalled-memory bleed).
+  check('declared vi on a Latin message is REFUSED → en', contentLanguageFor('yes please proceed', null, 'vi') === 'en');
+  check('declared th on a Latin message is REFUSED → en', contentLanguageFor('write a post', null, 'th') === 'en');
+  check('garbage declaration → en', contentLanguageFor('write a post', null, 'Indonesian') === 'en');
+  check('empty declaration → en', contentLanguageFor('write a post', null, '') === 'en');
+  // Precedence unchanged: script detection and the established prior both still outrank the declaration.
+  check('script detection outranks a wrong declaration', contentLanguageFor('gửi email chúc mừng sinh nhật', null, 'en') === 'vi');
+  check('established prior outranks the declaration', contentLanguageFor('proceed', 'id', 'en') === 'id');
 }
 
 // Optional live Gemini smoke.
