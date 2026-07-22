@@ -173,11 +173,13 @@ Closes the one real gap found when rescanning whether P3/P4 (general `WorkflowPr
 Fixes a birthday email + "tomorrow morning" planning as `email_writer → email_agent` with no `scheduler` node. The splice (`workflow-planner`) and carry-via-`priorGoal` were correct; the schedule was never persisted because `set_schedule` wrote to a turn-scoped `ctx.scheduleProposal` that only lands on a run if `propose_workflow` runs the same turn — and the tool note told the model to defer it (contradicting the system prompt).
 - **Depends on:** the generic-scheduler node + `email_writer→scheduler→email_agent` composition (Composable planner C1). **Touches:** `atria-tools` (set_schedule guidance), `conversation-author` (now surfaces `schedule{at,timezone,confirmed}` so the reply reads the time back to confirm), `conversation-prompt`.
 - **Guarded by:** `verify-master` (merge keeps `schedule.at`+`needsEmail`; confirmed goal splices `scheduler` before `email_agent`; reply asks to confirm).
+- **Extended (`766184f`):** `0f89f51` fixed the guidance but left the mechanism conditional on the model obeying it — observed live, the brain called `set_schedule`, read the time back, and ended the turn, so the instant died with `ctx` (a reply-only turn persists an `answered` run with a null goal, which `PRE_EXEC` excludes → nothing to carry). `rescueScheduleProposal` (`atria-tools`) now builds the draft flow deterministically at the one clean turn-end in `atria-brain`, guarded on `ctx.proposal` so it never preempts a brain that was going to propose; `kind` comes from `parseEmailIntent`, the schedule still rides UNconfirmed. Same shape as the deterministic refine path in `orchestration-router` and for the same reason.
 
 ### Content language mirrors the chat (`bc2c60d`)
 Fixes an English conversation producing a Vietnamese email. Content generators resolved language via `goal.slots.language` (a stale 'vi' inferred from recalled memory) → `user.defaultLanguage` → `DEFAULT_LANGUAGE='vi'` — the same untrustworthy signal the chat reply already stopped using.
 - **Depends on:** `detect-language`; new `contentLanguageFor(message, prior)` derives the run's language from the actual message + the flow's established prior, never the analyzer's inferred slot. **Used by:** `atria-tools` `propose_workflow` + `propose_task` (sets `goal.slots.language`), consumed downstream by `resolveRunLanguage` (email/copy/media). **Also:** `clarification-engine` skips the platforms question for an email goal (mirrors the planner's `needsEmail` short-circuit); `atria-brain-prompt` reconciles the line-32/33 conflict so scheduling proposes even before the @ address is known.
 - **Blast radius:** VN chats still produce VN content (detection catches accented + unaccented VN); golden 23/23. **Guarded by:** `verify-master` (+7: content mirrors chat / refine override / inferred-vi ignored; email goal never asks platforms).
+- **Completed for Latin-script languages (`766184f`):** `bc2c60d` closed the memory-bleed half but left `contentLanguageFor` falling through to `'en'` whenever `detectLanguage` returned null — which is every Latin-script language (`id ms tl fr es de pt it`, 8 of the 22 the module names). Observed live: Atria replied in Indonesian and wrote English copy. The brain now DECLARES the message language (`message_language`, required on `propose_workflow`/`propose_task`/`set_schedule`), captured once per turn on `ToolContext.messageLanguage` so the schedule-rescue path resolves it too; `contentLanguageFor(message, prior, declared)` takes it as the third rule. **Anti-bleed invariant kept:** the declaration is refused for any code the script probes can see (`vi th ja ko zh ru ar he hi el`), since a null detection proves the message contains none of those scripts — so recalled VN memory still cannot force VN onto an English chat. **Guarded by:** `verify-master` (+11: id/fr/es accepted, BCP-47 narrowed, declared-vi refused, precedence unchanged).
 
 ### In-flight Atria runs resumable from the Command Center (`473875d`)
 A non-marketing run (email/task) is a post-less `kind=instance`, so one paused at an approval gate surfaced nowhere (Saved Flows = templates, Scheduled = already-approved, Workspace = campaigns) — reachable only by remembering its chat.
@@ -883,3 +885,14 @@ artifact so the workflow view reflects the change, but all three copied only `co
 - **docs: record the observed live test — scripts 1-3, seven findings, resume recipe** (429d7d0)
   - `docs/feature-map.md`
   - `plans/reports/test-260722-1622-observed-live-test.md`
+- **fix(orchestration): mirror the chat language in content, stop losing parsed schedules** (766184f)
+  - `MKTAgent/src/orchestration/atria/atria-brain.ts`
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/master/detect-language.ts`
+  - `MKTAgent/src/orchestration/prompts/atria-brain-prompt.ts`
+  - `MKTAgent/src/orchestration/verify-capability-gap.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
+  - `MKTAgent/src/orchestration/verify-nurture-email-from-chat.ts`
+  - `MKTAgent/src/orchestration/verify-summarize-node.ts`
+- **docs: record script 4 of the observed live test** (66136f5)
+  - `plans/reports/test-260722-1744-script4-and-f7-fix.md`
