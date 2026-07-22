@@ -188,6 +188,27 @@ Two CC quality-of-life additions on top of the resume-cards feature.
 - **Voice:** a 🎙️ button on the CC command bar opens Atria chat directly in hands-free voice mode. Reuses the OrchestratePanel voice stack (`useSpeechRecognition` + `tts-player` + `voiceMode`) via a new `autoVoice` prop that fires `toggleVoiceMode` on the false→true edge (the panel isn't remounted per open, so it watches the flag). `App.launchVoice` sets it; every other open path (`openOrchestrate`/`launchFromCommandCenter`/`selectChat`/`closeCcChat`) clears it. Gated on Web Speech API support.
 - **Dismiss:** each "Continue where you left off" card gets a ✕ that deletes the underlying item — chat → `DELETE /agent/chats/:id`, run/flow → `DELETE /orchestration/runs/:id` (a `running` run refuses 409 rather than orphaning its executor) — then refreshes the affected list. Depends on the resume-cards feature (`473875d`); the card is wrapped so the ✕ is a sibling, not a nested `<button>`.
 
+### Copy edits reach the media agents — `keyMessage` re-derived on mirror (`88a2282`)
+Closes a silent cross-feature break between **copy editing** and **media generation**, found in the
+2026-07-22 observed live test.
+
+`concept_writer` stores `keyMessage` as a snapshot of the copy body (`copy.body.slice(0,200)`) on the
+`content_concept` artifact. The three routes that change copy afterwards — `/refine` (LLM instruction),
+`/edit-copy` (hand edit) and `/select-variant` (pick a version) — each mirrored the new copy onto that
+artifact so the workflow view reflects the change, but all three copied only `copy` and left
+`keyMessage` at its pre-edit value.
+
+- **What depended on it silently:** `runStoryboard` briefs every frame — carousel slides *and* video
+  keyframes — on `concept.keyMessage`. So refining a post ("40% off, ends Friday") and then running
+  the storyboard/video step generated media for the ORIGINAL message while the published body carried
+  the new one. The two deliverables of one post disagreed, with nothing surfaced to the user.
+- **Shape:** the copy-pasted mirror block is extracted to `src/api/concept-mirror.ts`
+  (`mirrorCopyOntoConcept` + `deriveKeyMessage`), shared by all three routes, re-deriving `keyMessage`
+  with the generator's own rule. A non-copy-bag value is skipped rather than written as a malformed
+  artifact.
+- **Touches:** posts router (refine / edit-copy / select-variant) → `content_concept` artifact →
+  `storyboard` + `video` nodes. Covered in `verify-edit-loss`.
+
 ## Commit ledger
 
 - **fix(orchestration): preserve email intent + recipient name across refine/confirm turns** (0733288)
@@ -854,3 +875,8 @@ Two CC quality-of-life additions on top of the resume-cards feature.
 - **docs: record the http-tier fix and write the pre-test session state** (1a2b496)
   - `docs/feature-map.md`
   - `plans/reports/state-260721-1730-session-handoff.md`
+- **fix(copy): re-derive keyMessage when refined or hand-edited copy is mirrored** (88a2282)
+  - `MKTAgent/src/api/concept-mirror.ts`
+  - `MKTAgent/src/api/posts-router.ts`
+  - `MKTAgent/src/orchestration/verify-edit-loss.ts`
+  - `plans/reports/test-260722-1622-observed-live-test.md`

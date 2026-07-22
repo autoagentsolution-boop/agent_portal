@@ -97,6 +97,47 @@ or stop persisting a derived snapshot and compute it at read time.
 were both applied correctly. LLM-adherence observation, not a code defect — but if length control
 matters, the refine prompt needs an explicit length constraint rather than free text.
 
+### F6 🐛 Gate copy is wrong for every gate except publisher/video (Script 3)
+
+`saved-flow-detail.tsx:362` (and `post-workflow-view.tsx:323`) render one catch-all string for any
+`awaiting_approval` node that isn't `campaign_strategist` or `video`:
+
+> "Paused before **concept writer** — an external action. Approve to proceed."
+
+Wrong twice. (a) **"before"** — the concept *selection* gate parks AFTER the node completed
+(`workflow-executor.ts:497` sets `completed`, then :505 parks), so concept is done, not pending.
+(b) **"an external action"** — it is a content pick; nothing leaves the system. Observed the same
+string on the **scheduler** gate, which also performs no external action.
+
+**Fix shape:** switch on `agentGate(agentId)` — `'selection'` → "Pick a version to continue",
+`'publish'` → the external-action copy, `'cost'` → the existing video copy.
+
+### F7 🐛 Latin-script languages silently produce ENGLISH content (Script 3) — MAJOR
+
+Request was 100% Indonesian ("Buat satu postingan Facebook … jadwalkan untuk besok jam 9 pagi").
+Atria **replied in Indonesian**, then generated the post copy in **English**.
+
+| run | request | `goal.slots.language` |
+|---|---|---|
+| 1 | Vietnamese | `vi` ✅ |
+| 2 | English | `en` ✅ |
+| 3 | **Indonesian** | **`en`** ❌ |
+
+**Root cause:** `src/orchestration/master/detect-language.ts` → `contentLanguageFor()`.
+`detectLanguage()` is **script-based**; Latin script with no distinctive diacritics returns `null`.
+Its own comment says null means *"let the model mirror the user's message"* — but `contentLanguageFor`
+does not consult the model, it falls back to hardcoded `'en'`.
+
+The chat-reply path DOES ask the model (hence the Indonesian reply), so the two paths disagree and the
+user sees a confident Indonesian reply attached to English marketing copy.
+
+**Blast radius:** every Latin-script language — `id, ms, tl, fr, es, de, pt, it` — 8 of the 22 codes
+the module's own `NAMES` map claims to support. Non-Latin (vi/th/ja/ko/zh/ru/ar/he/hi/el) is fine.
+
+**Fix shape:** when `detectLanguage` returns null and there is no prior, take the language the LLM
+analyzer already inferred for the reply instead of defaulting to `'en'`. The signal exists — it is
+just not plumbed into the content path.
+
 ### Verified correct (no action)
 
 - VI in → VI out on every conversational turn.
@@ -115,9 +156,9 @@ matters, the refine prompt needs an explicit length constraint rather than free 
 | # | Script | Status |
 |---|---|---|
 | 1 | Multi-turn marketing + add/remove node (VI) | ✅ done — F1, F2 found |
-| 2 | Edit & refine / regenerate | next |
-| 3 | Schedule + manual post-inherits-setup | pending |
-| 4 | Schedule birthday email | pending |
+| 2 | Edit & refine / regenerate (EN) | ✅ done — F4, F5 (**F5 FIXED**, `88a2282`), O1 |
+| 3 | Schedule + manual post-inherits-setup (ID) | ⚠ partial — F6, F7 found; scheduling ✅, inherit half not reached |
+| 4 | Schedule birthday email | pending — session stopped here (context) |
 | 5 | Lead collector | pending |
 | 6a | Nurture email (automatic) | pending |
 | 6b | Document summarize + Security + email | pending |
@@ -127,6 +168,46 @@ matters, the refine prompt needs an explicit length constraint rather than free 
 | 10 | Nurture + Strategist + Scheduler (anti-spam spacing) | pending |
 | 11 | Video via video_script + video (24s) | pending |
 
+## Resuming — read this first
+
+The environment is LEFT RUNNING. Verify before restarting anything:
+
+```
+docker ps | grep mktagent-postgres-1      # :5433
+curl -s localhost:7100/health             # {"ok":true,...}
+curl -s localhost:9333/json/version       # headed Chromium, CDP
+```
+
+- **Tenant:** `ce155aa5-5f70-4e37-bc41-1f09328e223f` (`p6-demo-1784711472775@test.local`),
+  ~501,900 credits, already signed in in the browser.
+- **Drive the browser with** `agent-browser --cdp 9333 <cmd>`. **Always click via
+  `eval(el.click())`** — `click <ref>` silently no-ops on this app (cost ~20 min to spot).
+- **Backend log** is the background task output file; grep it rather than snapshot-walking the UI.
+- If Chromium died: `bash plans/260714-0015-full-app-browser-test/launch-observed-browser.sh`,
+  then re-run the lead-repoint + credit-grant steps below (the script mints a NEW tenant).
+
+**Two setup steps the harness does NOT do** (both cost time to rediscover):
+1. `ensureTrialGrant(ownerId)` — seeded tenants start at 0 credits and 402 on first run (F3).
+2. Repoint lead emails to `auto.agent.solution+<name>@gmail.com` — the seed writes
+   `nghiep.demo@gmail.com`, a real deliverable address. Lead PII is encrypted, so go through
+   `createLead`, not SQL.
+
+**Safety state to preserve:** `ENABLE_LIVE_SOCIAL_PUBLISH=false` in `MKTAgent/.env` (gitignored).
+Publisher runs, platform call simulated. **Remove that line before expecting a real post.**
+`sendGmailAs` has NO equivalent gate — email safety rests entirely on the +alias redirect.
+
+## Next up: scripts 4-11
+
+4 birthday email · 5 lead collector · 6a nurture auto · 6b doc summarize + security + email ·
+7 analyze · 8 memory · 9 market research + email · 10 nurture + strategist + scheduler spacing ·
+11 video (24s, `video_script` → `video`).
+
+Language plan (spread, not repeated per script): VI · EN · **ID** · KO. **Re-test ID** on any
+content-producing script to confirm F7's fix.
+
+**Expect F1 to recur in script 11** — video keyframes go through the same hardcoded
+`gemini-2.5-flash-image`, so non-ASCII on-frame text should corrupt identically. Capture it.
+
 ## Unresolved
 
 1. Seeded tenant has **no connected platforms**, so the publisher can only park at
@@ -134,3 +215,10 @@ matters, the refine prompt needs an explicit length constraint rather than free 
    copied onto this tenant. Affects scripts 3 and 11.
 2. Script 10's anti-spam spacing is day 0/3/6 — not observable in real time; must be verified by
    reading the computed next-touch date, not by watching a send.
+3. **Why did runs 1 and 2 skip the concept selection gate?** `concept_writer` carries
+   `gate: 'selection'` (`agent-registry.ts:135`) and `conceptGate` defaults true
+   (`orchestration-router.ts:507`), yet runs 1/2 show `concept_writer: completed` with no park while
+   run 3 parked. Same surface, same defaults; the only structural difference is run 3's `scheduler`
+   node. Not diagnosed — do not assume the gate fires reliably.
+4. `agent-browser --cdp <port> click <ref>` silently no-ops on this app; `eval(el.click())` works.
+   Matches the existing playbook gotcha — cost ~20 min before it was spotted. Always eval-click.
