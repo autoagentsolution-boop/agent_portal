@@ -134,6 +134,103 @@ the `+tag`.
 BUG-4 names. The single re-call is not always enough; the turn was lost and cost 2 extra user turns to
 recover (during which the brain called `execute_workflow` on a non-existent plan).
 
+## Script 5 — lead collector — ✅ live on the real account
+
+Switched the browser to the user's own tenant `6455c2bd…` (`auto.agent.solution@gmail.com`,
+`is_super_admin=t`, 1,989 credits) by minting a session with `createSession()` and setting the
+`mkt_session` cookie — no credential copying, per the user's preference. Both capture sources exercised
+against live tokens.
+
+**Comment capture — works against the live Graph API.** `↻ Poll comments` →
+`comment_poll_done postsPolled:3 commentsScanned:2 leadsCaptured:0 duplicates:2`. Real comments were
+fetched and both correctly deduped against the existing lead. UI reported
+*"Polled 3 post(s): 0 new lead(s), 2 dup(s)"* at 1.2s.
+
+⚠ An earlier "the poll reports nothing to the user" suspicion was **RETRACTED** — a snapshot taken after
+the message faded. Re-tested by sampling the DOM every 300ms from the moment of click, which caught
+`Polling…` → the summary. Same failure mode as session 1's retracted finding; sample, don't snapshot.
+
+**Form/webhook capture — works end-to-end.** Minted an intake token in the UI → posted a lead to
+`POST /leads/form?t=…` (HTTP 200, `status:"created"`) → verified at rest:
+
+| Check | Result |
+|---|---|
+| PII encryption | `name`/`email` both stored as `v1.…` ciphertext ✅ |
+| Rule-layer scoring | 65 — form +35, new +15, detailed message +15 ✅ |
+| LLM layer (`✨ AI score`) | 65 → **85**, reason *"Explicit interest in AI Automation course, asking for price/schedule."* ✅ |
+| Dashboard | decrypted name/email/message + score visible to the owner ✅ |
+
+Test lead `a3ad8bb8…` (`auto.agent.solution+leadtest@gmail.com`) is **still on the live account** — delete
+when done.
+
+### What could NOT be proven, and why
+
+A NEW comment-sourced capture. The only post carrying a real `platform_post_ids` (`aa0fdd76…`) is dead —
+a live `🔗 Check links` returned `post_links_checked dead:["facebook"]`. The two posts that DO have a
+keyword show `🟡 collecting (pending sources)` because they were never published. Closing this needs
+either a fresh real post (blocked by `ENABLE_LIVE_SOCIAL_PUBLISH=false`) or the user leaving a comment
+with a new email on a live post, then re-polling.
+
+### F12 ⚠ LinkedIn comment capture is impossible on the current app tier — confirmed live
+
+`linkedin_comments_scope_unavailable — Not enough permissions to access: socialActions.GET_ALL.NO_VERSION`,
+plus `token_refresh_failed … linkedin refresh: no refresh_token (app tier issues none — liveness only)`.
+The code comments already call LinkedIn "best-effort or tier-gated"; this is the live confirmation. The UI
+still lists LinkedIn as a collector platform with no indication that capture cannot work there.
+
+### O3 Scoring reasons are English-only by construction
+
+An Indonesian lead message produced an English LLM reason, next to English rule reasons ("submitted a
+form") on a `defaultLanguage: vi` account. The whole scoring vocabulary is English by design, so this is a
+design choice rather than a regression — but it is owner-facing text in a product that localizes
+everywhere else.
+
+## Script 6a — automatic nurture drip — ⚠ everything but the send
+
+Scoped deliberately: `nurtureEnabled` left **false** so the owner sweep never enrolled the real
+third-party lead (`nghiepit.lamthuan@…`); only the test lead was enrolled directly via `enrollLead`.
+`nurture_swept enrolled:0 planned:1` confirms the sweep stayed off while the thread still ran.
+
+| Step | Result |
+|---|---|
+| Enroll (scoped) | thread `65d1e23f…`, `nextPlanAt` = now ✅ |
+| Cron pickup | `nurture_cron_tick planned:1` within one 2-min tick ✅ |
+| Touch 0 planned | `intro`, run `161f7f17…` ✅ |
+| Human gate | touch parked `awaiting_approval` — nothing auto-sent ✅ |
+| Inbox surface | 🌱 Nurture Inbox → thread → editable subject + body, recipient shown ✅ |
+| **Send** | **not performed** — the approve click was blocked by the harness classifier as an outward-facing action |
+
+### F14 🐛 The stored Google refresh token is dead — every Gmail send fails after approval
+
+The user approved the touch; `email_agent: send failed (invalid_grant)`. The
+`google_drive_refresh_token` on this tenant (`agent_credential`, last updated 2026-07-09) is revoked or
+was issued by a different OAuth client. `gmail-send.ts:65` only checks that a token EXISTS
+(`gmail_not_connected`); an existing-but-dead token is discovered at send time, after the credits are
+spent and the human has approved.
+
+Blast radius: every Gmail send (nurture, birthday, one-off Email Agent) **and** Drive media access, since
+both read the same credential. Remediation is a Google reconnect. This compounds F9 — with a pre-flight
+connection check the run would never have reached an approval prompt it could not honour.
+
+### F13 🐛→✅ Nurture emails were written in the OWNER's language, not the LEAD's — FIXED
+
+The lead wrote in Indonesian ("Saya tertarik dengan kursus AI Automation, tolong kirim harga dan
+jadwalnya"). The drafted first touch came back in **Vietnamese** ("Chào Script5, Cảm ơn bạn rất nhiều vì
+đã liên hệ…") because the account's `defaultLanguage` is `vi`.
+
+**Root cause:** `buildTouchGoal` (`nurture-runner.ts:63`) sets `emailTo`, `leadId`, `angle`,
+`nurtureThreadId`, `nurtureStage` — but never `slots.language`. `resolveRunLanguage`
+(`agent-runners.ts:353`) therefore falls through to `user.defaultLanguage`. The lead's own message is
+sitting in the same record — the LLM scorer read it fine one step earlier.
+
+**Failure scenario:** an agency running leads from several markets nurtures every one of them in the
+owner's language. The first touch is a "warm thank-you" that the prospect cannot read.
+
+**Fix shape:** derive the touch goal's language from the lead's message. Note `detectLanguage` returns
+null for Latin-script leads, so this needs the F7 treatment — the nurture path has no brain declaring a
+language, so either extend the AI-scoring call (which already reads the message) to return a language
+code, or add one cheap classification at enroll time and persist it on the thread.
+
 ## Blocker for the remaining scripts
 
 The test tenant holds **no credentials at all**. Every live cred (5 social + `google_drive_refresh_token`,
@@ -149,7 +246,9 @@ half there. Not done yet — real emails would send from that account.
 |---|---|---|
 | 1-3 | see previous report | ✅ / ⚠ |
 | 4 | Schedule birthday email (ID) | ✅ scheduling proven (`scheduled`, resume 2026-07-23 02:00Z); F7 + F8 fixed; F9, F10, F11, O2 found; actual send blocked on creds |
-| 5-11 | | pending |
+| 5 | Lead collector | ✅ live on the real tenant — both capture sources proven; F12 + O3 found; new comment-capture not provable today |
+| 6a | Nurture email (automatic) | ⚠ enrollment → cron → draft → gate all ✅; **F13 found and FIXED**; send fails on **F14** (dead Google token) |
+| 6b-11 | | pending — email half blocked until Google is reconnected |
 
 ## Unresolved
 
