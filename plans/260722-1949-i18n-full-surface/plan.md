@@ -1,6 +1,14 @@
 # i18n across the full surface — frontend + API
 
-**Status:** planned, not started · **Branch:** `pivot/video-content-farm`
+**Status:** ✅ **COMPLETE 2026-07-24** (30 UI languages, whole-UI switch, global enforcement, data-driven
+registry, RTL). Live-proven KO/FR/AR. Commits `c13c6b6`→`43d861b`, pushed. Handoff:
+[`state-260724-1548-i18n-complete-resume-6b.md`](../reports/state-260724-1548-i18n-complete-resume-6b.md).
+Deltas from the original plan: locale catalogs are JSON (not `.ts`) with a `locales.ts` single source;
+enforcement is GLOBAL (not an opt-in allow-list) with a shrinking `i18n-exempt.json` backlog; the launch
+set grew from 4 to all 30 content languages via the pipeline. Owed: a native review of the pipeline-
+generated act-on strings (fr onward), and server-side i18n for suggestion content + agent names.
+
+**Original plan below.** · **Branch:** `pivot/video-content-farm`
 **Trigger:** [`audit-260722-1949-language-localization-gap.md`](../../reports/audit-260722-1949-language-localization-gap.md) — 7 recurrences of the same defect class; measured cause: ≈830 hardcoded strings, no i18n mechanism, and the two most load-bearing sentences authored **server-side**.
 
 ## The decision this plan makes
@@ -20,12 +28,12 @@ free. UI strings need catalogs. Ship **en, vi, id, ko**; add by demand, not by a
 
 | # | Phase | Status | Gist |
 |---|---|---|---|
-| 01 | [Locale foundation](phase-01-locale-foundation.md) | ⬜ | `uiLanguage`, a ~60-line `t()`, EN catalog, English fallback |
-| 02 | [API message envelope](phase-02-api-message-envelope.md) | ⬜ | `{code, params}` for every error/notice; kills the 87 raw interpolations |
-| 03 | [Migrate the act-on tier](phase-03-migrate-act-on-tier.md) | ⬜ | ≈250 strings the user must act on, FE + BE |
-| 04 | [Translation pipeline](phase-04-translation-pipeline.md) | ⬜ | LLM-generated catalogs, human review gate for act-on, language switcher |
-| 05 | [Enforcement](phase-05-enforcement.md) | ⬜ | verify + CI: no new literals, no missing keys, no orphan codes |
-| 06 | [Chrome tier](phase-06-chrome-tier.md) | ⬜ | the remaining ≈580 decorative/status strings — optional, do last |
+| 01 | [Locale foundation](phase-01-locale-foundation.md) | ✅ | `uiLanguage`, ~60-line `t()`, EN catalog, English fallback, switcher |
+| 02 | [API message envelope](phase-02-api-message-envelope.md) | ◑ | `fail()` gains `{params}`; F11 fixed. Full node-error/87-toast sweep folded into 03. |
+| 03 | [Migrate the act-on tier](phase-03-migrate-act-on-tier.md) | ✅ | done + extended to the whole chrome tier (26 components) |
+| 04 | [Translation pipeline](phase-04-translation-pipeline.md) | ✅ | `npm run i18n:translate`; generated all 29 locales; act-on → `.review.json` |
+| 05 | [Enforcement](phase-05-enforcement.md) | ✅ | `verify-i18n` GLOBAL scan; param parity; no-conflation; exempt backlog |
+| 06 | [Chrome tier](phase-06-chrome-tier.md) | ◑ | swept except 6 exempt files (App.tsx + 5 forms/modals) |
 
 **Order matters.** 01 → 02 can run in parallel after 01's catalog shape is fixed. 03 depends on both.
 05 must land with 03, not after it — the moment the act-on tier is clean is the moment it starts rotting
