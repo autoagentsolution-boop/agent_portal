@@ -1,9 +1,4 @@
-// French catalog. Partial — missing keys fall back to English. Chrome keys are generated;
-// act-on keys were pipeline-generated and PROMOTED for launch — flag for a native review before
-// production money/delete strings are trusted. See catalog.vi.ts for the contract.
-import type { MessageKey } from './catalog.en';
-
-export const fr: Partial<Record<MessageKey, string>> = {
+{
   "account.language.label": "Langue de l'interface",
   "admin.capabilities.empty": "Aucune demande de fonctionnalité pour l'instant.",
   "admin.capabilities.last_seen": "dernière {date}",
@@ -716,5 +711,5 @@ export const fr: Partial<Record<MessageKey, string>> = {
   "ws.menu.name_title": "{count} post(s) · ◈ {credits} cr",
   "ws.menu.no_chat": "Aucune conversation liée",
   "ws.menu.no_platforms": "aucune plateforme pour l'instant",
-  "ws.menu.subtitle": "{posts} posts · {platforms} · {date}",
-};
+  "ws.menu.subtitle": "{posts} posts · {platforms} · {date}"
+}

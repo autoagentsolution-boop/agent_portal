@@ -1,8 +1,4 @@
-// Indonesian catalog. Partial — missing keys fall back to English. Chrome keys may be
-// generated (src/scripts/i18n-translate.ts); act-on keys are hand-reviewed. See catalog.vi.ts for the contract.
-import type { MessageKey } from './catalog.en';
-
-export const id: Partial<Record<MessageKey, string>> = {
+{
   "account.language.label": "Bahasa antarmuka",
   "admin.capabilities.empty": "Belum ada permintaan kemampuan.",
   "admin.capabilities.last_seen": "terakhir {date}",
@@ -223,6 +219,7 @@ export const id: Partial<Record<MessageKey, string>> = {
   "email.title": "Email",
   "err.generic": "Terjadi kesalahan. Silakan coba lagi.",
   "err.gmail_not_connected": "Gmail belum terhubung. Hubungkan Google untuk mengirim email.",
+  "err.gmail_scope_missing": "Hubungkan kembali Google untuk memberikan izin pengiriman Gmail.",
   "err.gmail_send_failed": "Email tidak dapat dikirim. Periksa koneksi Google Anda lalu coba lagi.",
   "err.insufficient_credits": "Kredit tidak cukup untuk tindakan ini. Isi ulang lalu coba lagi.",
   "err.invalid_grant": "Koneksi Google Anda kedaluwarsa. Hubungkan ulang Google untuk terus mengirim.",
@@ -251,8 +248,8 @@ export const id: Partial<Record<MessageKey, string>> = {
   "impact.estimated.heading": "Estimasi",
   "impact.impressions_suffix": "{count} tayangan",
   "impact.loading": "Memuat dampak…",
-  "impact.measured_prefix": "terukur",
   "impact.measured.heading": "Terukur",
+  "impact.measured_prefix": "terukur",
   "impact.narration.leads": "Mendapatkan {leads} prospek.",
   "impact.narration.posts_platforms": "{posts} postingan di {platforms} platform.",
   "impact.narration.reach": "Jangkauan terukur {reach}.",
@@ -453,9 +450,9 @@ export const id: Partial<Record<MessageKey, string>> = {
   "nav.signout": "Keluar",
   "nav.usage": "Penggunaan",
   "notice.connect_to_publish": "Hubungkan {platforms} untuk memublikasikan — draf Anda sudah siap.",
-  "nurture.approve_send.cta": "Setujui & kirim",
   "nurture.approve.confirmed": "Dikonfirmasi — setujui sekali lagi untuk mengirim.",
   "nurture.approve.sent": "Terkirim.",
+  "nurture.approve_send.cta": "Setujui & kirim",
   "nurture.back_to_inbox": "← Kotak Masuk Nurture",
   "nurture.back_to_threads": "← Utas",
   "nurture.confirm.cta": "Konfirmasi",
@@ -544,20 +541,20 @@ export const id: Partial<Record<MessageKey, string>> = {
   "post.delete.notice": "Postingan dihapus",
   "post.edit_brief.cta": "Edit draf",
   "post.generate.cta": "Buat konten",
-  "post.publish_live_only.cta": "Publikasikan (hanya Live)",
-  "post.publish_now.cta": "Publikasikan sekarang",
   "post.publish.title.live": "Memublikasikan langsung ke platform media sosial nyata, melewati jadwal apa pun",
   "post.publish.title.safe": "Publikasi dinonaktifkan dalam Simulasi Aman — beralih ke Live untuk memposting sekarang. Postingan terjadwal tetap dipublikasikan otomatis pada waktunya.",
+  "post.publish_live_only.cta": "Publikasikan (hanya Live)",
+  "post.publish_now.cta": "Publikasikan sekarang",
   "post.refine.apply.cta": "Terapkan penyempurnaan",
   "post.refine.busy": "Menyempurnakan…",
   "post.refine.cta": "Sempurnakan",
   "post.refine.help": "Menerapkan perubahan kecil melalui AI (menjaga jejak audit). Hasil kembali ke peninjauan untuk disetujui ulang.",
   "post.refine.label": "Sempurnakan konten (perubahan tertarget)",
   "post.refine.placeholder": "mis. persingkat hook, tambahkan info diskon, buat nada lebih hangat…",
-  "post.reject_rework.cta": "Tolak + kerjakan ulang",
   "post.reject.label": "Masukan untuk pengerjaan ulang",
   "post.reject.placeholder": "Yang perlu diubah: nada, hook, CTA, panjang, bahasa…",
   "post.reject.send.cta": "Kirim masukan",
+  "post.reject_rework.cta": "Tolak + kerjakan ulang",
   "post.schedule.help": "Kosongkan berarti siap segera. Penjadwal akan memublikasikan postingan yang siap sesuai waktunya.",
   "post.schedule.label": "Setujui jadwal",
   "post.scheduled_for": "Dijadwalkan untuk {time}",
@@ -714,6 +711,5 @@ export const id: Partial<Record<MessageKey, string>> = {
   "ws.menu.name_title": "{count} postingan · ◈ {credits} kredit",
   "ws.menu.no_chat": "Tidak ada percakapan tertaut",
   "ws.menu.no_platforms": "Belum ada platform",
-  "ws.menu.subtitle": "{posts} postingan · {platforms} · {date}",
-  "err.gmail_scope_missing": "Hubungkan kembali Google untuk memberikan izin pengiriman Gmail.",
-};
+  "ws.menu.subtitle": "{posts} postingan · {platforms} · {date}"
+}

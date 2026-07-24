@@ -1,8 +1,4 @@
-// Vietnamese catalog. Partial — missing keys fall back to English. Chrome keys may be
-// generated (src/scripts/i18n-translate.ts); act-on keys are hand-reviewed. See catalog.vi.ts for the contract.
-import type { MessageKey } from './catalog.en';
-
-export const vi: Partial<Record<MessageKey, string>> = {
+{
   "account.language.label": "Ngôn ngữ giao diện",
   "admin.capabilities.empty": "Chưa có yêu cầu khả năng nào.",
   "admin.capabilities.last_seen": "lần cuối {date}",
@@ -223,6 +219,7 @@ export const vi: Partial<Record<MessageKey, string>> = {
   "email.title": "Email",
   "err.generic": "Đã có lỗi xảy ra. Vui lòng thử lại.",
   "err.gmail_not_connected": "Gmail chưa được kết nối. Kết nối Google để gửi email.",
+  "err.gmail_scope_missing": "Kết nối lại Google để cấp quyền gửi Gmail.",
   "err.gmail_send_failed": "Không gửi được email. Kiểm tra kết nối Google rồi thử lại.",
   "err.insufficient_credits": "Không đủ tín dụng cho thao tác này. Nạp thêm rồi thử lại.",
   "err.invalid_grant": "Kết nối Google đã hết hạn. Kết nối lại Google để tiếp tục gửi.",
@@ -251,8 +248,8 @@ export const vi: Partial<Record<MessageKey, string>> = {
   "impact.estimated.heading": "Ước tính",
   "impact.impressions_suffix": "{count} lượt hiển thị",
   "impact.loading": "Đang tải tác động…",
-  "impact.measured_prefix": "đã đo lường",
   "impact.measured.heading": "Đã đo lường",
+  "impact.measured_prefix": "đã đo lường",
   "impact.narration.leads": "Đã thu được {leads} khách hàng tiềm năng.",
   "impact.narration.posts_platforms": "{posts} bài đăng trên {platforms} nền tảng.",
   "impact.narration.reach": "Phạm vi tiếp cận đã đo lường {reach}.",
@@ -453,9 +450,9 @@ export const vi: Partial<Record<MessageKey, string>> = {
   "nav.signout": "Đăng xuất",
   "nav.usage": "Sử dụng",
   "notice.connect_to_publish": "Kết nối {platforms} để đăng — bản nháp của bạn đã sẵn sàng.",
-  "nurture.approve_send.cta": "Duyệt & gửi",
   "nurture.approve.confirmed": "Đã xác nhận — duyệt thêm lần nữa để gửi.",
   "nurture.approve.sent": "Đã gửi.",
+  "nurture.approve_send.cta": "Duyệt & gửi",
   "nurture.back_to_inbox": "← Hộp thư Nuôi dưỡng",
   "nurture.back_to_threads": "← Luồng",
   "nurture.confirm.cta": "Xác nhận",
@@ -544,20 +541,20 @@ export const vi: Partial<Record<MessageKey, string>> = {
   "post.delete.notice": "Đã xoá bài đăng",
   "post.edit_brief.cta": "Sửa bản nháp",
   "post.generate.cta": "Tạo nội dung",
-  "post.publish_live_only.cta": "Đăng (chỉ ở Live)",
-  "post.publish_now.cta": "Đăng ngay",
   "post.publish.title.live": "Đăng ngay lên các nền tảng mạng xã hội thật, bỏ qua mọi lịch đã đặt",
   "post.publish.title.safe": "Đăng bài bị tắt trong Chạy thử an toàn — chuyển sang Live để đăng ngay. Bài đã lên lịch vẫn tự đăng đúng giờ.",
+  "post.publish_live_only.cta": "Đăng (chỉ ở Live)",
+  "post.publish_now.cta": "Đăng ngay",
   "post.refine.apply.cta": "Áp dụng tinh chỉnh",
   "post.refine.busy": "Đang tinh chỉnh…",
   "post.refine.cta": "Tinh chỉnh",
   "post.refine.help": "Áp dụng một thay đổi nhỏ bằng AI (có lưu vết). Kết quả quay lại bước duyệt để xét lại.",
   "post.refine.label": "Tinh chỉnh nội dung (sửa có mục tiêu)",
   "post.refine.placeholder": "vd: rút ngắn hook, thêm ưu đãi, làm giọng điệu ấm áp hơn…",
-  "post.reject_rework.cta": "Từ chối + làm lại",
   "post.reject.label": "Phản hồi để làm lại",
   "post.reject.placeholder": "Cần đổi gì: giọng điệu, hook, CTA, độ dài, ngôn ngữ…",
   "post.reject.send.cta": "Gửi phản hồi",
+  "post.reject_rework.cta": "Từ chối + làm lại",
   "post.schedule.help": "Để trống nghĩa là sẵn sàng ngay. Bộ lên lịch sẽ đăng các bài đã sẵn sàng đúng giờ.",
   "post.schedule.label": "Duyệt và lên lịch",
   "post.scheduled_for": "Đã lên lịch cho {time}",
@@ -714,6 +711,5 @@ export const vi: Partial<Record<MessageKey, string>> = {
   "ws.menu.name_title": "{count} bài đăng · ◈ {credits} tín dụng",
   "ws.menu.no_chat": "Không có cuộc trò chuyện nào được liên kết",
   "ws.menu.no_platforms": "Chưa có nền tảng",
-  "ws.menu.subtitle": "{posts} bài đăng · {platforms} · {date}",
-  "err.gmail_scope_missing": "Kết nối lại Google để cấp quyền gửi Gmail.",
-};
+  "ws.menu.subtitle": "{posts} bài đăng · {platforms} · {date}"
+}

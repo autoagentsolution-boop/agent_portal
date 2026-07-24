@@ -1,8 +1,4 @@
-// Korean catalog. Partial — missing keys fall back to English. Chrome keys may be
-// generated (src/scripts/i18n-translate.ts); act-on keys are hand-reviewed. See catalog.vi.ts for the contract.
-import type { MessageKey } from './catalog.en';
-
-export const ko: Partial<Record<MessageKey, string>> = {
+{
   "account.language.label": "인터페이스 언어",
   "admin.capabilities.empty": "아직 기능 요청이 없습니다.",
   "admin.capabilities.last_seen": "마지막 {date}",
@@ -223,6 +219,7 @@ export const ko: Partial<Record<MessageKey, string>> = {
   "email.title": "이메일",
   "err.generic": "문제가 발생했습니다. 다시 시도해 주세요.",
   "err.gmail_not_connected": "Gmail이 연결되어 있지 않습니다. 이메일을 보내려면 Google을 연결하세요.",
+  "err.gmail_scope_missing": "Gmail 전송 권한을 부여하려면 Google을 다시 연결하세요.",
   "err.gmail_send_failed": "이메일을 보내지 못했습니다. Google 연결을 확인하고 다시 시도하세요.",
   "err.insufficient_credits": "이 작업에 필요한 크레딧이 부족합니다. 충전 후 다시 시도하세요.",
   "err.invalid_grant": "Google 연결이 만료되었습니다. 계속 보내려면 Google을 다시 연결하세요.",
@@ -251,8 +248,8 @@ export const ko: Partial<Record<MessageKey, string>> = {
   "impact.estimated.heading": "추정됨",
   "impact.impressions_suffix": "{count}회 노출",
   "impact.loading": "영향 로드 중…",
-  "impact.measured_prefix": "측정됨",
   "impact.measured.heading": "측정됨",
+  "impact.measured_prefix": "측정됨",
   "impact.narration.leads": "{leads}개의 리드 확보.",
   "impact.narration.posts_platforms": "{platforms}개 플랫폼에 {posts}개 게시물.",
   "impact.narration.reach": "측정된 도달 범위 {reach}.",
@@ -453,9 +450,9 @@ export const ko: Partial<Record<MessageKey, string>> = {
   "nav.signout": "로그아웃",
   "nav.usage": "사용",
   "notice.connect_to_publish": "{platforms}을(를) 연결하여 게시하세요 — 초안이 준비되어 대기 중입니다.",
-  "nurture.approve_send.cta": "승인 및 전송",
   "nurture.approve.confirmed": "확인됨 — 한 번 더 승인하여 전송하세요.",
   "nurture.approve.sent": "전송됨.",
+  "nurture.approve_send.cta": "승인 및 전송",
   "nurture.back_to_inbox": "← 관리함으로 돌아가기",
   "nurture.back_to_threads": "← 스레드로 돌아가기",
   "nurture.confirm.cta": "확인",
@@ -544,20 +541,20 @@ export const ko: Partial<Record<MessageKey, string>> = {
   "post.delete.notice": "게시물이 삭제되었습니다",
   "post.edit_brief.cta": "초안 편집",
   "post.generate.cta": "콘텐츠 생성",
-  "post.publish_live_only.cta": "게시 (Live 전용)",
-  "post.publish_now.cta": "지금 게시",
   "post.publish.title.live": "일정과 관계없이 실제 소셜 플랫폼에 즉시 게시합니다",
   "post.publish.title.safe": "안전 시뮬레이션에서는 게시가 비활성화됩니다 — 지금 게시하려면 Live로 전환하세요. 예약된 게시물은 정해진 시간에 자동으로 게시됩니다.",
+  "post.publish_live_only.cta": "게시 (Live 전용)",
+  "post.publish_now.cta": "지금 게시",
   "post.refine.apply.cta": "다듬기 적용",
   "post.refine.busy": "다듬는 중…",
   "post.refine.cta": "다듬기",
   "post.refine.help": "AI로 작은 변경을 적용합니다 (감사 기록 유지). 결과는 재승인을 위해 검토 단계로 돌아갑니다.",
   "post.refine.label": "콘텐츠 다듬기 (부분 수정)",
   "post.refine.placeholder": "예: 훅 줄이기, 할인 정보 추가, 톤을 더 따뜻하게…",
-  "post.reject_rework.cta": "거부 + 재작업",
   "post.reject.label": "재작업 피드백",
   "post.reject.placeholder": "변경할 내용: 톤, 훅, CTA, 길이, 언어…",
   "post.reject.send.cta": "피드백 보내기",
+  "post.reject_rework.cta": "거부 + 재작업",
   "post.schedule.help": "비워두면 즉시 게시 가능 상태가 됩니다. 예약 시스템은 준비된 게시물을 정해진 시간에 게시합니다.",
   "post.schedule.label": "승인 일정",
   "post.scheduled_for": "{time}로 예약됨",
@@ -714,6 +711,5 @@ export const ko: Partial<Record<MessageKey, string>> = {
   "ws.menu.name_title": "{count}개 게시물 · ◈ {credits} cr",
   "ws.menu.no_chat": "연결된 대화 없음",
   "ws.menu.no_platforms": "플랫폼 없음",
-  "ws.menu.subtitle": "{posts}개 게시물 · {platforms} · {date}",
-  "err.gmail_scope_missing": "Gmail 전송 권한을 부여하려면 Google을 다시 연결하세요.",
-};
+  "ws.menu.subtitle": "{posts}개 게시물 · {platforms} · {date}"
+}

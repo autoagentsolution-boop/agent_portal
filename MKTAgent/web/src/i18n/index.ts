@@ -4,32 +4,31 @@
 // plural-complex locales (ru, ar) enter the launch set, THAT is the signal to adopt one.
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { en, type MessageKey } from './catalog.en';
-import { vi } from './catalog.vi';
-import { id } from './catalog.id';
-import { ko } from './catalog.ko';
-import { fr } from './catalog.fr';
+import { LOCALE_DEFS, LOCALE_CODES, RTL_CODES } from './locales';
 
 export type { MessageKey } from './catalog.en';
 export type Params = Record<string, string | number>;
+export type Locale = string;
 
-// Launch set. A locale is offered only when its catalog file exists — keep in sync with the server
-// allow-list in src/i18n/ui-languages.ts (PATCH /auth/me validates against that).
-export const UI_LOCALES = ['en', 'vi', 'id', 'ko', 'fr'] as const;
-export type Locale = (typeof UI_LOCALES)[number];
+// Every locale JSON catalog, loaded eagerly at build time (Vite). English is the typed .ts source; the
+// rest are data. Keyed by the <code> in the filename (catalog.<code>.json).
+const jsonCatalogs = import.meta.glob('./catalog.*.json', { eager: true, import: 'default' }) as Record<string, Record<string, string>>;
+const CATALOGS: Record<string, Partial<Record<MessageKey, string>>> = { en };
+for (const [path, cat] of Object.entries(jsonCatalogs)) {
+  const code = path.replace('./catalog.', '').replace('.json', '');
+  CATALOGS[code] = cat as Partial<Record<MessageKey, string>>;
+}
 
-// Native names (endonyms) for the switcher — a language name is shown in its OWN language, never
-// translated. Order matches UI_LOCALES.
-export const LOCALE_ENDONYMS: Record<Locale, string> = {
-  en: 'English',
-  vi: 'Tiếng Việt',
-  id: 'Bahasa Indonesia',
-  ko: '한국어',
-  fr: 'Français',
-};
+// A locale is OFFERED only once it has a non-empty catalog (English always). A language added to
+// locales.ts but not yet generated simply doesn't appear — English never disappears.
+export const UI_LOCALES: Locale[] = LOCALE_CODES.filter(
+  (c) => c === 'en' || (CATALOGS[c] && Object.keys(CATALOGS[c]!).length > 0),
+);
+// Native names (endonyms) for the switcher — a language name is shown in its OWN language, from
+// locales.ts (the single source).
+export const LOCALE_ENDONYMS: Record<string, string> = Object.fromEntries(LOCALE_DEFS.map((l) => [l.code, l.endonym]));
 
-const CATALOGS: Record<Locale, Partial<Record<MessageKey, string>>> = { en, vi, id, ko, fr };
-
-const isLocale = (v: string): v is Locale => (UI_LOCALES as readonly string[]).includes(v);
+const isLocale = (v: string): v is Locale => UI_LOCALES.includes(v);
 
 // Active locale = user.uiLanguage (set later by the app) → navigator.language base tag → 'en'.
 export const resolveInitialLocale = (): Locale => {
@@ -70,7 +69,12 @@ const Ctx = createContext<LocaleCtx | null>(null);
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(resolveInitialLocale);
 
-  useEffect(() => { setActiveLocale(locale); }, [locale]);
+  // Keep the module-level active locale in sync, and flip the document direction for RTL scripts
+  // (ar/he/fa/ur) so their text lays out right-to-left.
+  useEffect(() => {
+    setActiveLocale(locale);
+    if (typeof document !== 'undefined') document.documentElement.dir = RTL_CODES.has(locale) ? 'rtl' : 'ltr';
+  }, [locale]);
 
   const setLocale = useCallback((l: Locale) => setLocaleState(isLocale(l) ? l : 'en'), []);
   const value = useMemo<LocaleCtx>(

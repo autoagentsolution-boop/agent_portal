@@ -27,11 +27,14 @@ const loadCatalog = async (name: string, member: string): Promise<Cat> => {
   return mod[member] as Cat;
 };
 const en = await loadCatalog('catalog.en.ts', 'en');
-// Non-English locales to check. Adding a language = one entry here + its catalog file (the pipeline
-// fills it). Kept in sync with UI_LOCALES in web/src/i18n/index.ts.
-const LOCALE_CODES = ['vi', 'id', 'ko', 'fr'];
+// Locales come from the single source (locales.ts); their catalogs are JSON. Adding a language needs
+// no change here — it flows from locales.ts + its generated catalog.<code>.json.
+const { LOCALE_CODES: ALL_CODES } = (await import(pathToFileURL(join(WEB_SRC, 'i18n', 'locales.ts')).href)) as { LOCALE_CODES: string[] };
+const LOCALE_CODES = ALL_CODES.filter((c) => c !== 'en');
 const LOCALES: Record<string, Cat> = {};
-for (const code of LOCALE_CODES) LOCALES[code] = await loadCatalog(`catalog.${code}.ts`, code);
+for (const code of LOCALE_CODES) {
+  LOCALES[code] = JSON.parse(await readFile(join(WEB_SRC, 'i18n', `catalog.${code}.json`), 'utf8').catch(() => '{}'));
+}
 
 const paramsOf = (s: string): Set<string> => new Set([...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!));
 const eqSet = (a: Set<string>, b: Set<string>): boolean => a.size === b.size && [...a].every((x) => b.has(x));
