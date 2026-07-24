@@ -28,6 +28,13 @@ Root-caused and fixed a cluster found during the observed live test (report
   dead-ended the turn. Now detected → discarded → re-prompted (nudged); a recovered real call is dispatched
   and the loop continues (no lost schedule/execute/follow-up).
 - **F17 — `save_memory` skipped on an explicit "remember".** Tool description + prompt made imperative.
+- **Goal extraction — regex override layers demoted to the model.** `requirementAnalyzer` was already
+  LLM-primary, but five deterministic layers re-corrected the model's output. The four INTENT-classification
+  ones (campaign-scope escalation, autoPublish, qualityPref, email-routing) are removed — the model owns
+  them now; email routing is the brain's declared `kind`. Kept only the FACTUAL-token corroboration that the
+  model provably drops: platform-name union ("Facebook e Instagram" → the model returned only instagram) and
+  a language-agnostic @ recipient (any language, replacing the EN/VI keyword gate). Live-verified: 2-platform
+  Spanish request → both platforms + `es`.
 - Deferred (separate tracks): F1 (VN on-frame text via nano-banana, no Pro option); F21 (ffmpeg 0xC0000142
   on Windows spends ~$1 on keyframes/Veo before the stitch fails); a fuller migration of goal-slot
   extraction off the regex analyzer onto model-declared slots. 72/72 verify green; tsc clean.

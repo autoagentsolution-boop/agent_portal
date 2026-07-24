@@ -5,9 +5,12 @@
 import { env } from '../../config/env.ts';
 import { z } from 'zod';
 import { goalSpec, type GoalSpec } from '../schemas/goal-spec.ts';
-import { analyzeDeterministic, parseRemovals, parsePlatforms, parseEmailIntent, emailOutputs, type Removals } from './deterministic-analyzer.ts';
+import { analyzeDeterministic, parseRemovals, parsePlatforms, type Removals } from './deterministic-analyzer.ts';
 import { requirementSystemPrompt } from '../prompts/requirement-prompt.ts';
 import { recordGeminiCall } from '../../cost/llm-usage.ts';
+
+// Language-agnostic recipient extraction — any email address, no locale-specific keyword gate.
+const EMAIL_ADDR_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 
 // Optional removal delta the LLM may emit on a refinement turn (subtractive intent).
 const removalsSchema = z.object({
@@ -108,35 +111,25 @@ export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
       const removals = llmRemovals.success && (llmRemovals.data.disableOutputs.length || llmRemovals.data.dropPlatforms.length)
         ? llmRemovals.data
         : parseRemovals(message);
-      // Platforms are regex-detectable facts — union the deterministic parse so a platform
-      // named in the message is never lost to an LLM miss ("asked fb+linkedin, only fb stuck").
+      // LLM-authoritative goal (same philosophy as contentLanguageFor): the model read the message and
+      // its extraction WINS; the deterministic parser is only a FALLBACK for the fields the model left
+      // empty/default, never an override that second-guesses a value the model actually declared. This is
+      // what the analyzer's regex "corrections" used to be — they also leaked language-specific misses
+      // (the EN/VI email keywords dropped a Korean/Thai send). `analyzeDeterministic` still owns the
+      // no-LLM path above.
+      // platforms: a platform NAME ("Facebook", "Instagram") is an unambiguous FACTUAL token, not an
+      // intent the model has to classify — and the model demonstrably drops one from a multi-platform
+      // request ("Facebook e Instagram" → only instagram). So UNION the deterministic parse (same category
+      // as the language-agnostic @ recipient below: extract a fact, don't second-guess intent). This is the
+      // one regex-corroboration kept; the intent-classification overrides (scope/autoPublish/quality/
+      // email-routing) are gone — those the model owns.
       const platforms = Array.from(new Set([...parsed.data.platforms, ...parsePlatforms(message)])) as GoalSpec['platforms'];
-      // Campaign scope (Phase 03) is likewise a regex-detectable intent ("plan a month of content",
-      // "3 posts a week"). The LLM defaults it to `single` silently, so when it did NOT escalate but
-      // the deterministic parser detects a multi-post intent, adopt that scope + duration/cadence.
-      const det = analyzeDeterministic(message);
-      const campaign = parsed.data.campaignScope === 'single' && det.campaignScope !== 'single'
-        ? { campaignScope: det.campaignScope, duration: det.duration, cadence: det.cadence }
-        : {};
-      // Auto-publish is a regex-detectable command ("đăng luôn", "auto-publish") the LLM may miss;
-      // OR the two so an explicit hands-off ask is never lost. Default stays false (gated).
-      const autoPublish = parsed.data.autoPublish || det.autoPublish;
-      // qualityPref (Phase 06): the marketing LLM prompt doesn't model it, so its value is the Zod default
-      // ('standard'). Adopt the deterministic keyword detection when the message states a preference — same
-      // "regex-detectable intent the LLM may miss" pattern as autoPublish/campaign above.
-      const qualityPref = parsed.data.qualityPref !== 'standard' ? parsed.data.qualityPref : det.qualityPref;
-      const base = { ...parsed.data, platforms, ...campaign, autoPublish, qualityPref, provider: `gemini:${env.GEMINI_MODEL}` };
-      // Email intent (P4-lite) is a regex-detectable command ("gửi email cho…") the marketing-only
-      // LLM prompt doesn't model — OR it in so an email goal routes to the email path, not a social
-      // post. Forces the social flags off + recipient/subject into the email slots.
-      const email = parseEmailIntent(message);
-      const goal = email.isEmail
-        ? { ...base, outputs: emailOutputs(base.outputs), platforms: [] as GoalSpec['platforms'], campaignScope: 'single' as const, duration: null, cadence: null,
-            // Email angle = what the email should SAY. Prefer the raw purpose (retains the recipient's
-            // name + occasion, e.g. "birthday note for Nghiep") over the LLM's marketing-cleaned angle,
-            // which strips the name → the writer would otherwise fabricate one from the @-local-part.
-            slots: { ...base.slots, angle: email.purpose ?? base.slots.angle ?? null, emailTo: base.slots.emailTo ?? email.to ?? null, emailSubject: base.slots.emailSubject ?? email.subject ?? null } }
-        : base;
+      // Recipient is a language-agnostic @ address (any language); ROUTING email-vs-marketing is the
+      // brain's `kind` declaration downstream (propose_workflow), never a regex keyword guess. The email
+      // angle/subject the model already extracted stay as-is.
+      const addr = (message.match(EMAIL_ADDR_RE) ?? [])[0] ?? null;
+      const base = { ...parsed.data, platforms, provider: `gemini:${env.GEMINI_MODEL}` };
+      const goal = { ...base, slots: { ...base.slots, emailTo: base.slots.emailTo ?? addr } };
       return { goal, removals };
     } catch {
       return fallback();
