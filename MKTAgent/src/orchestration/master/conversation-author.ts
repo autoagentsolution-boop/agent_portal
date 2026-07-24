@@ -104,17 +104,30 @@ const formatScheduleInstant = (at: string, timezone: string | null, locale = 'en
 };
 
 // Confirm-ask appended when the goal carries a parsed-but-unconfirmed schedule — the exact instant read
-// back so a mis-parsed time is caught before it is scheduled. Empty once confirmed. Localized (vi/en) and
-// appended DETERMINISTICALLY (not left to the LLM, which intermittently omits it → the "schedule lost"
-// look, where the flow shows no scheduler and an immediate Execute would send now).
+// back so a mis-parsed time is caught before it is scheduled. Empty once confirmed. Appended
+// DETERMINISTICALLY (not left to the LLM, which intermittently omits it → the "schedule lost" look,
+// where the flow shows no scheduler and an immediate Execute would send now).
+//
+// This is streamed CHAT CONTENT in the REPLY's language, not client-rendered UI, so it is authored in
+// the content language here (never uiLanguage — that would conflate the two systems the i18n track
+// separates). Covers the launch set (en/vi/id/ko); any other of the 31 content languages falls back to
+// English until its line is added — F11 was the bug where every non-vi language (Indonesian, Korean)
+// got the English tail under an otherwise-localized reply.
+type ScheduleTailEntry = { fmt: string; text: (when: string) => string };
+const SCHEDULE_TAIL: Record<string, ScheduleTailEntry> & { en: ScheduleTailEntry } = {
+  vi: { fmt: 'vi-VN', text: (w) => `\n\n🕒 Mình hiểu thời gian gửi là ${w}. Bạn xác nhận đúng giờ này giúp mình nhé — chưa có gì được lên lịch cho tới khi bạn xác nhận.` },
+  id: { fmt: 'id-ID', text: (w) => `\n\n🕒 Saya membaca waktu kirim sebagai ${w}. Mohon konfirmasi apakah itu benar — tidak ada yang dijadwalkan sampai Anda mengonfirmasi.` },
+  ko: { fmt: 'ko-KR', text: (w) => `\n\n🕒 보내는 시간을 ${w}(으)로 이해했습니다. 맞는지 확인해 주세요 — 확인하기 전까지는 아무것도 예약되지 않습니다.` },
+  en: { fmt: 'en-US', text: (w) => `\n\n🕒 I've read the send time as ${w}. Please confirm that's right — nothing is scheduled until you do.` },
+};
+
 const scheduleConfirmTail = (outcome: MasterAgentOutcome, lang?: string | null): string => {
   const s = outcome.goal.schedule;
   if (!s?.at || s.confirmed) return '';
-  const vi = (lang ?? '').toLowerCase().startsWith('vi');
-  const when = formatScheduleInstant(s.at, s.timezone ?? null, vi ? 'vi-VN' : 'en-US');
-  return vi
-    ? `\n\n🕒 Mình hiểu thời gian gửi là ${when}. Bạn xác nhận đúng giờ này giúp mình nhé — chưa có gì được lên lịch cho tới khi bạn xác nhận.`
-    : `\n\n🕒 I've read the send time as ${when}. Please confirm that's right — nothing is scheduled until you do.`;
+  const base = (lang ?? '').toLowerCase().split(/[-_]/)[0] ?? '';
+  const entry = SCHEDULE_TAIL[base] ?? SCHEDULE_TAIL.en;
+  const when = formatScheduleInstant(s.at, s.timezone ?? null, entry.fmt);
+  return entry.text(when);
 };
 
 export const deterministicReply = (outcome: MasterAgentOutcome, report?: WorkspaceReport | null, lang?: string | null): string => {

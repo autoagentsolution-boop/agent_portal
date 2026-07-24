@@ -7,8 +7,23 @@ export const ok = (res: Response, data: unknown, meta?: unknown): void => {
   res.json(meta === undefined ? { data } : { data, meta });
 };
 
-export const fail = (res: Response, status: number, error: string, details?: unknown): void => {
-  res.status(status).json(details === undefined ? { error } : { error, details });
+// `error` stays a bare, stable CODE (never a sentence) — the client turns it into words via the i18n
+// catalog (web/src/i18n/t-error.ts). `params` (i18n phase 02) carries the structured values the catalog
+// sentence interpolates (e.g. { platform: 'Gmail' }); optional + additive so un-migrated clients that
+// read only `error` keep working. `details` is unchanged (field errors, diagnostics). params is the 5th
+// arg to preserve every existing `fail(res, status, code, details)` call site.
+export const fail = (
+  res: Response,
+  status: number,
+  error: string,
+  details?: unknown,
+  params?: Record<string, string | number>,
+): void => {
+  res.status(status).json({
+    error,
+    ...(params === undefined ? {} : { params }),
+    ...(details === undefined ? {} : { details }),
+  });
 };
 
 // Parse + validate a request part; on failure respond 422 and return null so the
