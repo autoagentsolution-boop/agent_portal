@@ -4,6 +4,14 @@ Living record of features shipped and their real relationships in the app. Each 
 
 ## Features & relationships
 
+### Interface i18n — UI language separated from content language (`c13c6b6`, `aa6ed2b`, `20c17dc`, `ebd755e`)
+The frontend gains a dependency-free i18n runtime (`web/src/i18n`, ~60 lines: `t()`, `LocaleProvider`, `useLocale`, English fallback, `{param}` interpolation, typed `MessageKey` so a wrong key is a build error). `User.uiLanguage` (nullable, follows the browser when null) governs the interface; `PATCH /auth/me` sets it against an en/vi/id/ko allow-list. The act-on tier (12 components — approve/connect/pay/retry/delete/schedule/publish + raw-error toasts) renders through en/vi/id/ko catalogs.
+- **Relationship — this is the durable answer to [[content language mirrors the chat]] and the F13 lead-language fix (`c473868`), which were the SEVENTH one-off patch of the same defect class.** The audit (`plans/reports/audit-260722-1949-language-localization-gap.md`) found the mechanism, not the bug: content language is decided at ~6 backend sites and the interface had **no i18n at all** (≈830 literals). Those are two different systems; `uiLanguage` and `defaultLanguage`/`slots.language` must never share a field — conflating them is the bug in a new place.
+- **The server stops authoring sentences the client can't reach.** `fail()` gains an optional `params` → `{ error: code, params }`; the client turns the code into words via `t-error.ts` (`err.<code>` keys, each with a remedy clause). This is the half a frontend-only i18n cannot touch — where `invalid_grant`/`gmail_not_connected` used to surface raw. Backward compatible: `error` stays a bare code string.
+- **F11 fixed on the CONTENT side, not the catalog.** `scheduleConfirmTail` was vi/en only, so an Indonesian/Korean reply got the English tail appended. Now data-driven over the launch set — but authored in the REPLY's content language (`conversation-author.ts`), never `uiLanguage`, because it is streamed chat content no client catalog reaches.
+- **Enforced so the eighth recurrence fails CI, not a user.** `verify-i18n.ts` (unit tier, 22/22 green) asserts param parity across locales, catalog validity, `uiLanguage` absent from `src/orchestration/**`, and a per-file literal allow-list (`i18n-migrated.json`) a migrated screen can never regress out of. The rule is in `.claude/rules/development-rules.md` with a pointer to the verify.
+- **Deliberately staged:** decorative/chrome copy (~580 strings, phase 06) and the LLM translation pipeline (phase 04) are not built — the launch set ships en/vi/id/ko hand-authored for the act-on tier only. Plan: `plans/260722-1949-i18n-full-surface/`.
+
 ### Video renders from a script, not storyboard frames — `video_script` agent (`1492937`)
 19th registry node. The video DAG becomes `content_concept → video_script → video`; storyboard leaves the video path and keeps its own job (detail frames + the carousel deliverable). `video_script` decides the shot list, per-shot motion, per-shot duration, spoken narration, a 3-second hook and a closing CTA. `runVideo` renders its own keyframes and animates each with that shot's motion for that shot's duration.
 - **Relationship — this is the composability claim from [[the composable planner]] (`0295323`) actually being cashed in.** Adding a node was a registry entry + an artifact type + a `PIPELINE_ORDER` slot; the planner derived every edge from `requires`/`produces` with no planner logic written. It is also the extension path `docs/product/08` sanctioned — *add nodes to the registry*, not runtime agent spawning, which doc 07 rejected.
@@ -917,3 +925,46 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `plans/260722-1949-i18n-full-surface/plan.md`
   - `plans/reports/audit-260722-1949-language-localization-gap.md`
   - `plans/reports/test-260722-1744-script4-and-f7-fix.md`
+- **feat(i18n): locale foundation — uiLanguage, dependency-free t(), en/vi/id/ko catalogs** (c13c6b6)
+  - `MKTAgent/prisma/migrations/20260724042534_ui_language/migration.sql`
+  - `MKTAgent/prisma/schema.prisma`
+  - `MKTAgent/src/api/auth-router.ts`
+  - `MKTAgent/src/db/repos/user-repo.ts`
+  - `MKTAgent/src/i18n/ui-languages.ts`
+  - `MKTAgent/web/src/App.tsx`
+  - `MKTAgent/web/src/api/client.ts`
+  - `MKTAgent/web/src/i18n/catalog.en.ts`
+  - `MKTAgent/web/src/i18n/catalog.id.ts`
+  - `MKTAgent/web/src/i18n/catalog.ko.ts`
+  - `MKTAgent/web/src/i18n/catalog.vi.ts`
+  - `MKTAgent/web/src/i18n/index.ts`
+  - `MKTAgent/web/src/i18n/t-error.ts`
+  - `MKTAgent/web/src/main.tsx`
+- **fix(i18n): stop the server authoring the schedule-confirm sentence in the wrong language** (aa6ed2b)
+  - `MKTAgent/src/api/http.ts`
+  - `MKTAgent/src/lib/user-message.ts`
+  - `MKTAgent/src/orchestration/master/conversation-author.ts`
+- **test(i18n): enforcement gate — the mechanism that makes 'global' hold** (20c17dc)
+  - `.claude/rules/development-rules.md`
+  - `MKTAgent/src/orchestration/master/conversation-author.ts`
+  - `MKTAgent/src/scripts/verify-i18n.ts`
+  - `MKTAgent/web/src/i18n/i18n-migrated.json`
+- **feat(i18n): migrate the act-on tier (12 components) to t()** (ebd755e)
+  - `MKTAgent/src/scripts/verify-i18n.ts`
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+  - `MKTAgent/web/src/components/PostCard.tsx`
+  - `MKTAgent/web/src/components/UsageDashboard.tsx`
+  - `MKTAgent/web/src/components/concept-selection-gate.tsx`
+  - `MKTAgent/web/src/components/connection-required.tsx`
+  - `MKTAgent/web/src/components/plan-tier-cards.tsx`
+  - `MKTAgent/web/src/components/post-workflow-view.tsx`
+  - `MKTAgent/web/src/components/publish-review.tsx`
+  - `MKTAgent/web/src/components/saved-flow-detail.tsx`
+  - `MKTAgent/web/src/components/scheduled-view.tsx`
+  - `MKTAgent/web/src/components/video-script-review.tsx`
+  - `MKTAgent/web/src/components/workspace-panel.tsx`
+  - `MKTAgent/web/src/i18n/catalog.en.ts`
+  - `MKTAgent/web/src/i18n/catalog.id.ts`
+  - `MKTAgent/web/src/i18n/catalog.ko.ts`
+  - `MKTAgent/web/src/i18n/catalog.vi.ts`
+  - `MKTAgent/web/src/i18n/i18n-migrated.json`
