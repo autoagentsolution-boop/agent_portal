@@ -4,6 +4,7 @@
 // this component owns selection only, not execution. Renders nothing when there are no
 // tiers — the caller keeps its current single-plan "Execute flow" button (no regression).
 import type { PlanTier, PlanTierId } from '../api/client';
+import { useLocale } from '../i18n';
 
 interface Props {
   tiers: PlanTier[];
@@ -12,30 +13,33 @@ interface Props {
 }
 
 export function PlanTierCards({ tiers, busyTierId, onSelect }: Props) {
+  const { t } = useLocale();
   if (tiers.length === 0) return null;
   const disabled = busyTierId !== null;
 
   return (
     <div className="tier-cards">
-      <p className="muted small tier-cards-hint">Choose how much this flow should run — credits scale with agent count.</p>
+      <p className="muted small tier-cards-hint">{t('plan.tier.hint')}</p>
       <div className="tier-cards-row">
-        {tiers.map((t) => (
+        {tiers.map((tier) => (
           <button
-            key={t.id}
-            className={`tier-card tier-${t.id}`}
+            key={tier.id}
+            className={`tier-card tier-${tier.id}`}
             disabled={disabled}
-            onClick={() => onSelect(t.id)}
+            onClick={() => onSelect(tier.id)}
           >
             <div className="tier-card-head">
-              <span className="tier-label">{t.label}</span>
-              <span className="tier-agent-count">{t.estimate.agentCount} agent{t.estimate.agentCount === 1 ? '' : 's'}</span>
+              <span className="tier-label">{tier.label}</span>
+              <span className="tier-agent-count">
+                {t(tier.estimate.agentCount === 1 ? 'plan.tier.agent_count.one' : 'plan.tier.agent_count.other', { count: tier.estimate.agentCount })}
+              </span>
             </div>
-            <p className="tier-desc muted small">{t.description}</p>
-            <div className="tier-credits" title={`${t.estimate.totalTokens.toLocaleString()} tokens · $${t.estimate.costUsd.toFixed(3)}`}>
-              ≈ {t.estimate.credits} credits
+            <p className="tier-desc muted small">{tier.description}</p>
+            <div className="tier-credits" title={`${tier.estimate.totalTokens.toLocaleString()} tokens · $${tier.estimate.costUsd.toFixed(3)}`}>
+              {t('plan.tier.credits', { credits: tier.estimate.credits })}
             </div>
-            <div className="tier-tokens muted small">≈ {t.estimate.totalTokens.toLocaleString()} tokens</div>
-            {busyTierId === t.id && <div className="muted small tier-busy">Starting…</div>}
+            <div className="tier-tokens muted small">{t('plan.tier.tokens', { tokens: tier.estimate.totalTokens.toLocaleString() })}</div>
+            {busyTierId === tier.id && <div className="muted small tier-busy">{t('workflow.execute.starting')}</div>}
           </button>
         ))}
       </div>

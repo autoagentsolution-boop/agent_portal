@@ -15,6 +15,8 @@ import { CostStrip } from './cost-strip';
 import { PlanTierCards } from './plan-tier-cards';
 import { ConceptCopyEditor, type Copy } from './concept-copy-editor';
 import { formatArtifact } from '../flow/artifact-format';
+import { useLocale } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 // The executor is detached: it emits a node's `running` SSE event within milliseconds of
 // launch — usually BEFORE the browser's EventSource connects, and SSE has no replay. Flip
@@ -54,6 +56,7 @@ const AGENT_ROLE: Record<string, string> = {
 };
 
 export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnections, onCreateCampaign }: Props) {
+  const { t } = useLocale();
   const [run, setRun] = useState<WorkflowRunDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -70,7 +73,7 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
 
   const load = async () => {
     const r = await api.getRun(runId);
-    if (r.ok) setRun(r.data); else notify(`Load flow: ${r.error.error}`, 'err');
+    if (r.ok) setRun(r.data); else notify(tError(r.error), 'err');
   };
   useEffect(() => { setRun(null); setSelectedNode(null); setRenaming(false); setTiers(null); setNotices({}); void load(); }, [runId]);
 
@@ -90,8 +93,8 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
     setBusy(true);
     try {
       const r = await api.renameRun(run.id, next);
-      if (!r.ok) { notify(`Rename: ${r.error.error}`, 'err'); return; }
-      setRun(r.data); setRenaming(false); onStatusChange(); notify('Flow renamed');
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
+      setRun(r.data); setRenaming(false); onStatusChange(); notify(t('flow.rename.notice'));
     } finally { setBusy(false); }
   };
 
@@ -115,10 +118,10 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
     try {
       const r = await api.executeRun(run.id);
       if (!r.ok) {
-        if (r.error.status === 402) { notify("You're out of credits — ask your admin to top up, then run again.", 'err'); return; }
-        notify(`Execute: ${r.error.error}`, 'err'); return;
+        if (r.error.status === 402) { notify(t('credits.exhausted'), 'err'); return; }
+        notify(tError(r.error), 'err'); return;
       }
-      setRun(r.data); onStatusChange(); notify('Flow executing…');
+      setRun(r.data); onStatusChange(); notify(t('flow.executing.notice'));
     } finally { setBusy(false); }
   };
 
@@ -129,7 +132,7 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
     setTierBusy(tierId);
     try {
       const r = await api.applyTier(run.id, tierId);
-      if (!r.ok) { notify(`Plan: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       setRun(r.data);
       await execute();
     } finally { setTierBusy(null); }
@@ -138,12 +141,12 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
   // Kill switch — stop this run at the next node boundary. Refused server-side once terminal.
   const abort = async () => {
     if (!run) return;
-    if (!confirm('Abort this flow? It stops at the next step boundary.')) return;
+    if (!confirm(t('confirm.abort.flow'))) return;
     setBusy(true);
     try {
       const r = await api.abortRun(run.id);
-      if (!r.ok) { notify(`Abort: ${r.error.error}`, 'err'); return; }
-      await load(); onStatusChange(); notify('Flow aborted');
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
+      await load(); onStatusChange(); notify(t('flow.abort.notice'));
     } finally { setBusy(false); }
   };
 
@@ -152,8 +155,8 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
     setBusy(true);
     try {
       const r = await api.approveRunNode(run.id, nodeId);
-      if (!r.ok) { notify(`Approve: ${r.error.error}`, 'err'); return; }
-      setRun(r.data); onStatusChange(); notify('Publishing…');
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
+      setRun(r.data); onStatusChange(); notify(t('publish.publishing.notice'));
     } finally { setBusy(false); }
   };
 
@@ -165,9 +168,9 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
     setBusy(true);
     try {
       const r = await api.rerunRunNode(run.id, nodeId);
-      if (!r.ok) { notify(`Re-run: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       setRun(markRunning(r.data, nodeId));
-      notify('Re-running step — downstream steps marked stale');
+      notify(t('step.rerun.notice'));
     } finally { setBusy(false); }
   };
 
@@ -185,26 +188,26 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
             {renaming ? (
               <div className="flow-rename">
                 <input
-                  aria-label="Flow name"
+                  aria-label={t('flow.rename.aria_label')}
                   autoFocus
                   value={nameDraft}
                   disabled={busy}
                   onChange={(e) => setNameDraft(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') void commitRename(); if (e.key === 'Escape') setRenaming(false); }}
                 />
-                <button className="btn primary" disabled={busy} onClick={() => void commitRename()}>{busy ? 'Saving…' : 'Save'}</button>
-                <button className="btn" disabled={busy} onClick={() => setRenaming(false)}>Cancel</button>
+                <button className="btn primary" disabled={busy} onClick={() => void commitRename()}>{busy ? t('flow.rename.saving') : t('common.save')}</button>
+                <button className="btn" disabled={busy} onClick={() => setRenaming(false)}>{t('common.cancel')}</button>
               </div>
             ) : (
               <h3 className="flow-title">
-                {run.name ?? 'Untitled flow'}
-                <button className="icon-btn rename-btn" aria-label="Rename flow" title="Rename flow" onClick={() => { setNameDraft(run.name ?? ''); setRenaming(true); }}>✎</button>
+                {run.name ?? t('flow.untitled')}
+                <button className="icon-btn rename-btn" aria-label={t('flow.rename.cta')} title={t('flow.rename.cta')} onClick={() => { setNameDraft(run.name ?? ''); setRenaming(true); }}>✎</button>
               </h3>
             )}
             <span className="flow-status st-template">Approved blueprint · {run.nodes.length} agents</span>
           </div>
           {onCreateCampaign && (
-            <button className="btn primary" onClick={() => onCreateCampaign(run.id)}>➕ New campaign from this flow</button>
+            <button className="btn primary" onClick={() => onCreateCampaign(run.id)}>{t('flow.new_campaign.cta')}</button>
           )}
         </div>
 
@@ -290,20 +293,20 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
           {renaming ? (
             <div className="flow-rename">
               <input
-                aria-label="Flow name"
+                aria-label={t('flow.rename.aria_label')}
                 autoFocus
                 value={nameDraft}
                 disabled={busy}
                 onChange={(e) => setNameDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void commitRename(); if (e.key === 'Escape') setRenaming(false); }}
               />
-              <button className="btn primary" disabled={busy} onClick={() => void commitRename()}>{busy ? 'Saving…' : 'Save'}</button>
-              <button className="btn" disabled={busy} onClick={() => setRenaming(false)}>Cancel</button>
+              <button className="btn primary" disabled={busy} onClick={() => void commitRename()}>{busy ? t('flow.rename.saving') : t('common.save')}</button>
+              <button className="btn" disabled={busy} onClick={() => setRenaming(false)}>{t('common.cancel')}</button>
             </div>
           ) : (
             <h3 className="flow-title">
-              {run.name ?? 'Untitled flow'}
-              <button className="icon-btn rename-btn" aria-label="Rename flow" title="Rename flow" onClick={() => { setNameDraft(run.name ?? ''); setRenaming(true); }}>✎</button>
+              {run.name ?? t('flow.untitled')}
+              <button className="icon-btn rename-btn" aria-label={t('flow.rename.cta')} title={t('flow.rename.cta')} onClick={() => { setNameDraft(run.name ?? ''); setRenaming(true); }}>✎</button>
             </h3>
           )}
           <span className={`flow-status st-${run.status}`}>{STATUS_LABEL[run.status] ?? run.status}</span>
@@ -311,12 +314,12 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
         <div className="btn-row">
           {showAbort && (
             <button className="btn danger" disabled={busy} onClick={() => void abort()}>
-              {busy ? 'Aborting…' : '■ Abort'}
+              {busy ? t('flow.abort.busy') : t('flow.abort.cta')}
             </button>
           )}
           {canExecute && !showTierCards && (
             <button className="btn primary" disabled={busy} onClick={() => void execute()}>
-              {busy ? 'Starting…' : run.status === 'failed' ? 'Re-run flow' : run.status === 'needs_connection' ? 'Check connection & run' : 'Execute flow'}
+              {busy ? t('workflow.execute.starting') : run.status === 'failed' ? t('workflow.execute.rerun_flow_plain') : run.status === 'needs_connection' ? t('workflow.execute.check_connection') : t('flow.execute.cta')}
             </button>
           )}
         </div>
@@ -356,13 +359,13 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
           {gateNode.agentId === 'video' && videoScript ? (
             <>
               <VideoScriptReview script={videoScript} requestedSec={(run.goal as { slots?: { videoLengthSec?: number | null } } | null)?.slots?.videoLengthSec ?? null} />
-              <p className="muted small">Video generation is the costly step, so it waits for your OK. Not happy with the cut? Re-run the Video Script step first, then approve.</p>
+              <p className="muted small">{t('video.gate.review_hint')}</p>
             </>
           ) : (
-            <p className="muted small">Paused before <strong>{gateNode.agentId.replace(/_/g, ' ')}</strong> — an external action. Approve to proceed.</p>
+            <p className="muted small">{t('gate.external.approve_proceed', { agent: gateNode.agentId.replace(/_/g, ' ') })}</p>
           )}
           <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId)}>
-            {busy ? 'Publishing…' : `Approve ${gateNode.agentId.replace(/_/g, ' ')}`}
+            {busy ? t('publish.publishing.notice') : t('publish.approve_agent.cta', { agent: gateNode.agentId.replace(/_/g, ' ') })}
           </button>
         </div>
       )}
@@ -389,9 +392,9 @@ export function SavedFlowDetail({ runId, notify, onStatusChange, onOpenConnectio
           {canRerun && (
             <div className="rerun-row">
               <button className="btn small" disabled={busy} onClick={() => void rerun(selectedNode!)}>
-                {busy ? 'Re-running…' : '↻ Re-run this step'}
+                {busy ? t('step.rerun.busy') : t('step.rerun.cta')}
               </button>
-              <span className="muted small">Regenerates this step. Later steps are marked stale — re-run them too before publishing.</span>
+              <span className="muted small">{t('step.rerun.help')}</span>
             </div>
           )}
           {/* Concept copy: edit by hand (no LLM) OR refine via instruction (LLM) — reachable

@@ -7,6 +7,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type WorkspaceDetailDto, type DerivedPostStatus } from '../api/client';
 import { useWorkspaceEvents } from '../hooks/use-workspace-events';
 import { PostWorkflowView } from './post-workflow-view';
+import { useLocale } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Props {
   campaignId: string;
@@ -28,6 +30,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : 'un
 const fmtCredits = (n: number) => Math.round(n).toLocaleString();
 
 export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBoard }: Props) {
+  const { t } = useLocale();
   const [ws, setWs] = useState<WorkspaceDetailDto | null>(null);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
   // Per-post autonomy grant (2-step): clicking a planned post's "Chuẩn bị" fetches the cost (Step 1)
@@ -41,7 +44,7 @@ export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBo
     setGranting(true);
     try {
       const r = await api.grantPost(postId);
-      if (!r.ok) { notify(`Grant: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       setGrantFor({ postId, credits: Math.round(r.data.estimate.credits), token: r.data.confirmationToken ?? '' });
     } finally { setGranting(false); }
   };
@@ -51,8 +54,8 @@ export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBo
     setGranting(true);
     try {
       const r = await api.grantPost(grantFor.postId, { confirmationToken: grantFor.token, scheduleConfirmed: true });
-      if (!r.ok) { notify(`Grant: ${r.error.error}`, 'err'); return; }
-      notify('Autonomy granted — Atria will prepare and auto-publish on schedule.');
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
+      notify(t('autonomy.grant.notice'));
       setGrantFor(null);
       void load();
     } finally { setGranting(false); }
@@ -61,7 +64,7 @@ export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBo
   const load = useCallback(async () => {
     const r = await api.getWorkspace(campaignId);
     if (r.ok) setWs(r.data);
-    else notify(`Workspace: ${r.error.error}`, 'err');
+    else notify(tError(r.error), 'err');
   }, [campaignId, notify]);
 
   // New workspace selected → reset drill + fetch. Poll fallback covers missed/duplicate SSE frames.
@@ -105,7 +108,7 @@ export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBo
             ◈ {fmtCredits(ws.credits)} cr {live && <span className="ws-live" title="Live">●</span>}
           </span>
           {onOpenBoard && (
-            <button className="ws-open-board" onClick={onOpenBoard} title="Mở board đầy đủ (posts + DAG)">▦ Mở board</button>
+            <button className="ws-open-board" onClick={onOpenBoard} title={t('workspace.board.cta.title')}>{t('workspace.board.cta')}</button>
           )}
         </div>
       </div>
@@ -158,17 +161,17 @@ export function WorkspacePanel({ campaignId, notify, onOpenConnections, onOpenBo
                 {p.status === 'planned' && (
                   grantFor?.postId === p.postId ? (
                     <span className="ws-grant-confirm">
-                      ≈ {grantFor.credits.toLocaleString()} cr?
-                      <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant()}>Confirm</button>
-                      <button className="ws-grant-no" disabled={granting} onClick={() => setGrantFor(null)}>Cancel</button>
+                      {t('credits.grant.inline', { credits: grantFor.credits.toLocaleString() })}
+                      <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant()}>{t('common.confirm')}</button>
+                      <button className="ws-grant-no" disabled={granting} onClick={() => setGrantFor(null)}>{t('common.cancel')}</button>
                     </span>
                   ) : (
                     <button
                       className="ws-grant-btn"
                       disabled={granting}
-                      title="Grant Atria autonomy to run the steps and auto-publish on schedule"
+                      title={t('autonomy.grant.title.workspace')}
                       onClick={() => void startGrant(p.postId)}
-                    >⚡ Prepare</button>
+                    >{t('autonomy.grant.cta')}</button>
                   )
                 )}
               </li>

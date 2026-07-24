@@ -5,6 +5,7 @@
 // Rendered by SavedFlowDetail (Active Flows — the only surface that executes); ready
 // to reuse if Orchestrate ever gains an inline execute.
 import { connectUrl, type RequiredActionDto } from '../api/client';
+import { useLocale } from '../i18n';
 
 interface Props {
   actions: RequiredActionDto[];
@@ -15,11 +16,11 @@ interface Props {
 }
 
 export function ConnectionRequired({ actions, busy, onContinue, onOpenConnections }: Props) {
+  const { t } = useLocale();
   return (
     <div className="gate-block connection-required">
       <p className="muted small">
-        This flow publishes on your behalf — connect the platform(s) below before it runs.
-        Nothing has been generated yet, so no cost has been incurred.
+        {t('connect.required.pre_run')}
       </p>
       <div className="connections-grid">
         {actions.map((a) => (
@@ -34,17 +35,17 @@ export function ConnectionRequired({ actions, busy, onContinue, onOpenConnection
               ))}
             </div>
             <a className="btn primary small" href={connectUrl(a.connectUrl)}>
-              {a.type === 'connect_platform' ? `Connect ${a.displayName}` : `Reconnect ${a.displayName}`}
+              {a.type === 'connect_platform' ? t('connect.platform.cta', { platform: a.displayName }) : t('reconnect.platform.cta', { platform: a.displayName })}
             </a>
           </div>
         ))}
       </div>
       <div className="btn-row">
         <button className="btn primary" disabled={busy} onClick={onContinue}>
-          {busy ? 'Checking…' : "I've connected — continue"}
+          {busy ? t('connect.checking.busy') : t('connect.continue.cta')}
         </button>
         {onOpenConnections && (
-          <button className="btn" disabled={busy} onClick={onOpenConnections}>🔌 Manage Connections</button>
+          <button className="btn" disabled={busy} onClick={onOpenConnections}>{t('connect.manage.cta')}</button>
         )}
       </div>
     </div>

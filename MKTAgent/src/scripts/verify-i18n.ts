@@ -13,14 +13,23 @@
 //   6. orphan keys    — every catalog key is referenced somewhere in web/src
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { en } from '../../web/src/i18n/catalog.en.ts';
-import { vi } from '../../web/src/i18n/catalog.vi.ts';
-import { id } from '../../web/src/i18n/catalog.id.ts';
-import { ko } from '../../web/src/i18n/catalog.ko.ts';
+import { pathToFileURL } from 'node:url';
 
 const REPO = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const WEB_SRC = join(REPO, 'web', 'src');
 const ORCH = join(REPO, 'src', 'orchestration');
+
+// Load the web catalogs at RUNTIME via a computed path so the BE tsconfig does not pull the web-style
+// (extensionless) catalog imports into its own compilation — `npm run typecheck` must stay clean.
+type Cat = Record<string, string>;
+const loadCatalog = async (name: string, member: string): Promise<Cat> => {
+  const mod = await import(pathToFileURL(join(WEB_SRC, 'i18n', name)).href);
+  return mod[member] as Cat;
+};
+const en = await loadCatalog('catalog.en.ts', 'en');
+const vi = await loadCatalog('catalog.vi.ts', 'vi');
+const id = await loadCatalog('catalog.id.ts', 'id');
+const ko = await loadCatalog('catalog.ko.ts', 'ko');
 
 const paramsOf = (s: string): Set<string> => new Set([...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!));
 const eqSet = (a: Set<string>, b: Set<string>): boolean => a.size === b.size && [...a].every((x) => b.has(x));

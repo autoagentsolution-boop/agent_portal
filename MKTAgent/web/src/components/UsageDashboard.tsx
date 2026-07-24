@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { api, type UsageTotals } from '../api/client';
 import { CostStrip } from './cost-strip';
+import { tError } from '../i18n/t-error';
 
 interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
@@ -23,7 +24,7 @@ export function UsageDashboard({ notify }: Props) {
     setLoading(true);
     void api.getUsage().then((r) => {
       setLoading(false);
-      if (!r.ok) { notify(`Usage: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       setUsage(r.data);
     });
     // Remaining wallet balance (credit-wallet Phase 02) — shown alongside cumulative spend below.

@@ -13,6 +13,8 @@ import { PublishReview } from './publish-review';
 import { ConceptSelectionGate } from './concept-selection-gate';
 import { ConceptCopyEditor, type Copy } from './concept-copy-editor';
 import { formatArtifact } from '../flow/artifact-format';
+import { useLocale, type MessageKey } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Props {
   runId: string;
@@ -20,15 +22,15 @@ interface Props {
   onOpenConnections?: () => void;
 }
 
-const STATUS_HINT: Record<string, string> = {
-  planned: 'Ready to run — click Execute to generate this post step by step.',
-  running: 'Running… watch each step light up below.',
-  needs_approval: 'Paused before publishing — approve to post (dry-run by default).',
-  needs_connection: 'Connect a platform before running.',
-  completed: 'Completed. Click any step to review or re-run it.',
-  failed: 'A step failed — fix and re-run, or re-run the flow.',
-  scheduled: 'Scheduled — it will resume and run automatically at the confirmed time.',
-  cancelled: 'Cancelled — the scheduled run was called off.',
+const STATUS_HINT_KEY: Record<string, MessageKey> = {
+  planned: 'workflow.hint.planned',
+  running: 'workflow.hint.running',
+  needs_approval: 'workflow.hint.needs_approval',
+  needs_connection: 'workflow.hint.needs_connection',
+  completed: 'workflow.hint.completed',
+  failed: 'workflow.hint.failed',
+  scheduled: 'workflow.hint.scheduled',
+  cancelled: 'workflow.hint.cancelled',
 };
 
 // The executor is detached: it emits a node's `running` SSE event within milliseconds of
@@ -45,6 +47,7 @@ const nextRunnableNodeId = (nodes: WorkflowRunDto['nodes']): string | null => {
 };
 
 export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
+  const { t } = useLocale();
   const [run, setRun] = useState<WorkflowRunDto | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -64,7 +67,7 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   const load = async () => {
     const r = await api.getRun(runId);
     if (r.ok) setRun(r.data);
-    else notify(`Load workflow: ${r.error.error}`, 'err');
+    else notify(tError(r.error), 'err');
   };
   useEffect(() => { setRun(null); setSelectedNode(null); setNotices({}); void load(); }, [runId]);
 
@@ -100,13 +103,13 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     try {
       const r = await api.executeRun(run.id);
       if (!r.ok) {
-        if (r.error.status === 402) { notify("You're out of credits — ask your admin to top up, then run again.", 'err'); return; }
-        notify(`Execute: ${r.error.error}`, 'err'); return;
+        if (r.error.status === 402) { notify(t('credits.exhausted'), 'err'); return; }
+        notify(tError(r.error), 'err'); return;
       }
       // Only optimistically show running when the run actually started (not gated to
       // needs_connection, where no node runs yet).
       setRun(r.data.status === 'running' ? markRunning(r.data, nextRunnableNodeId(r.data.nodes)) : r.data);
-      notify('Workflow executing…');
+      notify(t('workflow.executing.notice'));
     } finally { setBusy(false); }
   };
 
@@ -115,8 +118,8 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     setBusy(true);
     try {
       const r = await api.approveRunNode(run.id, nodeId, scheduledAt);
-      if (!r.ok) { notify(`Approve: ${r.error.error}`, 'err'); return; }
-      setRun(r.data); notify(scheduledAt ? `Scheduled for ${new Date(scheduledAt).toLocaleString()}` : 'Publishing…');
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
+      setRun(r.data); notify(scheduledAt ? t('post.scheduled_for', { time: new Date(scheduledAt).toLocaleString() }) : t('publish.publishing.notice'));
     } finally { setBusy(false); }
   };
 
@@ -125,11 +128,11 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     setBusy(true);
     try {
       const r = await api.rerunRunNode(run.id, nodeId);
-      if (!r.ok) { notify(`Re-run: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       // rerun-node launches the executor on exactly this node and returns status=running;
       // show it running immediately (the response still carries the reset pending node).
       setRun(markRunning(r.data, nodeId));
-      notify('Re-running step — downstream steps marked stale');
+      notify(t('step.rerun.notice'));
     } finally { setBusy(false); }
   };
 
@@ -138,7 +141,7 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     setGranting(true);
     try {
       const r = await api.grantPost(postId);
-      if (!r.ok) { notify(`Prepare: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       setGrantPending({ credits: Math.round(r.data.estimate.credits), token: r.data.confirmationToken ?? '' });
     } finally { setGranting(false); }
   };
@@ -148,9 +151,9 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
     setGranting(true);
     try {
       const r = await api.grantPost(postId, { confirmationToken: grantPending.token, scheduleConfirmed: true });
-      if (!r.ok) { notify(`Prepare: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       setGrantPending(null);
-      notify('Autonomy granted — Atria will prepare and auto-publish on the set schedule.');
+      notify(t('autonomy.grant.notice'));
       await load();
     } finally { setGranting(false); }
   };
@@ -160,11 +163,12 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
   const gateNode = run.nodes.find((n) => n.status === 'awaiting_approval');
   // The needs_approval hint depends on WHICH gate we're at — the video cost-gate reads
   // differently from the publisher external-write gate.
+  const statusHintKey = STATUS_HINT_KEY[run.status];
   const statusHint = run.status === 'needs_approval' && gateNode?.agentId === 'video'
-    ? 'Paused before video generation (the costly step) — review the script below, then approve.'
+    ? t('workflow.hint.video_gate')
     : run.status === 'needs_approval' && gateNode?.agentId === 'concept_writer'
-      ? 'Concept ready — pick the version you like (and optionally add a reference image), then Continue.'
-      : STATUS_HINT[run.status] ?? run.status;
+      ? t('workflow.hint.concept_gate')
+      : statusHintKey ? t(statusHintKey) : run.status;
   // The post backing this run (post.runId = run.id). Prefer the run's createdPostId; fall
   // back to any artifact that carries a postId (concept_writer stamps it). Drives the
   // publish review at the approval gate.
@@ -238,19 +242,19 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
         <span className="post-workflow-title">Workflow · {run.nodes.length} steps</span>
         {canExecute && (
           <button className="btn small primary" disabled={busy} onClick={() => void execute()}>
-            {busy ? 'Starting…' : isResume ? '▶ Continue (run stale steps)' : run.status === 'failed' ? '↻ Re-run flow' : run.status === 'needs_connection' ? 'Check connection & run' : '▶ Execute'}
+            {busy ? t('workflow.execute.starting') : isResume ? t('workflow.execute.continue') : run.status === 'failed' ? t('workflow.execute.rerun_flow_icon') : run.status === 'needs_connection' ? t('workflow.execute.check_connection') : t('workflow.execute.cta')}
           </button>
         )}
         {canGrant && (
           grantPending ? (
             <span className="ws-grant-confirm">
-              ≈ {grantPending.credits.toLocaleString()} cr?
-              <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant(runPostId!)}>Confirm</button>
-              <button className="ws-grant-no" disabled={granting} onClick={() => setGrantPending(null)}>Cancel</button>
+              {t('credits.grant.inline', { credits: grantPending.credits.toLocaleString() })}
+              <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant(runPostId!)}>{t('common.confirm')}</button>
+              <button className="ws-grant-no" disabled={granting} onClick={() => setGrantPending(null)}>{t('common.cancel')}</button>
             </span>
           ) : (
-            <button className="btn small" disabled={granting} title="Grant Atria autonomy to prepare and auto-publish on schedule" onClick={() => void startGrant(runPostId!)}>
-              {granting ? 'Calculating…' : '⚡ Prepare'}
+            <button className="btn small" disabled={granting} title={t('autonomy.grant.title.post')} onClick={() => void startGrant(runPostId!)}>
+              {granting ? t('autonomy.grant.calculating') : t('autonomy.grant.cta')}
             </button>
           )
         )}
@@ -258,15 +262,15 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
       {preparing && !stalled ? (
         <div className="atria-preparing" role="status" aria-live="polite">
           <span className="atria-preparing-dot" aria-hidden="true" />
-          Atria is preparing the content and will auto-publish on the set schedule.
+          {t('autonomy.preparing.active')}
         </div>
       ) : preparing && stalled ? (
         <div className="atria-preparing is-stalled" role="status" aria-live="polite">
           <span className="atria-preparing-dot" aria-hidden="true" />
-          No automation progress yet — automation may be off. Click ▶ Execute to run manually.
+          {t('autonomy.preparing.stalled')}
         </div>
       ) : (
-        <p className="muted small">{isResume ? 'A step was re-run — later steps are stale. Click Continue to regenerate them, then approve to publish.' : statusHint}</p>
+        <p className="muted small">{isResume ? t('workflow.resume.hint') : statusHint}</p>
       )}
 
       <div className="post-workflow-body">
@@ -309,30 +313,30 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
                 {videoScript ? (
                   <>
                     <VideoScriptReview script={videoScript} requestedSec={(run.goal as { slots?: { videoLengthSec?: number | null } } | null)?.slots?.videoLengthSec ?? null} />
-                    <p className="muted small">Video generation is the costly step, so it waits for your OK. Not happy with the cut? Re-run the Video Script step first, then approve.</p>
+                    <p className="muted small">{t('video.gate.review_hint')}</p>
                   </>
                 ) : (
-                  <p className="muted small">Ready to generate the video. This is the costly step, so it waits for your OK.</p>
+                  <p className="muted small">{t('video.gate.ready_hint')}</p>
                 )}
                 <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId)}>
-                  {busy ? 'Starting…' : '▶ Approve — generate video'}
+                  {busy ? t('workflow.execute.starting') : t('video.approve.cta')}
                 </button>
               </>
             ) : (
               <>
-                <p className="muted small">Paused before <strong>{gateNode.agentId.replace(/_/g, ' ')}</strong> — an external action. Review where it can post, then approve.</p>
+                <p className="muted small">{t('gate.external.review_approve', { agent: gateNode.agentId.replace(/_/g, ' ') })}</p>
                 {gateNode.agentId === 'publisher' && runPostId && (
                   <PublishReview postId={runPostId} onOpenConnections={onOpenConnections} />
                 )}
                 {gateNode.agentId === 'publisher' && (
                   <div className="field" style={{ marginTop: 8 }}>
-                    <label>Schedule (optional)</label>
+                    <label>{t('schedule.optional.label')}</label>
                     <input type="datetime-local" value={publishAt} onChange={(e) => setPublishAt(e.target.value)} />
-                    <div className="help-text">Empty → publish now. A future time parks the post as scheduled; the scheduler publishes it automatically.</div>
+                    <div className="help-text">{t('schedule.optional.help')}</div>
                   </div>
                 )}
                 <button className="btn primary" disabled={busy} onClick={() => void approveNode(gateNode.nodeId, gateNode.agentId === 'publisher' && publishAt ? new Date(publishAt).toISOString() : undefined)}>
-                  {busy ? 'Publishing…' : gateNode.agentId === 'publisher' && publishAt ? '📅 Approve + schedule' : `Approve ${gateNode.agentId.replace(/_/g, ' ')}`}
+                  {busy ? t('publish.publishing.notice') : gateNode.agentId === 'publisher' && publishAt ? t('publish.approve_schedule.cta') : t('publish.approve_agent.cta', { agent: gateNode.agentId.replace(/_/g, ' ') })}
                 </button>
               </>
             )}
@@ -382,9 +386,9 @@ export function PostWorkflowView({ runId, notify, onOpenConnections }: Props) {
             {canRerun && (
               <div className="rerun-row">
                 <button className="btn small" disabled={busy} onClick={() => void rerun(selectedNode!)}>
-                  {busy ? 'Re-running…' : '↻ Re-run this step'}
+                  {busy ? t('step.rerun.busy') : t('step.rerun.cta')}
                 </button>
-                <span className="muted small">Regenerates this step. Later steps are marked stale — re-run them too before publishing.</span>
+                <span className="muted small">{t('step.rerun.help')}</span>
               </div>
             )}
 

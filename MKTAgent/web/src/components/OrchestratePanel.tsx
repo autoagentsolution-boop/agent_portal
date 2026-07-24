@@ -16,6 +16,8 @@ import { ReadAloudButton } from './read-aloud-button';
 import { wantsSpokenReply } from '../lib/read-intent';
 import { useSpeechRecognition } from '../hooks/use-speech-recognition';
 import { speak, stopSpeaking } from '../lib/tts-player';
+import { useLocale } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 export interface OrchestrateRestore {
   sessionId: string;
@@ -86,6 +88,7 @@ const starters = [
 ];
 
 export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, onAutoStarted, autoVoice, onVoiceChange, chats, onResumeChat, pendingAttachFiles, onPendingAttachConsumed }, ref) {
+  const { t } = useLocale();
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   // Messages present at mount (restored history) render instantly; only messages added afterwards get
   // the typewriter reveal, and only the newest one (P3 — "alive" feel without re-typing old replies).
@@ -214,7 +217,7 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
   // "add a video", or "bỏ infographic" all flow through here. No client-side form.
   const start = async (text: string) => {
     const trimmed = text.trim();
-    if (trimmed.length < 3) { notify('Describe your goal first', 'err'); return; }
+    if (trimmed.length < 3) { notify(t('orchestrate.goal.required'), 'err'); return; }
     setInput(''); setPending(trimmed); setBusy(true);
     try {
       // A submit while a PLANNED flow card is on screen is a plan refinement (this box is the "Refine the
@@ -223,7 +226,7 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
       const isRefine = Boolean(run && run.nodes.length > 0 && run.status === 'planned');
       // Voice mode → tell the backend so Atria keeps the (spoken) reply short (faster TTS, less delay).
       const r = await api.createRun(trimmed, sessionId ?? undefined, { voice: voiceModeRef.current, refine: isRefine });
-      if (!r.ok) { notify(`Orchestration: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       push({ role: 'user', content: trimmed });
       // Read-intent ("read the report", "how are campaigns going?") → offer to read Atria's reply
       // aloud (a confirm, never auto-play). Reads the RESULT text, not what the user typed.
@@ -250,16 +253,16 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
     try {
       const docs = await Promise.all(files.slice(0, 6).map(async (f) => ({ name: f.name, mimeType: f.type || 'application/octet-stream', dataB64: await readAsB64(f) })));
       const ext = await api.extractDocumentText(docs);
-      if (!ext.ok) { notify(`Upload: ${ext.error.error}`, 'err'); return; }
+      if (!ext.ok) { notify(tError(ext.error), 'err'); return; }
       const names = ext.data.names.join(', ');
       notify(`Read ${ext.data.chars.toLocaleString()} characters from ${names}`, 'ok');
       push({ role: 'user', content: `📎 ${names} — summarize (sensitive data will be masked)` });
       // Direct summarize+security run (NOT via the chat brain — raw PII would trip its safety filter).
       const r = await api.summarizeFile(ext.data.text, names, sessionId ?? undefined);
-      if (!r.ok) { notify(`Summarize: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       applyRun(r.data, false);
     } catch {
-      notify('Could not read that file', 'err');
+      notify(t('orchestrate.file.read_failed'), 'err');
     } finally { setUploading(false); setBusy(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
@@ -299,10 +302,10 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
     setBusy(true);
     try {
       const r = await api.saveRun(run.id, name);
-      if (!r.ok) { notify(`Save flow: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       setRun(r.data);
       if (r.data.assistantMessage) push({ role: 'agent', content: r.data.assistantMessage });
-      notify(`Flow “${name}” saved`);
+      notify(t('flow.save.success', { name }));
       onSaved(run.id);
     } finally { setBusy(false); }
   };
@@ -317,12 +320,12 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
     try {
       const r = await api.executeRun(run.id);
       if (!r.ok) {
-        if (r.error.status === 402) { notify("You're out of credits — ask your admin to top up, then run the flow again.", 'err'); return; }
-        notify(`Chạy flow: ${r.error.error}`, 'err'); return;
+        if (r.error.status === 402) { notify(t('credits.exhausted'), 'err'); return; }
+        notify(tError(r.error), 'err'); return;
       }
       if (r.data.status === 'needs_connection') {
         applyRun(r.data);
-        notify('Connect a platform before running — open the Connections tab, connect, then run again.', 'err');
+        notify(t('orchestrate.connect.required'), 'err');
         return;
       }
       // Single/other flows → hand off to Active Flows (live DAG) as before.
@@ -347,11 +350,11 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
       const st = rr.data.status;
       if (st === 'needs_approval') return; // calendar gate → inline ContentCalendar renders below
       if (st === 'completed' || st === 'failed' || st === 'aborted') {
-        notify(st === 'failed' ? 'The strategist run failed — check Active Flows.' : 'Strategist finished.', st === 'failed' ? 'err' : 'ok');
+        notify(st === 'failed' ? t('strategist.run.failed') : t('strategist.run.finished'), st === 'failed' ? 'err' : 'ok');
         return;
       }
     }
-    if (mountedRef.current) notify('Still drafting the calendar — you can open it in Active Flows.', 'ok');
+    if (mountedRef.current) notify(t('strategist.run.still_drafting'), 'ok');
   };
 
   // P6 "Run a test post" — execute the saved flow, then hand off to Active Flows where
@@ -363,8 +366,8 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
       // A saved flow is a template — clone+run it into a fresh instance, then open THAT instance.
       const r = await api.testRunFlow(run.id);
       if (!r.ok) {
-        if (r.error.status === 402) { notify("You're out of credits — ask your admin to top up, then run the flow again.", 'err'); return; }
-        notify(`Run flow: ${r.error.error}`, 'err'); return;
+        if (r.error.status === 402) { notify(t('credits.exhausted'), 'err'); return; }
+        notify(tError(r.error), 'err'); return;
       }
       onOpenFlow(r.data.id);
     } finally { setBusy(false); }

@@ -12,6 +12,8 @@
 // half English. `brief` and `narration` come back in the run's language, whatever that language is,
 // because buildAgentPrompt pins the language rule into the contract — so this works for Vietnamese,
 // Indonesian, Korean or anything else with no per-language code here.
+import { useLocale } from '../i18n';
+
 interface Shot {
   index: number;
   brief?: string;
@@ -36,6 +38,7 @@ const VEO_USD_PER_SEC = 0.05;
 // between "the system ignored me" (the old behaviour, where target did nothing) and "it got as
 // close as the renderer allows".
 export function VideoScriptReview({ script, requestedSec }: { script: VideoScript; requestedSec?: number | null }): JSX.Element | null {
+  const { t } = useLocale();
   const shots = script.shots ?? [];
   if (!shots.length) return null;
 
@@ -78,9 +81,7 @@ export function VideoScriptReview({ script, requestedSec }: { script: VideoScrip
       )}
 
       <p className="muted small vsr-cost">
-        Approving renders {shots.length} keyframe{shots.length === 1 ? '' : 's'} and {totalSec}s of
-        video — roughly <strong>${estUsd.toFixed(2)}</strong> of video generation, plus the images.
-        Nothing has been generated yet.
+        {t('video.approve.cost_note', { shots: shots.length, totalSec, cost: estUsd.toFixed(2) })}
       </p>
     </div>
   );

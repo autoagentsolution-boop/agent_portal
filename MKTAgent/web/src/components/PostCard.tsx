@@ -3,6 +3,8 @@ import { api, type PostDto, type Result } from '../api/client';
 import type { DemoMode } from '../flow/demo-flow';
 import { fromLocalDateTimeInput, toLocalDateTimeInput } from './form-options';
 import { PostWorkflowView } from './post-workflow-view';
+import { useLocale, type MessageKey, type Params } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Props {
   post: PostDto;
@@ -18,23 +20,24 @@ const formatDate = (iso: string | null): string => iso ? new Date(iso).toLocaleS
 
 // One legible line telling the user exactly where this post is in the publish lifecycle —
 // the "did Publisher run / is it scheduled?" question the flow view otherwise hid.
-const stageLine = (post: PostDto): { icon: string; text: string } => {
+const stageLine = (post: PostDto, t: (key: MessageKey, params?: Params) => string): { icon: string; text: string } => {
   switch (post.status) {
-    case 'brief': return { icon: '📝', text: 'Draft brief — generate copy to continue' };
-    case 'rework': return { icon: '↻', text: 'Reworking — regenerate with feedback' };
-    case 'review': return { icon: '👁', text: 'Copy ready — awaiting your approval' };
+    case 'brief': return { icon: '📝', text: t('post.stage.brief') };
+    case 'rework': return { icon: '↻', text: t('post.stage.rework') };
+    case 'review': return { icon: '👁', text: t('post.stage.review') };
     case 'ready': return post.scheduledAt
-      ? { icon: '⏳', text: `Scheduled for ${formatDate(post.scheduledAt)} — Publisher will run` }
-      : { icon: '⏳', text: 'Approved — Publisher runs on next scheduler tick' };
-    case 'posting': return { icon: '⏳', text: 'Publisher running — posting now…' };
-    case 'posted': return { icon: '✅', text: `Published${post.postedAt ? ` ${formatDate(post.postedAt)}` : ''}` };
-    case 'partial': return { icon: '⚠', text: 'Partly published — some platforms failed' };
-    case 'error': return { icon: '⛔', text: 'Publish failed — see error below' };
+      ? { icon: '⏳', text: t('post.stage.ready_scheduled', { time: formatDate(post.scheduledAt) }) }
+      : { icon: '⏳', text: t('post.stage.ready_now') };
+    case 'posting': return { icon: '⏳', text: t('post.stage.posting') };
+    case 'posted': return { icon: '✅', text: t('post.stage.posted', { time: post.postedAt ? ` ${formatDate(post.postedAt)}` : '' }) };
+    case 'partial': return { icon: '⚠', text: t('post.stage.partial') };
+    case 'error': return { icon: '⛔', text: t('post.stage.error') };
     default: return { icon: '•', text: post.status };
   }
 };
 
 export function PostCard({ post, demoMode, notify, onEdit, selected = false, onPatched, onOpenConnections }: Props) {
+  const { t } = useLocale();
   const [busy, setBusy] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [scheduling, setScheduling] = useState(false);
@@ -48,17 +51,17 @@ export function PostCard({ post, demoMode, notify, onEdit, selected = false, onP
     try {
       const r = await fn();
       if (r.ok) { notify(`${label}: ${r.data.status}`); onPatched(r.data, post.id); }
-      else notify(`${label} failed: ${r.error.error}${r.error.details ? ` — ${JSON.stringify(r.error.details)}` : ''}`, 'err');
+      else notify(tError(r.error), 'err');
     } finally { setBusy(null); }
   };
 
   const del = async () => {
-    if (!confirm('Delete this post?')) return;
+    if (!confirm(t('confirm.delete.post'))) return;
     setBusy('delete');
     const r = await api.deletePost(post.id);
     setBusy(null);
-    if (r.ok) { notify('Post deleted'); onPatched(null, post.id); }
-    else notify(`Delete failed: ${r.error.error}`, 'err');
+    if (r.ok) { notify(t('post.delete.notice')); onPatched(null, post.id); }
+    else notify(tError(r.error), 'err');
   };
 
   const submitReject = async () => {
@@ -83,15 +86,15 @@ export function PostCard({ post, demoMode, notify, onEdit, selected = false, onP
 
   const publish = async () => {
     if (demoMode === 'safe') {
-      notify('Safe Simulation is on: publish is blocked to avoid accidental real social posts. Switch to Live for the one controlled demo.', 'err');
+      notify(t('publish.safe_mode.blocked'), 'err');
       return;
     }
-    if (!confirm(`Live publish this post to: ${post.platforms.join(', ') || 'configured platforms'}?`)) return;
+    if (!confirm(t('confirm.publish.live', { platforms: post.platforms.join(', ') || 'configured platforms' }))) return;
     await run('Publish', () => api.publishNow(post.id));
   };
 
   const s = post.status;
-  const stage = stageLine(post);
+  const stage = stageLine(post, t);
   // A flow-attached post (runId) generates copy via its Concept Writer DAG step (Execute),
   // not the legacy copy-gen button — showing both is the "two engines" confusion. Legacy
   // Generate stays only for run-less posts (manual, no flow).
@@ -151,12 +154,12 @@ export function PostCard({ post, demoMode, notify, onEdit, selected = false, onP
       {rejecting && (
         <div style={{ marginTop: 10 }}>
           <div className="field">
-            <label>Rework feedback</label>
-            <textarea autoFocus value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="What to change: tone, hook, CTA, length, language…" />
+            <label>{t('post.reject.label')}</label>
+            <textarea autoFocus value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder={t('post.reject.placeholder')} />
           </div>
           <div className="btn-row">
-            <button className="btn primary" onClick={() => void submitReject()}>Send feedback</button>
-            <button className="btn" onClick={() => setRejecting(false)}>Cancel</button>
+            <button className="btn primary" onClick={() => void submitReject()}>{t('post.reject.send.cta')}</button>
+            <button className="btn" onClick={() => setRejecting(false)}>{t('common.cancel')}</button>
           </div>
         </div>
       )}
@@ -164,13 +167,13 @@ export function PostCard({ post, demoMode, notify, onEdit, selected = false, onP
       {scheduling && (
         <div className="approve-panel">
           <div className="field">
-            <label>Approve schedule</label>
+            <label>{t('post.schedule.label')}</label>
             <input type="datetime-local" value={approveAt} onChange={(e) => setApproveAt(e.target.value)} />
-            <div className="help-text">Empty means ready immediately. Scheduler publishes ready posts whose time is due.</div>
+            <div className="help-text">{t('post.schedule.help')}</div>
           </div>
           <div className="btn-row">
-            <button className="btn primary" disabled={!!busy} onClick={() => void approve()}>Approve final</button>
-            <button className="btn" onClick={() => setScheduling(false)}>Cancel</button>
+            <button className="btn primary" disabled={!!busy} onClick={() => void approve()}>{t('post.approve_final.cta')}</button>
+            <button className="btn" onClick={() => setScheduling(false)}>{t('common.cancel')}</button>
           </div>
         </div>
       )}
@@ -178,32 +181,32 @@ export function PostCard({ post, demoMode, notify, onEdit, selected = false, onP
       {refining && (
         <div style={{ marginTop: 10 }}>
           <div className="field">
-            <label>Refine copy (targeted edit)</label>
-            <textarea autoFocus value={refineText} onChange={(e) => setRefineText(e.target.value)} placeholder="e.g. shorten the hook, add a discount mention, make the tone warmer…" />
-            <div className="help-text">Applies a small change via AI (keeps audit trail). Result returns to review for re-approval.</div>
+            <label>{t('post.refine.label')}</label>
+            <textarea autoFocus value={refineText} onChange={(e) => setRefineText(e.target.value)} placeholder={t('post.refine.placeholder')} />
+            <div className="help-text">{t('post.refine.help')}</div>
           </div>
           <div className="btn-row">
-            <button className="btn primary" disabled={!!busy} onClick={() => void submitRefine()}>{busy === 'Refine' ? 'Refining…' : 'Apply refinement'}</button>
-            <button className="btn" onClick={() => setRefining(false)}>Cancel</button>
+            <button className="btn primary" disabled={!!busy} onClick={() => void submitRefine()}>{busy === 'Refine' ? t('post.refine.busy') : t('post.refine.apply.cta')}</button>
+            <button className="btn" onClick={() => setRefining(false)}>{t('common.cancel')}</button>
           </div>
         </div>
       )}
 
       {!rejecting && !scheduling && !refining && (
         <div className="btn-row" style={{ marginTop: 10 }}>
-          <button className="btn" disabled={!canEdit || !!busy} onClick={() => onEdit(post)}>Edit brief</button>
+          <button className="btn" disabled={!canEdit || !!busy} onClick={() => onEdit(post)}>{t('post.edit_brief.cta')}</button>
           {!isFlowPost && (
             <button className="btn" disabled={!canGenerate || !!busy} onClick={() => void run('Generate', () => api.generate(post.id))}>
-              {busy === 'Generate' ? '…' : 'Generate copy'}
+              {busy === 'Generate' ? '…' : t('post.generate.cta')}
             </button>
           )}
-          <button className="btn primary" disabled={!canReview || !!busy} onClick={() => setScheduling(true)}>Approve / schedule</button>
-          <button className="btn" disabled={!canRefine || !!busy} onClick={() => setRefining(true)}>Refine</button>
-          <button className="btn" disabled={!canReview || !!busy} onClick={() => setRejecting(true)}>Reject + rework</button>
-          <button className="btn" disabled={!canPublish || !!busy} title={demoMode === 'safe' ? 'Publishing is disabled in Safe Simulation — switch to Live to post now. Scheduled posts publish automatically at their time.' : 'Publishes to real social platforms immediately, bypassing any schedule'} onClick={() => void publish()}>
-            {busy === 'Publish' ? '…' : demoMode === 'safe' ? 'Publish (Live only)' : 'Publish now'}
+          <button className="btn primary" disabled={!canReview || !!busy} onClick={() => setScheduling(true)}>{t('post.approve_schedule.cta')}</button>
+          <button className="btn" disabled={!canRefine || !!busy} onClick={() => setRefining(true)}>{t('post.refine.cta')}</button>
+          <button className="btn" disabled={!canReview || !!busy} onClick={() => setRejecting(true)}>{t('post.reject_rework.cta')}</button>
+          <button className="btn" disabled={!canPublish || !!busy} title={demoMode === 'safe' ? t('post.publish.title.safe') : t('post.publish.title.live')} onClick={() => void publish()}>
+            {busy === 'Publish' ? '…' : demoMode === 'safe' ? t('post.publish_live_only.cta') : t('post.publish_now.cta')}
           </button>
-          <button className="btn danger" disabled={!canEdit || !!busy} onClick={() => void del()}>Delete</button>
+          <button className="btn danger" disabled={!canEdit || !!busy} onClick={() => void del()}>{t('common.delete')}</button>
         </div>
       )}
     </div>

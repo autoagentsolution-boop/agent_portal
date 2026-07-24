@@ -5,6 +5,8 @@
 // IS the post media (asHero); otherwise it conditions the infographic/storyboard generation.
 import { useRef, useState } from 'react';
 import { api } from '../api/client';
+import { useLocale } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Variant { body: string; threads: string; x: string }
 
@@ -33,6 +35,7 @@ const toB64 = (file: File): Promise<string> =>
   });
 
 export function ConceptSelectionGate({ postId, variants, chosen, hasMediaStep, busy, onContinue, notify }: Props) {
+  const { t } = useLocale();
   const [selected, setSelected] = useState(chosen);
   const [selecting, setSelecting] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -45,19 +48,19 @@ export function ConceptSelectionGate({ postId, variants, chosen, hasMediaStep, b
     setSelecting(true);
     const r = await api.selectVariant(postId, i);
     setSelecting(false);
-    if (!r.ok) { notify(`Select version: ${r.error.error}`, 'err'); return; }
-    notify(`Version ${i + 1} selected`);
+    if (!r.ok) { notify(tError(r.error), 'err'); return; }
+    notify(t('concept.version.selected', { n: i + 1 }));
   };
 
   const upload = async (file: File) => {
-    if (file.size > MAX_BYTES) { notify(`"${file.name}" is over 8MB — use a smaller image.`, 'err'); return; }
+    if (file.size > MAX_BYTES) { notify(t('concept.upload.too_large', { name: file.name }), 'err'); return; }
     setUploading(true);
     try {
       const dataB64 = await toB64(file);
       const r = await api.uploadReferenceImage(postId, dataB64, file.type || 'image/png', !hasMediaStep);
-      if (!r.ok) { notify(`Upload: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       setRefName(file.name);
-      notify(hasMediaStep ? 'Reference image added — the AI will follow it' : 'Image set as the post media');
+      notify(hasMediaStep ? t('concept.upload.added_reference') : t('concept.upload.set_as_media'));
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -68,9 +71,9 @@ export function ConceptSelectionGate({ postId, variants, chosen, hasMediaStep, b
     setUploading(true);
     const r = await api.deleteReferenceImage(postId);
     setUploading(false);
-    if (!r.ok) { notify(`Remove: ${r.error.error}`, 'err'); return; }
+    if (!r.ok) { notify(tError(r.error), 'err'); return; }
     setRefName(null);
-    notify('Reference image removed');
+    notify(t('concept.upload.removed'));
   };
 
   const disabled = busy || selecting || uploading;
@@ -79,9 +82,7 @@ export function ConceptSelectionGate({ postId, variants, chosen, hasMediaStep, b
   return (
     <div className="gate-block concept-gate">
       <p className="muted small">
-        {reviewMode
-          ? <>Concept versions — the writer produced these; the highlighted one is active. <strong>Click another to switch</strong> before publishing.</>
-          : <>Concept ready — <strong>pick the version you like</strong>, optionally add a reference image, then Continue. Later steps (image/video, publish) use your choice.</>}
+        {reviewMode ? t('concept.gate.review_hint') : t('concept.gate.pick_hint')}
       </p>
 
       <div className="variant-list">
@@ -94,7 +95,7 @@ export function ConceptSelectionGate({ postId, variants, chosen, hasMediaStep, b
           >
             <div className="variant-head">
               <span className="variant-radio">{i === selected ? '●' : '○'}</span>
-              <span className="variant-title">Version {i + 1}</span>
+              <span className="variant-title">{t('concept.version.label', { n: i + 1 })}</span>
             </div>
             <div className="variant-body">{v.body}</div>
           </button>
@@ -105,25 +106,23 @@ export function ConceptSelectionGate({ postId, variants, chosen, hasMediaStep, b
         <div className="concept-ref">
           <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="btn small" disabled={disabled} onClick={() => inputRef.current?.click()}>
-              {uploading ? 'Uploading…' : refName ? '↻ Replace image' : hasMediaStep ? '🖼 Upload reference image' : '🖼 Upload your image'}
+              {uploading ? t('concept.upload.busy') : refName ? t('concept.upload.replace_cta') : hasMediaStep ? t('concept.upload.reference_cta') : t('concept.upload.own_cta')}
             </button>
             {refName && <span className="muted small">{refName}</span>}
-            {refName && <button className="btn small" disabled={disabled} onClick={() => void removeRef()}>Remove</button>}
+            {refName && <button className="btn small" disabled={disabled} onClick={() => void removeRef()}>{t('concept.upload.remove_cta')}</button>}
             <input ref={inputRef} type="file" accept={ACCEPT} style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) void upload(e.target.files[0]); }} />
           </div>
           <div className="help-text">
-            {hasMediaStep
-              ? 'Optional — the image/video step will generate FROM this reference. No upload = generated from text.'
-              : 'Optional — use your own image as the post media instead of generating one.'}
+            {hasMediaStep ? t('concept.upload.help.media_step') : t('concept.upload.help.no_media_step')}
           </div>
         </div>
       )}
 
       {reviewMode ? (
-        <p className="help-text">Active version: <strong>Version {selected + 1}</strong>. Switching updates the copy the later steps use (allowed until the post is published).</p>
+        <p className="help-text">{t('concept.gate.active_version', { version: t('concept.version.label', { n: selected + 1 }) })}</p>
       ) : (
         <button className="btn primary" disabled={disabled} onClick={onContinue}>
-          {busy ? 'Continuing…' : '▶ Continue with Version ' + (selected + 1)}
+          {busy ? t('concept.gate.continuing.busy') : t('concept.gate.continue_with.cta', { n: selected + 1 })}
         </button>
       )}
     </div>

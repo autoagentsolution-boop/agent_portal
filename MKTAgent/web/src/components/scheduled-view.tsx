@@ -3,6 +3,8 @@
 // the user can SEE what the scheduler will fire and when. Read-only; click a row to open the post.
 import { useEffect, useState } from 'react';
 import { api, type PostDto } from '../api/client';
+import { useLocale } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
@@ -25,6 +27,7 @@ const toLocalInput = (iso: string | null): string => {
 const actionLabel = (a: string | null): string => (a === 'email_agent' ? '📧 Email' : a === 'publisher' ? '📤 Post' : '⏰ Action');
 
 export function ScheduledView({ notify, onOpenPost }: Props) {
+  const { t } = useLocale();
   const [posts, setPosts] = useState<PostDto[]>([]);
   const [loading, setLoading] = useState(true);
   // Per-post autonomy grant (2-step) for planned/brief posts, right here in the Scheduled list so the
@@ -41,7 +44,7 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
     setLoading(true);
     const [posts, runs] = await Promise.all([api.listPosts({ limit: 100 }), api.listScheduledRuns()]);
     if (posts.ok) setPosts(posts.data);
-    else notify(`Scheduled: ${posts.error.error}`, 'err');
+    else notify(tError(posts.error), 'err');
     if (runs.ok) setSchedRuns(runs.data);
     setLoading(false);
   };
@@ -50,20 +53,20 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
     setBusy(true);
     try {
       const r = await api.cancelSchedule(id);
-      if (!r.ok) { notify(`Cancel: ${r.error.error}`, 'err'); return; }
-      notify('Scheduled send cancelled.');
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
+      notify(t('schedule.cancel.notice'));
       void load();
     } finally { setBusy(false); }
   };
   const saveReschedule = async (id: string) => {
     if (!reschedVal) return;
     const iso = new Date(reschedVal).toISOString();
-    if (new Date(iso).getTime() <= Date.now()) { notify('Pick a future time.', 'err'); return; }
+    if (new Date(iso).getTime() <= Date.now()) { notify(t('schedule.reschedule.future_required'), 'err'); return; }
     setBusy(true);
     try {
       const r = await api.reschedule(id, iso);
-      if (!r.ok) { notify(`Reschedule: ${r.error.error}`, 'err'); return; }
-      notify('Rescheduled.');
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
+      notify(t('schedule.reschedule.notice'));
       setReschedFor(null);
       void load();
     } finally { setBusy(false); }
@@ -74,7 +77,7 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
     setGranting(true);
     try {
       const r = await api.grantPost(postId);
-      if (!r.ok) { notify(`Grant: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
       setGrantFor({ postId, credits: Math.round(r.data.estimate.credits), token: r.data.confirmationToken ?? '' });
     } finally { setGranting(false); }
   };
@@ -83,8 +86,8 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
     setGranting(true);
     try {
       const r = await api.grantPost(grantFor.postId, { confirmationToken: grantFor.token, scheduleConfirmed: true });
-      if (!r.ok) { notify(`Grant: ${r.error.error}`, 'err'); return; }
-      notify('Autonomy granted — Atria will prepare and auto-publish on schedule.');
+      if (!r.ok) { notify(tError(r.error), 'err'); return; }
+      notify(t('autonomy.grant.notice'));
       setGrantFor(null);
       void load();
     } finally { setGranting(false); }
@@ -114,12 +117,12 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
       {p.status === 'brief' && p.campaignId && (
         grantFor?.postId === p.id ? (
           <span className="ws-grant-confirm">
-            ≈ {grantFor.credits.toLocaleString()} cr?
-            <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant()}>Confirm</button>
-            <button className="ws-grant-no" disabled={granting} onClick={() => setGrantFor(null)}>Cancel</button>
+            {t('credits.grant.inline', { credits: grantFor.credits.toLocaleString() })}
+            <button className="ws-grant-yes" disabled={granting} onClick={() => void confirmGrant()}>{t('common.confirm')}</button>
+            <button className="ws-grant-no" disabled={granting} onClick={() => setGrantFor(null)}>{t('common.cancel')}</button>
           </span>
         ) : (
-          <button className="ws-grant-btn" disabled={granting} title="Grant Atria autonomy to prepare, then stop at review" onClick={() => void startGrant(p.id)}>⚡ Prepare</button>
+          <button className="ws-grant-btn" disabled={granting} title={t('autonomy.grant.title.brief')} onClick={() => void startGrant(p.id)}>{t('autonomy.grant.cta')}</button>
         )
       )}
     </div>
@@ -148,13 +151,13 @@ export function ScheduledView({ notify, onOpenPost }: Props) {
                 {reschedFor === r.id ? (
                   <span className="ws-grant-confirm">
                     <input type="datetime-local" value={reschedVal} onChange={(e) => setReschedVal(e.target.value)} />
-                    <button className="ws-grant-yes" disabled={busy} onClick={() => void saveReschedule(r.id)}>Save</button>
-                    <button className="ws-grant-no" disabled={busy} onClick={() => setReschedFor(null)}>Cancel</button>
+                    <button className="ws-grant-yes" disabled={busy} onClick={() => void saveReschedule(r.id)}>{t('common.save')}</button>
+                    <button className="ws-grant-no" disabled={busy} onClick={() => setReschedFor(null)}>{t('common.cancel')}</button>
                   </span>
                 ) : (
                   <span>
-                    <button className="btn small" disabled={busy} onClick={() => { setReschedFor(r.id); setReschedVal(toLocalInput(r.resumeAt)); }}>Reschedule</button>
-                    <button className="ws-grant-no" disabled={busy} onClick={() => void cancelRun(r.id)}>Cancel</button>
+                    <button className="btn small" disabled={busy} onClick={() => { setReschedFor(r.id); setReschedVal(toLocalInput(r.resumeAt)); }}>{t('schedule.reschedule.cta')}</button>
+                    <button className="ws-grant-no" disabled={busy} onClick={() => void cancelRun(r.id)}>{t('common.cancel')}</button>
                   </span>
                 )}
               </div>

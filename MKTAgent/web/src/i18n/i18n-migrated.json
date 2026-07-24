@@ -1,1 +1,14 @@
-[]
+[
+  "components/workspace-panel.tsx",
+  "components/scheduled-view.tsx",
+  "components/post-workflow-view.tsx",
+  "components/video-script-review.tsx",
+  "components/PostCard.tsx",
+  "components/saved-flow-detail.tsx",
+  "components/OrchestratePanel.tsx",
+  "components/connection-required.tsx",
+  "components/publish-review.tsx",
+  "components/plan-tier-cards.tsx",
+  "components/concept-selection-gate.tsx",
+  "components/UsageDashboard.tsx"
+]
