@@ -40,17 +40,41 @@ const writeJson = (file: string, obj: Record<string, string>): Promise<void> => 
   return writeFile(join(I18N_DIR, file), JSON.stringify(sorted, null, 2) + '\n', 'utf8');
 };
 
-const translateBatch = async (name: string, batch: Array<[string, string]>): Promise<Record<string, string>> => {
+const translateBatch = async (name: string, batch: Array<[string, string]>, emphasizeParams = false): Promise<Record<string, string>> => {
+  // Emphasis is used on the retry pass: some languages (esp. Arabic/Hebrew singular forms) drop a
+  // {count} placeholder, writing the number out. Spelling the required tokens out fixes it.
+  const paramNote = emphasizeParams
+    ? ` CRITICAL: each translation MUST contain every one of these placeholders LITERALLY and unchanged: ` +
+      [...new Set(batch.flatMap(([, v]) => [...paramsOf(v)]))].map((p) => `{${p}}`).join(' ') +
+      `. Never replace a placeholder with a written-out number or word.`
+    : '';
   const system =
     `You are a professional UI localizer. Translate app interface strings into ${name}. ` +
     `Return ONLY a JSON object mapping each given key to its translation. Preserve every {token} EXACTLY ` +
     `(same names, do not translate them). Keep it natural and concise for a software UI. Keep leading ` +
-    `emoji/symbols. Do not add keys.`;
+    `emoji/symbols. Do not add keys.${paramNote}`;
   const user = JSON.stringify(Object.fromEntries(batch.map(([k, v]) => [k, v])));
   let usage: GeminiUsage | null = null;
   const out = (await callGeminiJson(system, user, (u) => { usage = u; })) as Record<string, string>;
   if (usage) await recordLlmUsage({ ownerId: null, surface: 'i18n', model: env.GEMINI_MODEL, usage });
   return out;
+};
+
+// Retry a batch on a THROW (the model occasionally returns malformed JSON — Hebrew/Arabic especially).
+// Distinct from the per-key param retry below, which handles a well-formed response missing a token.
+const translateBatchRetry = async (name: string, batch: Array<[string, string]>, emph = false): Promise<Record<string, string>> => {
+  for (let attempt = 0; ; attempt++) {
+    try { return await translateBatch(name, batch, emph); }
+    catch (e) { if (attempt >= 2) throw e; console.log(`  (batch threw, retrying: ${e instanceof Error ? e.message.slice(0, 60) : e})`); }
+  }
+};
+
+// Validate one candidate translation; return an error string or null if it is good.
+const badReason = (srcText: string, got: unknown): string | null => {
+  if (typeof got !== 'string' || !got.trim()) return 'empty';
+  if (unsafe(got)) return 'unsafe';
+  if (!eqSet(paramsOf(srcText), paramsOf(got))) return `param mismatch en{${[...paramsOf(srcText)]}} vs {${[...paramsOf(got)]}}`;
+  return null;
 };
 
 const main = async (): Promise<void> => {
@@ -75,20 +99,29 @@ const main = async (): Promise<void> => {
   if (dry) { console.log('missing:', missing.slice(0, 20).join(', '), missing.length > 20 ? '…' : ''); process.exit(0); }
 
   const generated: Record<string, string> = {};
+  const failed: Array<[string, string]> = [];
   for (let i = 0; i < missing.length; i += BATCH) {
     const batch = missing.slice(i, i + BATCH).map((k) => [k, en[k]!] as [string, string]);
-    const out = await translateBatch(def.name, batch);
+    const out = await translateBatchRetry(def.name, batch);
+    let deferred = 0;
     for (const [k, srcText] of batch) {
-      const got = out[k];
-      if (typeof got !== 'string' || !got.trim()) throw new Error(`missing translation for "${k}"`);
-      if (unsafe(got)) throw new Error(`unsafe characters in translation for "${k}": ${got}`);
-      if (!eqSet(paramsOf(srcText), paramsOf(got))) {
-        throw new Error(`param mismatch for "${k}": en{${[...paramsOf(srcText)]}} vs ${locale}{${[...paramsOf(got)]}}`);
-      }
-      generated[k] = got;
+      if (badReason(srcText, out[k])) { failed.push([k, srcText]); deferred++; }
+      else generated[k] = out[k]!;
     }
-    console.log(`  batch ${i / BATCH + 1}: +${batch.length}`);
+    console.log(`  batch ${i / BATCH + 1}: +${batch.length - deferred}${deferred ? ` (${deferred} deferred)` : ''}`);
   }
+
+  // Retry pass: some models drop a {placeholder} on singular/plural forms (Arabic/Hebrew especially).
+  // Re-ask each failed key alone with the required tokens spelled out. Fail loud only if STILL broken.
+  for (const [k, srcText] of failed) {
+    let ok = false;
+    for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+      const out = await translateBatchRetry(def.name, [[k, srcText]], true);
+      if (!badReason(srcText, out[k])) { generated[k] = out[k]!; ok = true; }
+    }
+    if (!ok) throw new Error(`"${k}" still invalid after retries: ${badReason(srcText, generated[k])}`);
+  }
+  if (failed.length) console.log(`  retried ${failed.length} key(s) with param emphasis → all recovered`);
 
   const reviewKeys = Object.keys(generated).filter((k) => ACT_ON.test(k));
   const shipped = { ...existing, ...(shipActOn ? generated : Object.fromEntries(Object.entries(generated).filter(([k]) => !ACT_ON.test(k)))) };
