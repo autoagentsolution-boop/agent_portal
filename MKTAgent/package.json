@@ -13,6 +13,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "gen:openapi": "tsx src/contract/openapi.ts",
+    "i18n:translate": "tsx src/scripts/i18n-translate.ts",
     "verify": "tsx src/scripts/run-verify.ts",
     "verify:unit": "tsx src/scripts/run-verify.ts --tier unit",
     "verify:db": "tsx src/scripts/run-verify.ts --tier db",

@@ -59,6 +59,15 @@ export const en = {
   // ---- account menu ----
   'account.language.label': 'Interface language',
 
+  // ---- top nav (chrome — demonstrates the phase-04 pipeline; the 2 currently-Vietnamese strings are
+  //      preserved as vi entries, the rest generated) ----
+  'nav.chats.label': 'Chats',
+  'nav.chats.search': 'Search chats…',
+  'nav.chats.empty': 'No chats yet',
+  'nav.chat.delete': 'Delete {title}',
+  'nav.credits.title': 'Credits remaining',
+  'nav.signout': 'Sign out',
+
   // ---- server notices (notice.<code>) ----
   'notice.connect_to_publish': 'Connect {platforms} to publish — your draft is ready and waiting.',
 

@@ -7,6 +7,7 @@ import type { Page } from '../app-nav';
 import type { WorkspaceSummaryDto, AgentChatSessionDto } from '../api/client';
 import { WorkspaceMenu } from './workspace-menu';
 import { LanguageSwitcher } from './language-switcher';
+import { useLocale } from '../i18n';
 
 interface Props {
   page: Page;
@@ -38,6 +39,7 @@ const NAV: Array<{ page: Page; label: string; icon: string }> = [
 
 export function TopNav(props: Props) {
   const { page, onNavigate, credits, userEmail, chats, activeChatId, onSelectChat, onDeleteChat } = props;
+  const { t } = useLocale();
   const [chatsOpen, setChatsOpen] = useState(false);
   const [q, setQ] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -78,17 +80,17 @@ export function TopNav(props: Props) {
       <div className="topnav-right">
         <div className="topnav-chats" ref={ref}>
           <button className="topnav-item" onClick={() => setChatsOpen((v) => !v)} aria-haspopup="menu" aria-expanded={chatsOpen}>
-            💬 Chats <span className="topnav-caret">▾</span>
+            💬 {t('nav.chats.label')} <span className="topnav-caret">▾</span>
           </button>
           {chatsOpen && (
             <div className="topnav-chats-panel" role="menu">
-              <input className="topnav-chats-search" placeholder="Tìm chat…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+              <input className="topnav-chats-search" placeholder={t('nav.chats.search')} value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
               <div className="topnav-chats-list">
-                {filtered.length === 0 && <div className="topnav-chats-empty">Chưa có chat nào</div>}
+                {filtered.length === 0 && <div className="topnav-chats-empty">{t('nav.chats.empty')}</div>}
                 {filtered.map((c) => (
                   <div key={c.id} className={`topnav-chats-row ${activeChatId === c.id ? 'is-active' : ''}`}>
                     <button className="topnav-chats-name" onClick={() => { onSelectChat(c.id); setChatsOpen(false); }}>{c.title}</button>
-                    <button className="topnav-chats-del" aria-label={`Xoá ${c.title}`} onClick={() => onDeleteChat(c.id)}>×</button>
+                    <button className="topnav-chats-del" aria-label={t('nav.chat.delete', { title: c.title })} onClick={() => onDeleteChat(c.id)}>×</button>
                   </div>
                 ))}
               </div>
@@ -107,9 +109,9 @@ export function TopNav(props: Props) {
 
         <LanguageSwitcher onError={props.onError} />
 
-        <span className="topnav-credit" title="Credits remaining">◈ {credits === null ? '—' : credits.toLocaleString()}</span>
+        <span className="topnav-credit" title={t('nav.credits.title')}>◈ {credits === null ? '—' : credits.toLocaleString()}</span>
         <span className="topnav-user" title={userEmail}>{userEmail}</span>
-        <button className="topnav-item" onClick={props.onLogout} title="Sign out">⎋ <span className="topnav-item-label">Sign out</span></button>
+        <button className="topnav-item" onClick={props.onLogout} title={t('nav.signout')}>⎋ <span className="topnav-item-label">{t('nav.signout')}</span></button>
       </div>
     </header>
   );

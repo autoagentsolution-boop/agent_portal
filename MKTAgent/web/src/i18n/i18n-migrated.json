@@ -10,5 +10,7 @@
   "components/publish-review.tsx",
   "components/plan-tier-cards.tsx",
   "components/concept-selection-gate.tsx",
-  "components/UsageDashboard.tsx"
+  "components/UsageDashboard.tsx",
+  "components/top-nav.tsx",
+  "components/language-switcher.tsx"
 ]
