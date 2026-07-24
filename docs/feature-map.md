@@ -968,3 +968,125 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `MKTAgent/web/src/i18n/catalog.ko.ts`
   - `MKTAgent/web/src/i18n/catalog.vi.ts`
   - `MKTAgent/web/src/i18n/i18n-migrated.json`
+- **feat(i18n): interface-language switcher in the top nav** (63193bb)
+  - `MKTAgent/web/src/App.tsx`
+  - `MKTAgent/web/src/components/language-switcher.tsx`
+  - `MKTAgent/web/src/components/top-nav.tsx`
+  - `MKTAgent/web/src/i18n/catalog.en.ts`
+  - `MKTAgent/web/src/i18n/catalog.id.ts`
+  - `MKTAgent/web/src/i18n/catalog.ko.ts`
+  - `MKTAgent/web/src/i18n/catalog.vi.ts`
+  - `MKTAgent/web/src/i18n/index.ts`
+  - `MKTAgent/web/src/styles.css`
+- **feat(i18n): build-time translation pipeline + top-nav chrome demo** (eff1eb8)
+  - `MKTAgent/package.json`
+  - `MKTAgent/src/scripts/i18n-translate.ts`
+  - `MKTAgent/web/src/components/top-nav.tsx`
+  - `MKTAgent/web/src/i18n/catalog.en.ts`
+  - `MKTAgent/web/src/i18n/catalog.id.ts`
+  - `MKTAgent/web/src/i18n/catalog.ko.ts`
+  - `MKTAgent/web/src/i18n/catalog.vi.ts`
+  - `MKTAgent/web/src/i18n/i18n-migrated.json`
+- **feat(i18n): chrome-tier sweep + GLOBAL enforcement — the whole UI switches** (cbfd7f7)
+  - `MKTAgent/src/scripts/verify-i18n.ts`
+  - `MKTAgent/web/src/components/ConnectionsPanel.tsx`
+  - `MKTAgent/web/src/components/DemoModeToggle.tsx`
+  - `MKTAgent/web/src/components/LeadsPage.tsx`
+  - `MKTAgent/web/src/components/OrchestratePanel.tsx`
+  - `MKTAgent/web/src/components/ProductKnowledgeLibrary.tsx`
+  - `MKTAgent/web/src/components/SuperAdminPage.tsx`
+  - `MKTAgent/web/src/components/UsageDashboard.tsx`
+  - `MKTAgent/web/src/components/atria-resume-work-cards.tsx`
+  - `MKTAgent/web/src/components/atria-suggestion-cards.tsx`
+  - `MKTAgent/web/src/components/campaign-command-view.tsx`
+  - `MKTAgent/web/src/components/command-center-page.tsx`
+  - `MKTAgent/web/src/components/connection-credential-form.tsx`
+  - `MKTAgent/web/src/components/cost-strip.tsx`
+  - `MKTAgent/web/src/components/email-panel.tsx`
+  - `MKTAgent/web/src/components/impact-report.tsx`
+  - `MKTAgent/web/src/components/instruction-editor.tsx`
+  - `MKTAgent/web/src/components/memory-panel.tsx`
+  - `MKTAgent/web/src/components/nurture-inbox-panel.tsx`
+  - `MKTAgent/web/src/components/nurture-settings-panel.tsx`
+  - `MKTAgent/web/src/components/nurture-thread-timeline.tsx`
+  - `MKTAgent/web/src/components/orchestrate-run-cards.tsx`
+  - `MKTAgent/web/src/components/product-knowledge-upload.tsx`
+  - `MKTAgent/web/src/components/provider-spend-panel.tsx`
+  - `MKTAgent/web/src/components/top-nav.tsx`
+  - `MKTAgent/web/src/components/workspace-menu.tsx`
+  - `MKTAgent/web/src/i18n/catalog.en.ts`
+  - `MKTAgent/web/src/i18n/catalog.id.ts`
+  - `MKTAgent/web/src/i18n/catalog.ko.ts`
+  - `MKTAgent/web/src/i18n/catalog.vi.ts`
+  - `MKTAgent/web/src/i18n/i18n-exempt.json`
+  - `MKTAgent/web/src/i18n/i18n-migrated.json`
+- **feat(i18n): add French — proves add-a-language is a catalog file + one pipeline run** (bef03f5)
+  - `MKTAgent/src/i18n/ui-languages.ts`
+  - `MKTAgent/src/scripts/i18n-translate.ts`
+  - `MKTAgent/src/scripts/verify-i18n.ts`
+  - `MKTAgent/web/src/i18n/catalog.fr.ts`
+  - `MKTAgent/web/src/i18n/index.ts`
+- **refactor(i18n): data-driven locale registry — adding a language is one row + one command** (928a86a)
+  - `MKTAgent/src/i18n/ui-languages.ts`
+  - `MKTAgent/src/scripts/i18n-translate.ts`
+  - `MKTAgent/src/scripts/verify-i18n.ts`
+  - `MKTAgent/web/src/i18n/catalog.fr.json`
+  - `MKTAgent/web/src/i18n/catalog.id.json`
+  - `MKTAgent/web/src/i18n/catalog.ko.json`
+  - `MKTAgent/web/src/i18n/catalog.vi.json`
+  - `MKTAgent/web/src/i18n/index.ts`
+  - `MKTAgent/web/src/i18n/locales.ts`
+- **feat(i18n): generate 21 more UI languages (th ja zh zh-TW ms tl km lo es pt de it nl uk pl tr hi bn ta ur fa)** (1845860)
+  - `MKTAgent/web/src/i18n/catalog.bn.json`
+  - `MKTAgent/web/src/i18n/catalog.bn.review.json`
+  - `MKTAgent/web/src/i18n/catalog.de.json`
+  - `MKTAgent/web/src/i18n/catalog.de.review.json`
+  - `MKTAgent/web/src/i18n/catalog.es.json`
+  - `MKTAgent/web/src/i18n/catalog.es.review.json`
+  - `MKTAgent/web/src/i18n/catalog.fa.json`
+  - `MKTAgent/web/src/i18n/catalog.fa.review.json`
+  - `MKTAgent/web/src/i18n/catalog.hi.json`
+  - `MKTAgent/web/src/i18n/catalog.hi.review.json`
+  - `MKTAgent/web/src/i18n/catalog.it.json`
+  - `MKTAgent/web/src/i18n/catalog.it.review.json`
+  - `MKTAgent/web/src/i18n/catalog.ja.json`
+  - `MKTAgent/web/src/i18n/catalog.ja.review.json`
+  - `MKTAgent/web/src/i18n/catalog.km.json`
+  - `MKTAgent/web/src/i18n/catalog.km.review.json`
+  - `MKTAgent/web/src/i18n/catalog.lo.json`
+  - `MKTAgent/web/src/i18n/catalog.lo.review.json`
+  - `MKTAgent/web/src/i18n/catalog.ms.json`
+  - `MKTAgent/web/src/i18n/catalog.ms.review.json`
+  - `MKTAgent/web/src/i18n/catalog.nl.json`
+  - `MKTAgent/web/src/i18n/catalog.nl.review.json`
+  - `MKTAgent/web/src/i18n/catalog.pl.json`
+  - `MKTAgent/web/src/i18n/catalog.pl.review.json`
+  - `MKTAgent/web/src/i18n/catalog.pt.json`
+  - `MKTAgent/web/src/i18n/catalog.pt.review.json`
+  - `MKTAgent/web/src/i18n/catalog.ta.json`
+  - `MKTAgent/web/src/i18n/catalog.ta.review.json`
+  - `MKTAgent/web/src/i18n/catalog.th.json`
+  - `MKTAgent/web/src/i18n/catalog.th.review.json`
+  - `MKTAgent/web/src/i18n/catalog.tl.json`
+  - `MKTAgent/web/src/i18n/catalog.tl.review.json`
+  - `MKTAgent/web/src/i18n/catalog.tr.json`
+  - `MKTAgent/web/src/i18n/catalog.tr.review.json`
+  - `MKTAgent/web/src/i18n/catalog.uk.json`
+  - `MKTAgent/web/src/i18n/catalog.uk.review.json`
+  - `MKTAgent/web/src/i18n/catalog.ur.json`
+  - `MKTAgent/web/src/i18n/catalog.ur.review.json`
+  - `MKTAgent/web/src/i18n/catalog.zh-TW.json`
+  - `MKTAgent/web/src/i18n/catalog.zh-TW.review.json`
+  - `MKTAgent/web/src/i18n/catalog.zh.json`
+  - `MKTAgent/web/src/i18n/catalog.zh.review.json`
+- **feat(i18n): generate Burmese (my) + Russian (ru) UI catalogs** (38baa04)
+  - `MKTAgent/web/src/i18n/catalog.my.json`
+  - `MKTAgent/web/src/i18n/catalog.my.review.json`
+  - `MKTAgent/web/src/i18n/catalog.ru.json`
+  - `MKTAgent/web/src/i18n/catalog.ru.review.json`
+- **feat(i18n): complete the set — Arabic + Hebrew, and make the pipeline model-robust** (60949cd)
+  - `MKTAgent/src/scripts/i18n-translate.ts`
+  - `MKTAgent/web/src/i18n/catalog.ar.json`
+  - `MKTAgent/web/src/i18n/catalog.ar.review.json`
+  - `MKTAgent/web/src/i18n/catalog.he.json`
+  - `MKTAgent/web/src/i18n/catalog.he.review.json`
