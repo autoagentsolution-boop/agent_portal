@@ -5,6 +5,8 @@
 // campaign so all its posts inherit the richer knowledge.
 import { useEffect, useRef, useState } from 'react';
 import { api, type ProductKnowledgeResult, type UploadedDocInput } from '../api/client';
+import { useLocale } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Props {
   campaignId: string;
@@ -29,6 +31,7 @@ const toB64 = (file: File): Promise<string> =>
 const mimeOf = (f: File): string => f.type || (f.name.endsWith('.md') ? 'text/markdown' : f.name.endsWith('.txt') ? 'text/plain' : '');
 
 export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed }: Props) {
+  const { t } = useLocale();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ProductKnowledgeResult | null>(null);
@@ -51,10 +54,10 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
     setSavingPk(true);
     try {
       const r = await api.updateCampaign(campaignId, { brandContext: text || null });
-      if (!r.ok) { notify(`Save: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(t('knowledge.err.save_campaign', { error: tError(r.error) }), 'err'); return; }
       setExisting(text ? { productDetails: text, brandVoice: r.data.brandVoice ?? null } : null);
       setEditing(false);
-      notify('Product knowledge updated');
+      notify(t('knowledge.updated'));
     } finally { setSavingPk(false); }
   };
 
@@ -71,7 +74,7 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
   const analyze = async (fileList: FileList) => {
     const files = Array.from(fileList).slice(0, MAX_FILES);
     const tooBig = files.find((f) => f.size > MAX_BYTES);
-    if (tooBig) { notify(`"${tooBig.name}" is over 6MB — use a smaller file.`, 'err'); return; }
+    if (tooBig) { notify(t('knowledge.upload.too_large', { name: tooBig.name }), 'err'); return; }
     setBusy(true);
     try {
       const docs: UploadedDocInput[] = await Promise.all(
@@ -82,11 +85,11 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
         ...(product ? { product } : {}),
         ...(saveToLibrary ? { saveToLibrary: true, ...(libraryName.trim() ? { libraryName: libraryName.trim() } : {}) } : {}),
       });
-      if (!r.ok) { notify(`Analyze: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(t('knowledge.err.analyze', { error: tError(r.error) }), 'err'); return; }
       setResult(r.data);
       setExisting({ productDetails: r.data.productDetails, brandVoice: r.data.brandVoice });
       onAnalyzed?.(r.data);
-      notify(`Product knowledge updated (${r.data.cost.totalTokens} tokens · $${r.data.cost.costUsd.toFixed(4)})`);
+      notify(t('knowledge.upload.updated_with_cost', { tokens: r.data.cost.totalTokens, cost: r.data.cost.costUsd.toFixed(4) }));
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -97,10 +100,10 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
     <div className="pk-upload card" style={{ marginBottom: 14 }}>
       <div className="spread">
         <div className="row" style={{ gap: 8 }}>
-          <strong style={{ fontSize: 14 }}>📚 Product Knowledge</strong>
-          <span className="muted" style={{ fontSize: 12 }}>Upload docs/images so copy, images & video are grounded in real facts</span>
+          <strong style={{ fontSize: 14 }}>{t('knowledge.title')}</strong>
+          <span className="muted" style={{ fontSize: 12 }}>{t('knowledge.upload.tagline')}</span>
         </div>
-        <button className="btn small" onClick={() => setOpen((o) => !o)}>{open ? 'Hide' : existing ? 'View / add more' : 'Add documents'}</button>
+        <button className="btn small" onClick={() => setOpen((o) => !o)}>{open ? t('knowledge.upload.hide') : existing ? t('knowledge.upload.view_more') : t('knowledge.upload.add_docs')}</button>
       </div>
 
       {/* Re-hydrate (A): the campaign's stored product knowledge, shown so a prior upload is
@@ -109,30 +112,30 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
         <div className="pk-result" style={{ marginTop: 10 }}>
           {editing ? (
             <div className="copy-box">
-              <div className="label">Edit product knowledge (grounds this campaign)</div>
+              <div className="label">{t('knowledge.upload.edit_label')}</div>
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 disabled={savingPk}
                 rows={8}
                 style={{ width: '100%', marginTop: 6, resize: 'vertical', font: 'inherit' }}
-                placeholder="Describe the product/service in detail — features, audience, tone. This grounds every copy/image/video prompt."
+                placeholder={t('knowledge.upload.edit_placeholder')}
               />
               <div className="row" style={{ gap: 8, marginTop: 8 }}>
-                <button className="btn small primary" disabled={savingPk} onClick={() => void saveKnowledge()}>{savingPk ? 'Saving…' : 'Save'}</button>
-                <button className="btn small" disabled={savingPk} onClick={() => setEditing(false)}>Cancel</button>
+                <button className="btn small primary" disabled={savingPk} onClick={() => void saveKnowledge()}>{savingPk ? t('knowledge.upload.saving') : t('common.save')}</button>
+                <button className="btn small" disabled={savingPk} onClick={() => setEditing(false)}>{t('common.cancel')}</button>
               </div>
             </div>
           ) : existing && (
             <>
               <div className="copy-box">
                 <div className="spread">
-                  <div className="label">Current product knowledge (grounds this campaign)</div>
-                  <button className="btn small" onClick={() => { setDraft(existing.productDetails); setEditing(true); }}>✎ Edit</button>
+                  <div className="label">{t('knowledge.upload.current_label')}</div>
+                  <button className="btn small" onClick={() => { setDraft(existing.productDetails); setEditing(true); }}>{t('knowledge.upload.edit_cta')}</button>
                 </div>
                 <div className="text" style={{ maxHeight: 220, overflowY: 'auto' }}>{existing.productDetails}</div>
               </div>
-              {existing.brandVoice && <div className="row muted small" style={{ gap: 12, marginTop: 6 }}><span>Voice: {existing.brandVoice}</span></div>}
+              {existing.brandVoice && <div className="row muted small" style={{ gap: 12, marginTop: 6 }}><span>{t('knowledge.entry.voice', { voice: existing.brandVoice })}</span></div>}
             </>
           )}
         </div>
@@ -149,34 +152,34 @@ export function ProductKnowledgeUpload({ campaignId, product, notify, onAnalyzed
             onChange={(e) => { if (e.target.files?.length) void analyze(e.target.files); }}
           />
           <div className="help-text" style={{ marginTop: 4 }}>
-            PDF, PNG/JPG/WebP, or TXT/Markdown · up to {MAX_FILES} files · ~6MB each. Gemini reads them into the product profile below.
+            {t('knowledge.upload.file_hint', { maxFiles: MAX_FILES })}
           </div>
           <div className="row" style={{ gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <label className="row small" style={{ gap: 6, alignItems: 'center' }}>
               <input type="checkbox" checked={saveToLibrary} disabled={busy} onChange={(e) => setSaveToLibrary(e.target.checked)} />
-              Save as reusable library entry
+              {t('knowledge.upload.save_to_library_label')}
             </label>
             {saveToLibrary && (
               <input
                 value={libraryName}
                 disabled={busy}
                 onChange={(e) => setLibraryName(e.target.value)}
-                placeholder="Library name (e.g. product name)"
+                placeholder={t('knowledge.upload.library_name_placeholder')}
                 style={{ flex: 1, minWidth: 180 }}
               />
             )}
           </div>
-          {busy && <p className="muted small" style={{ marginTop: 8 }}>Analyzing documents…</p>}
+          {busy && <p className="muted small" style={{ marginTop: 8 }}>{t('knowledge.upload.analyzing')}</p>}
 
           {result && (
             <div className="pk-result" style={{ marginTop: 10 }}>
-              <div className="copy-box"><div className="label">Product profile (grounds every prompt)</div><div className="text">{result.productDetails}</div></div>
+              <div className="copy-box"><div className="label">{t('knowledge.upload.result_label')}</div><div className="text">{result.productDetails}</div></div>
               <div className="row muted small" style={{ gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
-                {result.brandVoice && <span>Voice: {result.brandVoice}</span>}
-                {result.language && <span>Language: {result.language}</span>}
-                <span>Cost: {result.cost.totalTokens} tok · ${result.cost.costUsd.toFixed(4)}</span>
-                {result.persistedToCampaign && <span>✓ saved to campaign</span>}
-                {result.library && <span>✓ library: {result.library.name}</span>}
+                {result.brandVoice && <span>{t('knowledge.entry.voice', { voice: result.brandVoice })}</span>}
+                {result.language && <span>{t('knowledge.upload.result_language', { language: result.language })}</span>}
+                <span>{t('knowledge.upload.result_cost', { tokens: result.cost.totalTokens, cost: result.cost.costUsd.toFixed(4) })}</span>
+                {result.persistedToCampaign && <span>{t('knowledge.upload.saved_to_campaign')}</span>}
+                {result.library && <span>{t('knowledge.upload.saved_to_library', { name: result.library.name })}</span>}
               </div>
             </div>
           )}

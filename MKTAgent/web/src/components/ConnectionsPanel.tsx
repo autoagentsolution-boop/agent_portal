@@ -5,16 +5,18 @@
 import { useEffect, useState } from 'react';
 import { api, connectUrl, type ConnectionDto, type KillSwitchState } from '../api/client';
 import { ConnectionCredentialForm } from './connection-credential-form';
+import { useLocale, t } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
-const STATE_LABEL: Record<ConnectionDto['state'], string> = {
-  connected: 'Connected',
-  needs_attention: 'Needs attention',
-  not_connected: 'Not connected',
-};
+// Module-scope: uses the module-level t() (reactive because callers re-render on locale change).
+const stateLabel = (state: ConnectionDto['state']): string =>
+  state === 'connected' ? t('connections.state.connected')
+  : state === 'needs_attention' ? t('connections.state.needs_attention')
+  : t('connections.state.not_connected');
 
 const STATE_DOT: Record<ConnectionDto['state'], string> = {
   connected: '●',
@@ -26,10 +28,11 @@ const fmtExpiry = (iso: string | null): string => {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return `expires ${d.toLocaleDateString()}`;
+  return t('connections.expires', { date: d.toLocaleDateString() });
 };
 
 export function ConnectionsPanel({ notify }: Props) {
+  const { t } = useLocale();
   const [rows, setRows] = useState<ConnectionDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState<string | null>(null);
@@ -38,7 +41,7 @@ export function ConnectionsPanel({ notify }: Props) {
     setLoading(true);
     const r = await api.listConnections();
     setLoading(false);
-    if (!r.ok) { notify(`Connections: ${r.error.error}`, 'err'); return; }
+    if (!r.ok) { notify(t('connections.err.list', { error: tError(r.error) }), 'err'); return; }
     setRows(r.data);
   };
 
@@ -47,15 +50,12 @@ export function ConnectionsPanel({ notify }: Props) {
   return (
     <section className="connections-panel">
       <div className="orchestrate-head">
-        <h2>Connections</h2>
-        <p className="muted small">
-          Social platforms this workspace can publish to. The agent uses these connections at
-          run time — it requests a capability (e.g. post an image) and never handles your tokens directly.
-        </p>
+        <h2>{t('connections.title')}</h2>
+        <p className="muted small">{t('connections.subtitle')}</p>
       </div>
 
       {loading ? (
-        <div className="muted">Loading…</div>
+        <div className="muted">{t('common.loading')}</div>
       ) : (
         <div className="connections-grid">
           {rows.map((c) => (
@@ -63,7 +63,7 @@ export function ConnectionsPanel({ notify }: Props) {
               <div className="connection-head">
                 <span className="connection-name">{c.displayName}</span>
                 <span className={`connection-state st-${c.state}`}>
-                  <span className="connection-dot">{STATE_DOT[c.state]}</span> {STATE_LABEL[c.state]}
+                  <span className="connection-dot">{STATE_DOT[c.state]}</span> {stateLabel(c.state)}
                 </span>
               </div>
               {c.expiresAt && c.state !== 'not_connected' && (
@@ -78,13 +78,13 @@ export function ConnectionsPanel({ notify }: Props) {
                 {c.oauthConfigured ? (
                   <>
                     <a className={`btn ${c.state === 'connected' ? 'ghost' : 'primary'} small`} href={connectUrl(c.connectUrl)}>
-                      {c.state === 'connected' ? 'Reconnect' : 'Connect'}
+                      {c.state === 'connected' ? t('common.reconnect') : t('common.connect')}
                     </a>
                     <button
                       className="btn ghost small"
                       onClick={() => setFormOpen((cur) => (cur === c.platformKey ? null : c.platformKey))}
                     >
-                      {formOpen === c.platformKey ? 'Close' : c.state === 'connected' ? 'Update token' : 'Paste token instead'}
+                      {formOpen === c.platformKey ? t('common.close') : c.state === 'connected' ? t('connections.token.update') : t('connections.token.paste_instead')}
                     </button>
                   </>
                 ) : (
@@ -92,13 +92,13 @@ export function ConnectionsPanel({ notify }: Props) {
                     className="btn primary small"
                     onClick={() => setFormOpen((cur) => (cur === c.platformKey ? null : c.platformKey))}
                   >
-                    {formOpen === c.platformKey ? 'Close' : c.state === 'connected' ? 'Update token' : 'Enter token'}
+                    {formOpen === c.platformKey ? t('common.close') : c.state === 'connected' ? t('connections.token.update') : t('connections.token.enter')}
                   </button>
                 )}
               </div>
               {!c.oauthConfigured && c.state === 'not_connected' && (
                 <p className="conn-setup-hint muted small">
-                  One-click Connect turns on once the owner sets up the {c.displayName} app. For now, paste a token.
+                  {t('connections.oauth_not_configured_hint', { platform: c.displayName })}
                 </p>
               )}
               {formOpen === c.platformKey && (
@@ -126,6 +126,7 @@ export function ConnectionsPanel({ notify }: Props) {
 // user's Drive so IG/Threads (which fetch a public image_url server-side) can publish
 // them. Drive is NOT a SocialPlatform → its state comes from /connections/storage.
 function StorageSection() {
+  const { t } = useLocale();
   const [driveConnected, setDriveConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -138,45 +139,45 @@ function StorageSection() {
   return (
     <>
       <div className="orchestrate-head" style={{ marginTop: 22 }}>
-        <h2>Storage</h2>
-        <p className="muted small">Where generated media (images, video) is saved. Used by the agent when it produces assets.</p>
+        <h2>{t('connections.storage.title')}</h2>
+        <p className="muted small">{t('connections.storage.subtitle')}</p>
       </div>
       <div className="connections-grid">
         <div className="connection-card st-connected">
           <div className="connection-head">
-            <span className="connection-name">Local storage</span>
-            <span className="connection-state st-connected"><span className="connection-dot">●</span> Active</span>
+            <span className="connection-name">{t('connections.storage.local_name')}</span>
+            <span className="connection-state st-connected"><span className="connection-dot">●</span> {t('connections.storage.active')}</span>
           </div>
           <div className="chip-row">
-            <span className="cap-chip">images</span>
-            <span className="cap-chip">video</span>
+            <span className="cap-chip">{t('connections.storage.cap_images')}</span>
+            <span className="cap-chip">{t('connections.storage.cap_video')}</span>
           </div>
-          <p className="muted small" style={{ margin: '4px 0 0' }}>Media is saved to this workspace and served at <code>/media</code>. No setup required.</p>
+          <p className="muted small" style={{ margin: '4px 0 0' }}>{t('connections.storage.local_hint_pre')} <code>/media</code>{t('connections.storage.local_hint_post')}</p>
         </div>
         <div className={`connection-card ${driveCls}`}>
           <div className="connection-head">
-            <span className="connection-name">Google Drive</span>
+            <span className="connection-name">{t('connections.drive.name')}</span>
             <span className={`connection-state ${driveCls}`}>
               <span className="connection-dot">{driveConnected ? '●' : '○'}</span>{' '}
-              {driveConnected ? 'Connected' : 'Not connected'}
+              {driveConnected ? t('connections.state.connected') : t('connections.state.not_connected')}
             </span>
           </div>
-          <div className="chip-row"><span className="cap-chip">public image URL</span></div>
+          <div className="chip-row"><span className="cap-chip">{t('connections.storage.cap_public_url')}</span></div>
           <p className="muted small" style={{ margin: '4px 0 0' }}>
-            Connect Drive to publish generated images to Instagram and Threads (they fetch a public URL).
+            {t('connections.drive.hint')}
           </p>
           <div className="conn-actions">
             <a className="btn primary small" href={connectUrl('/connect/drive/start')}>
-              {driveConnected ? 'Reconnect Google Drive' : 'Connect Google Drive'}
+              {driveConnected ? t('connections.drive.reconnect_cta') : t('connections.drive.connect_cta')}
             </a>
           </div>
           {!driveConnected && (
             <details className="conn-owner-setup">
-              <summary>One-time owner setup</summary>
-              <p className="muted small">Users just click Connect &amp; authorize — no console needed. Reuses the app's existing Google login redirect, so no new redirect URI to register. One-time, the owner:</p>
+              <summary>{t('connections.drive.setup_summary')}</summary>
+              <p className="muted small">{t('connections.drive.setup_hint')}</p>
               <ol className="muted small">
-                <li>Enable the <strong>Google Drive API</strong> in the project.</li>
-                <li>Add scope <code>drive.file</code> (non-sensitive — no review) &amp; publish the consent screen (or add yourself as a test user).</li>
+                <li>{t('connections.drive.setup_step1_pre')} <strong>Google Drive API</strong> {t('connections.drive.setup_step1_post')}</li>
+                <li>{t('connections.drive.setup_step2_pre')} <code>drive.file</code> {t('connections.drive.setup_step2_post')}</li>
               </ol>
             </details>
           )}
@@ -191,6 +192,7 @@ function StorageSection() {
 // run's abort. Lives here because Connections is the closest thing this app has to a
 // settings/ops surface today.
 function KillSwitchSection({ notify }: { notify: Props['notify'] }) {
+  const { t } = useLocale();
   const [state, setState] = useState<KillSwitchState | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -203,25 +205,25 @@ function KillSwitchSection({ notify }: { notify: Props['notify'] }) {
     setBusy(true);
     try {
       const r = await api.setKillSwitch(!state.paused);
-      if (!r.ok) { notify(`Kill switch: ${r.error.error}`, 'err'); return; }
+      if (!r.ok) { notify(t('connections.err.kill_switch', { error: tError(r.error) }), 'err'); return; }
       setState(r.data);
-      notify(r.data.paused ? 'External actions paused' : 'External actions resumed');
+      notify(r.data.paused ? t('connections.kill_switch.paused_notice') : t('connections.kill_switch.resumed_notice'));
     } finally { setBusy(false); }
   };
 
   return (
     <>
       <div className="orchestrate-head" style={{ marginTop: 22 }}>
-        <h2>System</h2>
-        <p className="muted small">Emergency stop for every external action (publishes, outbound writes) across the whole workspace.</p>
+        <h2>{t('connections.system.title')}</h2>
+        <p className="muted small">{t('connections.system.subtitle')}</p>
       </div>
       <div className={`kill-switch-card ${state?.paused ? 'st-paused' : ''}`}>
         <div>
           <span className="kill-switch-state">
-            {state?.paused ? '⏸ External actions paused' : '● External actions active'}
+            {state?.paused ? t('connections.kill_switch.state_paused') : t('connections.kill_switch.state_active')}
           </span>
           {state?.paused && state.updatedAt && (
-            <span className="muted small"> · since {new Date(state.updatedAt).toLocaleString()}</span>
+            <span className="muted small"> · {t('connections.kill_switch.since', { date: new Date(state.updatedAt).toLocaleString() })}</span>
           )}
         </div>
         <button
@@ -229,7 +231,7 @@ function KillSwitchSection({ notify }: { notify: Props['notify'] }) {
           disabled={busy || !state}
           onClick={() => void toggle()}
         >
-          {busy ? 'Updating…' : state?.paused ? 'Resume external actions' : 'Pause all external actions'}
+          {busy ? t('connections.kill_switch.updating') : state?.paused ? t('connections.kill_switch.resume_cta') : t('connections.kill_switch.pause_cta')}
         </button>
       </div>
     </>

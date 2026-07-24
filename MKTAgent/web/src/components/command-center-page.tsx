@@ -17,6 +17,9 @@ import { NurtureInboxPanel } from './nurture-inbox-panel';
 import { AtriaSuggestionCards } from './atria-suggestion-cards';
 import { AtriaResumeWorkCards } from './atria-resume-work-cards';
 import { useAgentActivity } from '../hooks/use-agent-activity';
+import { useLocale, type MessageKey } from '../i18n';
+import { tError } from '../i18n/t-error';
+import { en } from '../i18n/catalog.en';
 
 interface Props {
   // Hand off to the live Orchestrate chat (Atria core / command bar), optionally seeding the composer.
@@ -57,11 +60,7 @@ type Panel =
   | { kind: 'agent'; agent: AgentNodeDto }
   | { kind: 'surface'; surface: string; agent: AgentNodeDto };
 
-const QUICK_CMDS = [
-  'Create a marketing campaign for a new product',
-  'Research competitors, then write content',
-  'Collect leads from a social campaign (opt-in)',
-];
+const QUICK_CMDS: MessageKey[] = ['cc.quick.campaign', 'cc.quick.research', 'cc.quick.leads'];
 
 // Position N nodes evenly on an ellipse, starting at the top (−90°). Mirrors the mockup's
 // buildNetwork layout so the visual reads the same, but driven by real registry data.
@@ -100,6 +99,13 @@ const memberGeo = (g: GroupGeo, j: number, count: number): { left: string; top: 
 const VOICE_SUPPORTED = typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
 
 export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, onOpenWorkspaceConsumed, onOpenConnections, onOpenBoard, resumeChats = [], resumeFlows = [], resumeRuns = [], onResumeChat, onOpenFlow, onStartVoice, onDismissResume, chatActive = false, chatSlot, voice, notify }: Props) {
+  const { t } = useLocale();
+  // Agent group labels come from the server (English). Map by stable group id to a catalog key; fall
+  // back to the server label for any group id without a key yet, so a new group never renders blank.
+  const groupLabel = (g: { id: string; label: string }): string => {
+    const k = `agent.group.${g.id}` as MessageKey;
+    return k in en ? t(k) : g.label;
+  };
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
@@ -114,7 +120,7 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
   useEffect(() => {
     void api.getAgents().then((r) => {
       if (r.ok) setCatalog(r.data);
-      else notify(`Agents: ${r.error.error}`, 'err');
+      else notify(tError(r.error), 'err');
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -147,7 +153,7 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
   // Open an agent's panel (member click) — planned → "soon" toast, a shipped surface → its inline panel,
   // else the agent spotlight. Unchanged from the flat view, just factored out for reuse by member nodes.
   const openAgent = (a: AgentNodeDto): void => {
-    if (a.implStatus === 'planned') notify(`${a.name} — coming soon`);
+    if (a.implStatus === 'planned') notify(t('cc.agent.coming_soon', { name: a.name }));
     else if (a.surface) setPanel({ kind: 'surface', surface: a.surface, agent: a });
     else setPanel({ kind: 'agent', agent: a });
   };
@@ -182,8 +188,8 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
     <div className={`command-center ${chatActive ? 'is-chat' : ''}`}>
       {!chatActive && (
       <div className="cc-head">
-        <div className="cc-eyebrow">Neural Network</div>
-        <h1>Your AI Command Center</h1>
+        <div className="cc-eyebrow">{t('cc.eyebrow')}</div>
+        <h1>{t('cc.title')}</h1>
       </div>
       )}
 
@@ -200,8 +206,8 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
         };
         const vs = chatActive ? (voice?.state ?? 'idle') : null;
         const coreTitle = chatActive
-          ? (voice?.mode ? 'Voice on — tap to stop' : 'Tap to talk to Atria')
-          : (expandedGroup ? 'Collapse' : 'Open Atria');
+          ? (voice?.mode ? t('cc.core.title.voice_on') : t('cc.core.title.voice_off'))
+          : (expandedGroup ? t('cc.core.title.collapse') : t('cc.core.title.open'));
         return (
       <div className={`cc-network ${anyRunning ? 'is-conducting' : ''} ${expanded ? 'is-expanded' : ''}`}>
         <button className={`cc-core ${anyRunning ? 'is-conducting' : ''} ${voice?.mode ? 'is-voice-on' : ''} ${vs ? `is-voice-${vs}` : ''}`} onClick={coreClick} title={coreTitle} aria-pressed={chatActive ? Boolean(voice?.mode) : undefined}>
@@ -213,10 +219,10 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
             <span className="cc-reticle cc-reticle-in" />
             <span className="cc-core-orb" />
           </span>
-          <span className="cc-core-label">Master Agent</span>
+          <span className="cc-core-label">{t('cc.core.label')}</span>
           <span className="cc-core-name">Atria</span>
           <span className="cc-core-sub">
-            {vs === 'listening' ? 'Listening…' : vs === 'thinking' ? 'Thinking…' : vs === 'speaking' ? 'Speaking…' : chatActive ? (voice?.mode ? 'Tap to stop' : '🎙 Tap to talk') : 'Conductor'}
+            {vs === 'listening' ? t('cc.core.listening') : vs === 'thinking' ? t('cc.core.thinking') : vs === 'speaking' ? t('cc.core.speaking') : chatActive ? (voice?.mode ? t('cc.core.tap_stop') : t('cc.core.tap_talk')) : t('cc.core.conductor')}
           </span>
         </button>
         <svg className="cc-links" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -268,13 +274,13 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
               className={`cc-group ${groupRunning(g.id) ? 'is-running' : ''} ${isOpen ? 'is-expanded' : ''}`}
               style={{ left: `${geo.x}%`, top: `${geo.y}%` }}
               onClick={() => setExpandedGroup((cur) => (cur === g.id ? null : g.id))}
-              title={`${g.label} · ${count} agent`}
+              title={t('cc.group.title', { label: groupLabel(g), count })}
             >
               <span className="cc-group-circle" style={{ borderColor: g.color, boxShadow: `0 0 18px ${g.color}55` }}>
                 <span className="cc-group-emoji">{g.emoji}</span>
                 <span className="cc-group-count" style={{ background: g.color }}>{count}</span>
               </span>
-              <span className="cc-group-label">{g.label}</span>
+              <span className="cc-group-label">{groupLabel(g)}</span>
             </button>
           );
         })}
@@ -293,13 +299,13 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
             >
               <span className="cc-node-circle" style={{ borderColor: colorOf(a) }}>
                 <span className="cc-node-emoji">{a.emoji}</span>
-                {planned && <span className="cc-node-soon">soon</span>}
+                {planned && <span className="cc-node-soon">{t('cc.node.soon')}</span>}
               </span>
               <span className="cc-node-label">{a.name.replace(/ Agent$/, '')}</span>
             </button>
           );
         })}
-        {agents.length === 0 && <div className="cc-network-empty">Loading agent network…</div>}
+        {agents.length === 0 && <div className="cc-network-empty">{t('cc.network.loading')}</div>}
       </div>
         );
       })()}
@@ -318,7 +324,7 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
         if (!g || members.length === 0) return null;
         return (
           <div className="cc-member-legend">
-            <span className="cc-member-legend-head" style={{ color: g.color }}>{g.emoji} {g.label}</span>
+            <span className="cc-member-legend-head" style={{ color: g.color }}>{g.emoji} {groupLabel(g)}</span>
             {members.map((a) => (
               <button key={a.id} className="cc-member-chip" style={{ borderColor: `${g.color}66` }} onClick={() => openAgent(a)}>
                 <span>{a.emoji}</span> {a.name.replace(/ Agent$/, '')}
@@ -334,8 +340,8 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
               <button
                 type="button"
                 className="cc-attach"
-                aria-label="Attach a document to summarize"
-                title="Attach a document (PDF, image, TXT/MD) to summarize — sensitive data is masked automatically"
+                aria-label={t('cc.attach.aria')}
+                title={t('cc.attach.title')}
                 onClick={() => attachInputRef.current?.click()}
               >+</button>
               <input
@@ -351,26 +357,26 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
           <input
             value={cmd}
             onChange={(e) => setCmd(e.target.value)}
-            placeholder="Command Atria in natural language…"
+            placeholder={t('cc.composer.placeholder')}
           />
           {VOICE_SUPPORTED && onStartVoice && (
-            <button type="button" className="cc-mic" aria-label="Voice chat with Atria" title="Voice chat with Atria" onClick={startVoice}>🎙️</button>
+            <button type="button" className="cc-mic" aria-label={t('cc.mic.label')} title={t('cc.mic.label')} onClick={startVoice}>🎙️</button>
           )}
-          <button type="submit" className="cc-send" aria-label="Send">➤</button>
+          <button type="submit" className="cc-send" aria-label={t('cc.send.label')}>➤</button>
         </div>
         <div className="cc-quick">
           {QUICK_CMDS.map((q) => (
-            <button type="button" className="cc-quick-cmd" key={q} onClick={() => setCmd(q)}>{q}</button>
+            <button type="button" className="cc-quick-cmd" key={q} onClick={() => setCmd(t(q))}>{t(q)}</button>
           ))}
         </div>
-        <div className="cc-hint">Atria detects your language, confirms its understanding, then proposes a plan with its cost.</div>
+        <div className="cc-hint">{t('cc.hint')}</div>
       </form>
 
       {/* Atria's proactive surface on the home (P2.0) — reminders + resume hung work, promoted from the
           old Orchestrate empty-state so the operator sees them without entering a chat. */}
       <div className="cc-atria-surface">
         <section className="cc-atria-block">
-          <h3 className="atria-section-title">Reminders from Atria</h3>
+          <h3 className="atria-section-title">{t('cc.reminders.title')}</h3>
           <AtriaSuggestionCards
             notify={notify}
             onPlanCampaign={(t) => onLaunch(t)}
@@ -395,10 +401,10 @@ export function CommandCenterPage({ onLaunch, onAttachFiles, openWorkspaceId, on
       {panel && (
         <>
           <div className="cc-drawer-scrim" onClick={() => setPanel(null)} />
-          <aside className="cc-drawer" role="dialog" aria-label="Workspace panel">
+          <aside className="cc-drawer" role="dialog" aria-label={t('cc.drawer.aria')}>
             <div className="cc-drawer-chrome">
-              <span className="cc-drawer-kind">{panel.kind === 'workspace' ? '▦ Workspace' : panel.kind === 'surface' ? '✨ Agent surface' : '◆ Agent'}</span>
-              <button className="cc-drawer-close" aria-label="Close panel" onClick={() => setPanel(null)}>✕</button>
+              <span className="cc-drawer-kind">{panel.kind === 'workspace' ? t('cc.drawer.workspace') : panel.kind === 'surface' ? t('cc.drawer.surface') : t('cc.drawer.agent')}</span>
+              <button className="cc-drawer-close" aria-label={t('cc.drawer.close')} onClick={() => setPanel(null)}>✕</button>
             </div>
             {panel.kind === 'workspace' ? (
               <WorkspacePanel campaignId={panel.campaignId} notify={notify} onOpenConnections={onOpenConnections} onOpenBoard={onOpenBoard ? () => onOpenBoard(panel.campaignId) : undefined} />

@@ -81,14 +81,13 @@ export interface OrchestrateHandle {
 // its bubble shows a prominent "read the result aloud" confirm instead of the small speaker icon.
 interface Msg { role: 'user' | 'agent'; content: string; offerRead?: boolean }
 
-const starters = [
-  'Launch a Facebook + Instagram post for our AI automation course',
-  'Build a full branding campaign from idea to published post',
-  'Write a short LinkedIn post about our new feature',
-];
-
 export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function OrchestratePanel({ restore, flowsWithoutStrategy, notify, onRunActivity, onSaved, onSetupCampaign, onOpenFlow, onCampaignCreated, initialInput, autoStart, onAutoStarted, autoVoice, onVoiceChange, chats, onResumeChat, pendingAttachFiles, onPendingAttachConsumed }, ref) {
   const { t } = useLocale();
+  const starters = [
+    t('orchestrate.starter.social_course'),
+    t('orchestrate.starter.branding_campaign'),
+    t('orchestrate.starter.linkedin_feature'),
+  ];
   const [messages, setMessages] = useState<Msg[]>(restore?.messages ?? []);
   // Messages present at mount (restored history) render instantly; only messages added afterwards get
   // the typewriter reveal, and only the newest one (P3 — "alive" feel without re-typing old replies).
@@ -255,8 +254,8 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
       const ext = await api.extractDocumentText(docs);
       if (!ext.ok) { notify(tError(ext.error), 'err'); return; }
       const names = ext.data.names.join(', ');
-      notify(`Read ${ext.data.chars.toLocaleString()} characters from ${names}`, 'ok');
-      push({ role: 'user', content: `📎 ${names} — summarize (sensitive data will be masked)` });
+      notify(t('orchestrate.attach.read_notice', { chars: ext.data.chars.toLocaleString(), names }), 'ok');
+      push({ role: 'user', content: t('orchestrate.attach.summarize_bubble', { names }) });
       // Direct summarize+security run (NOT via the chat brain — raw PII would trip its safety filter).
       const r = await api.summarizeFile(ext.data.text, names, sessionId ?? undefined);
       if (!r.ok) { notify(tError(r.error), 'err'); return; }
@@ -383,11 +382,11 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
     <section className={`master-chat-main ${hasStarted ? 'started' : ''}`}>
       {!hasStarted && (
         <div className="empty-chat-hero">
-          <h1>What should we orchestrate?</h1>
-          <p>Describe a marketing goal. Atria reasons about it, asks only what materially shapes the result, then plans a dynamic agent workflow. Save it as a flow and run it from Active Flows.</p>
+          <h1>{t('orchestrate.hero.title')}</h1>
+          <p>{t('orchestrate.hero.subtitle')}</p>
           <div className="atria-home-stack">
             <section>
-              <h3 className="atria-section-title">Reminders from Atria</h3>
+              <h3 className="atria-section-title">{t('orchestrate.hero.reminders_title')}</h3>
               <AtriaSuggestionCards notify={notify} onPlanCampaign={(t) => void start(t)} />
             </section>
             <AtriaResumeWorkCards
@@ -409,7 +408,7 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
                 {m.role === 'agent' ? <TypewriterText text={m.content} animate={animate} /> : m.content}
                 {m.role === 'agent' && m.content.trim().length > 0 && (
                   m.offerRead
-                    ? <ReadAloudButton text={m.content} className="bubble-tts tts-offer" label="Read the result aloud" />
+                    ? <ReadAloudButton text={m.content} className="bubble-tts tts-offer" label={t('orchestrate.read_aloud.offer_label')} />
                     : <ReadAloudButton text={m.content} className="bubble-tts" />
                 )}
               </div>
@@ -418,7 +417,7 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
           {pending && <div className="chat-bubble user">{pending}</div>}
           {busy && (
             <div className="chat-bubble agent thinking-bubble" role="status" aria-live="polite">
-              <span className="thinking-copy">Thinking</span>
+              <span className="thinking-copy">{t('orchestrate.thinking')}</span>
               <span className="thinking-dots" aria-hidden="true"><span /><span /><span /></span>
             </div>
           )}
@@ -453,7 +452,7 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
                 notify={notify}
                 onDone={(cid) => onCampaignCreated(cid)}
               />
-              <button className="btn ghost" onClick={() => onOpenFlow(run.id)}>Open in Active Flows for deep edit</button>
+              <button className="btn ghost" onClick={() => onOpenFlow(run.id)}>{t('orchestrate.calendar.open_deep_edit')}</button>
             </div>
           )}
         </div>
@@ -463,18 +462,18 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
         {sr.supported && (voiceMode || voiceState !== 'idle') && (
           <div className={`voice-status is-${voiceState}`} role="status" aria-live="polite">
             <span className="voice-status-dot" aria-hidden="true" />
-            {voiceState === 'listening' && 'Listening…'}
-            {voiceState === 'thinking' && 'Atria is thinking…'}
-            {voiceState === 'speaking' && 'Atria is speaking — tap the mic to interrupt'}
-            {voiceState === 'idle' && 'Voice mode on — tap the mic to speak'}
-            {voiceMode && <span className="voice-status-exit"> · Esc to exit</span>}
+            {voiceState === 'listening' && t('orchestrate.voice.listening')}
+            {voiceState === 'thinking' && t('orchestrate.voice.thinking')}
+            {voiceState === 'speaking' && t('orchestrate.voice.speaking')}
+            {voiceState === 'idle' && t('orchestrate.voice.idle_on')}
+            {voiceMode && <span className="voice-status-exit">{t('orchestrate.voice.esc_exit')}</span>}
           </div>
         )}
         <div className={`composer-box ${voiceState === 'listening' ? 'is-listening' : ''}`}>
           <button
             className="composer-plus"
-            aria-label="Attach a document to summarize"
-            title="Attach a document (PDF, image, TXT/MD) to summarize — sensitive data is masked automatically"
+            aria-label={t('orchestrate.attach.aria_label')}
+            title={t('orchestrate.attach.title')}
             disabled={busy || uploading}
             onClick={() => fileInputRef.current?.click()}
           >{uploading ? '…' : '+'}</button>
@@ -491,9 +490,9 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void start(input); } }}
             placeholder={
-              voiceState === 'listening' ? 'Go ahead — Atria is listening…'
-              : showPlan ? 'Refine the plan — e.g. “add video” or “remove infographic”…'
-              : 'Describe a marketing goal to orchestrate…'
+              voiceState === 'listening' ? t('orchestrate.composer.placeholder_listening')
+              : showPlan ? t('orchestrate.composer.placeholder_refine')
+              : t('orchestrate.composer.placeholder_goal')
             }
           />
           {sr.supported && (
@@ -503,15 +502,15 @@ export const OrchestratePanel = forwardRef<OrchestrateHandle, Props>(function Or
               type="button"
               className={`composer-mic ${sr.listening ? 'is-listening' : ''}`}
               onClick={micClick}
-              title={sr.listening ? 'Stop listening' : 'Talk to Atria'}
-              aria-label={sr.listening ? 'Stop listening' : 'Speak'}
+              title={sr.listening ? t('orchestrate.mic.stop_listening') : t('orchestrate.mic.talk')}
+              aria-label={sr.listening ? t('orchestrate.mic.stop_listening') : t('orchestrate.mic.speak')}
             >{sr.listening ? '■' : '🎤'}</button>
           )}
           <button
             className={`composer-send ${busy ? 'loading' : ''}`}
             disabled={busy}
             onClick={() => void start(input)}
-            aria-label={busy ? 'Working' : 'Send'}
+            aria-label={busy ? t('orchestrate.send.working') : t('orchestrate.send.send')}
           >{busy ? '…' : '↑'}</button>
         </div>
         {!hasStarted && (

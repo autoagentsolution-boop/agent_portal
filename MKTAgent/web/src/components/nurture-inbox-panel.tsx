@@ -7,27 +7,32 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type NurtureThreadListDto, type NurtureThreadDetailDto } from '../api/client';
 import { NurtureThreadTimeline } from './nurture-thread-timeline';
 import { NurtureSettingsPanel } from './nurture-settings-panel';
+import { useLocale } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Props { notify: (msg: string, kind?: 'ok' | 'err') => void }
 
-const STATUS_LABEL: Record<string, string> = {
-  active: 'Active', paused: 'Paused', converted: 'Converted', opted_out: 'Opted out', completed: 'Completed', failed: 'Failed',
+type StatusKey = 'nurture.status.active' | 'nurture.status.paused' | 'nurture.status.converted' | 'nurture.status.opted_out' | 'nurture.status.completed' | 'nurture.status.failed';
+const STATUS_KEY: Record<string, StatusKey> = {
+  active: 'nurture.status.active', paused: 'nurture.status.paused', converted: 'nurture.status.converted',
+  opted_out: 'nurture.status.opted_out', completed: 'nurture.status.completed', failed: 'nurture.status.failed',
 };
 
 export function NurtureInboxPanel({ notify }: Props) {
+  const { t } = useLocale();
   const [threads, setThreads] = useState<NurtureThreadListDto[] | null>(null);
   const [selected, setSelected] = useState<NurtureThreadDetailDto | null>(null);
   const [showSettings, setShowSettings] = useState(false);
 
   const load = useCallback(async () => {
     const r = await api.listNurtureThreads();
-    if (r.ok) setThreads(r.data); else notify(`Nurture: ${r.error.error}`, 'err');
+    if (r.ok) setThreads(r.data); else notify(tError(r.error), 'err');
   }, [notify]);
   useEffect(() => { void load(); }, [load]);
 
   const open = async (id: string) => {
     const r = await api.getNurtureThread(id);
-    if (!r.ok) { notify(`Nurture: ${r.error.error}`, 'err'); return; }
+    if (!r.ok) { notify(tError(r.error), 'err'); return; }
     setSelected(r.data);
   };
 
@@ -39,7 +44,7 @@ export function NurtureInboxPanel({ notify }: Props) {
   if (showSettings) {
     return (
       <div className="cc-drawer-body">
-        <button className="cc-drawer-back" onClick={() => setShowSettings(false)}>← Nurture Inbox</button>
+        <button className="cc-drawer-back" onClick={() => setShowSettings(false)}>{t('nurture.back_to_inbox')}</button>
         <NurtureSettingsPanel notify={notify} />
       </div>
     );
@@ -59,27 +64,27 @@ export function NurtureInboxPanel({ notify }: Props) {
   return (
     <div className="cc-drawer-body">
       <div className="ws-panel-head">
-        <div><h3>🌱 Nurture Inbox</h3><span className="muted">Approve, edit, or reject every touch and reply before it sends.</span></div>
-        <button className="btn sm" onClick={() => setShowSettings(true)}>⚙ Settings</button>
+        <div><h3>🌱 {t('nurture.inbox.title')}</h3><span className="muted">{t('nurture.inbox.subtitle')}</span></div>
+        <button className="btn sm" onClick={() => setShowSettings(true)}>⚙ {t('nurture.settings.cta')}</button>
       </div>
 
       {threads === null ? (
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('common.loading')}</p>
       ) : threads.length === 0 ? (
-        <p className="muted">No nurture threads yet. Turn nurture on in Settings once you have captured leads with an email.</p>
+        <p className="muted">{t('nurture.inbox.empty')}</p>
       ) : (
         <ul className="ws-post-list">
-          {threads.map((t) => (
-            <li key={t.id} className="mem-row" onClick={() => void open(t.id)} style={{ cursor: 'pointer' }}>
+          {threads.map((th) => (
+            <li key={th.id} className="mem-row" onClick={() => void open(th.id)} style={{ cursor: 'pointer' }}>
               <div className="ws-agent-body" style={{ flex: 1 }}>
-                <strong>{t.leadName || t.leadEmail || 'Lead'}</strong>
+                <strong>{th.leadName || th.leadEmail || t('nurture.lead.fallback_name')}</strong>
                 <span className="muted">
-                  {STATUS_LABEL[t.status] ?? t.status} · touch {t.touchNumber}
-                  {t.hasUnhandledReply ? ' · new reply' : ''}
-                  {t.needsHuman ? ' · ⚠ needs you' : ''}
+                  {STATUS_KEY[th.status] ? t(STATUS_KEY[th.status]) : th.status} · {t('nurture.touch.label', { n: th.touchNumber })}
+                  {th.hasUnhandledReply ? ` · ${t('nurture.new_reply')}` : ''}
+                  {th.needsHuman ? ` · ⚠ ${t('nurture.needs_you')}` : ''}
                 </span>
               </div>
-              <span className="ws-post-open">Open</span>
+              <span className="ws-post-open">{t('nurture.open.cta')}</span>
             </li>
           ))}
         </ul>

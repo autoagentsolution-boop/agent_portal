@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import type { WorkflowRunDto } from '../api/client';
 import { RunDagView } from './run-dag-view';
+import { useLocale } from '../i18n';
 
 interface PlanProps {
   run: WorkflowRunDto;
@@ -48,6 +49,7 @@ const campaignShape = (run: WorkflowRunDto): { weeks: number | null; estPosts: n
 };
 
 export function PlanCard({ run, busy, defaultName, onSave, onExecute }: PlanProps) {
+  const { t } = useLocale();
   const [name, setName] = useState('');
   // Already saved → show its name as a confirmation, not the form again.
   const savedName = run.name ?? null;
@@ -57,41 +59,41 @@ export function PlanCard({ run, busy, defaultName, onSave, onExecute }: PlanProp
   const summarize = !strategist && !email && isSummarizePlan(run);
   const secured = hasSecurityScan(run);
   const { weeks, estPosts } = strategist ? campaignShape(run) : { weeks: null, estPosts: null };
+  const scopeText = estPosts ? t('runcard.strategist.scope_count', { n: estPosts }) : t('runcard.strategist.scope_multi');
+  const weeksText = weeks ? (weeks > 1 ? t('runcard.strategist.weeks_other', { weeks }) : t('runcard.strategist.weeks_one', { weeks })) : '';
 
   return (
     <div className="dag-block run-card">
       {strategist ? (
         <div className="plan-scope strategist">
-          <strong>🗓 Strategist campaign</strong>
+          <strong>{t('runcard.strategist.title')}</strong>
           <span className="muted small">
-            Atria will draft {estPosts ? `a ~${estPosts}-post` : 'a multi-post'} content calendar
-            {weeks ? ` over ${weeks} week${weeks > 1 ? 's' : ''}` : ''} across your content pillars.
-            You review and edit every slot, then approve — nothing schedules until you do.
+            {t('runcard.strategist.desc', { scope: scopeText, weeksPhrase: weeksText })}
           </span>
         </div>
       ) : email ? (
         <div className="plan-scope email">
-          <strong>✉️ Email</strong>
-          <span className="muted small">Atria drafts the email; nothing sends until you review and approve.</span>
+          <strong>{t('runcard.email.title')}</strong>
+          <span className="muted small">{t('runcard.email.desc')}</span>
         </div>
       ) : summarize ? (
         <div className="plan-scope summarize">
-          <strong>📝 Summary</strong>
+          <strong>{t('runcard.summarize.title')}</strong>
           <span className="muted small">
-            Atria condenses your source into a concise summary + key points.
-            {secured && <> First it scans for personal / sensitive data and <b>masks</b> it — nothing sensitive lands in the summary.</>}
+            {t('runcard.summarize.desc')}
+            {secured && <> {t('runcard.summarize.masks_pre')}<b>{t('runcard.summarize.masks_word')}</b>{t('runcard.summarize.masks_post')}</>}
           </span>
         </div>
       ) : (
         <div className="plan-scope single">
-          <strong>📄 Single post</strong>
-          <span className="muted small">One post, set up end to end.</span>
+          <strong>{t('runcard.single.title')}</strong>
+          <span className="muted small">{t('runcard.single.desc')}</span>
         </div>
       )}
-      <div className="eyebrow">Workflow plan · {run.nodes.length} step(s)</div>
+      <div className="eyebrow">{t('runcard.plan.eyebrow', { steps: run.nodes.length })}</div>
       {platforms.length > 0 && (
         <div className="plan-platforms">
-          <span className="muted small">Publishes to:</span>
+          <span className="muted small">{t('runcard.publishes_to')}</span>
           {platforms.map((p) => (
             <span className="platform-chip" key={p}>{PLATFORM_LABEL[p] ?? p}</span>
           ))}
@@ -103,33 +105,33 @@ export function PlanCard({ run, busy, defaultName, onSave, onExecute }: PlanProp
         <div className="save-flow">
           <div className="plan-run-row">
             <button className="btn primary plan-run-btn" disabled={busy} onClick={onExecute}>
-              {busy ? (strategist ? 'Scheduling…' : 'Running…') : strategist ? '▶ Draft the calendar' : summarize ? '▶ Approve & run' : '▶ Approve & run now'}
+              {busy ? (strategist ? t('runcard.busy.scheduling') : t('runcard.busy.running')) : strategist ? t('runcard.cta.draft_calendar') : summarize ? t('runcard.cta.approve_run') : t('runcard.cta.approve_run_now')}
             </button>
             <span className="muted small">
               {strategist
-                ? <>Atria drafts the calendar right here, then <b>you approve every post</b> before anything schedules.</>
+                ? <>{t('runcard.hint.strategist_pre')}<b>{t('runcard.hint.strategist_bold')}</b>{t('runcard.hint.strategist_post')}</>
                 : summarize
-                ? <>Atria produces the summary right here{secured ? <> after masking any sensitive data</> : ''} — nothing is published or sent.</>
-                : <>Atria generates the content, then <b>stops at the review step</b> before publishing/sending.</>}
+                ? <>{t('runcard.hint.summarize_pre')}{secured ? <> {t('runcard.hint.summarize_secured')}</> : ''}{t('runcard.hint.summarize_post')}</>
+                : <>{t('runcard.hint.single_pre')}<b>{t('runcard.hint.single_bold')}</b>{t('runcard.hint.single_post')}</>}
             </span>
           </div>
-          <p className="muted small plan-refine-hint">Want changes? Type below (e.g. “add video”, “remove infographic”). Or save it as a reusable flow:</p>
+          <p className="muted small plan-refine-hint">{t('runcard.refine_hint')}</p>
           <div className="save-flow-row">
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={defaultName ? `e.g. ${defaultName} campaign` : 'Name the flow to save'}
+              placeholder={defaultName ? t('runcard.save.placeholder_named', { name: defaultName }) : t('runcard.save.placeholder_generic')}
               onKeyDown={(e) => { if (e.key === 'Enter' && (name.trim() || defaultName)) onSave((name.trim() || defaultName)); }}
             />
-            <button className="btn" disabled={busy} onClick={() => onSave(name.trim() || defaultName || 'Untitled flow')}>
-              {busy ? 'Saving…' : 'Save as flow'}
+            <button className="btn" disabled={busy} onClick={() => onSave(name.trim() || defaultName || t('flow.untitled'))}>
+              {busy ? t('runcard.save.busy') : t('runcard.save.cta')}
             </button>
           </div>
         </div>
       )}
 
       {savedName && (
-        <p className="muted small saved-confirm">✓ Saved as “{savedName}”.</p>
+        <p className="muted small saved-confirm">{t('runcard.saved_as', { name: savedName })}</p>
       )}
     </div>
   );
@@ -147,11 +149,12 @@ interface OfferProps {
 // Set up campaign = $0 (create the container, begin strategy). Run a test post = executes
 // the DAG (image-gen spend, publisher still gated). Open flow = just redirect, no action.
 export function SaveOfferCard({ busy, onSetupCampaign, onRunTest, onOpenFlow }: OfferProps) {
+  const { t } = useLocale();
   return (
     <div className="save-offer">
-      <button className="btn primary" disabled={busy} onClick={onSetupCampaign}>Set up first campaign</button>
-      <button className="btn" disabled={busy} onClick={onRunTest}>Run a test post</button>
-      <button className="btn ghost" disabled={busy} onClick={onOpenFlow}>Just open the flow</button>
+      <button className="btn primary" disabled={busy} onClick={onSetupCampaign}>{t('runcard.offer.setup_campaign')}</button>
+      <button className="btn" disabled={busy} onClick={onRunTest}>{t('runcard.offer.run_test')}</button>
+      <button className="btn ghost" disabled={busy} onClick={onOpenFlow}>{t('runcard.offer.open_flow')}</button>
     </div>
   );
 }

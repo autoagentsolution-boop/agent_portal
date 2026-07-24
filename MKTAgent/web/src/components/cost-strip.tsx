@@ -4,6 +4,8 @@
 // (non-tech friendly, "≈ 60 credits"); raw tokens + USD stay as a secondary/hover detail
 // so nothing is hidden, just de-emphasized. Falls back to a plain token count when an
 // older/partial summary has no `credits` (e.g. stale cached data) — never breaks.
+import { useLocale } from '../i18n';
+
 export interface CostStripValue {
   costUsd: number;
   totalTokens: number;
@@ -23,16 +25,17 @@ interface Props {
 }
 
 export function CostStrip({ cost, secondaryMetric }: Props) {
+  const { t } = useLocale();
   const hasCredits = typeof cost.credits === 'number';
-  const detail = `$${cost.costUsd.toFixed(3)} · ${cost.totalTokens.toLocaleString()} tokens`;
+  const detail = `$${cost.costUsd.toFixed(3)} · ${cost.totalTokens.toLocaleString()} ${t('usage.tokens')}`;
 
   return (
     <div className="flow-cost-strip">
       <div className="flow-cost-metric">
         <span className="flow-cost-value flow-cost-credits" title={detail}>
-          {hasCredits ? `≈ ${cost.credits} credits` : `${cost.totalTokens.toLocaleString()} tokens`}
+          {hasCredits ? t('plan.tier.credits', { credits: cost.credits! }) : `${cost.totalTokens.toLocaleString()} ${t('usage.tokens')}`}
         </span>
-        <span className="flow-cost-label">{hasCredits ? detail : 'spend'}</span>
+        <span className="flow-cost-label">{hasCredits ? detail : t('cost.spend_label')}</span>
       </div>
       {secondaryMetric && (
         <div className="flow-cost-metric">

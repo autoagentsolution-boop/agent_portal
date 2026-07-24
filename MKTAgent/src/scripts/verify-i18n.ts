@@ -74,22 +74,29 @@ for (const [name, cat] of Object.entries(LOCALES)) {
   }
 }
 
-// ── 4: literal scan on the migrated allow-list ────────────────────────────────────────────────
-// A file enters i18n-migrated.json when its screen group is migrated; from that moment it can never
-// regress to a hardcoded user-facing literal. Tuned narrow (only the highest-signal sinks) so a noisy
-// gate never gets disabled — a disabled gate is worse than none.
+// ── 4: GLOBAL literal scan — enforced by DEFAULT across all of web/src ─────────────────────────
+// Every .tsx is scanned; a raw user-facing literal in a notify/confirm/etc sink FAILS the build. This
+// is what makes "global" true and holds it: a NEW component (or a new feature added to an old one)
+// cannot ship an untranslated toast, because it is enforced the moment it exists — not when someone
+// remembers to opt it in. The scan is tuned NARROW (only the highest-signal sinks) so it stays
+// false-positive-free; a noisy gate gets disabled, which is worse than none.
+//
+// `i18n-exempt.json` is the SHRINKING legacy backlog — files not yet swept. A file leaves it by being
+// migrated (its literals wrapped in t()). New files are never on it, so they are guarded from birth.
+// A genuine one-off (a log string, a test fixture) uses an inline `// i18n-ignore` on that line.
 {
-  const listRaw = await readFile(join(WEB_SRC, 'i18n', 'i18n-migrated.json'), 'utf8');
-  const migrated: string[] = JSON.parse(listRaw);
-  // Multi-word quoted string passed to a user-facing sink, or a dynamic key (defeats static analysis).
+  const exemptRaw = await readFile(join(WEB_SRC, 'i18n', 'i18n-exempt.json'), 'utf8').catch(() => '[]');
+  const exempt = new Set<string>(JSON.parse(exemptRaw));
   const SINK = /\b(?:confirm|alert|prompt|notify|show|toast)\s*\(\s*(['"])(?:[^'"]*\s[^'"]*)\1/;
   const DYNAMIC_KEY = /\bt(?:Error)?\(\s*(['"`])[^'"`]*\1\s*\+/;
-  for (const rel of migrated) {
-    const src = await readFile(join(WEB_SRC, rel), 'utf8').catch(() => '');
-    if (!src) { failures.push(`i18n-migrated.json lists "${rel}" but it could not be read`); continue; }
+  const tsxFiles = await walk(WEB_SRC, (n) => /\.tsx$/.test(n));
+  for (const abs of tsxFiles) {
+    const rel = abs.slice(WEB_SRC.length + 1).replace(/\\/g, '/');
+    if (exempt.has(rel)) continue; // legacy backlog — sweep it, then remove from the exempt list
+    const src = await readFile(abs, 'utf8');
     src.split('\n').forEach((line, i) => {
       if (/\bi18n-ignore\b/.test(line)) return;
-      if (SINK.test(line)) failures.push(`${rel}:${i + 1}: hardcoded user-facing literal in a migrated file`);
+      if (SINK.test(line)) failures.push(`${rel}:${i + 1}: raw user-facing literal in a notify/confirm/etc sink — wrap it in t()`);
       if (DYNAMIC_KEY.test(line)) failures.push(`${rel}:${i + 1}: dynamic t() key — every static i18n check is defeated by 't("a."+x)'`);
     });
   }

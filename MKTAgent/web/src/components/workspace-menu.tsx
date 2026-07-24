@@ -5,6 +5,7 @@
 // classic view" item preserves the old ⌂ Workspace button's job.
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceSummaryDto, DerivedPostStatus } from '../api/client';
+import { useLocale } from '../i18n';
 
 const STATUS_COLOR: Record<DerivedPostStatus, string> = {
   planned: 'var(--muted)', running: 'var(--blue)', held: 'var(--amber)', posted: 'var(--green)', failed: 'var(--red)',
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export function WorkspaceMenu({ workspaces, activeCampaignId, onOpenWorkspace, onContinueChat, onDelete, onExit }: Props) {
+  const { t } = useLocale();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -40,27 +42,27 @@ export function WorkspaceMenu({ workspaces, activeCampaignId, onOpenWorkspace, o
   const subtitle = (w: WorkspaceSummaryDto): string => {
     const d = new Date(w.updatedAt);
     const date = `${d.getMonth() + 1}/${d.getDate()}`;
-    const plats = w.platforms.length ? w.platforms.slice(0, 3).join(', ') : 'no platforms yet';
-    return `${w.postCount} bài · ${plats} · ${date}`;
+    const plats = w.platforms.length ? w.platforms.slice(0, 3).join(', ') : t('ws.menu.no_platforms');
+    return t('ws.menu.subtitle', { posts: w.postCount, platforms: plats, date });
   };
 
   return (
     <div className="cc-ws-menu" ref={ref}>
-      <button className={`cc-exit cc-ws-menu-btn ${workspaces.length ? 'has-ws' : ''}`} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} title="Your workspaces dashboard">
-        ⌂ Workspace
+      <button className={`cc-exit cc-ws-menu-btn ${workspaces.length ? 'has-ws' : ''}`} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} title={t('ws.menu.dashboard_title')}>
+        ⌂ {t('ws.menu.label')}
         {workspaces.length > 0 && <span className="cc-ws-menu-count">{workspaces.length}</span>}
         <span className="cc-ws-menu-caret">▾</span>
       </button>
       {open && (
         <div className="cc-ws-menu-panel" role="menu">
-          <div className="cc-ws-menu-head">Workspaces · {workspaces.length}</div>
+          <div className="cc-ws-menu-head">{t('ws.menu.head', { count: workspaces.length })}</div>
           <div className="cc-ws-menu-list">
-            {workspaces.length === 0 && <div className="cc-ws-menu-empty">Chưa có workspace nào</div>}
+            {workspaces.length === 0 && <div className="cc-ws-menu-empty">{t('ws.menu.empty')}</div>}
             {workspaces.map((w) => (
               <div key={w.campaignId} className={`cc-ws-menu-row ${activeCampaignId === w.campaignId ? 'is-active' : ''}`}>
                 <button
                   className="cc-ws-menu-name"
-                  title={`${w.postCount} post(s) · ◈ ${Math.round(w.credits).toLocaleString()} cr`}
+                  title={t('ws.menu.name_title', { count: w.postCount, credits: Math.round(w.credits).toLocaleString() })}
                   onClick={() => { onOpenWorkspace(w.campaignId); setOpen(false); }}
                 >
                   <span className="ws-dot" style={{ background: statusDot(w) }} />
@@ -72,14 +74,14 @@ export function WorkspaceMenu({ workspaces, activeCampaignId, onOpenWorkspace, o
                 <button
                   className="cc-ws-menu-act"
                   disabled={!w.chatSessionId}
-                  title={w.chatSessionId ? 'Continue the chat with Atria' : 'No linked conversation'}
+                  title={w.chatSessionId ? t('ws.menu.continue_chat') : t('ws.menu.no_chat')}
                   onClick={() => { if (w.chatSessionId) { onContinueChat(w.chatSessionId); setOpen(false); } }}
                 >
                   💬
                 </button>
                 <button
                   className="cc-ws-menu-act cc-ws-menu-del"
-                  title="Xoá workspace"
+                  title={t('ws.menu.delete')}
                   onClick={() => onDelete(w.campaignId, w.name)}
                 >
                   ×
@@ -87,7 +89,7 @@ export function WorkspaceMenu({ workspaces, activeCampaignId, onOpenWorkspace, o
               </div>
             ))}
           </div>
-          <button className="cc-ws-menu-exit" onClick={() => { setOpen(false); onExit(); }}>⤴ Về giao diện cổ điển</button>
+          <button className="cc-ws-menu-exit" onClick={() => { setOpen(false); onExit(); }}>⤴ {t('ws.menu.exit')}</button>
         </div>
       )}
     </div>

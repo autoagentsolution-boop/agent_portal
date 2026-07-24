@@ -5,17 +5,20 @@ import { useEffect, useState } from 'react';
 import { api, type UsageTotals } from '../api/client';
 import { CostStrip } from './cost-strip';
 import { tError } from '../i18n/t-error';
+import { useLocale, type MessageKey } from '../i18n';
 
 interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
-const SURFACE_LABEL: Record<string, string> = {
-  chat: 'Chat', intake: 'Intake', copygen: 'Copy generation', research: 'Research',
-  lead_rescore: 'Lead rescoring', product_analysis: 'Product knowledge', orchestration: 'Orchestration',
+const SURFACE_LABEL_KEY: Record<string, MessageKey> = {
+  chat: 'usage.surface.chat', intake: 'usage.surface.intake', copygen: 'usage.surface.copygen',
+  research: 'usage.surface.research', lead_rescore: 'usage.surface.lead_rescore',
+  product_analysis: 'usage.surface.product_analysis', orchestration: 'usage.surface.orchestration',
 };
 
 export function UsageDashboard({ notify }: Props) {
+  const { t } = useLocale();
   const [usage, setUsage] = useState<UsageTotals | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,29 +39,26 @@ export function UsageDashboard({ notify }: Props) {
   return (
     <section className="usage-dashboard">
       <div className="orchestrate-head">
-        <h2>Usage &amp; credits</h2>
-        <p className="muted small">
-          Real LLM/media spend across every surface — a friendly credit number up front,
-          raw tokens and USD on hover for full transparency.
-        </p>
+        <h2>{t('usage.title')}</h2>
+        <p className="muted small">{t('usage.subtitle')}</p>
       </div>
 
       {balance !== null && (
         <div className="usage-balance" style={{ margin: '0.5rem 0 1rem', fontSize: '1.05rem' }}>
-          <span className="muted small">Credits remaining</span>{' '}
+          <span className="muted small">{t('nav.credits.title')}</span>{' '}
           <strong style={{ color: balance <= 0 ? '#ff6b6b' : undefined }}>◈ {balance.toLocaleString()}</strong>
         </div>
       )}
 
-      {loading && <div className="muted">Loading…</div>}
+      {loading && <div className="muted">{t('common.loading')}</div>}
 
-      {!loading && !usage && <p className="muted small">Usage unavailable.</p>}
+      {!loading && !usage && <p className="muted small">{t('usage.unavailable')}</p>}
 
       {!loading && usage && (
         <>
           <CostStrip
             cost={{ costUsd: usage.costUsd, totalTokens: usage.totalTokens, credits: usage.credits }}
-            secondaryMetric={{ value: usage.calls, label: 'call' }}
+            secondaryMetric={{ value: usage.calls, label: t('usage.call_singular'), pluralLabel: t('usage.call_plural') }}
           />
 
           {/* Charged vs absorbed. Every row is shown even at zero: a user should be able to CONFIRM
@@ -66,52 +66,48 @@ export function UsageDashboard({ notify }: Props) {
           <div className="usage-split">
             <div className="usage-split-row">
               <span className="usage-split-label">
-                <strong>Charged</strong>
-                <span className="muted small"> — successful work</span>
+                <strong>{t('usage.charged.label')}</strong>
+                <span className="muted small"> — {t('usage.charged.note')}</span>
               </span>
               <span className="usage-split-value">
                 ◈ {usage.split.charged.credits.toLocaleString()}
                 <span className="muted small">
-                  {' '}· ${usage.split.charged.costUsd.toFixed(3)} · {usage.split.charged.totalTokens.toLocaleString()} tokens
+                  {' '}· ${usage.split.charged.costUsd.toFixed(3)} · {usage.split.charged.totalTokens.toLocaleString()} {t('usage.tokens')}
                 </span>
               </span>
             </div>
             {([
-              ['Failed runs', 'never charged', usage.split.absorbed.failedRuns],
-              ['Re-runs', 'on us', usage.split.absorbed.reruns],
-              ['Chat & background work', 'free', usage.split.absorbed.offRun],
-            ] as const).map(([label, note, b]) => (
-              <div className="usage-split-row usage-split-free" key={label}>
+              ['usage.failed_runs.label', 'usage.failed_runs.note', usage.split.absorbed.failedRuns],
+              ['usage.reruns.label', 'usage.reruns.note', usage.split.absorbed.reruns],
+              ['usage.chat_background.label', 'usage.chat_background.note', usage.split.absorbed.offRun],
+            ] as const).map(([labelKey, noteKey, b]) => (
+              <div className="usage-split-row usage-split-free" key={labelKey}>
                 <span className="usage-split-label">
-                  <strong>{label}</strong>
-                  <span className="muted small"> — {note}</span>
+                  <strong>{t(labelKey)}</strong>
+                  <span className="muted small"> — {t(noteKey)}</span>
                 </span>
                 <span className="usage-split-value">
                   ${b.costUsd.toFixed(3)}
-                  <span className="muted small"> · {b.totalTokens.toLocaleString()} tokens</span>
+                  <span className="muted small"> · {b.totalTokens.toLocaleString()} {t('usage.tokens')}</span>
                 </span>
               </div>
             ))}
-            <p className="muted small usage-split-note">
-              You&apos;re billed for successful work only. A run that fails costs you nothing — not even
-              the steps that finished before it broke. Re-generating a step is on us, so you can iterate
-              until the output is right. Chatting with Atria and background analysis are free.
-            </p>
+            <p className="muted small usage-split-note">{t('usage.split.explainer')}</p>
           </div>
 
           <div className="usage-surface-list">
-            {usage.bySurface.length === 0 && <p className="muted small">No usage recorded yet.</p>}
+            {usage.bySurface.length === 0 && <p className="muted small">{t('usage.no_usage')}</p>}
             {usage.bySurface.map((s) => (
               <div className="usage-surface-row" key={s.surface}>
                 <div className="usage-surface-head">
-                  <span className="usage-surface-name">{SURFACE_LABEL[s.surface] ?? s.surface}</span>
-                  <span className="usage-surface-credits">≈ {s.credits} credits</span>
+                  <span className="usage-surface-name">{SURFACE_LABEL_KEY[s.surface] ? t(SURFACE_LABEL_KEY[s.surface]) : s.surface}</span>
+                  <span className="usage-surface-credits">{t('plan.tier.credits', { credits: s.credits })}</span>
                 </div>
                 <div className="usage-bar-track">
                   <div className="usage-bar-fill" style={{ width: `${(s.credits / maxCredits) * 100}%` }} />
                 </div>
                 <div className="usage-surface-meta muted small">
-                  ${s.costUsd.toFixed(3)} · {s.totalTokens.toLocaleString()} tokens · {s.calls} {s.calls === 1 ? 'call' : 'calls'}
+                  ${s.costUsd.toFixed(3)} · {s.totalTokens.toLocaleString()} {t('usage.tokens')} · {t(s.calls === 1 ? 'usage.call_count.one' : 'usage.call_count.other', { count: s.calls })}
                 </div>
               </div>
             ))}

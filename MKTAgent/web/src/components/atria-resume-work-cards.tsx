@@ -3,6 +3,8 @@
 // deletes the underlying item (the user's own clutter) via onDismiss.
 // Pure presentation: resuming routes through the SAME handlers the sidebar uses (selectChat /
 // openSavedFlow), so this is an entry point, not a second implementation.
+import { useLocale, t as mt, type MessageKey } from '../i18n';
+
 interface ChatItem { id: string; title: string; updatedAt: string }
 interface FlowItem { id: string; name: string }
 interface RunItem { id: string; name: string | null; status: string; chatSessionId: string; updatedAt: string }
@@ -25,13 +27,13 @@ const dayLabel = (iso: string): string => {
 
 // A resumable run's human status — what's blocking it, so the card reads as unfinished work, not a chat.
 const runStatusLabel = (status: string): string => {
-  switch (status) {
-    case 'needs_approval': return 'Paused · waiting for your approval';
-    case 'needs_connection': return 'Paused · needs a connection';
-    case 'running': return 'Running…';
-    case 'planned': return 'Ready to run';
-    default: return 'In progress';
-  }
+  const key = ({
+    needs_approval: 'resume.status.needs_approval',
+    needs_connection: 'resume.status.needs_connection',
+    running: 'resume.status.running',
+    planned: 'resume.status.planned',
+  } as Record<string, MessageKey>)[status] ?? 'resume.status.in_progress';
+  return mt(key);
 };
 
 // One card = an .atria-card button (the resume/open action) + a sibling ✕ inside a positioned wrapper,
@@ -51,25 +53,26 @@ function ResumeCard(
         <span className="atria-card-cta">{cta}</span>
       </button>
       {onDismiss && (
-        <button className="atria-card-dismiss icon-btn" aria-label="Remove from list" title="Remove" onClick={onDismiss}>×</button>
+        <button className="atria-card-dismiss icon-btn" aria-label={mt('resume.remove.aria')} title={mt('resume.remove.title')} onClick={onDismiss}>×</button>
       )}
     </div>
   );
 }
 
 export function AtriaResumeWorkCards({ chats, flows, runs = [], onResumeChat, onOpenFlow, onDismiss }: Props) {
+  const { t } = useLocale();
   if (chats.length === 0 && flows.length === 0 && runs.length === 0) return null;
   return (
     <section>
-      <h3 className="atria-section-title">Continue where you left off</h3>
+      <h3 className="atria-section-title">{t('resume.section.title')}</h3>
       <div className="atria-card-grid">
         {runs.map((r) => (
           <ResumeCard
             key={r.id}
             icon="⚡"
-            title={r.name?.trim() || 'Untitled flow'}
+            title={r.name?.trim() || t('flow.untitled')}
             sub={`${runStatusLabel(r.status)} · ${dayLabel(r.updatedAt)}`}
-            cta="Resume →"
+            cta={t('resume.cta.resume')}
             onClick={() => onResumeChat(r.chatSessionId)}
             onDismiss={onDismiss && (() => onDismiss('run', r.id))}
           />
@@ -79,8 +82,8 @@ export function AtriaResumeWorkCards({ chats, flows, runs = [], onResumeChat, on
             key={c.id}
             icon="💬"
             title={c.title}
-            sub={`Recent chat · ${dayLabel(c.updatedAt)}`}
-            cta="Resume →"
+            sub={t('resume.sub.recent_chat', { day: dayLabel(c.updatedAt) })}
+            cta={t('resume.cta.resume')}
             onClick={() => onResumeChat(c.id)}
             onDismiss={onDismiss && (() => onDismiss('chat', c.id))}
           />
@@ -90,8 +93,8 @@ export function AtriaResumeWorkCards({ chats, flows, runs = [], onResumeChat, on
             key={f.id}
             icon="⚡"
             title={f.name}
-            sub="Saved flow — no campaign started yet"
-            cta="Open →"
+            sub={t('resume.sub.saved_flow')}
+            cta={t('resume.cta.open')}
             onClick={() => onOpenFlow(f.id)}
             onDismiss={onDismiss && (() => onDismiss('flow', f.id))}
           />

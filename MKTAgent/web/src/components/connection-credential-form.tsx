@@ -6,6 +6,8 @@
 import { useState } from 'react';
 import { api } from '../api/client';
 import { publisherCredentialFields, type PublisherCredentialField } from '../flow/publisher-credential-fields';
+import { useLocale } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Props {
   platformKey: string;
@@ -15,6 +17,7 @@ interface Props {
 }
 
 export function ConnectionCredentialForm({ platformKey, displayName, notify, onSaved }: Props) {
+  const { t } = useLocale();
   const config = publisherCredentialFields[platformKey] ?? { required: [], advanced: [] };
   const [values, setValues] = useState<Record<string, string>>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -27,7 +30,7 @@ export function ConnectionCredentialForm({ platformKey, displayName, notify, onS
     const entries = all
       .map((f) => ({ key: f.key, value: values[f.key]?.trim() ?? '' }))
       .filter((e) => e.value.length > 0);
-    if (entries.length === 0) { notify('Enter at least the access token', 'err'); return; }
+    if (entries.length === 0) { notify(t('connections.cred.token_required'), 'err'); return; }
 
     setSaving(true);
     try {
@@ -37,16 +40,16 @@ export function ConnectionCredentialForm({ platformKey, displayName, notify, onS
       let verify: { alive: boolean; reason?: string } | undefined;
       for (const e of ordered) {
         const r = await api.savePublisherCredential(e.key, e.value);
-        if (!r.ok) { notify(`Save ${e.key}: ${r.error.error}`, 'err'); return; }
+        if (!r.ok) { notify(t('connections.cred.err.save', { field: e.key, error: tError(r.error) }), 'err'); return; }
         if (e.key.endsWith('_access_token')) verify = r.data.verify;
       }
       setValues({});
       if (verify && !verify.alive) {
-        notify(`${displayName} saved, but the token could not be verified: ${verify.reason ?? 'liveness check failed'}`, 'err');
+        notify(t('connections.cred.saved_unverified', { platform: displayName, reason: verify.reason ?? t('connections.cred.liveness_failed') }), 'err');
       } else if (verify?.alive) {
-        notify(`${displayName} connected`);
+        notify(t('connections.cred.connected', { platform: displayName }));
       } else {
-        notify(`${displayName} credentials saved`);
+        notify(t('connections.cred.saved', { platform: displayName }));
       }
       onSaved();
     } finally { setSaving(false); }
@@ -58,7 +61,7 @@ export function ConnectionCredentialForm({ platformKey, displayName, notify, onS
       <input
         type="password"
         autoComplete="off"
-        placeholder="paste value"
+        placeholder={t('connections.cred.paste_placeholder')}
         value={values[f.key] ?? ''}
         onChange={(e) => set(f.key, e.target.value)}
       />
@@ -73,14 +76,14 @@ export function ConnectionCredentialForm({ platformKey, displayName, notify, onS
       {config.advanced.length > 0 && (
         <>
           <button type="button" className="conn-advanced-toggle" onClick={() => setShowAdvanced((v) => !v)}>
-            {showAdvanced ? '▾ Advanced' : '▸ Advanced (app credentials — usually not needed)'}
+            {showAdvanced ? t('connections.cred.advanced_open') : t('connections.cred.advanced_closed')}
           </button>
           {showAdvanced && config.advanced.map(renderField)}
         </>
       )}
 
       <button className="btn primary small" disabled={saving} onClick={() => void save()}>
-        {saving ? 'Saving…' : 'Save & connect'}
+        {saving ? t('connections.cred.saving') : t('connections.cred.save_connect_cta')}
       </button>
     </div>
   );

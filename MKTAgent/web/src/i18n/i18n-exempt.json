@@ -1,0 +1,8 @@
+[
+  "App.tsx",
+  "components/CampaignList.tsx",
+  "components/CampaignSetupForm.tsx",
+  "components/PostBriefForm.tsx",
+  "components/concept-copy-editor.tsx",
+  "components/create-post-modal.tsx"
+]

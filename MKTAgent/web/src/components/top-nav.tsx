@@ -7,7 +7,7 @@ import type { Page } from '../app-nav';
 import type { WorkspaceSummaryDto, AgentChatSessionDto } from '../api/client';
 import { WorkspaceMenu } from './workspace-menu';
 import { LanguageSwitcher } from './language-switcher';
-import { useLocale } from '../i18n';
+import { useLocale, type MessageKey } from '../i18n';
 
 interface Props {
   page: Page;
@@ -26,15 +26,15 @@ interface Props {
   onError?: (msg: string) => void;
 }
 
-const NAV: Array<{ page: Page; label: string; icon: string }> = [
-  { page: 'command-center', label: 'Command Center', icon: '◈' },
-  { page: 'impact', label: 'Impact', icon: '📈' },
-  { page: 'instructions', label: 'Instructions', icon: '⚙' },
-  { page: 'connections', label: 'Connections', icon: '🔌' },
-  { page: 'usage', label: 'Usage', icon: '📊' },
-  { page: 'scheduled', label: 'Scheduled', icon: '◷' },
-  { page: 'product-knowledge', label: 'Knowledge', icon: '📚' },
-  { page: 'leads', label: 'Leads', icon: '🎯' },
+const NAV: Array<{ page: Page; labelKey: MessageKey; icon: string }> = [
+  { page: 'command-center', labelKey: 'nav.command_center', icon: '◈' },
+  { page: 'impact', labelKey: 'nav.impact', icon: '📈' },
+  { page: 'instructions', labelKey: 'nav.instructions', icon: '⚙' },
+  { page: 'connections', labelKey: 'nav.connections', icon: '🔌' },
+  { page: 'usage', labelKey: 'nav.usage', icon: '📊' },
+  { page: 'scheduled', labelKey: 'nav.scheduled', icon: '◷' },
+  { page: 'product-knowledge', labelKey: 'nav.knowledge', icon: '📚' },
+  { page: 'leads', labelKey: 'nav.leads', icon: '🎯' },
 ];
 
 export function TopNav(props: Props) {
@@ -57,10 +57,10 @@ export function TopNav(props: Props) {
 
   return (
     <header className="app-topnav">
-      <button className="topnav-brand" onClick={() => onNavigate('command-center')} title="Command Center">
+      <button className="topnav-brand" onClick={() => onNavigate('command-center')} title={t('nav.command_center')}>
         <span className="topnav-logo" />
         <span className="topnav-brand-name">Atria</span>
-        <span className="topnav-brand-tag">COMMAND CENTER</span>
+        <span className="topnav-brand-tag">{t('nav.brand.tag')}</span>
       </button>
 
       <nav className="topnav-items">
@@ -69,10 +69,10 @@ export function TopNav(props: Props) {
             key={n.page}
             className={`topnav-item ${page === n.page ? 'is-active' : ''}`}
             onClick={() => onNavigate(n.page)}
-            title={n.label}
+            title={t(n.labelKey)}
           >
             <span className="topnav-item-icon">{n.icon}</span>
-            <span className="topnav-item-label">{n.label}</span>
+            <span className="topnav-item-label">{t(n.labelKey)}</span>
           </button>
         ))}
       </nav>

@@ -8,6 +8,7 @@
 // invoice — accurate for trend and magnitude, not for reconciliation.
 import { useEffect, useState } from 'react';
 import { api, type ProviderSpendDto, type SpendSliceDto } from '../api/client';
+import { useLocale } from '../i18n';
 
 const usd = (n: number): string => `$${n.toFixed(2)}`;
 
@@ -45,6 +46,7 @@ function SliceTable({ title, rows, total }: { title: string; rows: SpendSliceDto
 }
 
 export function ProviderSpendPanel() {
+  const { t } = useLocale();
   const [data, setData] = useState<ProviderSpendDto | null>(null);
   const [unavailable, setUnavailable] = useState(false);
 
@@ -53,7 +55,7 @@ export function ProviderSpendPanel() {
   }, []);
 
   if (unavailable) return null; // non-admin gets 404 on every /admin route; the page already says so
-  if (!data) return <p className="muted">Loading provider spend…</p>;
+  if (!data) return <p className="muted">{t('admin.spend.loading')}</p>;
 
   const { windows, daily, bySurface, byModel } = data;
   const avgPerDay = windows.last7d.costUsd / 7;
@@ -61,28 +63,24 @@ export function ProviderSpendPanel() {
 
   return (
     <>
-      <h3 style={{ marginTop: '2rem' }}>Provider spend</h3>
-      <p className="muted small">
-        What <strong>we</strong> pay the model provider — not tenant credits. Estimated from the
-        usage ledger at call time, so it tracks trend and magnitude but will not reconcile to the
-        cent against Google&apos;s invoice.
-      </p>
+      <h3 style={{ marginTop: '2rem' }}>{t('admin.spend.title')}</h3>
+      <p className="muted small">{t('admin.spend.subtitle')}</p>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-        <Tile label="Last 24h" bucket={windows.last24h} />
-        <Tile label="Last 7 days" bucket={windows.last7d} sub={`${usd(avgPerDay)}/day avg`} />
-        <Tile label="Last 30 days" bucket={windows.last30d} />
-        <Tile label="Lifetime" bucket={windows.lifetime} />
+        <Tile label={t('admin.spend.last_24h')} bucket={windows.last24h} />
+        <Tile label={t('admin.spend.last_7d')} bucket={windows.last7d} sub={t('admin.spend.avg_per_day', { amount: usd(avgPerDay) })} />
+        <Tile label={t('admin.spend.last_30d')} bucket={windows.last30d} />
+        <Tile label={t('admin.spend.lifetime')} bucket={windows.lifetime} />
       </div>
 
       {daily.length > 0 && (
         <div style={{ marginTop: 14 }}>
-          <div className="muted small" style={{ marginBottom: 4 }}>Daily spend, last 14 days (UTC)</div>
+          <div className="muted small" style={{ marginBottom: 4 }}>{t('admin.spend.daily_chart_title')}</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 72 }}>
             {daily.map((d) => (
               <div
                 key={d.day}
-                title={`${d.day} · ${usd(d.costUsd)} · ${d.calls} calls`}
+                title={t('admin.spend.daily_tooltip', { day: d.day, cost: usd(d.costUsd), calls: d.calls })}
                 style={{
                   flex: 1,
                   minWidth: 6,
@@ -94,21 +92,17 @@ export function ProviderSpendPanel() {
             ))}
           </div>
           <div className="muted small" style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>{daily[0]?.day}</span><span>peak {usd(peak)}</span><span>{daily[daily.length - 1]?.day}</span>
+            <span>{daily[0]?.day}</span><span>{t('admin.spend.peak', { amount: usd(peak) })}</span><span>{daily[daily.length - 1]?.day}</span>
           </div>
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 16 }}>
-        <SliceTable title="By surface (30d)" rows={bySurface} total={windows.last30d.costUsd} />
-        <SliceTable title="By model (30d)" rows={byModel} total={windows.last30d.costUsd} />
+        <SliceTable title={t('admin.spend.by_surface')} rows={bySurface} total={windows.last30d.costUsd} />
+        <SliceTable title={t('admin.spend.by_model')} rows={byModel} total={windows.last30d.costUsd} />
       </div>
 
-      <p className="muted small" style={{ marginTop: 12 }}>
-        No remaining-balance figure is shown because no API exposes it — the prepaid balance lives
-        only in AI Studio → Dashboard → Usage and Limits. Keep auto-reload enabled there: at $0,
-        every API key on the billing account stops at once, not just video.
-      </p>
+      <p className="muted small" style={{ marginTop: 12 }}>{t('admin.spend.balance_note')}</p>
     </>
   );
 }

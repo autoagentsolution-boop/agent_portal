@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { api, type ImpactReportDto } from '../api/client';
 import { ReadAloudButton } from './read-aloud-button';
+import { useLocale } from '../i18n';
 
 interface Props {
   campaignId?: string; // one campaign
@@ -23,6 +24,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 export function ImpactReport({ campaignId, period = '30d' }: Props) {
+  const { t } = useLocale();
   const [report, setReport] = useState<ImpactReportDto | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -32,69 +34,76 @@ export function ImpactReport({ campaignId, period = '30d' }: Props) {
     void p.then((r) => { if (r.ok) setReport(r.data); setLoading(false); });
   }, [campaignId, period]);
 
-  if (loading) return <p className="muted">Loading impact…</p>;
-  if (!report) return <p className="muted">No impact data yet.</p>;
+  if (loading) return <p className="muted">{t('impact.loading')}</p>;
+  if (!report) return <p className="muted">{t('impact.no_data')}</p>;
   const { metrics, value } = report;
   const ABBR: Record<string, string> = { facebook: 'FB', instagram: 'IG', threads: 'TH', linkedin: 'LI', x: 'X' };
   const srcLabel = metrics.insightsPlatforms.length
     ? metrics.insightsPlatforms.map((p) => ABBR[p] ?? p.toUpperCase()).join('+')
-    : 'measured';
+    : t('impact.measured_prefix');
+
+  const postCount = (n: number) => t(n === 1 ? 'impact.post.one' : 'impact.post.other', { count: n });
+  const reachHint = (impressions: number | null) =>
+    `${t('impact.measured_prefix')} · ${postCount(metrics.postsMeasured)}${impressions !== null ? ` · ${t('impact.impressions_suffix', { count: impressions.toLocaleString() })}` : ''}`;
 
   // Spoken summary (V2): the headline + the money-shot measured/estimated numbers, so Atria can read
   // the report aloud. Kept short (a few sentences) to bound TTS latency + cost.
   const narration = [
     report.headline,
-    `Spent ${money(metrics.usdSpent)}, about ${metrics.creditsSpent} credits.`,
-    `${metrics.postsPublished} posts on ${metrics.platforms.length} platforms.`,
-    metrics.leadsCaptured > 0 ? `Captured ${metrics.leadsCaptured} leads.` : '',
-    metrics.measuredReach !== null ? `Measured reach ${metrics.measuredReach.toLocaleString()}.` : '',
-    `Estimated savings of ${money(value.savedUsd)} and ${value.savedDays} days vs hiring an agency.`,
+    t('impact.narration.spent', { amount: money(metrics.usdSpent), credits: metrics.creditsSpent }),
+    t('impact.narration.posts_platforms', { posts: metrics.postsPublished, platforms: metrics.platforms.length }),
+    metrics.leadsCaptured > 0 ? t('impact.narration.leads', { leads: metrics.leadsCaptured }) : '',
+    metrics.measuredReach !== null ? t('impact.narration.reach', { reach: metrics.measuredReach.toLocaleString() }) : '',
+    t('impact.narration.savings', { saved: money(value.savedUsd), days: value.savedDays }),
   ].filter(Boolean).join(' ');
 
   return (
     <section style={{ maxWidth: 820 }}>
       <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        Impact {campaignId ? '(this campaign)' : `(last ${period})`}
-        <ReadAloudButton text={narration} title="Atria reads the report" className="impact-tts" />
+        {campaignId ? t('impact.title.campaign') : t('impact.title.period', { period })}
+        <ReadAloudButton text={narration} title={t('impact.read_aloud.title')} className="impact-tts" />
       </h3>
       <p style={{ fontSize: 17, fontWeight: 600, margin: '6px 0 16px' }}>{report.headline}</p>
 
-      <h4 style={{ margin: '0 0 8px' }}>Measured</h4>
+      <h4 style={{ margin: '0 0 8px' }}>{t('impact.measured.heading')}</h4>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-        <Stat label="spent" value={money(metrics.usdSpent)} hint={`≈ ${metrics.creditsSpent} credits`} />
-        <Stat label="posts published" value={String(metrics.postsPublished)} />
-        <Stat label="platforms" value={String(metrics.platforms.length)} hint={metrics.platforms.join(', ') || '—'} />
-        <Stat label="media pieces" value={String(metrics.mediaPieces)} />
-        <Stat label="leads captured" value={String(metrics.leadsCaptured)} />
+        <Stat label={t('impact.stat.spent')} value={money(metrics.usdSpent)} hint={t('plan.tier.credits', { credits: metrics.creditsSpent })} />
+        <Stat label={t('impact.stat.posts_published')} value={String(metrics.postsPublished)} />
+        <Stat label={t('impact.stat.platforms')} value={String(metrics.platforms.length)} hint={metrics.platforms.join(', ') || '—'} />
+        <Stat label={t('impact.stat.media_pieces')} value={String(metrics.mediaPieces)} />
+        <Stat label={t('impact.stat.leads_captured')} value={String(metrics.leadsCaptured)} />
         {metrics.measuredReach !== null && (
           <Stat
-            label={`reach (${srcLabel})`}
+            label={t('impact.stat.reach', { src: srcLabel })}
             value={metrics.measuredReach.toLocaleString()}
-            hint={`measured · ${metrics.postsMeasured} post${metrics.postsMeasured === 1 ? '' : 's'}${metrics.measuredImpressions !== null ? ` · ${metrics.measuredImpressions.toLocaleString()} impressions` : ''}`}
+            hint={reachHint(metrics.measuredImpressions)}
           />
         )}
         {metrics.measuredEngaged !== null && (
           <Stat
-            label={`engagements (${srcLabel})`}
+            label={t('impact.stat.engagements', { src: srcLabel })}
             value={metrics.measuredEngaged.toLocaleString()}
-            hint={`measured · ${metrics.postsMeasured} post${metrics.postsMeasured === 1 ? '' : 's'}`}
+            hint={`${t('impact.measured_prefix')} · ${postCount(metrics.postsMeasured)}`}
           />
         )}
       </div>
 
       <h4 style={{ margin: '18px 0 8px' }}>
-        Estimated <span className="tree-badge" title="Derived from configurable market assumptions — not measured">derived</span>
+        {t('impact.estimated.heading')} <span className="tree-badge" title={t('impact.estimated.badge_title')}>{t('impact.estimated.badge_label')}</span>
       </h4>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-        <Stat label="cost saved vs agency" value={money(value.savedUsd)} hint={`baseline ~${money(value.baselineUsd)}`} />
-        <Stat label="time saved" value={`${value.savedDays} days`} />
+        <Stat label={t('impact.stat.cost_saved')} value={money(value.savedUsd)} hint={t('impact.stat.baseline_hint', { amount: money(value.baselineUsd) })} />
+        <Stat label={t('impact.stat.time_saved')} value={t('impact.days_value', { count: value.savedDays })} />
         {metrics.measuredReach === null && (
-          <Stat label="est. reach" value={value.estimatedReach.toLocaleString()} hint="estimate — connect FB Insights for measured reach" />
+          <Stat label={t('impact.stat.est_reach')} value={value.estimatedReach.toLocaleString()} hint={t('impact.stat.est_reach_hint')} />
         )}
       </div>
       <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
-        Estimates use: ${value.assumptions.agencyDayRateUsd}/day agency rate, {value.assumptions.hoursPerPost}h/post,
-        {value.assumptions.reachPerPost} reach/post. Tune these in workspace settings.
+        {t('impact.assumptions_footer', {
+          rate: value.assumptions.agencyDayRateUsd,
+          hours: value.assumptions.hoursPerPost,
+          reach: value.assumptions.reachPerPost,
+        })}
       </p>
     </section>
   );

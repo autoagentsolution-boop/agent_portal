@@ -4,15 +4,19 @@
 // every future concept_writer draft honours. Rendered in the light drawer (.cc-drawer-body).
 import { useCallback, useEffect, useState } from 'react';
 import { api, type MemoryDto, type MemoryFactDto, type MemoryProposalDto } from '../api/client';
+import { useLocale } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Props { notify: (msg: string, kind?: 'ok' | 'err') => void }
 
-// Friendly label per slot-fact kind (P5a) — so "What Atria remembers" reads plainly, not as raw enum tags.
-const FACT_KIND_LABEL: Record<string, string> = {
-  product: 'Product', brand: 'Brand', audience: 'Audience', preference: 'Preference', contact: 'Contact', fact: 'Note',
+// Friendly label key per slot-fact kind (P5a) — so "What Atria remembers" reads plainly, not as raw enum tags.
+const FACT_KIND_KEY: Record<string, 'memory.kind.product' | 'memory.kind.brand' | 'memory.kind.audience' | 'memory.kind.preference' | 'memory.kind.contact' | 'memory.kind.note'> = {
+  product: 'memory.kind.product', brand: 'memory.kind.brand', audience: 'memory.kind.audience',
+  preference: 'memory.kind.preference', contact: 'memory.kind.contact', fact: 'memory.kind.note',
 };
 
 export function MemoryPanel({ notify }: Props) {
+  const { t } = useLocale();
   const [memories, setMemories] = useState<MemoryDto[] | null>(null);
   const [facts, setFacts] = useState<MemoryFactDto[] | null>(null);
   const [proposals, setProposals] = useState<MemoryProposalDto[] | null>(null);
@@ -22,68 +26,68 @@ export function MemoryPanel({ notify }: Props) {
   const loadMemories = useCallback(async () => {
     const r = await api.listMemories();
     if (r.ok) setMemories(r.data);
-    else notify(`Memory: ${r.error.error}`, 'err');
+    else notify(tError(r.error), 'err');
   }, [notify]);
 
   const loadFacts = useCallback(async () => {
     const r = await api.listMemoryFacts();
     if (r.ok) setFacts(r.data);
-    else notify(`Memory: ${r.error.error}`, 'err');
+    else notify(tError(r.error), 'err');
   }, [notify]);
 
   useEffect(() => { void loadMemories(); void loadFacts(); }, [loadMemories, loadFacts]);
 
   const forgetFact = async (f: MemoryFactDto) => {
     const r = await api.deleteMemoryFact(f.id);
-    if (!r.ok) { notify(`Forget: ${r.error.error}`, 'err'); return; }
+    if (!r.ok) { notify(tError(r.error), 'err'); return; }
     setFacts((prev) => (prev ?? []).filter((x) => x.id !== f.id));
-    notify('Forgotten');
+    notify(t('memory.forgotten'));
   };
 
   const analyze = async () => {
     setAnalyzing(true);
     const r = await api.memoryProposals();
     setAnalyzing(false);
-    if (!r.ok) { notify(`Analyze: ${r.error.error}`, 'err'); return; }
+    if (!r.ok) { notify(tError(r.error), 'err'); return; }
     setEditedCount(r.data.editedCount);
     setProposals(r.data.proposals);
     if (r.data.proposals.length === 0) {
-      notify(r.data.editedCount < 3 ? 'Edit a few more posts first — I learn from your edits.' : 'No consistent style pattern yet.', 'ok');
+      notify(r.data.editedCount < 3 ? t('memory.analyze.need_more_edits') : t('memory.analyze.no_pattern'), 'ok');
     }
   };
 
   const accept = async (p: MemoryProposalDto) => {
     const r = await api.acceptMemory(p.content, p.agentId);
-    if (!r.ok) { notify(`Save: ${r.error.error}`, 'err'); return; }
+    if (!r.ok) { notify(tError(r.error), 'err'); return; }
     setProposals((prev) => (prev ?? []).filter((x) => x.content !== p.content));
     setMemories((prev) => [r.data, ...(prev ?? [])]);
-    notify('Learned — future drafts will follow this.');
+    notify(t('memory.learned'));
   };
 
   const dismiss = (p: MemoryProposalDto) => setProposals((prev) => (prev ?? []).filter((x) => x.content !== p.content));
 
   const forget = async (m: MemoryDto) => {
     const r = await api.deleteMemory(m.id);
-    if (!r.ok) { notify(`Forget: ${r.error.error}`, 'err'); return; }
+    if (!r.ok) { notify(tError(r.error), 'err'); return; }
     setMemories((prev) => (prev ?? []).filter((x) => x.id !== m.id));
-    notify('Forgotten');
+    notify(t('memory.forgotten'));
   };
 
   return (
     <div className="cc-drawer-body">
       <div className="ws-panel-head">
         <div>
-          <h3>🧠 Memory</h3>
-          <span className="muted">Atria learns your copy style from the posts you edit.</span>
+          <h3>🧠 {t('memory.title')}</h3>
+          <span className="muted">{t('memory.subtitle')}</span>
         </div>
         <button className="btn primary" onClick={() => void analyze()} disabled={analyzing}>
-          {analyzing ? 'Analyzing…' : 'Analyze my edits'}
+          {analyzing ? t('memory.analyzing') : t('memory.analyze.cta')}
         </button>
       </div>
 
       {proposals && proposals.length > 0 && (
         <>
-          <div className="ws-section-title">Proposed — approve to remember</div>
+          <div className="ws-section-title">{t('memory.proposed.title')}</div>
           <ul className="ws-post-list">
             {proposals.map((p) => (
               <li key={p.content} className="mem-proposal">
@@ -92,8 +96,8 @@ export function MemoryPanel({ notify }: Props) {
                   {p.rationale && <span className="muted">{p.rationale}</span>}
                 </div>
                 <div className="mem-proposal-actions">
-                  <button className="btn primary sm" onClick={() => void accept(p)}>Remember</button>
-                  <button className="btn sm" onClick={() => dismiss(p)}>Dismiss</button>
+                  <button className="btn primary sm" onClick={() => void accept(p)}>{t('memory.remember.cta')}</button>
+                  <button className="btn sm" onClick={() => dismiss(p)}>{t('memory.dismiss.cta')}</button>
                 </div>
               </li>
             ))}
@@ -103,40 +107,40 @@ export function MemoryPanel({ notify }: Props) {
       {proposals && proposals.length === 0 && (
         <p className="muted" style={{ marginTop: 8 }}>
           {editedCount !== null && editedCount < 3
-            ? `Only ${editedCount} edited post${editedCount === 1 ? '' : 's'} so far — edit a few more and I'll spot your style.`
-            : 'No consistent pattern found in your edits yet.'}
+            ? t(editedCount === 1 ? 'memory.analyze.edited_count_one' : 'memory.analyze.edited_count_other', { count: editedCount })
+            : t('memory.analyze.no_pattern')}
         </p>
       )}
 
-      <div className="ws-section-title">What Atria remembers about you</div>
+      <div className="ws-section-title">{t('memory.facts.title')}</div>
       {facts === null ? (
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('common.loading')}</p>
       ) : facts.length === 0 ? (
-        <p className="muted">Nothing yet — tell Atria about your product, brand, or audience in chat and it’ll remember.</p>
+        <p className="muted">{t('memory.facts.empty')}</p>
       ) : (
         <ul className="ws-post-list">
           {facts.map((f) => (
             <li key={f.id} className="mem-row">
               <span className="mem-row-content">
-                <strong>{FACT_KIND_LABEL[f.kind] ?? f.kind}:</strong> {f.content}
+                <strong>{FACT_KIND_KEY[f.kind] ? t(FACT_KIND_KEY[f.kind]) : f.kind}:</strong> {f.content}
               </span>
-              <button className="ws-post-open mem-forget" onClick={() => void forgetFact(f)} title="Forget this">Forget</button>
+              <button className="ws-post-open mem-forget" onClick={() => void forgetFact(f)} title={t('memory.forget.title')}>{t('memory.forget.cta')}</button>
             </li>
           ))}
         </ul>
       )}
 
-      <div className="ws-section-title">Learned copy style</div>
+      <div className="ws-section-title">{t('memory.style.title')}</div>
       {memories === null ? (
-        <p className="muted">Loading…</p>
+        <p className="muted">{t('common.loading')}</p>
       ) : memories.length === 0 ? (
-        <p className="muted">Nothing learned yet. Edit some post copy, then Analyze.</p>
+        <p className="muted">{t('memory.style.empty')}</p>
       ) : (
         <ul className="ws-post-list">
           {memories.map((m) => (
             <li key={m.id} className="mem-row">
               <span className="mem-row-content">{m.content}</span>
-              <button className="ws-post-open mem-forget" onClick={() => void forget(m)} title="Forget this">Forget</button>
+              <button className="ws-post-open mem-forget" onClick={() => void forget(m)} title={t('memory.forget.title')}>{t('memory.forget.cta')}</button>
             </li>
           ))}
         </ul>

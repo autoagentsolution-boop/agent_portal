@@ -3,17 +3,20 @@
 // backend snapshots the cadence into each thread's sequenceId at enroll time.
 import { useEffect, useState } from 'react';
 import { api, type NurtureSettingsDto } from '../api/client';
+import { useLocale } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Props { notify: (msg: string, kind?: 'ok' | 'err') => void }
 
 export function NurtureSettingsPanel({ notify }: Props) {
+  const { t } = useLocale();
   const [settings, setSettings] = useState<NurtureSettingsDto | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     void (async () => {
       const r = await api.getNurtureSettings();
-      if (r.ok) setSettings(r.data); else notify(`Settings: ${r.error.error}`, 'err');
+      if (r.ok) setSettings(r.data); else notify(tError(r.error), 'err');
     })();
   }, [notify]);
 
@@ -21,28 +24,28 @@ export function NurtureSettingsPanel({ notify }: Props) {
     setSaving(true);
     const r = await api.updateNurtureSettings(patch);
     setSaving(false);
-    if (!r.ok) { notify(`Settings: ${r.error.error}`, 'err'); return; }
+    if (!r.ok) { notify(tError(r.error), 'err'); return; }
     setSettings(r.data);
-    notify('Saved.');
+    notify(t('nurture.settings.saved'));
   };
 
-  if (!settings) return <p className="muted">Loading…</p>;
+  if (!settings) return <p className="muted">{t('common.loading')}</p>;
 
   return (
     <div>
       <div className="ws-panel-head">
         <div>
-          <h3>⚙ Nurture settings</h3>
-          <span className="muted">Every touch still needs your approval before it sends — this only shapes the cadence.</span>
+          <h3>⚙ {t('nurture.settings.title')}</h3>
+          <span className="muted">{t('nurture.settings.subtitle')}</span>
         </div>
       </div>
 
       <label className="ws-status-chip" style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
         <input type="checkbox" checked={settings.enabled} disabled={saving} onChange={(e) => void save({ enabled: e.target.checked })} />
-        Auto-enroll new leads with an email
+        {t('nurture.settings.auto_enroll')}
       </label>
 
-      <label className="email-label">Touches in the cadence (1–12)</label>
+      <label className="email-label">{t('nurture.settings.touches_label')}</label>
       <input
         className="email-subject"
         type="number"
@@ -53,7 +56,7 @@ export function NurtureSettingsPanel({ notify }: Props) {
         onChange={(e) => void save({ maxTouches: Math.max(1, Math.min(12, Number(e.target.value) || 1)) })}
       />
 
-      <label className="email-label">Days between touches (1–30)</label>
+      <label className="email-label">{t('nurture.settings.gap_days_label')}</label>
       <input
         className="email-subject"
         type="number"
@@ -64,7 +67,7 @@ export function NurtureSettingsPanel({ notify }: Props) {
         onChange={(e) => void save({ gapDays: Math.max(1, Math.min(30, Number(e.target.value) || 1)) })}
       />
       <p className="muted" style={{ marginTop: 10 }}>
-        Changing these only affects leads enrolled after you save — threads already running keep their original cadence.
+        {t('nurture.settings.footnote')}
       </p>
     </div>
   );

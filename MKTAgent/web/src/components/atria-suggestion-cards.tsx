@@ -4,6 +4,8 @@
 // accepting a roadmap pitch logs demand. Nothing runs without your later review + grant.
 import { useEffect, useState } from 'react';
 import { api, type AtriaSuggestion } from '../api/client';
+import { useLocale } from '../i18n';
+import { tError } from '../i18n/t-error';
 
 interface Props {
   notify: (msg: string, kind?: 'ok' | 'err') => void;
@@ -21,6 +23,7 @@ const ICON: Record<AtriaSuggestion['kind'], string> = {
 };
 
 export function AtriaSuggestionCards({ notify, onPlanCampaign, acted, onAct }: Props) {
+  const { t } = useLocale();
   const [items, setItems] = useState<AtriaSuggestion[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [loaded, setLoaded] = useState(false);
@@ -32,11 +35,11 @@ export function AtriaSuggestionCards({ notify, onPlanCampaign, acted, onAct }: P
   const accept = async (s: AtriaSuggestion) => {
     if (s.prefill.roadmapAgentId) {
       const r = await api.acceptRoadmap(s.prefill.roadmapAgentId);
-      if (r.ok) notify('Noted — we\'ll prioritize building this for you.');
-      else notify(r.error.error, 'err');
+      if (r.ok) notify(t('suggestions.roadmap_noted'));
+      else notify(tError(r.error), 'err');
     } else if (s.prefill.intent) {
       onPlanCampaign?.(s.prefill.intent);
-      notify('Asked Atria to draft the plan — review and approve before anything runs.');
+      notify(t('suggestions.plan_asked'));
     }
     setDismissed((d) => new Set(d).add(s.kind));
     onAct?.(s.kind); // persist at the parent so this suggestion won't reappear + get re-fired
@@ -45,7 +48,7 @@ export function AtriaSuggestionCards({ notify, onPlanCampaign, acted, onAct }: P
   const visible = items.filter((s) => !dismissed.has(s.kind) && !(acted?.has(s.kind)));
   if (!loaded) return null;
   if (visible.length === 0) {
-    return <p className="muted small">Nothing urgent right now — Atria will nudge you here when it spots an opportunity.</p>;
+    return <p className="muted small">{t('suggestions.empty')}</p>;
   }
 
   return (
@@ -55,11 +58,11 @@ export function AtriaSuggestionCards({ notify, onPlanCampaign, acted, onAct }: P
           <div className="atria-suggestion-head">
             <span className="atria-card-icon">{ICON[s.kind]}</span>
             <strong>{s.headline}</strong>
-            <button className="icon-btn" aria-label="Dismiss" onClick={() => setDismissed((d) => new Set(d).add(s.kind))}>×</button>
+            <button className="icon-btn" aria-label={t('suggestions.dismiss')} onClick={() => setDismissed((d) => new Set(d).add(s.kind))}>×</button>
           </div>
           <p className="muted">{s.rationale}</p>
           <button className="btn-primary" onClick={() => void accept(s)}>
-            {s.prefill.roadmapAgentId ? 'I want this' : 'Plan it'}
+            {s.prefill.roadmapAgentId ? t('suggestions.roadmap_cta') : t('suggestions.plan_cta')}
           </button>
         </article>
       ))}
