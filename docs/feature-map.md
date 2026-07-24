@@ -1094,3 +1094,24 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `docs/project-changelog.md`
   - `plans/260722-1949-i18n-full-surface/plan.md`
   - `plans/reports/state-260724-1548-i18n-complete-resume-6b.md`
+- **fix(atria): merge propose_task into propose_workflow, LLM-authoritative language, brain-loop robustness** (364fa7d)
+  - `MKTAgent/src/orchestration/atria/atria-brain.ts`
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/master/detect-language.ts`
+  - `MKTAgent/src/orchestration/master/workflow-planner.ts`
+  - `MKTAgent/src/orchestration/prompts/atria-brain-prompt.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
+  - `MKTAgent/src/orchestration/verify-summarize-node.ts`
+  - `docs/project-changelog.md`
+  - `plans/260724-1636-atria-merge-and-language-fix/phase-01-language-seam.md`
+  - `plans/260724-1636-atria-merge-and-language-fix/plan.md`
+  - `plans/reports/state-260724-1900-merge-language-done-resume.md`
+  - `plans/reports/test-260724-1636-script6b-and-f15-mergeplan.md`
+  - _Relationships:_ `propose_task` is REMOVED — `propose_workflow` is now the single brain entry point for
+    both marketing/email flows AND content tasks (via `capability`/`source_text`/`email_to`). The workflow
+    planner (`workflow-planner.ts`) now composes a task with a delivery (summarize→email) because
+    `targetsFromGoal` unions `taskTargets` with `email_result`, riding `email_writer.optional: ['summary']`.
+    `contentLanguageFor` (`detect-language.ts`) drives the content language of EVERY generated flow and is
+    now LLM-authoritative; the atria brain loop (`atria-brain.ts`) hardens the Gemini function-calling seam
+    that all these tools ride. Consumers of the old `propose_task` tool name (none external) must use
+    `propose_workflow` + `capability`.
