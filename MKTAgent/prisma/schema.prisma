@@ -158,6 +158,11 @@ model User {
   // Config-as-data defaults (T3 three-layer resolution): user → campaign → post.
   // Free-form language code/label (default "vi"); campaign/post can override.
   defaultLanguage String @default("vi") @map("default_language")
+  // INTERFACE language (i18n track) — what the UI *says*, distinct from defaultLanguage which is
+  // what Atria *writes content in*. Nullable: null means "follow the browser" (navigator.language),
+  // the correct default for every existing row. Never read this in src/orchestration/** (phase 05
+  // asserts it) — conflating the two is the defect class this whole track exists to kill.
+  uiLanguage  String?     @map("ui_language")
   brandName    String?    @map("brand_name") // null for personal accounts
   brandVoice   String?    @map("brand_voice")
   brandContext String?    @map("brand_context")

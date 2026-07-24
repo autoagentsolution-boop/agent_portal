@@ -18,7 +18,8 @@ import { requireAuth } from './middleware-auth.ts';
 import { buildConsentUrl, exchangeCodeForIdentity } from '../lib/google-oauth.ts';
 import { signSession } from '../lib/auth-jwt.ts';
 import { createSession, revokeSession, sessionTtlMs, SESSION_COOKIE } from '../lib/session.ts';
-import { upsertGoogleUser, getUserById } from '../db/repos/user-repo.ts';
+import { upsertGoogleUser, getUserById, setUiLanguage } from '../db/repos/user-repo.ts';
+import { isUiLanguage } from '../i18n/ui-languages.ts';
 import { ensureTrialGrant, getBalance } from '../db/repos/credit-repo.ts';
 import { readDriveState, completeDriveConnect } from './drive-connect-router.ts';
 import { env } from '../config/env.ts';
@@ -145,9 +146,25 @@ authRouter.get(
       avatarUrl: user.avatarUrl,
       accountType: user.accountType,
       defaultLanguage: user.defaultLanguage,
+      // Interface language (i18n). null = follow the browser; the client resolves the final locale.
+      uiLanguage: user.uiLanguage,
       role: user.role,
       isSuperAdmin: user.isSuperAdmin,
       credits,
     });
+  }),
+);
+
+// Set the caller's INTERFACE language (i18n phase 01). Content language (defaultLanguage) is untouched
+// — these are deliberately different products. Rejects any code outside the launch allow-list: an
+// arbitrary string would flow into a catalog lookup and any future filename-based catalog loading.
+authRouter.patch(
+  '/me',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const uiLanguage = (req.body ?? {}).uiLanguage;
+    if (!isUiLanguage(uiLanguage)) return fail(res, 422, 'invalid_ui_language');
+    const user = await setUiLanguage(req.userId!, uiLanguage);
+    ok(res, { uiLanguage: user.uiLanguage });
   }),
 );

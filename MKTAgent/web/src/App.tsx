@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from './hooks/use-auth';
 import { useToast } from './hooks/use-toast';
+import { useLocale, UI_LOCALES, type Locale } from './i18n';
 import { api, loginUrl, type AgentChatSessionDto, type CampaignDto, type PostDto, type SavedRunDto } from './api/client';
 import { ActiveFlowsPage } from './components/ActiveFlowsPage';
 import { OrchestratePanel, type OrchestrateRestore, type OrchestrateHandle, type VoiceState } from './components/OrchestratePanel';
@@ -26,6 +27,13 @@ import type { DemoMode } from './flow/demo-flow';
 export function App() {
   const auth = useAuth();
   const { toast, show } = useToast();
+  // Sync the interface locale to the signed-in user's uiLanguage once /auth/me resolves. Null (most
+  // rows) leaves the browser-derived default from LocaleProvider in place.
+  const { setLocale } = useLocale();
+  const uiLanguage = auth.user?.uiLanguage;
+  useEffect(() => {
+    if (uiLanguage && (UI_LOCALES as readonly string[]).includes(uiLanguage)) setLocale(uiLanguage as Locale);
+  }, [uiLanguage, setLocale]);
   // Command Center is the default landing (Atria v2 P1) — the operating hub, not the chat. Exception:
   // a direct hit on the hidden /superadminatria101 URL lands on the super-admin console (server-gated).
   const [page, setPage] = useState<Page>(

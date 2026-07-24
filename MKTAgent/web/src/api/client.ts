@@ -207,6 +207,9 @@ export interface PostabilityDto {
 export interface ApiError {
   status: number;
   error: string;
+  // i18n envelope (phase 02): structured params the client interpolates into the code's catalog
+  // sentence. Optional + backward compatible — `error` stays a bare code string.
+  params?: Record<string, string | number>;
   details?: unknown;
 }
 
@@ -434,7 +437,15 @@ async function request<T, M = unknown>(path: string, opts: RequestOpts = {}): Pr
 
   const json = await res.json().catch(() => ({}));
   if (res.ok) return { ok: true, data: (json as { data: T }).data, meta: (json as { meta?: M }).meta };
-  return { ok: false, error: { status: res.status, error: (json as { error?: string }).error ?? 'error', details: (json as { details?: unknown }).details } };
+  return {
+    ok: false,
+    error: {
+      status: res.status,
+      error: (json as { error?: string }).error ?? 'error',
+      params: (json as { params?: Record<string, string | number> }).params,
+      details: (json as { details?: unknown }).details,
+    },
+  };
 }
 
 // ---- Endpoint helpers (thin, typed) --------------------------------------------
@@ -442,7 +453,7 @@ async function request<T, M = unknown>(path: string, opts: RequestOpts = {}): Pr
 // but not yet in the generated openapi schema → hand-widened at the boundary (same pattern as PostDto).
 export type Me = NonNullable<
   paths['/auth/me']['get']['responses']['200']['content']['application/json']['data']
-> & { isSuperAdmin?: boolean; credits?: number };
+> & { isSuperAdmin?: boolean; credits?: number; uiLanguage?: string | null };
 
 // Super-admin console (credit-wallet Phase 03) — routes not in openapi, hand-typed.
 export interface TenantBalanceDto {
@@ -480,6 +491,8 @@ export interface ProviderSpendDto {
 
 export const api = {
   me: () => request<Me>('/auth/me'),
+  // Interface language (i18n). Content language (defaultLanguage) is set elsewhere — these are distinct.
+  setUiLanguage: (uiLanguage: string) => request<{ uiLanguage: string | null }>('/auth/me', { method: 'PATCH', body: { uiLanguage } }),
   logout: () => request<{ loggedOut: boolean }>('/auth/logout', { method: 'POST' }),
 
   // ---- Super-admin console (credit-wallet Phase 03) — 404 for non-admins ----

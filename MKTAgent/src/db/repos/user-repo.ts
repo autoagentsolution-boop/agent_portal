@@ -8,6 +8,12 @@ import type { GoogleIdentity } from '../../lib/google-oauth.ts';
 export const getUserById = (id: string): Promise<User | null> =>
   prisma.user.findUnique({ where: { id } });
 
+// Interface language (i18n phase 01). Distinct from defaultLanguage (content language). Callers must
+// pass a code from the launch allow-list — see UI_LANGUAGES in src/i18n/ui-languages.ts; the router
+// enforces it, this is the single write-point.
+export const setUiLanguage = (id: string, uiLanguage: string): Promise<User> =>
+  prisma.user.update({ where: { id }, data: { uiLanguage } });
+
 // Lead Nurture Agent (Phase 01) — the per-owner auto-enroll toggle (default OFF). No route wires this
 // yet (Phase 04 UI); exposed here so it exists as a single write-point and the verify script can flip
 // it for a test tenant.
