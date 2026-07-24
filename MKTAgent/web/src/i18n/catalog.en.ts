@@ -56,6 +56,9 @@ export const en = {
   // Fallback for an unrecognized code — the raw code still shows in small print (see t-error.ts).
   'err.generic': 'Something went wrong. Please try again.',
 
+  // ---- account menu ----
+  'account.language.label': 'Interface language',
+
   // ---- server notices (notice.<code>) ----
   'notice.connect_to_publish': 'Connect {platforms} to publish — your draft is ready and waiting.',
 

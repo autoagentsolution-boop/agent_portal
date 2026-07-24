@@ -364,6 +364,7 @@ export function App() {
         activeChatId={activeChatId}
         onSelectChat={(id) => void selectChat(id)}
         onDeleteChat={(id) => void deleteChatById(id)}
+        onError={(msg) => show(msg, 'err')}
       />
 
       <main className="app-main">

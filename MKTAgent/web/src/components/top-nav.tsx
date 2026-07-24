@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Page } from '../app-nav';
 import type { WorkspaceSummaryDto, AgentChatSessionDto } from '../api/client';
 import { WorkspaceMenu } from './workspace-menu';
+import { LanguageSwitcher } from './language-switcher';
 
 interface Props {
   page: Page;
@@ -21,6 +22,7 @@ interface Props {
   activeChatId: string | null;
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string) => void;
+  onError?: (msg: string) => void;
 }
 
 const NAV: Array<{ page: Page; label: string; icon: string }> = [
@@ -102,6 +104,8 @@ export function TopNav(props: Props) {
           onDelete={props.onDeleteWorkspace}
           onExit={() => onNavigate('command-center')}
         />
+
+        <LanguageSwitcher onError={props.onError} />
 
         <span className="topnav-credit" title="Credits remaining">◈ {credits === null ? '—' : credits.toLocaleString()}</span>
         <span className="topnav-user" title={userEmail}>{userEmail}</span>

@@ -16,6 +16,15 @@ export type Params = Record<string, string | number>;
 export const UI_LOCALES = ['en', 'vi', 'id', 'ko'] as const;
 export type Locale = (typeof UI_LOCALES)[number];
 
+// Native names (endonyms) for the switcher — a language name is shown in its OWN language, never
+// translated. Order matches UI_LOCALES.
+export const LOCALE_ENDONYMS: Record<Locale, string> = {
+  en: 'English',
+  vi: 'Tiếng Việt',
+  id: 'Bahasa Indonesia',
+  ko: '한국어',
+};
+
 const CATALOGS: Record<Locale, Partial<Record<MessageKey, string>>> = { en, vi, id, ko };
 
 const isLocale = (v: string): v is Locale => (UI_LOCALES as readonly string[]).includes(v);

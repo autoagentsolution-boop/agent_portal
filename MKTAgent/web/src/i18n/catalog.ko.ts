@@ -41,6 +41,8 @@ export const ko: Partial<Record<MessageKey, string>> = {
   'err.invalid_ui_language': '해당 인터페이스 언어는 아직 제공되지 않습니다.',
   'err.generic': '문제가 발생했습니다. 다시 시도해 주세요.',
 
+  'account.language.label': '인터페이스 언어',
+
   'notice.connect_to_publish': '{platforms}을(를) 연결하여 게시하세요 — 초안이 준비되어 대기 중입니다.',
 
   'autonomy.grant.notice': '자동화 권한이 부여되었습니다 — Atria가 준비하여 예약된 일정에 자동 게시합니다.',

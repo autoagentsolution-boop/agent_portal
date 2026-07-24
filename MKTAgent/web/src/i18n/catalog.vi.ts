@@ -43,6 +43,8 @@ export const vi: Partial<Record<MessageKey, string>> = {
   'err.invalid_ui_language': 'Ngôn ngữ giao diện đó chưa được hỗ trợ.',
   'err.generic': 'Đã có lỗi xảy ra. Vui lòng thử lại.',
 
+  'account.language.label': 'Ngôn ngữ giao diện',
+
   'notice.connect_to_publish': 'Kết nối {platforms} để đăng — bản nháp của bạn đã sẵn sàng.',
 
   'autonomy.grant.notice': 'Đã cấp quyền tự động — Atria sẽ chuẩn bị và tự đăng theo lịch.',

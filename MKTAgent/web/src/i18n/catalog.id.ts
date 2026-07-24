@@ -41,6 +41,8 @@ export const id: Partial<Record<MessageKey, string>> = {
   'err.invalid_ui_language': 'Bahasa antarmuka itu belum tersedia.',
   'err.generic': 'Terjadi kesalahan. Silakan coba lagi.',
 
+  'account.language.label': 'Bahasa antarmuka',
+
   'notice.connect_to_publish': 'Hubungkan {platforms} untuk memublikasikan — draf Anda sudah siap.',
 
   'autonomy.grant.notice': 'Otonomi diberikan — Atria akan menyiapkan dan memublikasikan otomatis sesuai jadwal.',

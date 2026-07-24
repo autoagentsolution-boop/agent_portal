@@ -499,6 +499,14 @@ a { color: var(--accent); }
 .topnav-icon-btn:hover { color: var(--text); border-color: var(--border-bright); }
 .topnav-user { font-size: var(--fs-xs); color: var(--muted); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Chats ▾ dropdown */
+.topnav-lang { position: relative; }
+.topnav-lang-panel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 180px; z-index: 50;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.55); padding: 6px; display: flex; flex-direction: column; gap: 1px; }
+.topnav-lang-row { background: none; border: none; color: var(--text); font-size: var(--fs-sm); text-align: left;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.topnav-lang-row:hover { background: rgba(255,255,255,0.04); }
+.topnav-lang-row.is-active { background: rgba(157,123,255,0.14); font-weight: 600; }
+
 .topnav-chats { position: relative; }
 .topnav-chats-panel { position: absolute; right: 0; top: calc(100% + 8px); width: 300px; z-index: 50;
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.55); padding: 8px; }
