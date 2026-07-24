@@ -27,6 +27,12 @@
 - Use try catch error handling & cover security standards
 - Use `code-reviewer` agent to review code after every implementation
 
+## Internationalization (i18n)
+- **User-facing text goes through `t()`** (`web/src/i18n`), never a hardcoded string literal — a wrong key is a build error, a miss falls back to English.
+- **The server sends CODES, not sentences.** API errors/notices are `{ error: code, params? }`; only the client turns a code into words (`t-error.ts`). Add each new code to `catalog.en.ts` with a remedy clause.
+- **Interface language ≠ content language.** `User.uiLanguage` governs the UI; `defaultLanguage`/`slots.language` governs what agents write. Never read `uiLanguage` inside `src/orchestration/**`.
+- Enforced by `src/scripts/verify-i18n.ts` (unit tier): param parity, catalog validity, no-conflation, and a per-file literal allow-list (`web/src/i18n/i18n-migrated.json`). A file joins the allow-list the moment its screen group is migrated.
+
 ## Pre-commit/Push Rules
 - Run linting before commit
 - Run tests before push (DO NOT ignore failed tests just to pass the build or github actions)

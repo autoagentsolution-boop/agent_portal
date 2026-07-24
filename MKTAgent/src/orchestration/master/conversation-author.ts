@@ -109,8 +109,9 @@ const formatScheduleInstant = (at: string, timezone: string | null, locale = 'en
 // where the flow shows no scheduler and an immediate Execute would send now).
 //
 // This is streamed CHAT CONTENT in the REPLY's language, not client-rendered UI, so it is authored in
-// the content language here (never uiLanguage — that would conflate the two systems the i18n track
-// separates). Covers the launch set (en/vi/id/ko); any other of the 31 content languages falls back to
+// the content language here (the interface-language field is deliberately never read in orchestration
+// — that would conflate the two systems the i18n track separates, and verify-i18n asserts it stays
+// out). Covers the launch set (en/vi/id/ko); any other of the 31 content languages falls back to
 // English until its line is added — F11 was the bug where every non-vi language (Indonesian, Korean)
 // got the English tail under an otherwise-localized reply.
 type ScheduleTailEntry = { fmt: string; text: (when: string) => string };
