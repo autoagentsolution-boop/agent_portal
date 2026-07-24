@@ -445,8 +445,10 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
 
 // Deterministic propose_workflow for a turn that parsed a schedule but never proposed anything (see the
 // call site in atria-brain.ts). The KIND comes from `parseEmailIntent` rather than the brain, so this is a
-// rescue, not a replacement: it only runs when the alternative is losing the schedule outright. Returns
-// the proposal when one was built, else null (no schedule parsed, already proposed, or the plan failed).
+// rescue, not a replacement: it only runs when the alternative is losing the schedule outright — i.e. the
+// brain already FAILED to declare kind by not proposing. This is the sanctioned regex FALLBACK (Track A:
+// the brain owns `kind` on every normal path; regex only steps in when the brain produced nothing to
+// override). Returns the proposal when one was built, else null (no schedule, already proposed, plan failed).
 export async function rescueScheduleProposal(ctx: ToolContext): Promise<{ goal: GoalSpec; outcome: MasterAgentOutcome } | null> {
   if (!ctx.scheduleProposal || ctx.proposal) return null;
   await dispatchTool('propose_workflow', {

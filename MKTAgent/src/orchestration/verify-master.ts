@@ -31,6 +31,38 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   check('needsPublishing false on draft-only', draftOnly.outputs.needsPublishing === false);
 }
 
+// LLM-authoritative intent contract (Track A). The requirement prompt now DECLARES campaignScope /
+// duration / cadence / autoPublish / qualityPref / video slots; the regex fallback that used to
+// corroborate them on the Gemini path was retired (6630889). This guard is the CI-enforced half of the
+// pin (the gemini-smoke below is the live half): it proves goalSpec ACCEPTS a raw object shaped exactly
+// like what the model emits — round-tripping the intent fields instead of silently defaulting them. If a
+// future schema change rejects a model-declared value, safeParse would drop the whole LLM goal to the
+// deterministic fallback (the regression this whole track closes), and this check fails loudly first.
+{
+  console.log('LLM-declared intent round-trips through goalSpec');
+  const declared = goalSpec.safeParse({
+    outputs: { needsTextPost: true, needsPublishing: true },
+    platforms: ['facebook'],
+    slots: { product: 'X', videoTarget: 'tiktok', videoLengthSec: 30 },
+    campaignScope: 'campaign',
+    duration: { weeks: 4 },
+    cadence: { postsPerWeek: 3 },
+    autoPublish: true,
+    qualityPref: 'high',
+    provider: 'gemini:test',
+  });
+  check('model-declared goal parses', declared.success, declared.success ? undefined : declared.error?.issues);
+  if (declared.success) {
+    check('campaignScope preserved', declared.data.campaignScope === 'campaign', declared.data.campaignScope);
+    check('duration preserved', declared.data.duration?.weeks === 4, declared.data.duration);
+    check('cadence preserved', declared.data.cadence?.postsPerWeek === 3, declared.data.cadence);
+    check('autoPublish preserved', declared.data.autoPublish === true, declared.data.autoPublish);
+    check('qualityPref preserved', declared.data.qualityPref === 'high', declared.data.qualityPref);
+    check('videoTarget preserved', declared.data.slots.videoTarget === 'tiktok', declared.data.slots.videoTarget);
+    check('videoLengthSec preserved', declared.data.slots.videoLengthSec === 30, declared.data.slots.videoLengthSec);
+  }
+}
+
 // Clarification: missing product → asks (required).
 {
   console.log('Clarification engine');
@@ -317,6 +349,22 @@ async function geminiSmoke(): Promise<void> {
   check('gemini returns valid GoalSpec', g.goal === 'marketing_content', g);
   check('gemini detects instagram', g.platforms.includes('instagram'), g.platforms);
   check('gemini provider tagged', g.provider.startsWith('gemini') || g.provider === 'deterministic-v1', g.provider);
+
+  // LLM-authoritative intent (Track A) — the live half of the pin. The model must DECLARE the intent
+  // fields the regex fallback used to corroborate; a value stuck at its Zod default means the prompt
+  // rule didn't land (the 6630889 regression). Skipped with the whole smoke when GEMINI_API_KEY is
+  // absent, so CI is never gated on a paid call — the round-trip guard above is the deterministic pin.
+  const analyzer = new GeminiRequirementAnalyzer();
+  const camp = await analyzer.analyze('Plan a month of content for my coffee shop, about 3 posts a week on facebook');
+  check('campaign intent → scope campaign/spotlight', camp.campaignScope !== 'single', camp.campaignScope);
+  const auto = await analyzer.analyze('Post this to facebook and publish it right away, no review needed — our new cold brew');
+  check('explicit no-review → autoPublish true', auto.autoPublish === true, auto.autoPublish);
+  const hq = await analyzer.analyze('Write a very high-quality, in-depth facebook post about our premium coffee subscription');
+  check('high-quality ask → qualityPref high', hq.qualityPref === 'high', hq.qualityPref);
+  // Regression guard: a plain single post must NOT escalate scope or flip auto-publish.
+  const plain = await analyzer.analyze('Write a short facebook post about our new latte');
+  check('plain post → scope stays single', plain.campaignScope === 'single', plain.campaignScope);
+  check('plain post → autoPublish stays false', plain.autoPublish === false, plain.autoPublish);
 
   // Language fidelity: the reply must mirror the user's message language even though the
   // clarification seeds are partly Vietnamese (the reported bug). Pass the raw message so

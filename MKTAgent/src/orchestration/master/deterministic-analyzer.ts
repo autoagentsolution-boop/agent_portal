@@ -2,6 +2,17 @@
 // returns garbage (same fallback pattern as gemini-intake-provider.ts). Regex
 // helpers mirror src/agent/intake-provider.ts so behaviour is consistent with the
 // existing intake path. Output flags drive the rule-based planner.
+//
+// FALLBACK-ONLY for intent (Track A, 2026-07-24). On the LIVE path the model DECLARES the intent:
+// campaignScope/duration/cadence (inferCampaign), autoPublish (parseAutoPublish), qualityPref
+// (parseQualityPref), the media output flags (inferOutputs), video target/length (parseVideoLength),
+// email routing (parseEmailIntent) and removals (parseRemovals) are all emitted by requirement-prompt.ts
+// and flow through requirement-analyzer's goalSpec.safeParse. The regex classifiers BELOW run ONLY when
+// GEMINI_API_KEY is unset (requirement-analyzer's `fallback()`). They are the safety net, never an
+// override that second-guesses a value the model declared — the language-fix philosophy applied to the
+// whole goal (see contentLanguageFor). parsePlatforms + the @-address recipient are the two exceptions
+// the live path still UNIONs in, because a platform name / email address is a FACT to extract, not an
+// intent to classify.
 import { goalSpec, type GoalSpec } from '../schemas/goal-spec.ts';
 
 const PLATFORMS: Array<[GoalSpec['platforms'][number], RegExp]> = [

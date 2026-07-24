@@ -29,6 +29,21 @@ const extractJson = (raw: unknown): unknown => {
   return JSON.parse(cleaned);
 };
 
+// Renderable video-runtime bounds — MUST match goal-spec's slots.videoLengthSec (.min/.max) and
+// deterministic-analyzer's parseVideoLength clamp. A model-declared value outside this range would
+// fail goalSpec.safeParse (the field is a hard z.number().min().max()), dropping the whole LLM goal;
+// clamp in place so only that one field is corrected. Mutates raw.slots.videoLengthSec when it is a
+// finite number; leaves null/absent/non-numeric untouched.
+const VIDEO_LENGTH_MIN_SEC = 12;
+const VIDEO_LENGTH_MAX_SEC = 120;
+const clampVideoLength = (raw: unknown): void => {
+  const slots = (raw as { slots?: { videoLengthSec?: unknown } } | null)?.slots;
+  const v = slots?.videoLengthSec;
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    slots!.videoLengthSec = Math.min(VIDEO_LENGTH_MAX_SEC, Math.max(VIDEO_LENGTH_MIN_SEC, Math.round(v)));
+  }
+};
+
 export interface AnalysisWithRemovals {
   goal: GoalSpec;
   removals: Removals;
@@ -103,6 +118,12 @@ export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
       // (and billed) regardless of whether the JSON turns out parseable. Best-effort, never throws.
       await recordGeminiCall(rawJson, { ownerId: ownerId ?? null, surface: 'intake', model: env.GEMINI_MODEL });
       const raw = extractJson(rawJson);
+      // videoLengthSec is model-declared now (the prompt asks for it), but the schema hard-bounds it to
+      // 12–120 and REJECTS out-of-range — a model that answers 5 or 600 would fail the whole safeParse and
+      // silently drop the entire LLM goal to the deterministic fallback. Clamp it into range BEFORE parsing
+      // (mirrors deterministic-analyzer's parseVideoLength clamp) so a model over/undershoot degrades one
+      // field gracefully instead of discarding a good extraction. Only touches a present numeric value.
+      clampVideoLength(raw);
       const parsed = goalSpec.safeParse(raw);
       if (!parsed.success) return fallback();
       // Removals are optional in the LLM output; fall back to the regex parser when the

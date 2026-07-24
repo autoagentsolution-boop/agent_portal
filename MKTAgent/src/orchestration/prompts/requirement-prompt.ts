@@ -24,8 +24,15 @@ Convert the user's marketing request into ONLY valid JSON of this exact shape:
     "angle":"",
     "brandVoice":"",
     "language":"vi|en|or any language label",
-    "lengthSpec":"short|medium|long|<number>"
+    "lengthSpec":"short|medium|long|<number>",
+    "videoTarget":"feed|reels|tiktok|shorts|youtube",
+    "videoLengthSec":24
   },
+  "campaignScope":"single|campaign|spotlight",
+  "duration":{ "weeks":4 },
+  "cadence":{ "postsPerWeek":3 },
+  "autoPublish":false,
+  "qualityPref":"economy|standard|high",
   "confidence":0.0,
   "provider":"gemini",
   "removals":{ "disableOutputs":[], "dropPlatforms":[] }
@@ -40,4 +47,8 @@ Rules:
 - slots: fill only what is stated or strongly implied. Omit or null unknown fields — DO NOT invent a product, audience, proof, or language.
 - productDetails: the real description of WHAT the product is / does / its differentiator — distinct from "product" (the short name). Fill ONLY from facts the user actually stated; if they only gave a name or a placeholder like "sản phẩm của tôi"/"my product", leave productDetails empty. NEVER invent capabilities, audience, or claims.
 - accountType: infer who is marketing — "personal" (cá nhân / bản thân / a person promoting themselves), "business" (a brand / shop / store), or "company" (công ty / doanh nghiệp / enterprise). Leave null if not inferable.
+- campaignScope: "single" = ONE post (the default — use it whenever the user wants a single piece of content). "campaign" = a MULTI-post plan spread across time ("plan a month/week of content", "content calendar", "posting schedule", "weekly/monthly posts", "lịch đăng", "kế hoạch nội dung"). "spotlight" = ONE concentrated launch push ("big launch push", "content blitz"). Only escalate past "single" on an UNAMBIGUOUS multi-post intent — a bare "campaign"/"branding" is still a single rich post, not a calendar. When scope is "campaign" or "spotlight", fill duration.weeks + cadence.postsPerWeek from the phrasing (defaults: campaign 4 weeks × 3/week, spotlight 1 week × 5/week). For "single", omit duration/cadence (or null).
+- autoPublish: true ONLY when the user explicitly asks to publish WITHOUT review ("auto-publish", "post automatically", "no review", "đăng luôn khỏi duyệt", "tự động đăng", "không cần duyệt"). A plain "post this to Facebook" is NOT auto-publish — default false (the post halts at the human approval gate).
+- qualityPref: "high" when the user asks for high/best/premium quality or extra care ("high quality", "chất lượng cao", "kỹ lưỡng", "chi tiết"); "economy" when they want it fast/cheap ("quick", "cheap", "rough draft", "nhanh", "tiết kiệm", "đơn giản thôi"); else "standard".
+- video slots: set slots.videoTarget ONLY when the user names a destination for the video — feed / reels / tiktok / shorts / youtube (it steers pacing + aspect, it does NOT publish there). Set slots.videoLengthSec (an integer 12–120) ONLY when the user states a runtime ("a 30 second video", "video 1 phút"); clamp to 12–120. Leave both null when no video is asked for or the detail is unstated.
 - This is intent extraction ONLY. Never plan steps, never choose agents, never publish.`;
