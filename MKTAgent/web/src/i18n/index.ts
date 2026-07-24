@@ -7,13 +7,14 @@ import { en, type MessageKey } from './catalog.en';
 import { vi } from './catalog.vi';
 import { id } from './catalog.id';
 import { ko } from './catalog.ko';
+import { fr } from './catalog.fr';
 
 export type { MessageKey } from './catalog.en';
 export type Params = Record<string, string | number>;
 
 // Launch set. A locale is offered only when its catalog file exists — keep in sync with the server
 // allow-list in src/i18n/ui-languages.ts (PATCH /auth/me validates against that).
-export const UI_LOCALES = ['en', 'vi', 'id', 'ko'] as const;
+export const UI_LOCALES = ['en', 'vi', 'id', 'ko', 'fr'] as const;
 export type Locale = (typeof UI_LOCALES)[number];
 
 // Native names (endonyms) for the switcher — a language name is shown in its OWN language, never
@@ -23,9 +24,10 @@ export const LOCALE_ENDONYMS: Record<Locale, string> = {
   vi: 'Tiếng Việt',
   id: 'Bahasa Indonesia',
   ko: '한국어',
+  fr: 'Français',
 };
 
-const CATALOGS: Record<Locale, Partial<Record<MessageKey, string>>> = { en, vi, id, ko };
+const CATALOGS: Record<Locale, Partial<Record<MessageKey, string>>> = { en, vi, id, ko, fr };
 
 const isLocale = (v: string): v is Locale => (UI_LOCALES as readonly string[]).includes(v);
 

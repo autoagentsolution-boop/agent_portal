@@ -27,9 +27,11 @@ const loadCatalog = async (name: string, member: string): Promise<Cat> => {
   return mod[member] as Cat;
 };
 const en = await loadCatalog('catalog.en.ts', 'en');
-const vi = await loadCatalog('catalog.vi.ts', 'vi');
-const id = await loadCatalog('catalog.id.ts', 'id');
-const ko = await loadCatalog('catalog.ko.ts', 'ko');
+// Non-English locales to check. Adding a language = one entry here + its catalog file (the pipeline
+// fills it). Kept in sync with UI_LOCALES in web/src/i18n/index.ts.
+const LOCALE_CODES = ['vi', 'id', 'ko', 'fr'];
+const LOCALES: Record<string, Cat> = {};
+for (const code of LOCALE_CODES) LOCALES[code] = await loadCatalog(`catalog.${code}.ts`, code);
 
 const paramsOf = (s: string): Set<string> => new Set([...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!));
 const eqSet = (a: Set<string>, b: Set<string>): boolean => a.size === b.size && [...a].every((x) => b.has(x));
@@ -48,7 +50,6 @@ const failures: string[] = [];
 const warnings: string[] = [];
 
 // ── 1 + 2: param parity + catalog validity ───────────────────────────────────────────────────
-const LOCALES: Record<string, Partial<Record<string, string>>> = { vi, id, ko };
 for (const [name, cat] of Object.entries(LOCALES)) {
   for (const [key, value] of Object.entries(cat)) {
     if (!(key in en)) {
@@ -115,7 +116,7 @@ for (const [name, cat] of Object.entries(LOCALES)) {
 }
 
 // ── report ────────────────────────────────────────────────────────────────────────────────────
-console.log(`verify-i18n: en=${Object.keys(en).length} keys, locales=vi/id/ko`);
+console.log(`verify-i18n: en=${Object.keys(en).length} keys, locales=${LOCALE_CODES.join('/')}`);
 for (const w of warnings) console.log(`  WARN  ${w}`);
 if (failures.length) {
   console.error(`\nverify-i18n FAILED (${failures.length}):`);

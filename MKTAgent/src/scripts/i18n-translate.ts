@@ -20,7 +20,7 @@ import type { GeminiUsage } from '../orchestration/executor/node-cost.ts';
 
 const REPO = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const I18N_DIR = join(REPO, 'web', 'src', 'i18n');
-const LOCALES = new Set(['vi', 'id', 'ko']);
+const LOCALES = new Set(['vi', 'id', 'ko', 'fr']);
 const BATCH = 40;
 
 // A key is "act-on" (needs human review) when it belongs to a money/irreversible/connect area. Anything
@@ -29,13 +29,16 @@ const ACT_ON = /^(approve\.|credits\.|connect\.|reconnect\.|confirm\.|schedule\.
 
 const paramsOf = (s: string): Set<string> => new Set([...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!));
 const eqSet = (a: Set<string>, b: Set<string>): boolean => a.size === b.size && [...a].every((x) => b.has(x));
-// A translated string lands in a .ts file — reject anything that could break out of the string literal.
-const unsafe = (s: string): boolean => /[`]|\$\{|<\/script/i.test(s);
+// A translated string lands in a .ts file, written via JSON.stringify into a DOUBLE-quoted literal —
+// which escapes quotes/backslashes/controls and is not a template literal, so backticks and `${` are
+// inert text (and `${cost}` currency+param strings are legitimate). Nothing needs rejecting here; keep
+// a single guard against an accidental script-tag break only out of caution.
+const unsafe = (s: string): boolean => /<\/script/i.test(s);
 
 const load = async (name: string, member: string): Promise<Record<string, string>> =>
   (await import(pathToFileURL(join(I18N_DIR, name)).href))[member];
 
-const langName = (l: string): string => ({ vi: 'Vietnamese', id: 'Indonesian', ko: 'Korean' } as Record<string, string>)[l] ?? l;
+const langName = (l: string): string => ({ vi: 'Vietnamese', id: 'Indonesian', ko: 'Korean', fr: 'French' } as Record<string, string>)[l] ?? l;
 
 const translateBatch = async (locale: string, batch: Array<[string, string]>): Promise<Record<string, string>> => {
   const system =
