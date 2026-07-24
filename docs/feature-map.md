@@ -1090,3 +1090,7 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `MKTAgent/web/src/i18n/catalog.ar.review.json`
   - `MKTAgent/web/src/i18n/catalog.he.json`
   - `MKTAgent/web/src/i18n/catalog.he.review.json`
+- **docs(i18n): completion handoff + plan status + changelog** (d0b7ba3)
+  - `docs/project-changelog.md`
+  - `plans/260722-1949-i18n-full-surface/plan.md`
+  - `plans/reports/state-260724-1548-i18n-complete-resume-6b.md`
