@@ -1115,3 +1115,31 @@ artifact so the workflow view reflects the change, but all three copied only `co
     now LLM-authoritative; the atria brain loop (`atria-brain.ts`) hardens the Gemini function-calling seam
     that all these tools ride. Consumers of the old `propose_task` tool name (none external) must use
     `propose_workflow` + `capability`.
+- **refactor(atria): goal extraction is LLM-authoritative — demote the regex override layers** (6630889)
+  - `MKTAgent/src/orchestration/master/requirement-analyzer.ts`
+  - `docs/project-changelog.md`
+  - _Relationships:_ `requirementAnalyzer` feeds `GoalSpec` to the whole marketing/email planning chain
+    (propose_workflow → `masterAgent.planFromGoal` → `workflow-planner`). It stays LLM-primary with
+    `analyzeDeterministic` as the no-LLM fallback; what changed is that the four intent-classification
+    regex overrides (scope/autoPublish/qualityPref/email-routing) no longer second-guess the model —
+    email routing is now owned solely by the brain's declared `kind` (atria-tools), consistent with the
+    LLM-authoritative language decision in `detect-language.ts`. Only factual-token corroboration remains
+    (platform-name union, language-agnostic @ recipient). No schema/contract change to `GoalSpec`.
+- **@ fix(atria): LLM declares full goal intent — close the scope/autoPublish/quality regression** (44eee5c)
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/master/deterministic-analyzer.ts`
+  - `MKTAgent/src/orchestration/master/requirement-analyzer.ts`
+  - `MKTAgent/src/orchestration/prompts/requirement-prompt.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
+- **@ fix(atria): LLM declares full goal intent — close the scope/autoPublish/quality regression** (de55175)
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/master/deterministic-analyzer.ts`
+  - `MKTAgent/src/orchestration/master/requirement-analyzer.ts`
+  - `MKTAgent/src/orchestration/prompts/requirement-prompt.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
+- **fix(atria): LLM declares full goal intent — close the scope/autoPublish/quality regression** (25e02b5)
+  - `MKTAgent/src/orchestration/atria/atria-tools.ts`
+  - `MKTAgent/src/orchestration/master/deterministic-analyzer.ts`
+  - `MKTAgent/src/orchestration/master/requirement-analyzer.ts`
+  - `MKTAgent/src/orchestration/prompts/requirement-prompt.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
