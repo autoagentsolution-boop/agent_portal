@@ -64,6 +64,14 @@ const partsOf = (raw: unknown): Part[] =>
   ((raw as { candidates?: Array<{ content?: { parts?: Part[] } }> }).candidates?.[0]?.content?.parts ?? []);
 const textOf = (parts: Part[]): string => parts.map((p) => p.text ?? '').join('').trim();
 
+// Gemini sometimes emits a tool call as TEXT — a `tool_code\nprint(default_api.foo(...))\nthought\n…`
+// block — instead of a structured functionCall. That both leaks internal scaffolding to the user AND
+// dead-ends the turn (the tool never ran). Detect it so the loop can discard + re-prompt for a real call.
+const isTextEmittedToolCall = (text: string): boolean =>
+  /(?:^|\n)\s*tool_code\s*(?:\n|$)/i.test(text) || /print\s*\(\s*default_api\./i.test(text);
+// Strip a bare leading `thought` chain-of-thought label if one still slips through onto a real reply.
+const stripThoughtLabel = (text: string): string => text.replace(/^\s*thought\s*\n+/i, '').trim();
+
 // History → Gemini contents (user↔model). Last 8 turns keep the deep-dive context without bloating.
 const historyContents = (prior: PriorMessage[]): GeminiContent[] =>
   prior.slice(-8).map((m) => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.content }] }));
@@ -236,13 +244,36 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
           return { kind: 'proposal', outcome: rescued.outcome, searched: ctx.searched, tools, rounds: round + 1 };
         }
         let text = textOf(parts);
-        // Empty-content STOP (no calls, no text) is the other transient behind BUG-4 — one re-call before
-        // degrading, so a good turn isn't thrown away as an apology. Only when there's nothing to lose (no
-        // tool calls happened this round, so re-calling with the same contents is safe/idempotent).
+        // F18: the model wrote a tool call as TEXT (tool_code / print(default_api…)) instead of a real
+        // functionCall — leaking scaffolding AND running nothing. Discard the corrupted text and re-prompt
+        // (nudged), same as the empty-content transient below. Empty-content STOP (no calls, no text) is the
+        // other BUG-4 transient. Either way: one re-call before degrading, safe because no tool ran this
+        // round (re-calling the same contents is idempotent).
+        const scaffolded = isTextEmittedToolCall(text);
+        if (scaffolded) { logger.warn('atria_brain_text_tool_call', { runId: input.sessionId ?? null, round }); text = ''; }
         if (!text.trim()) {
-          logger.warn('atria_brain_empty_content', { runId: input.sessionId ?? null, round, willRetry: true });
-          const retry = await callGemini(contents);
-          if (retry.ok) { const rraw = await retry.json(); text = textOf(partsOf(rraw)); }
+          logger.warn('atria_brain_empty_content', { runId: input.sessionId ?? null, round, willRetry: true, scaffolded });
+          const nudge = scaffolded ? [{ role: 'user' as const, parts: [{ text: '(Do NOT write a tool call as code or text. To use a tool, emit a real function call; otherwise reply to the user in plain prose in their language.)' }] }] : [];
+          const retry = await callGemini([...contents, ...nudge]);
+          if (retry.ok) {
+            const rparts = partsOf(await retry.json());
+            // If the model got it right on retry (real function calls), dispatch them so the tool actually
+            // runs — fixes the F18 dead-end, not just the leak. A resulting proposal owns the turn; a
+            // non-proposal call (save_memory / set_schedule / execute_workflow / …) then CONTINUES the loop
+            // so the next round voices the follow-up and the schedule-rescue / executeRunId paths still fire
+            // (returning here would silently drop them — a functionCall part carries no text to reply with).
+            const rcalls = rparts.filter((p) => p.functionCall) as Array<{ functionCall: { name: string; args?: Record<string, unknown> } }>;
+            if (rcalls.length) {
+              contents.push({ role: 'model', parts: rcalls.map((c) => ({ functionCall: c.functionCall })) });
+              const rResponses: unknown[] = [];
+              for (const c of rcalls) { tools.push(c.functionCall.name); const r = await dispatchTool(c.functionCall.name, c.functionCall.args ?? {}, ctx); rResponses.push({ functionResponse: { name: c.functionCall.name, response: { result: r } } }); }
+              contents.push({ role: 'user', parts: rResponses });
+              const rescuedProposal = proposalOrNull(round + 1);
+              if (rescuedProposal) return rescuedProposal;
+              continue;
+            }
+            text = stripThoughtLabel(textOf(rparts));
+          }
         }
         if (text.trim()) return { kind: 'reply', text, searched: ctx.searched, tools, rounds: round + 1, executeRunId: ctx.executeRunId };
         logger.warn('atria_brain_degraded', { runId: input.sessionId ?? null, round, reason: 'empty_content' });

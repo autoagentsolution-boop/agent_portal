@@ -30,13 +30,18 @@ const PIPELINE_ORDER: readonly RunnableAgentId[] = [
 // This is the ONLY place output flags are read — a thin, exhaustive shim so the marketing GoalSpec
 // maps to artifact targets while selection itself stays registry-driven and marketing-agnostic.
 const targetsFromGoal = (goal: GoalSpec): ArtifactType[] => {
-  // General task path (P1b Phase 05): a goal carrying explicit taskTargets is a NON-marketing task —
-  // select backward from those directly, ignoring the marketing output flags. This is the seam that
-  // makes any registry capability (e.g. summarize) reachable without a marketing frame. Unknown target
-  // types simply resolve to no producer in selectByTargets (a capability gap, surfaced in Phase 02).
-  if (goal.taskTargets && goal.taskTargets.length) return goal.taskTargets as ArtifactType[];
-
   const o = goal.outputs;
+  // General task path (P1b Phase 05): a goal carrying explicit taskTargets is a utility task — select
+  // backward from those directly. A task can now COMPOSE a delivery (summarize → email): if the goal also
+  // requests an email, UNION `email_result` in rather than short-circuiting, so the send node is selected
+  // too. email_writer optionally consumes `summary`, so deriveDeps grounds the email on the summary
+  // automatically. Unknown target types resolve to no producer in selectByTargets (a capability gap).
+  if (goal.taskTargets && goal.taskTargets.length) {
+    const taskTargets = [...goal.taskTargets] as ArtifactType[];
+    if (o.needsEmail) taskTargets.push('email_result');
+    return taskTargets;
+  }
+
   // Email path (P4-lite): a self-contained write+send, NOT the social pipeline. The analyzer forces
   // the social flags off when needsEmail is set, so this owns the plan (email_writer's optional
   // content_concept is not a target → a standalone email has no upstream). EXCEPTION: "research then

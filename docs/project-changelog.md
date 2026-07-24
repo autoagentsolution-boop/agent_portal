@@ -5,6 +5,33 @@ Significant changes to the MKTAgent backend (the plain-TS marketing pipeline on
 
 ## 2026-07-24
 
+### Fix: Atria tool merge + LLM-authoritative language + brain-loop robustness (observed-test batch)
+Root-caused and fixed a cluster found during the observed live test (report
+`plans/reports/test-260724-1636-script6b-and-f15-mergeplan.md`, plan `plans/260724-1636-atria-merge-and-language-fix/`).
+
+- **F15 — "summarize AND email" dropped the email (flagship).** Root cause was two-layered: the brain had
+  two mutually-exclusive tools (`propose_task` for utility, `propose_workflow` for marketing/email) and the
+  planner `targetsFromGoal` short-circuited on `taskTargets`, ignoring `outputs.needsEmail`. Fix: **merged
+  `propose_task` into `propose_workflow`** (one tool; the marketing branch is byte-identical, the utility
+  branch was absorbed with a `capability`/`source_text`/`email_to` extension), and the planner now UNIONs
+  `taskTargets` with `email_result`. The task-email recipient is extracted language-agnostically (an @
+  address in the request but not in the source document; a lead resolved by name still wins — F10).
+  Live-verified: KO "summarize this and email it to X" → `security → summarize → email_writer → email_agent`.
+- **Language is now LLM-authoritative.** `contentLanguageFor` reordered to `prior → declared(model) →
+  detection → en` — the model's read of the (first) message decides, detection is only a no-LLM fallback.
+  `detectLanguage` VN detection is proportional and lowercase-only, so a Capitalized VN brand name in a
+  foreign sentence ("Nắng Sớm" in a Spanish post request) no longer flips the reply to Vietnamese. The
+  `SCRIPT_DETECTABLE` reject on the model's declaration was retired (we trust the model's per-message read).
+  Live-verified: Spanish + VN brand → `es`.
+- **F18 — Gemini text-emitted tool calls.** When the model writes a tool call as text
+  (`tool_code\nprint(default_api…)`) instead of a functionCall, it both leaked scaffolding to the user and
+  dead-ended the turn. Now detected → discarded → re-prompted (nudged); a recovered real call is dispatched
+  and the loop continues (no lost schedule/execute/follow-up).
+- **F17 — `save_memory` skipped on an explicit "remember".** Tool description + prompt made imperative.
+- Deferred (separate tracks): F1 (VN on-frame text via nano-banana, no Pro option); F21 (ffmpeg 0xC0000142
+  on Windows spends ~$1 on keyframes/Veo before the stitch fails); a fuller migration of goal-slot
+  extraction off the regex analyzer onto model-declared slots. 72/72 verify green; tsc clean.
+
 ### Feature: full-surface i18n — 30 UI languages, whole-UI switch, enforced (`c13c6b6`→`43d861b`)
 Closed the language-defect class that had recurred seven times. Interface language is now a distinct
 product from content language: `User.uiLanguage` (nullable, follows the browser) drives the UI; agents

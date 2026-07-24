@@ -87,15 +87,22 @@ async function main(): Promise<void> {
   try { await getRunner('summarize')({ runId: 't', ownerId: 't', goal: task(['summary'], { sourceText: '' }), upstream: {}, llmJsonFn: stubLlm as never }); } catch { threw = true; }
   ok(threw, 'summarize fails loud on empty source text with no upstream scan');
 
-  console.log('Brain seam (propose_task — pure planning, no DB)');
+  console.log('Brain seam (propose_workflow + capability — pure planning, no DB)');
   const ctx = baseCtx();
-  const res = (await dispatchTool('propose_task', { capability: 'summarize', source_text: 'long text here with jane@example.com' }, ctx)) as { status?: string; agents?: string[] };
-  ok(res.status === 'planned', 'propose_task plans a summarize flow');
+  const res = (await dispatchTool('propose_workflow', { goal_description: 'summarize this', capability: 'summarize', source_text: 'long text here with jane@example.com', message_language: 'en' }, ctx)) as { status?: string; agents?: string[] };
+  ok(res.status === 'planned', 'propose_workflow(capability) plans a summarize flow');
   ok(JSON.stringify(res.agents) === JSON.stringify(['security', 'summarize']), 'proposed agents = [security, summarize]');
   ok(ctx.proposal !== null && ctx.proposal.outcome.status === 'planned', 'ctx.proposal set to a planned outcome (flow card path)');
 
+  // Merged tool composes a delivery (F15): "summarize this AND email it to …" plans the send too.
+  const emailCtx = baseCtx();
+  emailCtx.message = 'summarize this document and email the summary to boss@example.com';
+  const emailRes = (await dispatchTool('propose_workflow', { goal_description: 'summarize and email', capability: 'summarize', source_text: 'long text here', message_language: 'en' }, emailCtx)) as { status?: string; agents?: string[] };
+  ok(emailRes.status === 'planned', 'summarize + email plans');
+  ok(JSON.stringify(emailRes.agents) === JSON.stringify(['security', 'summarize', 'email_writer', 'email_agent']), 'summarize+email agents = [security, summarize, email_writer, email_agent]');
+
   const unsup = baseCtx();
-  const ures = (await dispatchTool('propose_task', { capability: 'translate', source_text: 'x' }, unsup)) as { status?: string };
+  const ures = (await dispatchTool('propose_workflow', { goal_description: 'translate this', capability: 'translate', source_text: 'x', message_language: 'en' }, unsup)) as { status?: string };
   ok(ures.status === 'unsupported_logged', 'unsupported capability → not planned + auto-logged as demand');
   ok(unsup.proposal === null, 'unsupported capability sets NO proposal');
 

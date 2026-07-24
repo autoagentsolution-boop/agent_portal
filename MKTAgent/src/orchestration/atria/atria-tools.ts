@@ -101,7 +101,7 @@ export const TOOL_DECLARATIONS = [
   },
   {
     name: 'save_memory',
-    description: 'Remember a durable fact the user just shared, so you do not re-ask next time.',
+    description: 'Persist a durable fact the user just shared, so you do not re-ask next time. You MUST call this whenever the user EXPLICITLY asks you to remember something ("remember that…", "nhớ là…", "จำไว้ว่า…", "keep in mind…", "이것을 기억해줘") — replying that you\'ll remember it WITHOUT calling this saves NOTHING and the fact is gone next session. It persists server-side (survives the conversation), so call it in the SAME turn you acknowledge the fact.',
     parameters: {
       type: 'object',
       properties: {
@@ -114,7 +114,8 @@ export const TOOL_DECLARATIONS = [
   {
     name: 'propose_workflow',
     description:
-      'Use when the user wants to CREATE or RUN something that needs the agent pipeline — a social post/campaign, a video, an email to send, or a research deliverable. Assembles a flow of agent nodes and shows a flow card of which agents will run. It does NOT execute anything; the user reviews and approves first. '
+      'The ONE tool for anything the user wants CREATED, RUN, or DONE that needs the agent pipeline — a social post/campaign, a video, an email to send, a research deliverable, OR a task performed on content they give you (summarize/translate/transcribe/extract/…). Assembles a flow of agent nodes and shows a flow card; it does NOT execute anything, the user reviews and approves first. '
+      + 'For a CONTENT TASK, pass `capability` (a short kebab-case verb like "summarize") + `source_text` (the content); the system checks the registry and either plans it or logs it as a gap. A task can ALSO deliver its result in the same request (e.g. "summarize this AND email it to x@y.com") — just say so in the message and it composes the send. '
       + 'ALSO call this whenever a flow card is already on screen and the user asks to MODIFY the plan — add a step ("add a video"), REMOVE a step ("remove the video and storyboard", "bỏ infographic"), or change platforms/scope. A refinement MUST go through this tool to actually re-plan: describe the FULL updated goal in goal_description AND state the removal plainly (e.g. "... but WITHOUT a video or storyboard"). Do NOT merely acknowledge a change in words — if you skip this call, the plan on screen stays unchanged and you will have lied to the user about editing it.',
     parameters: {
       type: 'object',
@@ -122,13 +123,28 @@ export const TOOL_DECLARATIONS = [
         goal_description: {
           type: 'string',
           description:
-            'A full natural-language description of the goal as you understand it: product/topic, platforms, outputs (post/video/email/campaign), and scope (single vs a multi-week campaign).',
+            'A full natural-language description of the goal as you understand it: product/topic, platforms, outputs (post/video/email/campaign), and scope (single vs a multi-week campaign). For a content task, still describe what the user asked (e.g. "summarize this document and email the summary to x@y.com").',
         },
         kind: {
           type: 'string',
           enum: ['email', 'marketing'],
           description:
-            "YOU decide the intent type — do not leave it to guesswork. 'email' = a personal message SENT to a person (a birthday/greeting/thank-you/nurture note, or any email to someone). 'marketing' = a social post, campaign, ad, or marketing content published to platforms. A birthday greeting for a named person is 'email', NOT 'marketing'. Always set this so the flow is built correctly.",
+            "The intent type for a MARKETING/EMAIL flow — YOU decide, do not guess. 'email' = a personal message SENT to a person (a birthday/greeting/thank-you/nurture note, or any email to someone). 'marketing' = a social post, campaign, ad, or marketing content published to platforms. A birthday greeting for a named person is 'email', NOT 'marketing'. OMIT this for a pure content task (when you pass `capability`).",
+        },
+        capability: {
+          type: 'string',
+          description:
+            'For a CONTENT TASK only: a short kebab-case verb for the operation to run on the provided content, e.g. "summarize", "translate", "transcribe-audio". Pass what the user asked even if unsure it is supported — the system decides and logs a gap if not. Omit for a marketing/email flow.',
+        },
+        source_text: {
+          type: 'string',
+          description:
+            'For a CONTENT TASK only: the text/content to run the capability on (e.g. the document), verbatim — do NOT pre-redact, a Data Guard node masks sensitive spans downstream. Omit for a marketing/email flow.',
+        },
+        email_to: {
+          type: 'string',
+          description:
+            'For a CONTENT TASK that should be DELIVERED by email ("summarize this AND email it to x@y.com"): the recipient @ address, exactly as the user gave it. Set this so the send is planned even when the request is not in English/Vietnamese. Use ONLY the address the user typed; do not invent one. Omit if the user did not ask to email the result, or for a marketing/email flow.',
         },
         message_language: {
           type: 'string',
@@ -136,7 +152,7 @@ export const TOOL_DECLARATIONS = [
             "The ISO 639-1 code of the language the USER'S OWN MESSAGE is written in — the same language you are replying in (e.g. 'id' Indonesian, 'vi' Vietnamese, 'fr' French, 'en' English). Read it off their words ONLY; background context/memory above may be in another language — ignore that. This sets the language of the CONTENT that gets generated, so getting it wrong ships a post in the wrong language.",
         },
       },
-      required: ['goal_description', 'kind', 'message_language'],
+      required: ['goal_description', 'message_language'],
     },
   },
   {
@@ -167,20 +183,6 @@ export const TOOL_DECLARATIONS = [
     description:
       'Run the workflow you ALREADY proposed (the flow card currently on screen). Use ONLY when the user explicitly says to run / proceed / execute / "chạy đi" AND a plan is already on the table. Atria generates the content, then the run HALTS at the approval gate before anything is published or sent — so this is safe. Do NOT use this to make a new plan (use propose_workflow), and do not call it if no workflow has been proposed yet.',
     parameters: { type: 'object', properties: {} },
-  },
-  {
-    name: 'propose_task',
-    description:
-      'Route ANY request to PERFORM A TASK on content the user gives you — summarize, translate, transcribe, convert, extract, analyze, reformat, etc. — through this tool. Do NOT decide yourself whether the capability exists: pass the capability id (a short kebab-case verb like "summarize", "translate", "transcribe-audio", "analyze-spreadsheet") and the content, and THE SYSTEM checks the registry. If a node exists (currently: "summarize" — condense a document/article/report; data protection is built in, a Data Guard scan masks any personal/sensitive GDPR/PII data first) it assembles a flow card (executes nothing until the user approves). If NO node exists, the system automatically LOGS the request as demand for the team and tells you to be honest — you then tell the user you can\'t do it yet but have flagged it. This is the RELIABLE path for capturing missing capabilities: always come HERE for a content task rather than just replying "I can\'t".',
-    parameters: {
-      type: 'object',
-      properties: {
-        capability: { type: 'string', description: 'Short kebab-case verb for the task the user wants done to the content, e.g. "summarize", "translate", "transcribe-audio", "analyze-spreadsheet", "convert-to-slides". Pass what they asked for even if you are unsure it is supported — the system decides and logs a gap if not.' },
-        source_text: { type: 'string', description: 'The text/content to run the capability on (e.g. the document). Provide it verbatim — for summarize, the security node masks sensitive spans downstream, so do not pre-redact.' },
-        message_language: { type: 'string', description: "ISO 639-1 code of the language the USER'S request is written in (not the source text's) — the language the summary/result should come back in. Ignore the language of any background context above." },
-      },
-      required: ['capability', 'source_text', 'message_language'],
-    },
   },
   {
     name: 'flag_capability_gap',
@@ -286,6 +288,49 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         };
       }
       case 'propose_workflow': {
+        // Utility content-task branch (absorbed the former propose_task). A `capability` names a task to
+        // run on provided content (summarize/translate/…); the registry decides if a node exists. Kept in
+        // THIS one tool so the brain never has to choose between two overlapping tools — the choice that
+        // silently dropped the email half of "summarize this AND email it" (F15). A task can now also
+        // DELIVER its result: parseEmailIntent reads a send + recipient deterministically off the message
+        // (the brain routinely omits it), and the planner unions `email_result` so summarize → email plans.
+        const capability = str(args.capability).trim().toLowerCase().slice(0, 60);
+        if (capability) {
+          const target = TASK_CAPABILITIES[capability];
+          if (!target) {
+            const logged = await recordCapabilityGap(ctx.ownerId, capability, null, { exampleTask: (ctx.message || '').slice(0, 500) || undefined }).catch(() => false);
+            return { status: 'unsupported_logged', capability, logged, note: `No agent node can do "${capability}" yet — I've LOGGED this request as demand for the team to build. Tell the user plainly you can't do it yet but have flagged/recorded it, and offer what you CAN do instead. Do NOT pretend to do it.` };
+          }
+          const sourceText = str(args.source_text).trim();
+          if (!sourceText) return { status: 'need_input', note: `Ask the user to paste or provide the text to ${capability}.` };
+          const taskLang = contentLanguageFor(ctx.message, ctx.priorGoal?.slots.language ?? null, ctx.messageLanguage);
+          // Deliver the result by email when asked — LANGUAGE-AGNOSTIC, not keyword-classified. The recipient
+          // is an @ address that appears in the REQUEST but not inside the source document (so a contact
+          // named in the doc is never mistaken for a recipient). This works in any language (a Korean/Thai
+          // "email it to X" that parseEmailIntent's EN/VI keywords miss still composes). Signals, in order:
+          // a lead resolved by name this turn (F10 — wins), the brain-passed email_to, an address in the
+          // request, then the EN/VI parseEmailIntent fallback.
+          const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+          const email = parseEmailIntent(ctx.message);
+          const declaredTo = str(args.email_to).trim();
+          const inSource = new Set(sourceText.match(EMAIL_RE) ?? []);
+          const requestAddrs = (ctx.message.match(EMAIL_RE) ?? []).filter((a) => !inSource.has(a));
+          const emailTo = ctx.resolvedLead?.email ?? (declaredTo.includes('@') ? declaredTo : (requestAddrs[0] ?? email.to));
+          const wantsEmail = Boolean(ctx.resolvedLead) || Boolean(emailTo) || email.isEmail;
+          let taskGoal = goalSpec.parse({
+            taskTargets: [target],
+            outputs: { needsTextPost: false, needsPublishing: false },
+            slots: { sourceText, language: taskLang },
+            provider: 'atria-task',
+          });
+          if (wantsEmail && emailTo) {
+            taskGoal = goalSpec.parse({ ...taskGoal, outputs: emailOutputs(taskGoal.outputs), slots: { ...taskGoal.slots, emailTo, leadId: ctx.resolvedLead?.leadId ?? null } });
+          }
+          const taskOutcome = masterAgent.planFromGoal(taskGoal, { skipClarification: true });
+          ctx.proposal = { goal: taskGoal, outcome: taskOutcome };
+          if (taskOutcome.status === 'planned') return { status: 'planned', agents: taskOutcome.plan.nodes.map((n) => n.agentId), steps: taskOutcome.plan.nodes.length };
+          return { status: 'error', error: taskOutcome.status === 'plan_error' ? taskOutcome.error : 'could_not_plan' };
+        }
         // analyzeWithRemovals (not analyze) so a subtractive refine ("remove the video/storyboard step",
         // "bỏ infographic") surfaces its removal delta — analyze() discards it, which is why remove-node
         // refinements silently no-op'd while the model still narrated "I removed it" (BUG-1). Prior is left
@@ -365,35 +410,6 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         if (outcome.status === 'planned') return { status: 'planned', agents: outcome.plan.nodes.map((n) => n.agentId), steps: outcome.plan.nodes.length };
         if (outcome.status === 'awaiting_clarification') return { status: 'need_more_info', missing: outcome.questions.map((q) => q.slot) };
         return { status: 'error', error: outcome.error };
-      }
-      case 'propose_task': {
-        const capability = str(args.capability).trim().toLowerCase().slice(0, 60);
-        const target = TASK_CAPABILITIES[capability];
-        if (!target) {
-          // Deterministic capability-gap logging (the reliable path): the registry has NO node that produces
-          // this capability, so the planner can't build anything for it. Record the request as demand HERE —
-          // do NOT depend on the brain separately calling flag_capability_gap (it routinely skips that). The
-          // planner/registry's own "I can't build this" is the ground-truth signal that a node is missing.
-          const logged = capability
-            ? await recordCapabilityGap(ctx.ownerId, capability, null, { exampleTask: (ctx.message || '').slice(0, 500) || undefined }).catch(() => false)
-            : false;
-          return { status: 'unsupported_logged', capability, logged, note: `No agent node can do "${capability}" yet — I've LOGGED this request as demand for the team to build. Tell the user plainly you can't do it yet but have flagged/recorded it, and offer what you CAN do instead. Do NOT pretend to do it.` };
-        }
-        const sourceText = str(args.source_text).trim();
-        if (!sourceText) return { status: 'need_input', note: `Ask the user to paste or provide the text to ${capability}.` };
-        // A non-marketing TASK goal: select backward from the utility's output artifact (taskTargets),
-        // skip the marketing clarification engine, carry the source text in a slot for the runner.
-        const goal = goalSpec.parse({
-          taskTargets: [target],
-          outputs: { needsTextPost: false, needsPublishing: false },
-          // Summary language mirrors the chat, same rule as propose_workflow (no prior task-lang to carry).
-          slots: { sourceText, language: contentLanguageFor(ctx.message, ctx.priorGoal?.slots.language ?? null, ctx.messageLanguage) },
-          provider: 'atria-task',
-        });
-        const outcome = masterAgent.planFromGoal(goal, { skipClarification: true });
-        ctx.proposal = { goal, outcome };
-        if (outcome.status === 'planned') return { status: 'planned', agents: outcome.plan.nodes.map((n) => n.agentId), steps: outcome.plan.nodes.length };
-        return { status: 'error', error: outcome.status === 'plan_error' ? outcome.error : 'could_not_plan' };
       }
       case 'flag_capability_gap': {
         const capability = str(args.capability).trim().slice(0, 60);

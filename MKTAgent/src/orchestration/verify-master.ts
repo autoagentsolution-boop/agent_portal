@@ -273,33 +273,39 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   check('French (Latin) → null (model mirrors)', detectLanguage('Rédige un court post LinkedIn sur notre nouvelle fonctionnalité') === null);
   check('empty → null', detectLanguage('') === null);
 
-  // Content language mirrors the chat (kills the "English chat → Vietnamese email" bug). Derived from the
-  // message + the flow's established prior, NEVER the analyzer's inferred slot.
-  console.log('contentLanguageFor (content mirrors the chat, no VN default)');
+  // Proportional VN: a lone VN-diacritic brand/proper noun inside a foreign sentence must NOT flip the
+  // whole message to Vietnamese (this false positive replied in VN to a Spanish chat — script 10).
+  check('VN brand name in a Spanish sentence → null (does not flip)', detectLanguage('Planifica una campaña de una semana para mi cafetería Nắng Sớm con 4 publicaciones en Facebook') === null);
+  check('short foreign sentence + Capitalized VN brand → null (does not flip)', detectLanguage('Visita Nắng Sớm hoy') === null);
+  check('lowercase VN prose still detected → vi', detectLanguage('thêm ảnh nữa cho bài đăng') === 'vi');
+
+  // Content language is LLM-authoritative: the user always opens with a message/voice that the brain
+  // reads, so its declaration is the primary signal; the flow's first-chat language then persists; the
+  // detection heuristic is only a no-LLM fallback.
+  console.log('contentLanguageFor (LLM-authoritative — model reads the first message)');
   check('English chat → en (not the vi default)', contentLanguageFor('send a birthday email to my friend', null) === 'en');
-  check('VN chat → vi', contentLanguageFor('gửi email chúc mừng sinh nhật', null) === 'vi');
+  check('VN chat → vi (detection fallback, no declaration)', contentLanguageFor('gửi email chúc mừng sinh nhật', null) === 'vi');
   check('neutral refine keeps established en', contentLanguageFor('add an image', 'en') === 'en');
   check('neutral refine keeps established vi', contentLanguageFor('proceed', 'vi') === 'vi');
-  check('detectable refine overrides the flow language', contentLanguageFor('thêm ảnh nữa', 'en') === 'vi');
-  check('inferred vi slot is ignored on an English chat', contentLanguageFor('yes please proceed', null) === 'en');
+  check('established prior persists even on a detectable refine (first-chat decides)', contentLanguageFor('thêm ảnh nữa', 'en') === 'en');
+  check('no signal on a Latin chat → en', contentLanguageFor('yes please proceed', null) === 'en');
 
-  // F7: Latin-script languages the script detector cannot see. The brain's declared message language is
-  // the ONLY signal here — without it every one of these silently produced English content.
-  console.log('contentLanguageFor (model-declared language — Latin-script blind spot)');
+  // The brain's declared message language decides the FIRST turn — the only signal that separates
+  // Indonesian/French/Spanish/… (shared Latin script), AND that reads past a foreign proper noun.
+  console.log('contentLanguageFor (model-declared language)');
   check('Indonesian chat → id', contentLanguageFor('Buat satu postingan Facebook untuk produk saya', null, 'id') === 'id');
   check('French chat → fr', contentLanguageFor('Rédige un court post LinkedIn sur notre nouvelle fonctionnalité', null, 'fr') === 'fr');
   check('Spanish chat → es', contentLanguageFor('Escribe una publicación para Instagram', null, 'es') === 'es');
+  check('Spanish chat with a VN brand name → es (declared wins, no false VN flip)', contentLanguageFor('Planifica una campaña de una semana para mi cafetería Nắng Sớm con 4 publicaciones', null, 'es') === 'es');
   check('declared en stays en', contentLanguageFor('write a short post about our launch', null, 'en') === 'en');
   check('BCP-47 region tag is narrowed to the base code', contentLanguageFor('Escribe una publicación', null, 'es-MX') === 'es');
-  // Anti-bleed: anything the detector could have caught itself is refused, because detectLanguage
-  // already returned null on this message — the claim contradicts the text (recalled-memory bleed).
-  check('declared vi on a Latin message is REFUSED → en', contentLanguageFor('yes please proceed', null, 'vi') === 'en');
-  check('declared th on a Latin message is REFUSED → en', contentLanguageFor('write a post', null, 'th') === 'en');
-  check('garbage declaration → en', contentLanguageFor('write a post', null, 'Indonesian') === 'en');
-  check('empty declaration → en', contentLanguageFor('write a post', null, '') === 'en');
-  // Precedence unchanged: script detection and the established prior both still outrank the declaration.
-  check('script detection outranks a wrong declaration', contentLanguageFor('gửi email chúc mừng sinh nhật', null, 'en') === 'vi');
-  check('established prior outranks the declaration', contentLanguageFor('proceed', 'id', 'en') === 'id');
+  // The model is TRUSTED for its read of the message (message_language prompt already says ignore recalled
+  // context) — no codepoint reject. Only a malformed code falls through to the detection fallback.
+  check('declared vi is trusted (the model read the message)', contentLanguageFor('gửi cho tôi một email', null, 'vi') === 'vi');
+  check('declared th is trusted', contentLanguageFor('write a post', null, 'th') === 'th');
+  check('garbage declaration → detection fallback → en', contentLanguageFor('write a post', null, 'Indonesian') === 'en');
+  check('empty declaration → detection fallback → en', contentLanguageFor('write a post', null, '') === 'en');
+  check('established prior outranks the declaration (bare confirm does not re-decide)', contentLanguageFor('proceed', 'id', 'en') === 'id');
 }
 
 // Optional live Gemini smoke.

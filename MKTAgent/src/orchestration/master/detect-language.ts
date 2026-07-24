@@ -46,13 +46,25 @@ const VI_WORDS = /(?<![\p{L}])(toi|minh|ban|muon|lam|cho|cua|va|moi|ngay|san pha
 // non-Latin scripts + Vietnamese; everything else → null (NOT assumed English).
 export const detectLanguage = (message: string): string | null => {
   const m = message ?? '';
-  if (VI_DIACRITICS.test(m)) return 'vi';
-  const viHits = new Set((m.toLowerCase().match(VI_WORDS) ?? []).map((w) => w.trim())).size;
-  if (viHits >= 2) return 'vi';
+  // Non-Latin scripts first — presence of the script is near-zero-false-positive ground truth.
   for (const [code, re] of SCRIPT_PROBES) {
     if (re.test(m)) return code;
   }
-  return null; // Latin / undetermined → let the model mirror the user's message.
+  // Vietnamese is Latin-script, so detect it PROPORTIONALLY and only on LOWERCASE evidence. A brand /
+  // proper noun like "Nắng Sớm" dropped into a foreign sentence is Capitalized; genuine Vietnamese prose
+  // carries its VN-diacritic words in lower case. Counting only lowercase-initial diacritic tokens keeps a
+  // Capitalized brand from flipping the whole message to Vietnamese (the false positive that replied in VN
+  // to a Spanish chat) while still catching real VN text.
+  const tokens = m.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length) {
+    const vnLower = tokens.filter((t) => VI_DIACRITICS.test(t) && !/^[\p{Lu}]/u.test(t)).length;
+    if (vnLower >= 2 && vnLower / tokens.length >= 0.3) return 'vi';
+    if (vnLower >= 1 && tokens.length <= 3) return 'vi'; // a short, clearly-VN phrase
+  }
+  // Unaccented VN: ≥2 DISTINCT function words (a single bare token also appears in English/brand names).
+  const viHits = new Set((m.toLowerCase().match(VI_WORDS) ?? []).map((w) => w.trim())).size;
+  if (viHits >= 2) return 'vi';
+  return null; // Latin / undetermined → let the model's declaration decide (see contentLanguageFor).
 };
 
 // Human-readable language name for a code (BCP-47-ish). Falls back to the raw code so
@@ -71,40 +83,28 @@ export const languageName = (code: string | null | undefined): string | null => 
   return NAMES[c] ?? code ?? null;
 };
 
-// Codes the script probes above (plus Vietnamese, via its diacritics/function words) can identify on
-// their own. Used as a REJECT list for the model-declared language: if `detectLanguage` returned null,
-// the message provably contains none of these scripts, so a declaration of one contradicts the text and
-// is the memory-bleed we deliberately ignore (recalled VN facts making the model claim 'vi' on an
-// English chat). Derived from SCRIPT_PROBES so a new probe extends this automatically.
-const SCRIPT_DETECTABLE = new Set([...SCRIPT_PROBES.map(([code]) => code), 'vi']);
-
-// A model-declared language is trusted ONLY where the detector is blind: Latin script, no VN markers.
-// That is exactly the gap that made Indonesian/Malay/Filipino/French/Spanish/German/Portuguese/Italian
-// silently produce English content — the writing system cannot tell them apart, so code must defer to
-// the model that actually read the words. Anything the detector could have caught itself is refused.
-const latinDeclared = (declared: string | null | undefined): string | null => {
-  // Base subtag only — models answer 'id' but also 'id-ID' / 'pt-BR', and downstream prompts want the code.
+// Normalize a model-declared language to a bare, valid code. Models answer 'id' but also 'id-ID' /
+// 'pt-BR', and downstream prompts want the base subtag; anything that isn't a 2-3 letter code (e.g. the
+// model spelling out "Indonesian") is rejected as unusable. NO script-based reject: the model reads the
+// actual words and is TRUSTED for its declaration — the message_language prompt already tells it to
+// ignore any recalled background context, which is what a codepoint reject used to (bluntly) guard.
+const declaredCode = (declared: string | null | undefined): string | null => {
   const code = (declared ?? '').trim().toLowerCase().split(/[-_]/)[0] ?? '';
-  if (!/^[a-z]{2,3}$/.test(code) || SCRIPT_DETECTABLE.has(code)) return null;
-  return code;
+  return /^[a-z]{2,3}$/.test(code) ? code : null;
 };
 
-// The authoritative CONTENT language for a run — mirrors the language the user is actually communicating
-// in, so a memory-inferred 'vi' can't force Vietnamese onto an English (or Thai, …) conversation. Rules:
-//   1. A confident detection of the CURRENT message wins (VN/Thai/JP/… by script — kills memory bleed and
-//      lets a later refine that states a detectable language override the flow's language).
-//   2. Otherwise (Latin/ambiguous message) keep the flow's ESTABLISHED prior language.
-//   3. First turn with no prior → the language the MODEL read off this message (`declared`), filtered by
-//      latinDeclared so only the Latin-script blind spot is trusted.
-//   4. Nothing usable → English (mirror a Latin chat), never the VN account default.
-// `prior` MUST be the previously-established goal language (ctx.priorGoal), NEVER the requirement
-// analyzer's inferred slot — that one is filled from recalled memory as readily as from the message.
-// `declared` is different: it is the conversational brain naming the language of THIS message, the same
-// signal it uses to write its own reply — which is why the reply was Indonesian while the copy was
-// English. Because turn 1 already resolves via this function, a carried 'vi' can only mean a genuinely
-// VN conversation, so keeping it is safe. A per-node form field / explicit form override still wins.
+// The authoritative CONTENT language for a run. The user always opens with a message (or voice → text)
+// that passes through the conversational brain, so the MODEL's read of that first message is the primary
+// signal — it distinguishes Spanish-with-a-VN-brand-name from actual Vietnamese, which a codepoint
+// heuristic cannot. Priority:
+//   1. The flow's ESTABLISHED prior language (set on the FIRST chat) persists — a later confirm/refine
+//      does not re-decide it. `prior` MUST be ctx.priorGoal, NEVER the analyzer's memory-fillable slot.
+//   2. First turn (no prior) → the language the MODEL declared for THIS message (`declared`).
+//   3. No model signal (deterministic/no-LLM path) → the detection heuristic as a FALLBACK.
+//   4. Nothing usable → English, never the VN account default.
+// A per-node form field / explicit form override still wins upstream of this.
 export const contentLanguageFor = (message: string, prior: string | null | undefined, declared?: string | null): string => {
-  const detected = detectLanguage(message);
-  if (detected) return detected;
-  return (prior ?? '').trim().toLowerCase() || latinDeclared(declared) || 'en';
+  const priorCode = (prior ?? '').trim().toLowerCase();
+  if (priorCode) return priorCode;
+  return declaredCode(declared) ?? detectLanguage(message) ?? 'en';
 };
