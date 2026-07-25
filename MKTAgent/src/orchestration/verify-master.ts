@@ -7,8 +7,8 @@ import { MasterAgent } from './master/master-agent.ts';
 import { deterministicReply, conversationAuthor } from './master/conversation-author.ts';
 import { detectLanguage, contentLanguageFor, replyLanguageHint, looksVietnamese } from './master/detect-language.ts';
 import { mergeGoals, applyRemovals } from './master/goal-merge.ts';
-import { parseRemovals } from './master/deterministic-analyzer.ts';
-import { goalSpec } from './schemas/goal-spec.ts';
+import { parseRemovals, parsePlatforms } from './master/deterministic-analyzer.ts';
+import { goalSpec, type GoalSpec } from './schemas/goal-spec.ts';
 import { agentIdList } from './schemas/workflow-plan.ts';
 import { env } from '../config/env.ts';
 
@@ -314,6 +314,33 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   const escalate = goalSpec.parse({ outputs: { needsIdeation: true, needsStrategy: true, needsTextPost: true, needsPublishing: true }, platforms: ['facebook'], slots: {}, campaignScope: 'campaign', duration: { weeks: 2 }, cadence: { postsPerWeek: 5 } });
   const esc = mergeGoals(singlePrior, escalate);
   check('single→campaign escalation honored', esc.campaignScope === 'campaign' && esc.duration?.weeks === 2, { s: esc.campaignScope, d: esc.duration });
+
+  // F19 platform-recovery gap: the brain's goal_description is a PARAPHRASE that routinely drops the
+  // platform the user named ("...on Facebook" → analyzed platforms []). propose_workflow unions
+  // parsePlatforms(rawMessage) to recover it — a platform NAME is a fact to extract, not intent. This
+  // simulates that union and proves it (a) recovers the dropped platform and (b) does NOT break F19: a
+  // single-asset raw msg still yields only its named platform, and mergeGoals keeps that (no campaign bleed).
+  const analyzedDroppedPlatform = goalSpec.parse({ outputs: { needsIdeation: true, needsStrategy: true, needsTextPost: true, needsPublishing: true }, platforms: [], slots: { product: 'GreenLeaf' }, campaignScope: 'campaign', duration: { weeks: 4 }, cadence: { postsPerWeek: 3 } });
+  const recovered = goalSpec.parse({ ...analyzedDroppedPlatform, platforms: Array.from(new Set([...analyzedDroppedPlatform.platforms, ...parsePlatforms('Plan a month of content for GreenLeaf on Facebook, 3 posts a week')])) as GoalSpec['platforms'] });
+  check('paraphrase dropped platform → recovered from raw message', JSON.stringify(recovered.platforms) === '["facebook"]', recovered.platforms);
+  // Recovery + F19: a single-asset raw msg naming only Instagram, on a campaign prior, still merges to
+  // exactly [instagram] with scope single — recovery adds the named platform, it never resurrects prior's.
+  const singleAnalyzed = goalSpec.parse({ outputs: { needsInfographic: true, needsTextPost: true, needsPublishing: true }, platforms: [], slots: { product: 'Nắng Sớm' }, campaignScope: 'single' });
+  const singleRecovered = goalSpec.parse({ ...singleAnalyzed, platforms: Array.from(new Set([...singleAnalyzed.platforms, ...parsePlatforms('Make one infographic for Nắng Sớm for Instagram')])) as GoalSpec['platforms'] });
+  const mergedSingle = mergeGoals(campaignPrior, singleRecovered);
+  check('recovery + F19: single-asset ask still yields only [instagram] after merge', JSON.stringify(mergedSingle.platforms) === '["instagram"]', mergedSingle.platforms);
+
+  // False-removal guard (the actual GreenLeaf failure): "publish ... without review" contains a removal
+  // VERB ("without") and a target ("publish"), but they belong to different clauses — the user is
+  // publishing, just skipping review. parseRemovals used to drop the publish output AND, via the platform
+  // pass, the named platform (Facebook) → the recovered platform was silently wiped. Removal now requires
+  // the verb NEAR the target, so a false removal is empty and a real one still fires.
+  check('false removal: "publish without review" → no output/platform dropped',
+    parseRemovals('Plan a month on Facebook, publish automatically without review, high quality').disableOutputs.length === 0
+    && parseRemovals('Plan a month on Facebook, publish automatically without review, high quality').dropPlatforms.length === 0,
+    parseRemovals('Plan a month on Facebook, publish automatically without review, high quality'));
+  check('real removal still fires: "remove facebook" → drops facebook', parseRemovals('remove facebook').dropPlatforms.includes('facebook'), parseRemovals('remove facebook'));
+  check('real removal still fires: "without a video" → drops video', parseRemovals('without a video').disableOutputs.includes('video'), parseRemovals('without a video'));
 }
 
 // Conversation author (deterministic fallback — no LLM needed). Voices each outcome.

@@ -294,8 +294,31 @@ const OUTPUT_TARGETS: Array<[RemovableOutput, RegExp]> = [
 
 export const parseRemovals = (message: string): Removals => {
   if (!REMOVAL_VERB.test(message)) return emptyRemovals();
-  const disableOutputs = OUTPUT_TARGETS.filter(([, re]) => re.test(message)).map(([o]) => o);
-  const dropPlatforms = parsePlatforms(message);
+  // A removal target counts ONLY when a removal verb sits NEAR it (same clause), not merely somewhere in
+  // the message. "publish automatically without review" tripped this: "without" is a removal verb and
+  // "publish" is a target, but they belong to different phrases — the user is publishing, only skipping
+  // review. So it wrongly dropped the publish output AND (via the platform pass) the named platform.
+  // Require the verb within a short window before/after the target token; a real removal ("remove the
+  // video", "without a video", "bỏ facebook") always co-locates them, a false one ("publish ... without
+  // review") does not.
+  const nearVerb = (targetRe: RegExp): boolean => {
+    const m = targetRe.exec(message);
+    if (!m) return false;
+    const i = m.index;
+    // Window: the verb must appear within ~24 chars before the target (a modifier/verb precedes its
+    // object in both EN and VI here) — enough for "remove the video" / "bỏ luôn video" but not a whole
+    // clause away like "publish automatically without review".
+    const before = message.slice(Math.max(0, i - 24), i);
+    return REMOVAL_VERB.test(before);
+  };
+  const disableOutputs = OUTPUT_TARGETS.filter(([, re]) => nearVerb(re)).map(([o]) => o);
+  // Platform removal is likewise gated on a nearby verb: "on Facebook, publish without review" must NOT
+  // drop Facebook (the verb "without" is far from it and modifies "review"). "drop facebook" / "bỏ facebook"
+  // keeps the verb adjacent, so a genuine platform removal still fires.
+  const dropPlatforms = parsePlatforms(message).filter((p) => {
+    const re = PLATFORMS.find(([name]) => name === p)?.[1];
+    return re ? nearVerb(re) : false;
+  });
   return { disableOutputs, dropPlatforms };
 };
 

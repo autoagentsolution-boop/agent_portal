@@ -8,7 +8,7 @@ import { workspaceMetrics } from '../master/report-answer.ts';
 import { recallForMessage } from '../../memory/user-memory.ts';
 import { rememberFreeform, type MemoryKind } from '../../db/repos/user-memory-repo.ts';
 import { requirementAnalyzer } from '../master/requirement-analyzer.ts';
-import { emailOutputs, parseRemovals, parseEmailIntent } from '../master/deterministic-analyzer.ts';
+import { emailOutputs, parseRemovals, parseEmailIntent, parsePlatforms } from '../master/deterministic-analyzer.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
 import { mergeGoals, applyRemovals } from '../master/goal-merge.ts';
 import { contentLanguageFor } from '../master/detect-language.ts';
@@ -359,17 +359,28 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
               ? { ...analyzed, outputs: { ...analyzed.outputs, needsEmail: false }, slots: { ...analyzed.slots, emailTo: null, leadId: null } }
               : analyzed,
         );
+        // Platform recovery: a platform NAME is a FACT to extract, not an intent to classify (same category
+        // as the language-agnostic @ recipient). The analyzer already unions parsePlatforms over the text it
+        // was handed — but that text is the brain's `goal_description`, a PARAPHRASE that routinely drops the
+        // platform the user actually named ("...on Facebook" → paraphrased without "Facebook" → platforms []).
+        // The user's RAW message still carries it, so union parsePlatforms(ctx.message) here — mirrors the
+        // parseRemovals(ctx.message) union above, for the same reason. Skipped for an email flow (no social
+        // platforms). Preserves F19: this only ADDS a named platform, it never resurrects a prior campaign's
+        // set (mergeGoals still lets a delta that names its own platforms replace prior).
+        const analyzedWithPlatforms = analyzedTyped.outputs.needsEmail
+          ? analyzedTyped
+          : goalSpec.parse({ ...analyzedTyped, platforms: Array.from(new Set([...analyzedTyped.platforms, ...parsePlatforms(ctx.message)])) as GoalSpec['platforms'] });
         // Merge onto the prior goal (additive) only WITHIN the same kind — a genuine refine. A kind SWITCH
         // (marketing after an email, or vice-versa) starts fresh so nothing bleeds across. A bare confirm/
         // refine names nothing new (empty delta) → always continues the prior, so an email survives its
         // confirm turn even if this turn's analyzed type looks different.
-        const effKind = analyzedTyped.outputs.needsEmail ? 'email' : 'marketing';
+        const effKind = analyzedWithPlatforms.outputs.needsEmail ? 'email' : 'marketing';
         const priorKind = ctx.priorGoal ? (ctx.priorGoal.outputs.needsEmail ? 'email' : 'marketing') : null;
-        const deltaEmpty = !analyzedTyped.outputs.needsEmail && !(analyzedTyped.slots.product ?? '').trim()
-          && analyzedTyped.platforms.length === 0 && !analyzedTyped.outputs.needsIdeation
-          && !analyzedTyped.outputs.needsInfographic && !analyzedTyped.outputs.needsVideo;
+        const deltaEmpty = !analyzedWithPlatforms.outputs.needsEmail && !(analyzedWithPlatforms.slots.product ?? '').trim()
+          && analyzedWithPlatforms.platforms.length === 0 && !analyzedWithPlatforms.outputs.needsIdeation
+          && !analyzedWithPlatforms.outputs.needsInfographic && !analyzedWithPlatforms.outputs.needsVideo;
         const isSwitch = ctx.priorGoal != null && !deltaEmpty && priorKind !== effKind;
-        const mergedAdditive = ctx.priorGoal && !isSwitch ? mergeGoals(ctx.priorGoal, analyzedTyped) : analyzedTyped;
+        const mergedAdditive = ctx.priorGoal && !isSwitch ? mergeGoals(ctx.priorGoal, analyzedWithPlatforms) : analyzedWithPlatforms;
         // Subtractive pass AFTER the additive merge (mergeGoals alone is additive and would keep a node the
         // user asked to drop). applyRemovals un-sets the named output flags (storyboard removal also drops
         // video) + drops named platforms, with an empty-plan guard. No-op when nothing was flagged for removal.
