@@ -1150,3 +1150,11 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `plans/260725-1600-regex-to-llm-intent-migration/plan.md`
 - **test(thinking-budget): inject fake key so the e2e binding runs under the aggregate suite** (0947b78)
   - `MKTAgent/src/orchestration/verify-thinking-budget.ts`
+- **docs(architecture): raw explore-agent reports for architecture map** (bd05626)
+  - `docs/feature-map.md`
+  - `plans/260725-1600-architecture-map/agent-reports/01-orchestration.md`
+  - `plans/260725-1600-architecture-map/agent-reports/02-api-data-auth.md`
+  - `plans/260725-1600-architecture-map/agent-reports/03-leads-nurture-social-messaging.md`
+  - `plans/260725-1600-architecture-map/agent-reports/04-media-copygen-cost-scheduler.md`
+  - `plans/260725-1600-architecture-map/agent-reports/05-frontend-web.md`
+  - `plans/260725-1600-architecture-map/agent-reports/06-repo-root-dirs.md`
