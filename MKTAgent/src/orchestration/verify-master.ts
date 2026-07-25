@@ -5,7 +5,7 @@ import { analyzeDeterministic } from './master/deterministic-analyzer.ts';
 import { evaluateClarification } from './master/clarification-engine.ts';
 import { MasterAgent } from './master/master-agent.ts';
 import { deterministicReply, conversationAuthor } from './master/conversation-author.ts';
-import { detectLanguage, contentLanguageFor } from './master/detect-language.ts';
+import { detectLanguage, contentLanguageFor, replyLanguageHint, looksVietnamese } from './master/detect-language.ts';
 import { mergeGoals, applyRemovals } from './master/goal-merge.ts';
 import { parseRemovals } from './master/deterministic-analyzer.ts';
 import { goalSpec } from './schemas/goal-spec.ts';
@@ -379,6 +379,29 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   check('established prior outranks the declaration (bare confirm does not re-decide)', contentLanguageFor('proceed', 'id', 'en') === 'id');
 }
 
+// Reply-language contract (the language Atria's CHAT reply is written in — distinct from content). The bug:
+// an English message naming a Vietnamese brand ("Nắng Sớm") + a VN memory block dragged the whole reply
+// into Vietnamese. replyLanguageHint mirrors content's priority (prior → confident detection → null-defer)
+// but never consults the account default, and treats a foreign brand name as NOT changing the language.
+{
+  console.log('Reply-language hint + self-check');
+  // EN message naming a VN brand → null (defer to the model mirroring the SENTENCE), NOT 'vi'. This is the
+  // exact reported case: a Capitalized VN brand must not flip the reply.
+  check('EN msg + VN brand → no VN flip (null → mirror sentence)', replyLanguageHint('Make an infographic for Nắng Sớm', null).code === null, replyLanguageHint('Make an infographic for Nắng Sớm', null));
+  check('EN msg + 2-word VN brand → still no flip', replyLanguageHint('Post about Cà phê Nắng Sớm please', null).code === null, replyLanguageHint('Post about Cà phê Nắng Sớm please', null));
+  // Established prior language holds a bare confirm (a "proceed" must not re-decide the reply language).
+  check('prior language holds a bare confirm', replyLanguageHint('proceed', 'en').code === 'en', replyLanguageHint('proceed', 'en'));
+  check('prior vi holds', replyLanguageHint('ok', 'vi').code === 'vi', replyLanguageHint('ok', 'vi'));
+  // A GENUINE Vietnamese message is still caught (regex ground truth for real VN prose).
+  check('real VN prose → vi', replyLanguageHint('viết bài về Nắng Sớm', null).code === 'vi', replyLanguageHint('viết bài về Nắng Sớm', null));
+  // Non-Latin script is ground truth regardless of prior absence.
+  check('Thai message → th', replyLanguageHint('เขียนโพสต์สั้นๆ', null).code === 'th', replyLanguageHint('เขียนโพสต์สั้นๆ', null));
+  // looksVietnamese self-check (Layer 3 mismatch probe): a VN-heavy reply is detected; an English reply
+  // that merely quotes a VN brand is NOT (so the probe doesn't false-alarm on a correct English reply).
+  check('self-check: VN-heavy reply → true', looksVietnamese('Tôi đã tạo một infographic cho bạn rồi nhé, bạn xem thử'), true);
+  check('self-check: EN reply quoting a VN brand → false', !looksVietnamese("I've created an infographic for Nắng Sớm"), true);
+}
+
 // Optional live Gemini smoke.
 async function geminiSmoke(): Promise<void> {
   if (!env.GEMINI_API_KEY) { console.log('Gemini smoke: SKIPPED (no GEMINI_API_KEY)'); return; }
@@ -431,6 +454,20 @@ async function geminiSmoke(): Promise<void> {
   const thMsg = 'เขียนโพสต์ LinkedIn สั้นๆ เกี่ยวกับฟีเจอร์ใหม่ของเรา';
   const thReply = await conversationAuthor.author(agentL.planFromGoal(analyzeDeterministic(thMsg)), [], { userMessage: thMsg, language: 'th' });
   check('Thai message → reply contains Thai script', /[฀-๿]/.test(thReply), thReply.slice(0, 160));
+
+  // Reply-language LIVE guard: the REPORTED bug end-to-end through the real brain. An ENGLISH message that
+  // names a Vietnamese brand, with a Vietnamese memory block present, must reply in ENGLISH — not Vietnamese
+  // dragged in by the brand name + the VN context. Drives runAtriaBrain (a pure reply turn writes no DB
+  // rows; the usage ledger has no owner FK and swallows its own errors, so a null owner is safe here).
+  const { runAtriaBrain } = await import('./atria/atria-brain.ts');
+  const viMemory = `What you already KNOW about this user (recalled memory):
+- [product] Nắng Sớm: Cà phê nguyên chất, không gian ấm cúng
+- [brand] preferred voice: chuyên nghiệp, thân thiện`;
+  const turn = await runAtriaBrain({ message: 'Tell me what you know about my Nắng Sớm coffee brand', ownerId: null as unknown as string, memoryContext: viMemory, instructions: null, sessionId: null });
+  const replyText = turn.kind === 'reply' ? turn.text : '';
+  // Strip the brand name itself before the diacritic check (quoting "Nắng Sớm" in an English reply is fine);
+  // looksVietnamese already ignores a Capitalized brand, so the combined check flags only a real VN reply.
+  check('EN message + VN brand + VN memory → reply is NOT Vietnamese', turn.kind !== 'reply' || (!looksVietnamese(replyText) && !VI_DIA.test(replyText.replace(/Nắng Sớm/g, ''))), { kind: turn.kind, reply: replyText.slice(0, 200) });
 }
 
 await geminiSmoke();

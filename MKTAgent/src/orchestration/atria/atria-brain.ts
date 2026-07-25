@@ -14,7 +14,7 @@ import { atriaBrainSystemPrompt } from '../prompts/atria-brain-prompt.ts';
 import { TOOL_DECLARATIONS, dispatchTool, rescueScheduleProposal, type ToolContext } from './atria-tools.ts';
 import { getBrainCache, invalidateBrainCache } from './atria-brain-cache.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
-import { detectLanguage, languageName } from '../master/detect-language.ts';
+import { replyLanguageHint, looksVietnamese } from '../master/detect-language.ts';
 import { BRAIN_THINKING_BUDGET } from '../thinking-budget.ts';
 import { logger } from '../../lib/logger.ts';
 import type { PriorMessage } from '../master/conversation-author.ts';
@@ -142,7 +142,11 @@ async function legacyFallback(input: AtriaBrainInput): Promise<AtriaTurn> {
 // could not reply" — without it the two are indistinguishable downstream, and a failure gets counted,
 // logged, and shown as a normal conversational answer.
 const gracefulReply = (message: string, searched: string[], tools: string[], rounds: number): AtriaTurn => {
-  const vi = detectLanguage(message) === 'vi';
+  // Localize the apology to the message language when we can detect it confidently (VN gets the VN copy);
+  // any other detected/undetected language falls back to English — we only hand-author these two strings,
+  // and a wrong-language apology is a smaller harm than an untranslated one. (A future i18n catalog entry
+  // would let this cover every UI language; YAGNI until the degrade path is user-visible enough to matter.)
+  const vi = replyLanguageHint(message).code === 'vi';
   const text = vi
     ? 'Atria đang gặp chút trở ngại nên chưa phản hồi được yêu cầu này. Đây là sự cố tạm thời — bạn thử lại sau ít phút giúp mình nhé.'
     : 'Atria is having trouble and could not process that request. This is temporary — please try again in a few minutes.';
@@ -182,17 +186,21 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
   if (input.instructions?.trim()) preamble.push({ text: input.instructions.trim() });
   if (input.memoryContext?.trim()) preamble.push({ text: input.memoryContext.trim() });
   if (input.voice) preamble.push({ text: '(The user is speaking by voice — reply in 1–2 short, natural spoken sentences. No lists or markdown.)' });
-  // Reply-language pin (recurring bug): the memory/Instructions blocks above are often in the user's
-  // saved language (e.g. Vietnamese), and the model drifts to THAT language even when the user's actual
-  // message is in another (e.g. English). The cached system-prompt LANGUAGE rule loses to the closer,
-  // bulkier context. So restate it HERE, adjacent to the message and naming the detected language, so it
-  // wins. A confident script detection names the language; a Latin/undetermined message just forbids
-  // mirroring the context. This is the LAST preamble item — closest to the user's words.
-  const msgLang = detectLanguage(input.message);
-  const namedLang = languageName(msgLang);
-  preamble.push({ text: namedLang
-    ? `(CRITICAL: Write your entire reply in ${namedLang} — the language of the user's message below. The background context above may be in a different language; IGNORE that for your language choice.)`
-    : `(CRITICAL: Write your entire reply in the SAME language the user wrote their message below in. The background context above may be in a different language such as Vietnamese — do NOT mirror the context; mirror the user's message. If their message is in English, reply in English.)` });
+  // Reply-language pin (recurring bug — now LLM-authoritative like content). The memory/Instructions
+  // blocks above are often in the user's SAVED language (e.g. Vietnamese), and the model drifts to THAT
+  // language even when the user's actual message is in another (e.g. English naming a VN brand). The
+  // cached system-prompt rule loses to the closer, bulkier context. Two defenses, no extra LLM call:
+  //   (1) a hard SEPARATOR marks everything above as BACKGROUND whose language must be ignored, so the
+  //       model doesn't mirror it; and
+  //   (2) the language directive is the LAST preamble item — closest to the user's words — built from
+  //       replyLanguageHint, which honors an ESTABLISHED prior language (a bare "proceed" keeps the flow's
+  //       language) then a CONFIDENT detection, and otherwise tells the model to mirror the SENTENCE and
+  //       treat a foreign brand/product name as NOT changing the message language.
+  if (preamble.length) preamble.push({ text: '--- End of background context. Everything above is BACKGROUND ONLY. Do NOT mirror its language; answer in the language of the user\'s message below. ---' });
+  const reply = replyLanguageHint(input.message, input.priorGoal?.slots.language ?? null);
+  preamble.push({ text: reply.name
+    ? `(CRITICAL: Write your entire reply in ${reply.name} — the language of the user's message below. The background context above may be in a different language; IGNORE that for your language choice.)`
+    : `(CRITICAL: Write your entire reply in the SAME language the user wrote their message below in — mirror the SENTENCE, not any product or brand name inside it. A brand/product name in another language (e.g. a Vietnamese name "Nắng Sớm" inside an English sentence) does NOT change the message's language. The background context above may be in a different language such as Vietnamese — do NOT mirror the context; mirror the user's message. If their message is in English, reply in English.)` });
   const userParts = [...preamble, { text: input.message }];
   const contents: GeminiContent[] = [...historyContents(input.prior ?? []), { role: 'user', parts: userParts }];
   const tools: string[] = [];
@@ -275,7 +283,18 @@ export async function runAtriaBrain(input: AtriaBrainInput): Promise<AtriaTurn> 
             text = stripThoughtLabel(textOf(rparts));
           }
         }
-        if (text.trim()) return { kind: 'reply', text, searched: ctx.searched, tools, rounds: round + 1, executeRunId: ctx.executeRunId };
+        if (text.trim()) {
+          // Reply-language self-check (Layer 3): a cheap, no-LLM mismatch probe. If the user's message is
+          // NOT Vietnamese but the reply came out Vietnamese-heavy (the exact bug: EN message + VN brand +
+          // VN memory dragged the reply into VN), log it so a regression is VISIBLE instead of silent. We do
+          // NOT auto-translate (that would be the rigid behavior the user objected to) — the fix is the
+          // stronger pin above; this is the mechanism-in-a-signal that proves it holds. Only flag the clear
+          // asymmetric case (message not VN, reply VN) to avoid noise.
+          if (reply.code !== 'vi' && !looksVietnamese(input.message) && looksVietnamese(text)) {
+            logger.warn('atria_reply_language_mismatch', { runId: input.sessionId ?? null, round: round + 1, hint: reply.code, note: 'reply is Vietnamese but the user message is not' });
+          }
+          return { kind: 'reply', text, searched: ctx.searched, tools, rounds: round + 1, executeRunId: ctx.executeRunId };
+        }
         logger.warn('atria_brain_degraded', { runId: input.sessionId ?? null, round, reason: 'empty_content' });
         return gracefulReply(input.message, ctx.searched, tools, round + 1); // empty text (5xx/safety block) → no junk "…" turn
       }

@@ -108,3 +108,36 @@ export const contentLanguageFor = (message: string, prior: string | null | undef
   if (priorCode) return priorCode;
   return declaredCode(declared) ?? detectLanguage(message) ?? 'en';
 };
+
+// ── Reply language (the language Atria's CHAT reply is written in) ──────────────────────────────────
+// Distinct from contentLanguageFor (the language generated POSTS/emails use). The reply must mirror the
+// language the user is TYPING, not the language of their product/brand or the recalled memory context.
+// The bug this fixes: an English message that merely names a Vietnamese brand ("Nắng Sớm") plus a bulky
+// Vietnamese memory block dragged the whole reply into Vietnamese, because the only signal was
+// detectLanguage(message) (→ null for a Capitalized brand) followed by a soft one-line hint that the
+// closer, heavier VN context out-weighed. Same LLM-authoritative philosophy as content, applied to reply:
+//   1. The flow's ESTABLISHED prior language holds — a bare "proceed"/"đúng vậy" must not re-decide it.
+//   2. Else a CONFIDENT script/VN detection of THIS message (non-Latin ground truth, or real VN prose).
+//   3. Else null → the caller tells the model to mirror the SENTENCE and ignore background/brand language.
+// Account/UI default is deliberately NOT consulted here: a reply mirrors what the user is writing now, not
+// their saved default (that default is only content's LAST-resort fallback). See feedback_reply_language_pin.
+export interface ReplyLanguage { code: string | null; name: string | null }
+export const replyLanguageHint = (message: string, prior?: string | null): ReplyLanguage => {
+  const priorCode = (prior ?? '').trim().toLowerCase();
+  if (priorCode && /^[a-z]{2,3}$/.test(priorCode)) return { code: priorCode, name: languageName(priorCode) };
+  const detected = detectLanguage(message);
+  return { code: detected, name: languageName(detected) };
+};
+
+// Cheap, dependency-free "does this text read as Vietnamese?" for the reply self-check (NOT a language
+// decision — just a mismatch probe). Fires on real VN evidence: ≥2 lowercase VN-diacritic tokens, or ≥2
+// distinct unaccented VN function words. A lone Capitalized brand ("Nắng Sớm") does NOT trip it (mirrors
+// detectLanguage's proportional rule), so an English reply that merely quotes a VN brand is not flagged.
+export const looksVietnamese = (text: string): boolean => {
+  const t = text ?? '';
+  const tokens = t.trim().split(/\s+/).filter(Boolean);
+  const vnLower = tokens.filter((tok) => VI_DIACRITICS.test(tok) && !/^[\p{Lu}]/u.test(tok)).length;
+  if (vnLower >= 2) return true;
+  const viHits = new Set((t.toLowerCase().match(VI_WORDS) ?? []).map((w) => w.trim())).size;
+  return viHits >= 2;
+};
