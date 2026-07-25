@@ -8,7 +8,7 @@ import { workspaceMetrics } from '../master/report-answer.ts';
 import { recallForMessage } from '../../memory/user-memory.ts';
 import { rememberFreeform, type MemoryKind } from '../../db/repos/user-memory-repo.ts';
 import { requirementAnalyzer } from '../master/requirement-analyzer.ts';
-import { emailOutputs, parseRemovals, parseEmailIntent, parsePlatforms } from '../master/deterministic-analyzer.ts';
+import { emailOutputs, parseEmailIntent, parsePlatforms } from '../master/deterministic-analyzer.ts';
 import { masterAgent, type MasterAgentOutcome } from '../master/master-agent.ts';
 import { mergeGoals, applyRemovals } from '../master/goal-merge.ts';
 import { contentLanguageFor } from '../master/detect-language.ts';
@@ -337,14 +337,20 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         // undefined so the goal parse stays byte-identical to the old analyze() path; removals come from the
         // message (LLM or regex parseRemovals) and are applied AFTER the additive merge below.
         const { goal: analyzed, removals: analyzedRemovals } = await requirementAnalyzer.analyzeWithRemovals(str(args.goal_description) || ctx.message, undefined, ctx.ownerId, ctx.memoryContext, ctx.instructions);
-        // Removal intent is read from BOTH the goal_description AND the user's raw message — the brain often
-        // passes only the positive goal in goal_description, so a "remove the video" refine would be lost if
-        // we only looked there. parseRemovals(ctx.message) catches it from the user's actual words. Union.
-        const msgRemovals = parseRemovals(ctx.message);
-        const removals = {
-          disableOutputs: [...new Set([...analyzedRemovals.disableOutputs, ...msgRemovals.disableOutputs])],
-          dropPlatforms: [...new Set([...analyzedRemovals.dropPlatforms, ...msgRemovals.dropPlatforms])],
-        } as typeof analyzedRemovals;
+        // Removal intent is now LLM-AUTHORITATIVE (Phase 2 of the regex→LLM migration). Previously this
+        // UNIONed a regex parseRemovals(ctx.message) on top of the analyzer's result — to catch a removal the
+        // brain's paraphrase (goal_description) dropped. But that union re-introduced the very false-positives
+        // the migration removes: it read "publish WITHOUT review" as dropping publishing+facebook, and it
+        // cannot parse nested negation ("don't publish to FB but post to IG"). Instead, when the brain passed
+        // a DIFFERENT goal_description than the raw message (a paraphrase that may have dropped a removal),
+        // re-analyze the RAW message for its removals and take whichever signal is non-empty — the MODEL reads
+        // the whole sentence on both. No regex. Same-text (no paraphrase) → one call, its removals stand.
+        let removals = analyzedRemovals;
+        const paraphrased = str(args.goal_description).trim() && str(args.goal_description).trim() !== ctx.message.trim();
+        if (paraphrased && removals.disableOutputs.length === 0 && removals.dropPlatforms.length === 0) {
+          const rawAnalysis = await requirementAnalyzer.analyzeWithRemovals(ctx.message, undefined, ctx.ownerId, ctx.memoryContext, ctx.instructions);
+          if (rawAnalysis.removals.disableOutputs.length || rawAnalysis.removals.dropPlatforms.length) removals = rawAnalysis.removals;
+        }
         // The BRAIN (LLM) declares the intent KIND — 'email' (a personal message SENT to a person) vs
         // 'marketing' (a social post / campaign). The regex analyzer only extracts slots; it must NOT decide
         // the TYPE (letting it guess is what mis-routed a birthday greeting into a 5-platform campaign, and
@@ -363,13 +369,18 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
         // as the language-agnostic @ recipient). The analyzer already unions parsePlatforms over the text it
         // was handed — but that text is the brain's `goal_description`, a PARAPHRASE that routinely drops the
         // platform the user actually named ("...on Facebook" → paraphrased without "Facebook" → platforms []).
-        // The user's RAW message still carries it, so union parsePlatforms(ctx.message) here — mirrors the
-        // parseRemovals(ctx.message) union above, for the same reason. Skipped for an email flow (no social
-        // platforms). Preserves F19: this only ADDS a named platform, it never resurrects a prior campaign's
-        // set (mergeGoals still lets a delta that names its own platforms replace prior).
+        // The user's RAW message still carries it, so union parsePlatforms(ctx.message) here. Skipped for an
+        // email flow (no social platforms). Two guards keep this a FACT recovery, not an intent override:
+        //   - Preserves F19: only ADDS a named platform, never resurrects a prior campaign's set (mergeGoals
+        //     still lets a delta that names its own platforms replace prior).
+        //   - Respects the model's removals: a platform the model deliberately EXCLUDED ("don't publish to
+        //     Facebook, but post to Instagram" → dropPlatforms ['facebook']) is subtracted, so a raw-message
+        //     mention of "Facebook" doesn't pull back a platform the user said NOT to use. Recover a forgotten
+        //     platform, never one the model classified out.
+        const droppedPlats = new Set<string>(removals.dropPlatforms);
         const analyzedWithPlatforms = analyzedTyped.outputs.needsEmail
           ? analyzedTyped
-          : goalSpec.parse({ ...analyzedTyped, platforms: Array.from(new Set([...analyzedTyped.platforms, ...parsePlatforms(ctx.message)])) as GoalSpec['platforms'] });
+          : goalSpec.parse({ ...analyzedTyped, platforms: Array.from(new Set([...analyzedTyped.platforms, ...parsePlatforms(ctx.message)])).filter((p) => !droppedPlats.has(p)) as GoalSpec['platforms'] });
         // Merge onto the prior goal (additive) only WITHIN the same kind — a genuine refine. A kind SWITCH
         // (marketing after an email, or vice-versa) starts fresh so nothing bleeds across. A bare confirm/
         // refine names nothing new (empty delta) → always continues the prior, so an email survives its

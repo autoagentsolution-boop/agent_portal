@@ -467,6 +467,27 @@ async function geminiSmoke(): Promise<void> {
   check('F19 live: single-asset ask → scope single despite remembered campaign', bleedGoal.campaignScope === 'single', bleedGoal.campaignScope);
   check('F19 live: single-asset ask → only Instagram despite remembered fb/ig/linkedin', bleedGoal.platforms.length === 1 && bleedGoal.platforms.includes('instagram'), bleedGoal.platforms);
 
+  // Regex→LLM intent migration (Phase 2): removals are now LLM-authoritative (the regex union that
+  // corrupted them is gone). Drive the adversarial corpus through the LIVE analyzer — the evidence that
+  // the model handles false-removals + nested negation the regex could not, so dropping the union is safe.
+  const { ALL_INTENT_CASES, ALL_FACT_CASES } = await import('./testing/intent-corpus.ts');
+  for (const c of [...ALL_INTENT_CASES, ...ALL_FACT_CASES]) {
+    const { goal: g, removals: rem } = await analyzer.analyzeWithRemovals(c.message);
+    const e = c.expect;
+    const fails: string[] = [];
+    if (e.campaignScope && g.campaignScope !== e.campaignScope) fails.push(`scope ${g.campaignScope}`);
+    if (e.autoPublish !== undefined && g.autoPublish !== e.autoPublish) fails.push(`auto ${g.autoPublish}`);
+    if (e.qualityPref && g.qualityPref !== e.qualityPref) fails.push(`qual ${g.qualityPref}`);
+    if (e.needsPublishing !== undefined && g.outputs.needsPublishing !== e.needsPublishing) fails.push(`pub ${g.outputs.needsPublishing}`);
+    if (e.needsVideo !== undefined && g.outputs.needsVideo !== e.needsVideo) fails.push(`video ${g.outputs.needsVideo}`);
+    if (e.platformsInclude) for (const p of e.platformsInclude) if (!(g.platforms as string[]).includes(p)) fails.push(`missing ${p}`);
+    if (e.platformsExclude) for (const p of e.platformsExclude) if ((g.platforms as string[]).includes(p)) fails.push(`extra ${p}`);
+    if (e.noRemoval && (rem.disableOutputs.length || rem.dropPlatforms.length)) fails.push(`false-rem ${JSON.stringify(rem)}`);
+    if (e.removedOutputs) for (const o of e.removedOutputs) if (!(rem.disableOutputs as string[]).includes(o)) fails.push(`missed-rem ${o}`);
+    if (e.removedPlatforms) for (const p of e.removedPlatforms) if (!(rem.dropPlatforms as string[]).includes(p)) fails.push(`missed-drop ${p}`);
+    check(`intent-corpus: ${c.id}`, fails.length === 0, fails.join('; '));
+  }
+
   // Language fidelity: the reply must mirror the user's message language even though the
   // clarification seeds are partly Vietnamese (the reported bug). Pass the raw message so
   // the model mirrors it. (a) English message → NO Vietnamese diacritics.

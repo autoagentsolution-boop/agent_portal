@@ -126,12 +126,18 @@ export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
       clampVideoLength(raw);
       const parsed = goalSpec.safeParse(raw);
       if (!parsed.success) return fallback();
-      // Removals are optional in the LLM output; fall back to the regex parser when the
-      // model omits them (so a deterministic removal phrase still works even via Gemini).
-      const llmRemovals = removalsSchema.safeParse((raw as { removals?: unknown })?.removals);
-      const removals = llmRemovals.success && (llmRemovals.data.disableOutputs.length || llmRemovals.data.dropPlatforms.length)
-        ? llmRemovals.data
-        : parseRemovals(message);
+      // Removals are LLM-AUTHORITATIVE (Phase 2 of the regex→LLM migration). The model reads the whole
+      // sentence — it distinguishes a real removal ("bỏ video") from a removal VERB that modifies something
+      // else ("publish WITHOUT review" = keep publishing) and from nested negation ("don't publish to FB but
+      // post to IG"), which a regex fundamentally cannot. So the model's declared `removals` WIN whenever the
+      // model produced a valid `removals` object at all. `parseRemovals(message)` is now a FALLBACK ONLY —
+      // used when the model omitted the field entirely (older prompt / malformed output), never UNIONed on
+      // top (the union re-introduced the false-positives it was meant to fix: it dropped `publishing` +
+      // `facebook` from "publish automatically without review"). Baseline evidence: over the adversarial
+      // corpus the model's raw removals matched intent on every case; the union was what corrupted them.
+      const rawRemovals = (raw as { removals?: unknown })?.removals;
+      const llmRemovals = removalsSchema.safeParse(rawRemovals);
+      const removals = rawRemovals != null && llmRemovals.success ? llmRemovals.data : parseRemovals(message);
       // LLM-authoritative goal (same philosophy as contentLanguageFor): the model read the message and
       // its extraction WINS; the deterministic parser is only a FALLBACK for the fields the model left
       // empty/default, never an override that second-guesses a value the model actually declared. This is
@@ -144,7 +150,15 @@ export class GeminiRequirementAnalyzer implements RequirementAnalyzer {
       // as the language-agnostic @ recipient below: extract a fact, don't second-guess intent). This is the
       // one regex-corroboration kept; the intent-classification overrides (scope/autoPublish/quality/
       // email-routing) are gone — those the model owns.
-      const platforms = Array.from(new Set([...parsed.data.platforms, ...parsePlatforms(message)])) as GoalSpec['platforms'];
+      // BUT the union must not resurrect a platform the model INTENTIONALLY excluded: "don't publish to
+      // Facebook, but post to Instagram" → the model correctly declares platforms [instagram] +
+      // dropPlatforms [facebook]. A blind parsePlatforms(message) sees the word "Facebook" and pulls it
+      // back, corrupting a correct intent classification (the FACT union overriding an INTENT decision —
+      // the exact anti-pattern this migration removes). So subtract the model's dropPlatforms from the
+      // union: recover a DROPPED platform the model forgot to mention, never one it deliberately removed.
+      const dropped = new Set<string>(removals.dropPlatforms);
+      const platforms = Array.from(new Set([...parsed.data.platforms, ...parsePlatforms(message)]))
+        .filter((p) => !dropped.has(p)) as GoalSpec['platforms'];
       // Recipient is a language-agnostic @ address (any language); ROUTING email-vs-marketing is the
       // brain's `kind` declaration downstream (propose_workflow), never a regex keyword guess. The email
       // angle/subject the model already extracted stay as-is.

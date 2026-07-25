@@ -39,6 +39,11 @@ Convert the user's marketing request into ONLY valid JSON of this exact shape:
 }
 Rules:
 - removals: ONLY for a follow-up that asks to TAKE SOMETHING AWAY ("bỏ video", "remove the infographic", "drop facebook", "không cần ảnh nữa"). disableOutputs ⊆ ["ideation","strategy","research","infographic","storyboard","video","publishing"]; dropPlatforms ⊆ the platform list. Leave both empty [] for any additive or first request. Adding something ("thêm video") is NOT a removal.
+  Read the WHOLE sentence — a word like "without" / "no longer" / "drop" is a removal ONLY when it acts on the thing being removed:
+  • "publish automatically WITHOUT review" → the user IS publishing, only skipping review → removals EMPTY, needsPublishing true, autoPublish true. Do NOT put "publishing" in disableOutputs.
+  • "I NO LONGER want just Facebook — post to Instagram and Threads too" → this is ADDITIVE (expanding platforms). platforms ["instagram","threads"], removals EMPTY. Do NOT drop facebook.
+  • "DON'T publish to Facebook, but DO post to Instagram" → nested negation: platforms ["instagram"], dropPlatforms ["facebook"]. Set the platforms you KEEP; put the excluded one in dropPlatforms so it is not published to.
+  • "make a BOLD video ad, WITHOUT A DOUBT" → "without a doubt" is an idiom, not a removal → needsVideo true, removals EMPTY.
 - Set output flags from what the user actually asks for. needsInfographic/needsVideo only when the user wants that media. needsPublishing=false only if they say draft-only / don't publish.
 - Storyboard vs video: these are INDEPENDENT deliverables — neither implies the other. Storyboard = a set of detail frames / carousel slides, usable on its own. Video = an actual video, which is planned by its own script agent and does NOT need a storyboard. Set needsStoryboard=true ONLY for an explicit storyboard/carousel/multi-image request. Set needsVideo=true ONLY for an actual video. Removing one leaves the other untouched. If the user wants BOTH, set both flags.
 - Single image vs carousel: a CAROUSEL / photo album / MULTIPLE images ("carousel", "nhiều ảnh", "nhiều hình", "multiple images", "slides", "album") → set needsStoryboard=true and needsInfographic=false (the storyboard produces the multiple slide images), and do NOT set needsVideo. A SINGLE image / infographic → needsInfographic=true instead.
