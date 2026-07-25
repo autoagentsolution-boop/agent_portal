@@ -73,17 +73,18 @@ removal), "no longer just FB" (additive), "don't FB but IG" (nested → dropPlat
 - `intent-corpus.ts` + verify-master live block: pin 12 ca (10 intent + 2 fact) → all green.
 - Multi-turn paraphrase-drop removal: verified (paraphrase rỗng → raw-msg LLM re-analyze → video dropped).
 
-### Phase 3 — Tách parseEmailIntent — ⏳ ĐÁNH GIÁ
-`parseEmailIntent(ctx.message)` còn ở 2 chỗ: (1) task-email recipient composition (line ~314) — dùng
-`.to` (@ address = FACT, giữ) + `.isEmail` như 1 trong 4 fallback signal; (2) `rescueScheduleProposal`
-(line ~473) — `.isEmail` quyết kind khi brain KHÔNG propose (đã là sanctioned regex fallback, đúng vai).
-→ `.isEmail` ở (1) chỉ là fallback CUỐI sau lead/declaredTo/requestAddr; ở (2) là rescue-only. CẢ HAI
-đã là fallback, KHÔNG phải classifier trên happy path (brain's `kind` owns it). **Không cần migrate** —
-đây đã đúng ranh giới. Đóng Phase 3 là no-op có chủ đích.
+### Phase 3 — Tách parseEmailIntent — ✅ DONE (kết luận: no-op có chủ đích)
+Đã đánh giá đầy đủ. `parseEmailIntent(ctx.message)` còn ở 2 chỗ: (1) task-email recipient composition
+(line ~314) — dùng `.to` (@ address = FACT, giữ) + `.isEmail` như 1 trong 4 fallback signal; (2)
+`rescueScheduleProposal` (line ~473) — `.isEmail` quyết kind khi brain KHÔNG propose (đã là sanctioned
+regex fallback, đúng vai). Kết luận: `.isEmail` ở (1) chỉ là fallback CUỐI sau lead/declaredTo/requestAddr;
+ở (2) là rescue-only. CẢ HAI đã là fallback, KHÔNG phải classifier trên happy path (brain's `kind` owns
+it). **KHÔNG cần migrate — đây đã đúng ranh giới FACT/INTENT.** Phase đóng, không có code change.
 
-### Phase 4 (tùy chọn) — Adversarial verifier — ⏸ CHỜ USER CHỐT COST
-Corpus hiện đủ cho regression. Một proposer→verifier loop mở rộng corpus tự động chỉ đáng khi feature
-rộng ra (nhiều ngôn ngữ hơn). Token cost + phạm vi user chốt trước khi chạy.
+### Phase 4 (tùy chọn) — Adversarial verifier — ⏸ NOT STARTED (chờ user chốt cost + scope)
+KHÔNG bắt đầu — cố ý. Corpus hiện (12 ca) đã đủ cho regression + đã pin live. Một proposer→verifier loop
+để tự mở rộng corpus chỉ đáng làm khi feature rộng ra (nhiều ngôn ngữ hơn). Token cost + phạm vi user
+CHỐT trước khi chạy — không tự làm.
 
 ## Rủi ro
 - **Removals qua model kém tin hơn regex trên câu ĐƠN GIẢN** ("bỏ video") — regex bắt chắc, model có
