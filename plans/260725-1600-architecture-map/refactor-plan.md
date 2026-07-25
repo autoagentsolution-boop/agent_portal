@@ -3,6 +3,10 @@
 **Branch:** `refactor/full-product` · **Baseline:** 74/74 verify green (`0947b78`), tree clean.
 **Decisions (locked by user):** goal = **Cleanup + Hardening** (đóng nợ kiến trúc, KHÔNG re-architecture v2). Order = **quick-wins trước** rồi god-files. Test = **characterization BẮT BUỘC trước** khi đụng bất kỳ dòng nào của một vùng.
 
+> **⏸ TRẠNG THÁI: chờ user chốt 6 open-question (cuối file) SAU KHI CLEAR SESSION.**
+> User yêu cầu (2026-07-25): đưa 6 câu vào plan, hỏi lại ở session mới. **CHƯA thực thi Phase nào** cho tới khi 6 câu được trả lời. Session mới: đọc plan này + `agent-reports/`, hỏi lại 6 open-question, rồi mới bắt đầu Phase 0.
+> Cold-start pointers: state memory `state-260725-*`, baseline verify 74/74 (`0947b78`), plan này + 6 raw report ở `agent-reports/`.
+
 ---
 
 ## Context — vì sao refactor này
