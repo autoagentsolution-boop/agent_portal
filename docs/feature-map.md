@@ -1148,3 +1148,5 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `plans/260725-1600-regex-to-llm-intent-migration/plan.md`
 - **docs(plan): mark regex→LLM migration Phase 3 done, Phase 4 not-started** (4f07885)
   - `plans/260725-1600-regex-to-llm-intent-migration/plan.md`
+- **test(thinking-budget): inject fake key so the e2e binding runs under the aggregate suite** (0947b78)
+  - `MKTAgent/src/orchestration/verify-thinking-budget.ts`
