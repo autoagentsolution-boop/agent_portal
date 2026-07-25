@@ -1143,3 +1143,8 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `MKTAgent/src/orchestration/master/requirement-analyzer.ts`
   - `MKTAgent/src/orchestration/prompts/requirement-prompt.ts`
   - `MKTAgent/src/orchestration/verify-master.ts`
+- **docs(plans): reply-language + regex→LLM intent migration plans** (5e8f2a5)
+  - `plans/260725-1500-reply-language-llm-authoritative/plan.md`
+  - `plans/260725-1600-regex-to-llm-intent-migration/plan.md`
+- **docs(plan): mark regex→LLM migration Phase 3 done, Phase 4 not-started** (4f07885)
+  - `plans/260725-1600-regex-to-llm-intent-migration/plan.md`
