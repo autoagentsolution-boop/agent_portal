@@ -78,6 +78,13 @@ async function main(): Promise<void> {
   const planned = planWorkflow(goal);
   if (!planned.ok) { ok(false, 'plan ok for execution'); return; }
   const user = await prisma.user.create({ data: { email: `tb-${Date.now()}@test.local`, defaultLanguage: 'en' } });
+  // Inject a fake key so the summarize→security seam takes the (spied) fetch path. Without this, a suite
+  // run that clears GEMINI_API_KEY makes the upstream security node throw "GEMINI_API_KEY not configured"
+  // BEFORE fetch is reached — the run never completes and no body is captured. Standalone this passed only
+  // because .env supplied a real key; inside the aggregate runner (key cleared) it failed. Mirrors the
+  // env-injection already done for section 2 (lines ~59-60). Restored in the outer finally.
+  const hadKeyE2E = env.GEMINI_API_KEY;
+  (env as { GEMINI_API_KEY: string }).GEMINI_API_KEY = 'test-key';
   try {
     // Real path (NO llmJsonFn in opts) → executor binds callGeminiJson with the node budget; fetch is spied.
     const spy = spyFetch({ summary: 'Tea margins hinge on yield vs labor.', bullets: ['yield', 'labor'] });
@@ -104,6 +111,7 @@ async function main(): Promise<void> {
       spy2.restore();
     }
   } finally {
+    (env as { GEMINI_API_KEY: string }).GEMINI_API_KEY = hadKeyE2E;
     await prisma.user.delete({ where: { id: user.id } });
     console.log('cleanup: throwaway tenant removed');
   }
