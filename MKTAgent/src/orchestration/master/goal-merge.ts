@@ -42,10 +42,44 @@ const accumulate = (prior: string | null | undefined, delta: string | null | und
   return `${p} ${d}`;
 };
 
+// Campaign scope + platforms are DECIDED by the model's read of THIS turn, not accumulated across
+// turns (F19 — the "memory-bleed into scope" mirror of the language bleed). The failure: a recalled
+// brand ("Nắng Sớm") whose prior run was a 4-week fb+ig+linkedin CAMPAIGN drags that scope and those
+// platforms onto a NEW single-asset ask ("make one infographic for instagram") — the union kept all
+// three platforms and the scope silently reverted to the Zod default. So:
+//   - When the delta NAMES its own platforms, they REPLACE prior (the user re-declared the target).
+//     Only when the delta names none do we carry prior (a bare "add a video" keeps the audience).
+//   - Scope: the delta wins whenever it makes a SUBSTANTIVE fresh ask this turn — either it declares a
+//     non-single scope (escalation), OR it re-declares its own platforms (a targeted new ask). A bare
+//     additive tweak (no platforms, scope defaulted to 'single') is NOT substantive → carry prior scope
+//     so "thêm infographic" on a campaign doesn't collapse it to a single post.
+// Because `single` is both the schema DEFAULT and a real user choice, we cannot read a bare 'single' as
+// intent on its own — the "delta named platforms" signal is what separates a deliberate single-asset
+// re-scope from a scope-silent tweak.
+const mergeScope = (
+  prior: GoalSpec,
+  delta: GoalSpec,
+): Pick<GoalSpec, 'campaignScope' | 'duration' | 'cadence'> => {
+  const deltaEscalates = delta.campaignScope !== 'single' || delta.duration != null || delta.cadence != null;
+  // A targeted new ask restates its platforms; treat its scope as authoritative too (this is the F19
+  // single-asset case). deltaEscalates covers the reverse (single → campaign) even without platforms.
+  const deltaReScopes = deltaEscalates || delta.platforms.length > 0;
+  if (deltaReScopes) {
+    return { campaignScope: delta.campaignScope, duration: delta.duration ?? null, cadence: delta.cadence ?? null };
+  }
+  // Scope-silent additive tweak → carry prior so a bare refine on a campaign doesn't collapse it.
+  return { campaignScope: prior.campaignScope, duration: prior.duration ?? null, cadence: prior.cadence ?? null };
+};
+
 export const mergeGoals = (prior: GoalSpec, delta: GoalSpec): GoalSpec => {
-  const platforms = Array.from(new Set([...prior.platforms, ...delta.platforms])) as GoalSpec['platforms'];
+  // Delta names its own platforms → they REPLACE prior (the user re-declared the target this turn);
+  // delta names none → carry prior. This stops a prior campaign's platform set bleeding onto a new
+  // single-asset ask that targeted only one platform.
+  const platforms = (delta.platforms.length ? delta.platforms : prior.platforms) as GoalSpec['platforms'];
+  const scope = mergeScope(prior, delta);
   return goalSpec.parse({
     goal: prior.goal,
+    ...scope,
     outputs: {
       needsIdeation: prior.outputs.needsIdeation || delta.outputs.needsIdeation,
       needsStrategy: prior.outputs.needsStrategy || delta.outputs.needsStrategy,

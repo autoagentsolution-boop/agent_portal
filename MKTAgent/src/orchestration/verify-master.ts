@@ -277,6 +277,45 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   check('merge keeps accountType', merged.slots.accountType === 'company', merged.slots.accountType);
 }
 
+// F19 — scope/platform memory-bleed guard (the mirror of the language bleed). A recalled brand whose
+// PRIOR run was a multi-week fb+ig+linkedin campaign must NOT drag that scope + those platforms onto a
+// NEW single-asset ask. mergeGoals now lets the delta's read of THIS turn win: a delta that names its
+// own platforms REPLACES prior, and a targeted new ask carries the delta's scope (not the prior's).
+{
+  console.log('F19 scope/platform bleed');
+  const campaignPrior = goalSpec.parse({
+    outputs: { needsIdeation: true, needsStrategy: true, needsTextPost: true, needsPublishing: true },
+    platforms: ['facebook', 'instagram', 'linkedin'],
+    slots: { product: 'Nắng Sớm', productDetails: 'specialty coffee' },
+    campaignScope: 'campaign', duration: { weeks: 4 }, cadence: { postsPerWeek: 3 },
+  });
+  // NEW single-asset ask naming its own platform → scope + platforms come from the delta, NOT prior.
+  const singleAsk = goalSpec.parse({
+    outputs: { needsInfographic: true, needsTextPost: true, needsPublishing: true },
+    platforms: ['instagram'], slots: { product: 'Nắng Sớm' }, campaignScope: 'single',
+  });
+  const bleed = mergeGoals(campaignPrior, singleAsk);
+  check('new single-asset ask → scope single (no campaign bleed)', bleed.campaignScope === 'single', bleed.campaignScope);
+  check('new single-asset ask → only the named platform', JSON.stringify(bleed.platforms) === '["instagram"]', bleed.platforms);
+  check('new single-asset ask → duration/cadence cleared', bleed.duration == null && bleed.cadence == null, { d: bleed.duration, c: bleed.cadence });
+
+  // Regression: a scope-SILENT additive tweak (no platforms, scope defaulted) keeps the prior campaign.
+  const bareAdd = goalSpec.parse({
+    outputs: { needsInfographic: true, needsTextPost: true, needsPublishing: true },
+    platforms: [], slots: {}, campaignScope: 'single',
+  });
+  const kept = mergeGoals(campaignPrior, bareAdd);
+  check('bare additive tweak → prior campaign scope kept', kept.campaignScope === 'campaign', kept.campaignScope);
+  check('bare additive tweak → prior platforms kept', JSON.stringify(kept.platforms) === '["facebook","instagram","linkedin"]', kept.platforms);
+  check('bare additive tweak → prior duration kept', kept.duration?.weeks === 4, kept.duration);
+
+  // Escalation still works: a single prior + a THIS-turn campaign ask escalates (delta scope wins).
+  const singlePrior = goalSpec.parse({ outputs: { needsTextPost: true, needsPublishing: true }, platforms: ['facebook'], slots: { product: 'X' }, campaignScope: 'single' });
+  const escalate = goalSpec.parse({ outputs: { needsIdeation: true, needsStrategy: true, needsTextPost: true, needsPublishing: true }, platforms: ['facebook'], slots: {}, campaignScope: 'campaign', duration: { weeks: 2 }, cadence: { postsPerWeek: 5 } });
+  const esc = mergeGoals(singlePrior, escalate);
+  check('single→campaign escalation honored', esc.campaignScope === 'campaign' && esc.duration?.weeks === 2, { s: esc.campaignScope, d: esc.duration });
+}
+
 // Conversation author (deterministic fallback — no LLM needed). Voices each outcome.
 {
   console.log('ConversationAuthor (deterministic fallback)');
@@ -365,6 +404,18 @@ async function geminiSmoke(): Promise<void> {
   const plain = await analyzer.analyze('Write a short facebook post about our new latte');
   check('plain post → scope stays single', plain.campaignScope === 'single', plain.campaignScope);
   check('plain post → autoPublish stays false', plain.autoPublish === false, plain.autoPublish);
+
+  // F19 live guard: recalled memory describing a PAST multi-platform campaign must NOT bleed onto a NEW
+  // single-asset ask. The memory block says the brand "usually targets" fb+ig+linkedin and ran a monthly
+  // campaign; the message asks for ONE infographic for Instagram only. The model must read THIS message —
+  // scope single, platforms [instagram] — not inherit the remembered campaign/platform set.
+  const memBleed = `What you already KNOW about this user (recalled memory — use these to fill fields; do NOT re-ask what is already here):
+- [product] Nắng Sớm: specialty coffee roaster
+- [preference] usually targets: facebook, instagram, linkedin
+- [fact] ran a 4-week monthly content campaign for Nắng Sớm`;
+  const bleedGoal = await analyzer.analyze('Make one infographic for Nắng Sớm for Instagram', null, memBleed);
+  check('F19 live: single-asset ask → scope single despite remembered campaign', bleedGoal.campaignScope === 'single', bleedGoal.campaignScope);
+  check('F19 live: single-asset ask → only Instagram despite remembered fb/ig/linkedin', bleedGoal.platforms.length === 1 && bleedGoal.platforms.includes('instagram'), bleedGoal.platforms);
 
   // Language fidelity: the reply must mirror the user's message language even though the
   // clarification seeds are partly Vietnamese (the reported bug). Pass the raw message so

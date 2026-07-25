@@ -215,6 +215,14 @@ const schema = z.object({
   // 401/403 call every 30-min poll cycle — comment-fetchers/x.ts short-circuits to a clean [] no-op
   // until this is explicitly flipped on (confirm the connected token's tier first).
   ENABLE_X_LEAD_CAPTURE: boolEnv(false),
+
+  // ffmpeg binary path (video stitch + audio mux). Default 'ffmpeg' resolves via PATH — correct in the
+  // Docker image and any shell where ffmpeg is on PATH. Set to an ABSOLUTE path when the process runs
+  // with a scrubbed PATH (a Windows service / background launcher), where `spawn('ffmpeg')` fails —
+  // ENOENT if PATH is stripped, or STATUS_DLL_INIT_FAILED (0xC0000142) if a wrong/partial ffmpeg is
+  // found. The video runner pre-flights this path before spending on keyframes/Veo (ffmpeg-resolver.ts),
+  // so a bad config fails fast + actionable instead of after ~$1 of media.
+  FFMPEG_PATH: z.string().min(1).default('ffmpeg'),
 });
 
 const parsed = schema.safeParse(process.env);

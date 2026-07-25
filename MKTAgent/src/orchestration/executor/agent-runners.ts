@@ -30,10 +30,11 @@ import { buildUnsubscribeUrl } from '../../nurture/guardrails.ts';
 import { callGeminiJson, type LlmJsonFn } from '../master/llm-json.ts';
 import { buildAgentPrompt } from '../prompts/build-agent-prompt.ts';
 import { resolveInstructions } from '../prompts/resolve-instructions.ts';
-import { generate as generateImage, type ImageResult, type ImageRequest } from '../../imagegen/nano-banana.ts';
+import { generate as generateImage, imageModelId, type ImageResult, type ImageRequest } from '../../imagegen/nano-banana.ts';
 import { generate as generateVideo, VEO_MODEL_ID, type VideoRequest, type VideoResult } from '../../video/veo.ts';
 import { generate as generateTts, type TtsRequest } from '../../video/tts.ts';
 import { stitchClips, muxAudio } from '../../video/stitch.ts';
+import { ensureFfmpeg } from '../../video/ffmpeg-resolver.ts';
 import { access } from 'node:fs/promises';
 import { listArtifacts } from './artifact-store.ts';
 import { runtimePublishFn } from '../../connectors/runtime/connector-runtime.ts';
@@ -569,9 +570,18 @@ const localFilePath = (ref?: string | null): string | null =>
 
 // NodeCost for one generated image: real token-based cost when the API returned usageMetadata (so
 // token counts are visible on the node + Usage), else the flat per-image estimate. Cached images
-// are free — the caller guards on !image.cached before charging.
-const imageNodeCost = (image: ImageResult): NodeCost =>
-  image.usage ? costFromUsage(image.usage, 'gemini-2.5-flash-image') : imageCost();
+// are free — the caller guards on !image.cached before charging. `model` attributes the token cost to
+// the actual image model used (base vs Pro price differently); defaults to base for legacy callers.
+const imageNodeCost = (image: ImageResult, model = 'gemini-2.5-flash-image'): NodeCost =>
+  image.usage ? costFromUsage(image.usage, model) : imageCost();
+
+// A generated frame whose prompt carries on-frame TEXT (a title/label/caption/word) → render on the Pro
+// image model (F1). Base corrupts Vietnamese diacritics on text; Pro renders them legibly. Used by the
+// storyboard/carousel frames + video keyframes (neither has a structured on-image-text field like the
+// infographic's onImageText), so this is a heuristic over the English imagePrompt + common VN text
+// words. False positives only cost more on the odd frame; false negatives re-introduce the corruption,
+// so the set errs toward catching text.
+const KEYFRAME_TEXT_RE = /\b(text|title|caption|label|word|words|headline|typograph|lettering|sign|logo|subtitle|banner)\b|chữ|tiêu đề|dòng chữ|nhãn|khẩu hiệu/i;
 
 // Until 2026-07-21 this node filled a fixed string template — same skeleton and same aesthetic
 // adjectives for every product, with `no text overlay` hardcoded into a node named "infographic".
@@ -593,11 +603,15 @@ const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   if (planUsage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'infographic', model: env.GEMINI_MODEL, usage: planUsage, runId: ctx.runId, refId: ctx.postId ?? null });
 
   const gen = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
+  // On-frame text → render on the Pro image model (F1): the base model corrupts Vietnamese diacritics
+  // ("Nắng Sớm" → "Nắng Sóm"), Pro renders them legibly. Text-free infographics stay on the cheap base.
+  const quality: ImageRequest['quality'] = onImageText.length > 0 ? 'pro' : 'base';
   // Reference image: the post's own upload (concept gate / brief form) OR the selected product's
   // library image — generate FROM it (edit mode) so the infographic follows the reference; else
   // pure text-to-image (default).
   const refPath = await resolveReferenceImage(ctx);
-  const image = await gen(refPath ? { prompt: imagePrompt, mode: 'edit', referenceImagePath: refPath } : { prompt: imagePrompt, mode: 'text-to-image' });
+  const image = await gen(refPath ? { prompt: imagePrompt, mode: 'edit', referenceImagePath: refPath, quality } : { prompt: imagePrompt, mode: 'text-to-image', quality });
+  const imageModel = imageModelId({ quality });
   const ref = `local:${image.outputFile}`;
   if (ctx.postId) {
     // A single infographic image → assetType 'image' (exactly-1-asset publish validation).
@@ -606,11 +620,12 @@ const runInfographic = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   }
   // A cached image cost nothing to regenerate; a fresh one bills the real image tokens (visible on
   // the node + Usage) when the API returned usageMetadata, else the flat per-image price. Ledger
-  // record fires ONLY for a real (non-cached) generation — one row per physical image call.
-  const imgCost = imageNodeCost(image);
+  // record fires ONLY for a real (non-cached) generation — one row per physical image call. Cost is
+  // attributed to the ACTUAL model used (base vs Pro have different token prices).
+  const imgCost = imageNodeCost(image, imageModel);
   if (!image.cached) {
-    if (image.usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'infographic', model: 'gemini-2.5-flash-image', usage: image.usage, runId: ctx.runId, refId: ctx.postId ?? null });
-    else await recordMediaCost({ ownerId: ctx.ownerId, surface: 'infographic', model: 'gemini-2.5-flash-image', costUsd: imgCost.costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+    if (image.usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'infographic', model: imageModel, usage: image.usage, runId: ctx.runId, refId: ctx.postId ?? null });
+    else await recordMediaCost({ ownerId: ctx.ownerId, surface: 'infographic', model: imageModel, costUsd: imgCost.costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
   }
   // Node cost = the planning call + the image. Previously only the image, because there was no
   // planning call to account for.
@@ -680,19 +695,24 @@ const runStoryboard = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   for (const [i, f] of plan.entries()) {
     const imagePrompt = (f.imagePrompt ?? '').trim() || `Product image, frame ${i + 1}`;
     try {
+      // On-frame text → Pro image model (F1). A carousel slide's imagePrompt often bakes the caption
+      // text into the frame; base corrupts VN diacritics there, Pro renders them. Detect a text request
+      // in the prompt (same heuristic as the video keyframes).
+      const quality: ImageRequest['quality'] = KEYFRAME_TEXT_RE.test(imagePrompt) ? 'pro' : 'base';
+      const frameModel = imageModelId({ quality });
       const req: ImageRequest = anchor
-        ? { prompt: imagePrompt, mode: 'edit', referenceImagePath: anchor }
-        : { prompt: imagePrompt, mode: 'text-to-image' };
+        ? { prompt: imagePrompt, mode: 'edit', referenceImagePath: anchor, quality }
+        : { prompt: imagePrompt, mode: 'text-to-image', quality };
       const image = await gen(req);
       if (!anchor) anchor = image.outputFile;
       frames.push({ index: f.index ?? i, imageRef: `local:${image.outputFile}`, caption: f.caption ?? '', imagePrompt });
       if (!image.cached) {
-        const frameCost = imageNodeCost(image);
+        const frameCost = imageNodeCost(image, frameModel);
         cost = sumCost(cost, frameCost);
         // One ledger row per real generated frame (cached frames made no provider call). Real image
         // tokens when the API reported them (visible on node + Usage), else the flat per-image price.
-        if (image.usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'storyboard', model: 'gemini-2.5-flash-image', usage: image.usage, runId: ctx.runId, refId: ctx.postId ?? null });
-        else await recordMediaCost({ ownerId: ctx.ownerId, surface: 'storyboard', model: 'gemini-2.5-flash-image', costUsd: frameCost.costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+        if (image.usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'storyboard', model: frameModel, usage: image.usage, runId: ctx.runId, refId: ctx.postId ?? null });
+        else await recordMediaCost({ ownerId: ctx.ownerId, surface: 'storyboard', model: frameModel, costUsd: frameCost.costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
       }
     } catch (e) {
       // The image model is intermittently flaky (returns 200 with no image ~1/3). Skip a
@@ -786,6 +806,13 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   const genImage = ctx.imageFn ?? ((req: ImageRequest) => generateImage(req));
   const gen = ctx.videoFn ?? ((req: VideoRequest) => generateVideo(req));
 
+  // ffmpeg pre-flight (F21): the stitch step at the END of this node shells out to ffmpeg. On a
+  // scrubbed-PATH launcher (Windows service) that spawn dies with STATUS_DLL_INIT_FAILED / ENOENT —
+  // but only AFTER every keyframe + Veo clip has already been rendered and billed (~$1+), producing no
+  // deliverable. Verify ffmpeg is runnable NOW, before any paid media, so a broken config fails fast +
+  // actionable. Skipped when stitchFn is stubbed (DRY-RUN verification never touches real ffmpeg).
+  if (!ctx.stitchFn) await ensureFfmpeg();
+
   // Visual consistency, ported from runStoryboard: the FIRST successful keyframe anchors every later
   // one via edit mode, so the product and look don't drift shot to shot. A user-uploaded reference
   // (concept gate) or the product library image seeds the anchor so even shot 0 follows it.
@@ -802,17 +829,22 @@ const runVideo = async (ctx: RunnerContext): Promise<RunnerOutput> => {
   for (const s of shots) {
     try {
       // 1. Keyframe for this shot. Veo is image-to-video, so every shot needs a still to animate.
+      // On-frame text → Pro image model (F1): the base model corrupts Vietnamese diacritics on a
+      // title/label frame. A video shot has no structured onImageText field, so detect a text request
+      // in the imagePrompt heuristically (text|title|caption|label|word + VN "chữ/tiêu đề/dòng chữ").
+      const quality: ImageRequest['quality'] = KEYFRAME_TEXT_RE.test(s.imagePrompt) ? 'pro' : 'base';
+      const keyframeModel = imageModelId({ quality });
       const keyframe = await genImage(
         anchor
-          ? { prompt: s.imagePrompt, mode: 'edit', referenceImagePath: anchor }
-          : { prompt: s.imagePrompt, mode: 'text-to-image' },
+          ? { prompt: s.imagePrompt, mode: 'edit', referenceImagePath: anchor, quality }
+          : { prompt: s.imagePrompt, mode: 'text-to-image', quality },
       );
       if (!anchor) anchor = keyframe.outputFile;
       if (!keyframe.cached) {
-        const frameCost = imageNodeCost(keyframe);
+        const frameCost = imageNodeCost(keyframe, keyframeModel);
         cost = sumCost(cost, frameCost);
-        if (keyframe.usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'video', model: 'gemini-2.5-flash-image', usage: keyframe.usage, runId: ctx.runId, refId: ctx.postId ?? null });
-        else await recordMediaCost({ ownerId: ctx.ownerId, surface: 'video', model: 'gemini-2.5-flash-image', costUsd: frameCost.costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
+        if (keyframe.usage) await recordLlmUsage({ ownerId: ctx.ownerId, surface: 'video', model: keyframeModel, usage: keyframe.usage, runId: ctx.runId, refId: ctx.postId ?? null });
+        else await recordMediaCost({ ownerId: ctx.ownerId, surface: 'video', model: keyframeModel, costUsd: frameCost.costUsd, runId: ctx.runId, refId: ctx.postId ?? null });
       }
 
       // 2. Animate it with THIS shot's motion cue for THIS shot's duration. Both used to be

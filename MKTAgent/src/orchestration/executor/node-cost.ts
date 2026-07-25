@@ -39,6 +39,10 @@ const PRICING: Record<string, ModelPrice> = {
   // ≈ $0.039). Real usageMetadata → real token-based cost that lands near the old $0.04 flat, but
   // now with visible token counts. Longer prefix than 'gemini-2.5-flash' so it wins the match.
   'gemini-2.5-flash-image': { inPerM: 0.30, outPerM: 30.0, cachedPerM: 0.03 },
+  // Nano Banana Pro (gemini-3-pro-image) — the Pro image model used for legible on-frame text (esp.
+  // Vietnamese diacritics the base model corrupts, F1). ~$0.13/image; billed as image-output tokens
+  // like the base model, at the Pro output rate. Longest prefix so it wins over 'gemini-3-pro'.
+  'gemini-3-pro-image': { inPerM: 2.0, outPerM: 120.0, cachedPerM: 0.20 },
 };
 const DEFAULT_PRICE = PRICING['gemini-2.5-flash']!;
 const priceFor = (model?: string): ModelPrice => {

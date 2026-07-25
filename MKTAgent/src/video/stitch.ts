@@ -1,18 +1,20 @@
 // Concatenate N mp4 clips into one mp4 using ffmpeg (concat demuxer, stream copy — no
 // re-encode, fast + lossless as long as the clips share codec/params, which Veo clips do).
-// ffmpeg must be on PATH (installed in the Docker image). A single clip is returned as-is.
+// ffmpeg is resolved via ffmpeg-resolver (FFMPEG_PATH override → PATH default) so a scrubbed-PATH
+// launcher (Windows service) can point at an absolute binary. A single clip is returned as-is.
 import { spawn } from 'node:child_process';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { VIDEO_OUTPUT_DIR } from './veo.ts';
+import { ffmpegBin } from './ffmpeg-resolver.ts';
 
 const runFfmpeg = (args: string[]): Promise<void> =>
   new Promise((resolve, reject) => {
-    const ff = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const ff = spawn(ffmpegBin(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     ff.stderr.on('data', (d) => { stderr += String(d); });
-    ff.on('error', (e) => reject(new Error(`ffmpeg spawn failed: ${e.message} (is ffmpeg installed?)`)));
+    ff.on('error', (e) => reject(new Error(`ffmpeg spawn failed: ${e.message} (set FFMPEG_PATH or put ffmpeg on PATH)`)));
     ff.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-400)}`))));
   });
 

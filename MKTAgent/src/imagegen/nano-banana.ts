@@ -18,8 +18,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // MKTAgent-owned output dir (sibling of src). The publisher reads it via the
 // `local:` AssetStore scheme.
 export const IMAGE_OUTPUT_DIR = path.resolve(__dirname, '..', '..', 'output', 'images');
-const MODEL = 'gemini-2.5-flash-image';
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+
+// Base (fast, cheap) vs Pro image model. Base renders Latin text acceptably but MANGLES Vietnamese
+// diacritics on-frame ("Nắng Sớm" → "Nắng Sóm"); Pro renders stylized legible text — including VN — so
+// the caller opts INTO Pro for any image carrying on-frame text (F1). Pro is ~3× the price, so it is NOT
+// the default: text-free images stay on base. Model ids per the image-generation API (2026-07).
+const MODEL_BASE = 'gemini-2.5-flash-image';
+const MODEL_PRO = 'gemini-3-pro-image';
+export type ImageQuality = 'base' | 'pro';
+const modelFor = (quality: ImageQuality | undefined): string => (quality === 'pro' ? MODEL_PRO : MODEL_BASE);
+const endpointFor = (model: string): string =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
 export type ImageMode = 'text-to-image' | 'edit';
 
@@ -27,6 +36,10 @@ export interface ImageRequest {
   prompt: string;
   mode: ImageMode;
   referenceImagePath?: string;
+  // Opt into the Pro image model (gemini-3-pro-image) — required for legible on-frame text, esp.
+  // Vietnamese diacritics, which the base model corrupts. Default 'base' (cheap). The runner sets 'pro'
+  // whenever the image carries on-frame text (F1).
+  quality?: ImageQuality;
 }
 
 export interface ImageResult {
@@ -40,9 +53,11 @@ export interface ImageResult {
   usage?: GeminiUsage | null;
 }
 
-const hashKey = ({ prompt, mode, referenceImagePath }: ImageRequest): string =>
+// Model is part of the cache key: a base render and a Pro render of the SAME prompt are different
+// images (Pro renders text correctly, base doesn't), so they must not collide on disk.
+const hashKey = ({ prompt, mode, referenceImagePath, quality }: ImageRequest): string =>
   createHash('sha256')
-    .update(`${MODEL}::${mode}::${referenceImagePath ?? ''}::${prompt}`)
+    .update(`${modelFor(quality)}::${mode}::${referenceImagePath ?? ''}::${prompt}`)
     .digest('hex')
     .slice(0, 24);
 
@@ -66,13 +81,14 @@ const callNanoBanana = async (req: ImageRequest): Promise<{ png: Buffer; usage: 
   const apiKey = process.env.NANO_BANANA_API_KEY ?? env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('NANO_BANANA_API_KEY or GEMINI_API_KEY required');
 
+  const model = modelFor(req.quality);
   const parts: Array<Record<string, unknown>> = [{ text: req.prompt }];
   if (req.mode === 'edit' && req.referenceImagePath) {
     const inlineData = await loadReferenceAsInline(req.referenceImagePath);
     parts.push({ inlineData });
   }
 
-  const response = await fetch(ENDPOINT, {
+  const response = await fetch(endpointFor(model), {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({ contents: [{ parts }] }),
@@ -81,7 +97,7 @@ const callNanoBanana = async (req: ImageRequest): Promise<{ png: Buffer; usage: 
     const body = await response.text();
     // 429 splits into a transient per-minute burst (retried by withRetry) and a per-day exhaustion
     // (not retryable today — surfaced immediately so the caller can stop instead of truncating).
-    if (response.status === 429) throw quotaErrorFrom(body, MODEL);
+    if (response.status === 429) throw quotaErrorFrom(body, model);
     throw new Error(`nano_banana_http_${response.status}: ${body.slice(0, 300)}`);
   }
   const json = (await response.json()) as {
@@ -112,6 +128,10 @@ export const generate = async (req: ImageRequest): Promise<ImageResult> => {
   const { png, usage } = await withRetry(() => callNanoBanana(req), { label: 'nano_banana' });
   await writeFile(outputFile, png);
   const durationMs = Date.now() - started;
-  logger.info('image_generated', { key, ms: durationMs, bytes: png.byteLength, tokens: usage ? usage.promptTokens + usage.outputTokens : null });
+  logger.info('image_generated', { key, model: modelFor(req.quality), ms: durationMs, bytes: png.byteLength, tokens: usage ? usage.promptTokens + usage.outputTokens : null });
   return { imagePath, outputFile, cached: false, durationMs, usage };
 };
+
+// The provider model id an ImageRequest resolves to — exported so the runner attributes cost/usage to
+// the RIGHT model (base vs Pro have different token prices) instead of hardcoding the base id.
+export const imageModelId = (req: Pick<ImageRequest, 'quality'>): string => modelFor(req.quality);
