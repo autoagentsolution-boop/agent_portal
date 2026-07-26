@@ -3,9 +3,13 @@
 **Branch:** `refactor/full-product` · **Baseline:** 74/74 verify green (`0947b78`), tree clean.
 **Decisions (locked by user):** goal = **Cleanup + Hardening** (đóng nợ kiến trúc, KHÔNG re-architecture v2). Order = **quick-wins trước** rồi god-files. Test = **characterization BẮT BUỘC trước** khi đụng bất kỳ dòng nào của một vùng.
 
-> **⏸ TRẠNG THÁI: chờ user chốt 6 open-question (cuối file) SAU KHI CLEAR SESSION.**
-> User yêu cầu (2026-07-25): đưa 6 câu vào plan, hỏi lại ở session mới. **CHƯA thực thi Phase nào** cho tới khi 6 câu được trả lời. Session mới: đọc plan này + `agent-reports/`, hỏi lại 6 open-question, rồi mới bắt đầu Phase 0.
-> Cold-start pointers: state memory `state-260725-*`, baseline verify 74/74 (`0947b78`), plan này + 6 raw report ở `agent-reports/`.
+> **▶ TRẠNG THÁI (2026-07-26): 6 open-question ĐÃ CHỐT. Đang thực thi.**
+> Quyết định user: (1) Project A → archive branch rồi xóa; (2) n8n-workflows → docs/archive/; (3) roadmap → banner supersede; (4) 4 FE component xác nhận dead (grep 0 importer); (5) scale-out KHÔNG → 2.3 chỉ tách interface; (6) sendGmailAs/notifySales giữ approval-gate (không thêm flag). Bắt đầu bằng **dead-code deletion (zero-risk, grep-proven)** trước, rồi Phase 0 cho các vùng LIVE.
+>
+> **Correction sau grep verify (2026-07-26):**
+> - `brandingVideoFlow` KHÔNG xóa cả — `demo-flow.ts` còn export `DemoMode`/`demoModeCopy`/type `FlowAgentNode` dùng LIVE ở App/PostBoard/PostCard/DemoModeToggle/ActiveFlowsPage. Xóa 4 component → `brandingVideoFlow` const mồ côi → xóa RIÊNG const đó, giữ phần còn lại file (surgical edit, không xóa file).
+> - `intent-corpus.ts` KHÔNG orphan — `verify-master.ts` đã import nó. Phase 2.1 thu nhỏ: không cần tạo `verify-intent-corpus.ts` mới; corpus đã có consumer. Chỉ cân nhắc tách verify riêng nếu muốn tier rõ hơn (optional).
+> - `mediaCredit` dead ở **2 chỗ** (impact-metrics.ts:79 và :119), không phải 1 — xóa cả binding + query element trong cả 2 `Promise.all`.
 
 ---
 
@@ -158,10 +162,10 @@ Tách state theo domain qua custom hooks (KHÔNG thêm state lib — giữ patte
 - KHÔNG chạy adversarial-verifier auto-grow (cost chờ user).
 - KHÔNG đụng `goal-spec.ts` schema.
 
-## Open questions cho user (cần chốt trước khi thực thi phần liên quan)
-1. **Project A** (render-service/db/n8n/scripts/source): archive-branch-rồi-xóa (đề xuất), hay để đông cứng in-tree? [chặn 1.2]
-2. `n8n-workflows/` → `docs/archive/` OK? (giữ làm business-logic reference) [1.3]
-3. `development-roadmap.md` stale: refresh hay supersede bằng banner? [1.3]
-4. Xác nhận 4 FE component (FlowCanvas/FlowCoachPanel/WorkspaceHero/AgentCatalogPreview) dead — grep sẽ confirm, nhưng nếu bạn biết chúng còn dùng ở đâu ngoài import graph thì báo. [1.1]
-5. Scale-out: có kế hoạch multi-instance gần không? Nếu KHÔNG, 2.3 chỉ tách interface (không impl Redis). [2.3]
-6. sendGmailAs + notifySales không có ENABLE_LIVE_* flag (chỉ approval gate) — giữ nguyên hay thêm kill-switch flag trong hardening? [2.x nếu thêm]
+## Open questions — CHỐT 2026-07-26
+1. **Project A** → **archive branch `archive/video-content-farm` rồi xóa** khỏi refactor branch. [1.2]
+2. `n8n-workflows/` → **docs/archive/**. [1.3]
+3. `development-roadmap.md` → **banner supersede** (trỏ docs/product/09-today-actionable.md). [1.3]
+4. 4 FE component **XÁC NHẬN dead** — grep 0 live importer (chỉ self-ref + cross-ref trong cụm chết). Xóa. [1.1]
+5. Scale-out: **KHÔNG** multi-instance gần → 2.3 **chỉ tách interface**, không impl Redis. [2.3]
+6. `sendGmailAs`/`notifySales`: **giữ approval-gate**, không thêm ENABLE_LIVE flag. [bỏ khỏi 2.x]
