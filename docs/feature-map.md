@@ -1169,3 +1169,11 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `MKTAgent/src/cost/verify-credits-mirror.ts`
   - `MKTAgent/src/social/verify-platform-asset-mirror.ts`
   - `MKTAgent/web/src/flow/demo-flow.ts`
+- **docs: close docs-debt (code-standards.md, roadmap supersede banner)** (4931579)
+  - `docs/README.md`
+  - `docs/code-standards.md`
+  - `docs/development-roadmap.md`
+  - `docs/feature-map.md`
+- **fix(ci): derive platform-asset guard from enum, re-tier to unit** (937d7e3)
+  - `MKTAgent/src/scripts/run-verify.ts`
+  - `MKTAgent/src/social/verify-platform-asset-mirror.ts`
