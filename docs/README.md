@@ -35,10 +35,10 @@ the mapping.
 
 | Name in the rules | Actual location | Status |
 |---|---|---|
-| `docs/development-roadmap.md` | [`development-roadmap.md`](development-roadmap.md) | Exists — **stale**, last substantive edit 2026-07-08 |
+| `docs/development-roadmap.md` | [`development-roadmap.md`](development-roadmap.md) | **Superseded** (banner 2026-07-26) → see [`product/09-today-actionable.md`](product/09-today-actionable.md) |
 | `docs/project-changelog.md` | [`project-changelog.md`](project-changelog.md) | Exists, current |
 | `docs/system-architecture.md` | [`product/01-architecture-techstack-layers.md`](product/01-architecture-techstack-layers.md) | Different name, same role |
-| `docs/code-standards.md` | *No equivalent.* Standards live in [`../.claude/rules/development-rules.md`](../.claude/rules/development-rules.md) | Genuine gap |
+| `docs/code-standards.md` | [`code-standards.md`](code-standards.md) | Exists — pointer doc; authoritative rules in [`../.claude/rules/development-rules.md`](../.claude/rules/development-rules.md) |
 
 ## Operational docs
 

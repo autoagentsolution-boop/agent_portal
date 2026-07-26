@@ -1163,3 +1163,9 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `plans/260725-1600-architecture-map/refactor-plan.md`
 - **docs(plan): flag refactor plan as paused pending 6 open-questions post-clear** (e46475d)
   - `plans/260725-1600-architecture-map/refactor-plan.md`
+- **docs(plan): resolve 6 open-questions, add post-grep corrections** (85d1371)
+  - `plans/260725-1600-architecture-map/refactor-plan.md`
+- **feat(ci): add BE/FE drift guards + drop last dead export** (a1f8d70)
+  - `MKTAgent/src/cost/verify-credits-mirror.ts`
+  - `MKTAgent/src/social/verify-platform-asset-mirror.ts`
+  - `MKTAgent/web/src/flow/demo-flow.ts`

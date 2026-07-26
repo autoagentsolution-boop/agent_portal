@@ -1,5 +1,14 @@
 # Development Roadmap
 
+> **⚠ SUPERSEDED (2026-07-26).** This tracker described the `pivot/video-content-farm` era and
+> reflects state up to ~2026-07-08. The video-farm project has since been split off; MKTAgent is now
+> a standalone single product on `refactor/full-product`. For the current actionable state see
+> **[docs/product/09-today-actionable.md](product/09-today-actionable.md)** (live priorities) and
+> **[docs/feature-map.md](feature-map.md)** (feature ↔ module relationships, kept current by the
+> commit ledger hook). Content below is retained as historical record — do not treat as current.
+
+---
+
 Living tracker for the MKTAgent backend — the plain-TS marketing pipeline ported from the
 n8n workflows, on `pivot/video-content-farm`. Status reflects `main`/branch reality, not
 aspiration.
