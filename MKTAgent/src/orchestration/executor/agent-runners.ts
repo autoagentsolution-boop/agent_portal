@@ -582,6 +582,7 @@ const imageNodeCost = (image: ImageResult, model = 'gemini-2.5-flash-image'): No
 // words. False positives only cost more on the odd frame; false negatives re-introduce the corruption,
 // so the set errs toward catching text.
 const KEYFRAME_TEXT_RE = /\b(text|title|caption|label|word|words|headline|typograph|lettering|sign|logo|subtitle|banner)\b|chữ|tiêu đề|dòng chữ|nhãn|khẩu hiệu/i;
+export { KEYFRAME_TEXT_RE }; // exported so verify-image-quality-routing pins the REAL regex (no drift-prone copy)
 
 // Until 2026-07-21 this node filled a fixed string template — same skeleton and same aesthetic
 // adjectives for every product, with `no text overlay` hardcoded into a node named "infographic".

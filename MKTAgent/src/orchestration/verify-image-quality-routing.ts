@@ -4,6 +4,7 @@
 import { createHash } from 'node:crypto';
 import { imageModelId } from '../imagegen/nano-banana.ts';
 import { costUsdFromUsage } from './executor/node-cost.ts';
+import { KEYFRAME_TEXT_RE } from './executor/agent-runners.ts';
 
 let failures = 0;
 const check = (name: string, cond: boolean, extra?: unknown): void => {
@@ -18,10 +19,10 @@ check("default quality → base flash-image", imageModelId({}) === 'gemini-2.5-f
 check("quality 'base' → base flash-image", imageModelId({ quality: 'base' }) === 'gemini-2.5-flash-image', imageModelId({ quality: 'base' }));
 check("quality 'pro' → gemini-3-pro-image", imageModelId({ quality: 'pro' }) === 'gemini-3-pro-image', imageModelId({ quality: 'pro' }));
 
-// 2. The runner's on-frame-text heuristic (mirrored here — same regex as agent-runners KEYFRAME_TEXT_RE).
-//    A frame WITH text words → 'pro'; a plain product shot → 'base'. This is the decision that fixes the
-//    Vietnamese-diacritic corruption ("Nắng Sớm" → "Nắng Sóm") on title/label frames.
-const KEYFRAME_TEXT_RE = /\b(text|title|caption|label|word|words|headline|typograph|lettering|sign|logo|subtitle|banner)\b|chữ|tiêu đề|dòng chữ|nhãn|khẩu hiệu/i;
+// 2. The runner's on-frame-text heuristic. Import the REAL regex from agent-runners (was a copy that
+//    could silently drift from the source) so this pin follows the actual decision. A frame WITH text
+//    words → 'pro'; a plain product shot → 'base'. This is the decision that fixes the Vietnamese-
+//    diacritic corruption ("Nắng Sớm" → "Nắng Sóm") on title/label frames.
 const quality = (prompt: string): 'base' | 'pro' => (KEYFRAME_TEXT_RE.test(prompt) ? 'pro' : 'base');
 check('title-card keyframe → pro', quality('A title card reading "Nắng Sớm" over a coffee cup') === 'pro');
 check('VN "chữ" prompt → pro', quality('poster có chữ "Nắng Sớm" lớn ở giữa') === 'pro');

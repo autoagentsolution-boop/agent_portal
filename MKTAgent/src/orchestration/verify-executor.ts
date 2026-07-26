@@ -9,6 +9,8 @@ import { prisma } from '../db/client.ts';
 import { analyzeDeterministic } from './master/deterministic-analyzer.ts';
 import { planWorkflow } from './master/workflow-planner.ts';
 import { createRun, createNodes, getRunWithNodes } from '../db/repos/workflow-run-repo.ts';
+import { createCampaign } from '../db/repos/campaign-repo.ts';
+import { createPostForOwner, getPostByRunId } from '../db/repos/post-repo.ts';
 import { runWorkflow } from './executor/workflow-executor.ts';
 import type { GeminiFn } from '../copygen/service.ts';
 import type { PublishFn } from '../scheduler/tick.ts';
@@ -185,6 +187,91 @@ async function main(): Promise<void> {
     await createNodes(run4.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
     const r4 = await runWorkflow(run4.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, autoPublish: false, conceptGate: false });
     check('human mode still parks needs_approval (no autonomy leak)', r4.status === 'needs_approval', r4);
+
+    // ── Phase-0 characterization: media-gating skip (guards the executor/gate-runner split). A post
+    //    whose chosen assetType is CAROUSEL must SKIP (and never pay for) the `video` node. This is
+    //    the branch that stops an unapproved Veo render. Build a campaign+carousel post attached to a
+    //    run whose plan contains a video node; assert the video node ends `skipped` and videoFn is
+    //    never invoked. (MEDIA_AGENT_ASSET: video→['video'], carousel post needs ['carousel'].)
+    {
+      const camp = await createCampaign({ ownerId: user.id, product: 'MediaGating Test' });
+      const videoGoal = analyzeDeterministic('Make a short video and a storyboard carousel for our product on facebook');
+      const vPlan = planWorkflow(videoGoal);
+      if (!vPlan.ok) { check('media-gating: plan builds', false, vPlan); }
+      else {
+        const hasVideoNode = vPlan.plan.nodes.some((n) => n.agentId === 'video');
+        check('media-gating: plan contains a video node (precondition)', hasVideoNode, vPlan.plan.nodes.map((n) => n.agentId));
+        const mgRun = await createRun({ ownerId: user.id, goal: videoGoal, plan: vPlan.plan, status: 'planned' });
+        await createNodes(mgRun.id, user.id, vPlan.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
+        // Attach a CAROUSEL post (not video) to this run → video node must be skipped.
+        await createPostForOwner({ campaignId: camp.id, ownerId: user.id, assetType: 'carousel', platforms: ['facebook'], runId: mgRun.id });
+        let videoCalls = 0;
+        const countingVideo = async () => { videoCalls++; return { outputFile: '/tmp/stub-video.mp4', cached: false, durationMs: 0 }; };
+        await runWorkflow(mgRun.id, user.id, videoGoal, vPlan.plan, {
+          geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, videoFn: countingVideo, ttsFn: stubTts, autoPublish: false, conceptGate: false,
+        });
+        const mgFull = await getRunWithNodes(mgRun.id, user.id);
+        const videoNode = mgFull?.nodes.find((n) => n.agentId === 'video');
+        check('media-gating: video node SKIPPED for a carousel post', videoNode?.status === 'skipped', videoNode?.status);
+        check('media-gating: videoFn NEVER invoked (no unapproved Veo spend)', videoCalls === 0, { videoCalls });
+      }
+    }
+
+    // ── Phase-0 characterization: schedule-gate scheduledAt PRESERVATION (guards the `new Date()`
+    //    clobber). A publisher run whose attached post has a FUTURE scheduledAt must approve without
+    //    firing, and the stored scheduledAt must be byte-identical afterward (the cron owns the fire).
+    {
+      const camp2 = await createCampaign({ ownerId: user.id, product: 'SchedPreserve Test' });
+      const future = new Date(Date.now() + 7 * 24 * 3600 * 1000); // +7d, stable within the run
+      const spRun = await createRun({ ownerId: user.id, goal, plan: planned.plan, status: 'planned' });
+      await createNodes(spRun.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
+      await createPostForOwner({ campaignId: camp2.id, ownerId: user.id, assetType: 'image', platforms: ['facebook'], runId: spRun.id, scheduledAt: future });
+      const pubNode = planned.plan.nodes.find((n) => n.agentId === 'publisher')!;
+      // First pass to park at publisher, then approve the publisher node.
+      await runWorkflow(spRun.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, autoPublish: false, conceptGate: false });
+      await runWorkflow(spRun.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, approveNodeId: pubNode.nodeId });
+      const spPost = await getPostByRunId(spRun.id);
+      check('schedule-gate: post NOT published (future scheduledAt → parked ready)', spPost?.status !== 'posted', spPost?.status);
+      check('schedule-gate: scheduledAt PRESERVED byte-identical (no new Date() clobber)',
+        spPost?.scheduledAt?.getTime() === future.getTime(), { got: spPost?.scheduledAt?.toISOString(), want: future.toISOString() });
+    }
+
+    // ── Phase-0 characterization: abort mid-run (guards the per-node abort check between nodes). The
+    //    executor checks getRunStatusById()==='aborted' at the TOP of each node iteration, so an abort
+    //    that lands mid-run must stop the run BEFORE the next node. We flip the run to `aborted` from
+    //    inside the first stubbed LLM call, then assert the run returns {status:'aborted'} and the
+    //    downstream publisher never reaches a terminal produced state.
+    {
+      const abRun = await createRun({ ownerId: user.id, goal, plan: planned.plan, status: 'planned' });
+      await createNodes(abRun.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
+      let flipped = false;
+      // The first node (ideation/strategy) runs through llmJsonFn — flip to aborted on its first call.
+      const abortingLlm: LlmJsonFn = async (...args: Parameters<LlmJsonFn>) => {
+        if (!flipped) { flipped = true; await prisma.workflowRun.update({ where: { id: abRun.id }, data: { status: 'aborted' } }); }
+        return stubLlmJson(...args);
+      };
+      const rAbort = await runWorkflow(abRun.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: stubPublish, llmJsonFn: abortingLlm, imageFn: stubImage, autoPublish: false, conceptGate: false });
+      check('abort: mid-run abort returns status aborted', rAbort.status === 'aborted', rAbort);
+      const abFull = await getRunWithNodes(abRun.id, user.id);
+      const publisherProduced = abFull?.nodes.find((n) => n.agentId === 'publisher')?.status;
+      check('abort: publisher never ran after mid-run abort', publisherProduced !== 'completed' && publisherProduced !== 'awaiting_approval',
+        { publisher: publisherProduced, nodes: abFull?.nodes.map((n) => `${n.agentId}:${n.status}`) });
+    }
+    // ── Phase-0 characterization: publisher FAIL-LOUD (H1). A publish where every target failed
+    //    (publishFn returns ok:false for each platform → aggregate status 'error') must surface as a
+    //    FAILED node/run, NEVER a silent `completed`. Guards the delivery-family split.
+    {
+      const flRun = await createRun({ ownerId: user.id, goal, plan: planned.plan, status: 'planned' });
+      await createNodes(flRun.id, user.id, planned.plan.nodes.map((n) => ({ nodeId: n.nodeId, agentId: n.agentId, dependsOn: n.dependsOn })));
+      const failingPublish: PublishFn = async (platform) => ({ platform, ok: false, url: null, error: 'stub forced failure' });
+      const pubNode = planned.plan.nodes.find((n) => n.agentId === 'publisher')!;
+      await runWorkflow(flRun.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: failingPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, autoPublish: false, conceptGate: false });
+      const rFail = await runWorkflow(flRun.id, user.id, goal, planned.plan, { geminiFn: stubGemini, publishFn: failingPublish, llmJsonFn: stubLlmJson, imageFn: stubImage, approveNodeId: pubNode.nodeId });
+      check('publisher fail-loud: a fully-failed publish → run FAILED (not completed)', rFail.status === 'failed', rFail);
+      const flFull = await getRunWithNodes(flRun.id, user.id);
+      check('publisher fail-loud: publisher node marked failed', flFull?.nodes.find((n) => n.agentId === 'publisher')?.status === 'failed', flFull?.nodes.find((n) => n.agentId === 'publisher')?.status);
+      check('publisher fail-loud: NO publish_result posted', !((flFull?.artifacts.find((a) => a.type === 'publish_result')?.data as { status?: string })?.status === 'posted'));
+    }
   } finally {
     await prisma.user.delete({ where: { id: user.id } });
     console.log('cleanup: throwaway tenant removed');

@@ -341,6 +341,30 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
     parseRemovals('Plan a month on Facebook, publish automatically without review, high quality'));
   check('real removal still fires: "remove facebook" → drops facebook', parseRemovals('remove facebook').dropPlatforms.includes('facebook'), parseRemovals('remove facebook'));
   check('real removal still fires: "without a video" → drops video', parseRemovals('without a video').disableOutputs.includes('video'), parseRemovals('without a video'));
+
+  // near-verb WINDOW BOUNDARY (Phase-0 characterization for the analyzer split). parseRemovals only
+  // counts a target when a removal verb sits within ~24 chars BEFORE it. A parser-by-concern split
+  // could change that slice and silently rebind which target a verb attaches to. Pin both sides of
+  // the window so a boundary change fails loud.
+  //   • verb close (~within 24) → fires.   "please remove the video"  ("remove"→"video" ≈ 11 chars)
+  check('near-verb: verb ~11 chars before target → removal fires', parseRemovals('please remove the video from it').disableOutputs.includes('video'),
+    parseRemovals('please remove the video from it'));
+  //   • verb far (>24, a clause away) → suppressed. "remove" then a long run before "video".
+  check('near-verb: verb a full clause (>24 chars) before target → suppressed',
+    parseRemovals('remove the outdated pricing paragraph and also add a video').disableOutputs.length === 0,
+    parseRemovals('remove the outdated pricing paragraph and also add a video'));
+
+  // parseAutoPublish — DETERMINISTIC (previously only exercised in the live-gemini smoke). The regex
+  // classifier flips autoPublish true only on an explicit no-review/auto-publish phrasing (vi+en).
+  check('autoPublish true on "publish automatically without review"',
+    analyzeDeterministic('Plan a month on Facebook, publish automatically without review').autoPublish === true,
+    analyzeDeterministic('Plan a month on Facebook, publish automatically without review').autoPublish);
+  check('autoPublish true on VN "đăng luôn khỏi cần duyệt"',
+    analyzeDeterministic('đăng luôn khỏi cần duyệt bài này').autoPublish === true,
+    analyzeDeterministic('đăng luôn khỏi cần duyệt bài này').autoPublish);
+  check('autoPublish false on a plain post request',
+    analyzeDeterministic('post this to facebook').autoPublish === false,
+    analyzeDeterministic('post this to facebook').autoPublish);
 }
 
 // Conversation author (deterministic fallback — no LLM needed). Voices each outcome.
