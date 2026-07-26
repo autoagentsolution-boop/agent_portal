@@ -1158,3 +1158,8 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `plans/260725-1600-architecture-map/agent-reports/04-media-copygen-cost-scheduler.md`
   - `plans/260725-1600-architecture-map/agent-reports/05-frontend-web.md`
   - `plans/260725-1600-architecture-map/agent-reports/06-repo-root-dirs.md`
+- **docs(plan): full-product refactor plan (cleanup + hardening)** (f5f5b65)
+  - `docs/feature-map.md`
+  - `plans/260725-1600-architecture-map/refactor-plan.md`
+- **docs(plan): flag refactor plan as paused pending 6 open-questions post-clear** (e46475d)
+  - `plans/260725-1600-architecture-map/refactor-plan.md`
