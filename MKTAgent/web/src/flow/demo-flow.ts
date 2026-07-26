@@ -1,16 +1,6 @@
-// Demo-mode copy for the Safe/Live publish toggle. The old hardcoded brandingVideoFlow
-// template + its FlowTemplate/FlowAgentNode types were retired with the pre-Atria flow UI
-// (FlowCanvas/FlowCoachPanel/WorkspaceHero/AgentCatalogPreview). Only the DemoMode contract
-// survives — it still drives DemoModeToggle and the safe-publish gate.
+// The Safe/Live publish DemoMode contract. The old hardcoded brandingVideoFlow template + its
+// FlowTemplate/FlowAgentNode types were retired with the pre-Atria flow UI (FlowCanvas/
+// FlowCoachPanel/WorkspaceHero/AgentCatalogPreview). The toggle text itself comes from i18n
+// (t('demo.mode.safe'/'demo.mode.live')), so only the DemoMode union survives — it types App
+// state, DemoModeToggle, and the safe-publish gate at PostCard.
 export type DemoMode = 'safe' | 'live';
-
-export const demoModeCopy: Record<DemoMode, { title: string; detail: string }> = {
-  safe: {
-    title: 'Safe Simulation',
-    detail: 'Generate/review is live, but live social publishing is blocked from the UI to avoid accidental Meta posts.',
-  },
-  live: {
-    title: 'Live Publish',
-    detail: 'Publish-now is enabled and will call connected social platforms. Use only for one controlled demo post.',
-  },
-};
