@@ -10,13 +10,17 @@
 // {image, carousel, video}; 'text' is excluded on both sides.
 import { supportedAssetTypes } from '../social/postability.ts';
 import { readFile } from 'node:fs/promises';
-import type { SocialPlatform, AssetType } from '../../prisma/generated/prisma/client.ts';
+import { SocialPlatform } from '../../prisma/generated/prisma/enums.ts';
+import type { AssetType } from '../../prisma/generated/prisma/client.ts';
 
 const ROOT = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const FE_FILE = `${ROOT}/web/src/components/form-options.ts`;
 
 const MEDIA: AssetType[] = ['image', 'carousel', 'video'];
-const PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'threads', 'linkedin', 'x'];
+// Derive the platform set from the Prisma enum, NOT a hardcoded literal — a 6th platform added to
+// the schema + an adapter would otherwise be silently skipped here (the guard's own blind spot).
+// Deriving forces every enum member through the BE↔FE check.
+const PLATFORMS = Object.values(SocialPlatform);
 
 // Parse the FE `platformAssetSupport` object literal from source (the FE module imports a browser
 // `Dto` type we can't load under tsx, so read+parse rather than import). Extract each platform's
@@ -27,9 +31,10 @@ const parseFeTable = (src: string): Record<string, string[]> => {
   const table: Record<string, string[]> = {};
   const rowRe = /(\w+)\s*:\s*\[([^\]]*)\]/g;
   let m: RegExpExecArray | null;
-  while ((m = rowRe.exec(block[1]))) {
-    const types = [...m[2].matchAll(/'([^']+)'/g)].map((t) => t[1]);
-    table[m[1]] = types;
+  while ((m = rowRe.exec(block[1] ?? ''))) {
+    const [, key, body] = m;
+    if (!key) continue;
+    table[key] = [...(body ?? '').matchAll(/'([^']+)'/g)].map((t) => t[1] ?? '');
   }
   return table;
 };

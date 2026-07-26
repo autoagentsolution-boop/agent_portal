@@ -32,7 +32,12 @@ const COSTLY = new Set(['imagegen/verify-image-live.ts']);
 // import graph, so these are corrected by hand. Only matters when running a single tier; the
 // default gate runs unit+db together either way.
 //   • verify-email-node.ts → runEmailAgent → isEmailSuppressed → prisma (nurture-thread-repo.ts)
-const TIER_OVERRIDE: Record<string, Tier> = { 'orchestration/verify-email-node.ts': 'db' };
+const TIER_OVERRIDE: Record<string, Tier> = {
+  'orchestration/verify-email-node.ts': 'db',
+  // Type-only prisma import trips the db source-scan, but it does zero DB I/O — force unit so a
+  // standalone `--tier unit` run still covers the BE↔FE asset-picker drift guard.
+  'social/verify-platform-asset-mirror.ts': 'unit',
+};
 
 // The http tier runs against a server booted WITHOUT a Gemini key, and its scripts are spawned with
 // the same env so they can tell.
