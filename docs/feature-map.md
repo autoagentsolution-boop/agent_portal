@@ -1177,3 +1177,10 @@ artifact so the workflow view reflects the change, but all three copied only `co
 - **fix(ci): derive platform-asset guard from enum, re-tier to unit** (937d7e3)
   - `MKTAgent/src/scripts/run-verify.ts`
   - `MKTAgent/src/social/verify-platform-asset-mirror.ts`
+- **test(characterization): pin god-file behavior before Phase-3 decomposition** (babb9f7)
+  - `MKTAgent/src/orchestration/executor/agent-runners.ts`
+  - `MKTAgent/src/orchestration/verify-executor.ts`
+  - `MKTAgent/src/orchestration/verify-image-quality-routing.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
+  - `MKTAgent/src/orchestration/verify-storyboard-node.ts`
+  - `MKTAgent/src/scripts/verify-intent-corpus.ts`
