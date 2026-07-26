@@ -1,6 +1,8 @@
 # Phase 0 — Characterization Gap-Analysis (2026-07-26)
 
-> **▶ STATUS: BE gaps WRITTEN (P0+P1). Verify green pending final run.** Shipped this session:
+> **▶ STATUS (2026-07-26 late): BE gaps COMMITTED (`babb9f7`), verify 78 green, 3-agent-reviewed. ⏸ PAUSED on 4 Medium review findings — quota nearly out, resume next week.**
+>
+> **Committed this session** (`babb9f7` + doc `92c36bb`, pushed):
 > - NEW `src/scripts/verify-intent-corpus.ts` (the file the corpus comment always named) — deterministic FACT/TRUE-removal green, FALSE-removal suppressed, and the "regex CANNOT" case (`no-longer-just-fb`) pinned as a KNOWN limit (flip when Phase 2 lands the model-authoritative fix).
 > - NEW `src/orchestration/verify-storyboard-node.ts` — carousel branch, anchor→edit chaining, F1 Pro per-frame, frame-skip, all-fail-throws.
 > - EXTENDED `verify-executor.ts` — media-gating skip (carousel post never pays for video), schedule-gate scheduledAt-preservation, abort-mid-run, publisher fail-loud.
@@ -9,6 +11,16 @@
 > - DEFERRED to a later sub-phase (lower priority, per gap-analysis): P4 email threading/opt-out, P5 nurture-brain verbatim seed, P6 content_search cost, P8 dispatcher completeness + greeting kill-switch, and all analyzer P2/P3 (email subject/purpose, language/length slots, needsResearch narrowing). FE agent-browser = separate sub-phase.
 >
 > A "KNOWN limit" assertion is characterization, not a bug fix: the regex mis-drops facebook on "I no longer want just Facebook…". Pinned as CURRENT behavior so a Phase-3 split can't change it silently.
+
+## ⏸ NEXT SESSION — apply 4 Medium review findings (approved fixes NOT yet applied; quota-out 2026-07-26)
+3-agent review of `babb9f7` found the storyboard characterization too LOOSE (doesn't pin wrong behavior today, but too weak to catch a Phase-3 regression — defeats its purpose). All test-only, no product code. Fixes to apply, then re-run verify + re-review:
+- **F1** (`verify-storyboard-node.ts` frame-skip): assert surviving frame INDICES are `[0,2]` (flaky middle frame specifically gone) + anchor still applied to the survivor — not just `length===2` (which a wrong-frame-drop or anchor-loss also produces).
+- **F2** (`verify-storyboard-node.ts`): add an `assetType:'video'` post case → assert `isCarousel=false` behavior (NO carousel `attachPostMedia`, frames still anchor-chained). The video branch is currently UNCOVERED — the split's whole point.
+- **F3** (`verify-executor.ts` media-gating): one-sided today. Also assert the media that SHOULD run does — `storyboard` node `completed` + carousel `assetMedia` populated — so over-skipping (carousel post → no slides) is caught.
+- **F4** (`verify-storyboard-node.ts` all-fail): bare `catch` passes on ANY crash. Assert caught error matches `/no frames/i` so a removed empty-storyboard guard isn't masked by an unrelated crash.
+- F5/F6 (Low/Info, optional): abort test assert publisher explicitly pending/null; parseAutoPublish VN false-branch (`đăng bài này` NOT auto-publish).
+The 6 highest-risk "passes for wrong reason" checks (anchor coincidence, 24-char boundary vs "add", VN autoPublish, schedule clobber write, abort-vs-crash, error-vs-partial) ALL held up under review — no change needed there.
+
 
 **Method:** 3 read-only gap-analyst agents mapped the 91 existing `verify-*.ts` against the 5 Phase-3 god-files. Only behaviors NOT already pinned are listed (DRY — extend existing verifies, don't duplicate). Every gap is **deterministic** (stub LLM/publish/connection readers already exist) unless noted.
 
