@@ -1,5 +1,17 @@
 # Phase 0 — Characterization Gap-Analysis (2026-07-26)
 
+> **▶ STATUS (2026-07-31): Phase 0 BE characterization COMPLETE.** All god-file BE gaps pinned + reviewed + pushed. `refactor/full-product` HEAD `a4823b6`. `npm run verify` = **78 green** (deterministic, GEMINI key cleared). Next = **FE agent-browser sub-phase**, then Phase 2 (hardening) / Phase 3 (god-file decomposition).
+>
+> **Commits (all pushed):**
+> - `babb9f7` — first BE pass (storyboard/executor/master/intent-corpus/image-quality). See original note below.
+> - `a47ded3` — F1–F6 review-finding fixes (storyboard survivors[0,2]+anchor, video branch, media-gating two-sided, all-fail /no frames/, VN autoPublish false, abort→pending exact).
+> - `a4823b6` — deferred BE gaps: **P4** email_agent threading + opt-out, **P5** email_writer verbatim nurture seed, **P6** content_search runner surcharge/record-once, **P8** dispatcher completeness (real compile-time exhaustiveness via `Record<RunnableAgentId,true>` + exported `runnableAgentIds`) + greeting kill-switch throw, **P2** analyzer parsers (email dedup/subject, language/length slots, needsResearch narrowing). One additive product export (`runnableAgentIds`); everything else test-only. Edge-Case review findings applied (P8 completeness strengthened, P2 co-trigger masking removed).
+>
+> **Nothing BE deferred remains from the gap-analysis below** — P4/P5/P6/P8 and analyzer P2 are now all done. (P3 items — F21 ffmpeg preflight ordering, parseEmailIntent purpose, P0 schedule scheduledAt already covered in `babb9f7` — were either covered or judged low-value; see per-section notes.)
+>
+> **Follow-up candidate (NOT blocking):** the kill-switch fail-CLOSED-on-DB-fault path (`kill-switch.ts:44`, returns `true` on read fault) has no characterization — hard to pin without fault-injecting prisma. A Phase-3 refactor that reverted the catch to `return false` would silently reintroduce the 2026-07-18 silent-resume bug uncaught. Revisit if/when fault-injection infra exists.
+
+## Original 2026-07-26 note (superseded by the status block above)
 > **▶ STATUS (2026-07-26 late): BE gaps COMMITTED (`babb9f7`), verify 78 green, 3-agent-reviewed. ⏸ PAUSED on 4 Medium review findings — quota nearly out, resume next week.**
 >
 > **Committed this session** (`babb9f7` + doc `92c36bb`, pushed):

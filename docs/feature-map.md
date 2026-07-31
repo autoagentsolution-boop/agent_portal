@@ -1189,3 +1189,14 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `plans/260725-1600-architecture-map/characterization/gap-analysis.md`
 - **docs(phase0): record 4 Medium review findings + next-session checklist** (5ef3c60)
   - `plans/260725-1600-architecture-map/characterization/gap-analysis.md`
+- **test(characterization): tighten storyboard/executor/master pins (F1-F6)** (a47ded3)
+  - `MKTAgent/src/orchestration/verify-storyboard-node.ts`
+  - `MKTAgent/src/orchestration/verify-executor.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
+- **test(characterization): pin email/researcher/dispatch/analyzer behavior (P2,P4,P5,P6,P8)** (a4823b6)
+  - `MKTAgent/src/orchestration/executor/agent-runners.ts` (export `runnableAgentIds`)
+  - `MKTAgent/src/orchestration/verify-nurture-email-from-chat.ts`
+  - `MKTAgent/src/orchestration/verify-email-node.ts`
+  - `MKTAgent/src/orchestration/verify-researcher.ts`
+  - `MKTAgent/src/social/verify-greeting-node.ts`
+  - `MKTAgent/src/orchestration/verify-master.ts`
