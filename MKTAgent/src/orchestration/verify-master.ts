@@ -365,6 +365,11 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   check('autoPublish false on a plain post request',
     analyzeDeterministic('post this to facebook').autoPublish === false,
     analyzeDeterministic('post this to facebook').autoPublish);
+  // F5: VN false-branch. A plain VN publish verb ("đăng bài này" = "post this") is NOT an auto-publish
+  // request — only the explicit no-review phrasing above flips it. Pins that the VN matcher stays narrow.
+  check('autoPublish false on VN "đăng bài này" (plain post, no waiver)',
+    analyzeDeterministic('đăng bài này lên facebook').autoPublish === false,
+    analyzeDeterministic('đăng bài này lên facebook').autoPublish);
 }
 
 // Conversation author (deterministic fallback — no LLM needed). Voices each outcome.

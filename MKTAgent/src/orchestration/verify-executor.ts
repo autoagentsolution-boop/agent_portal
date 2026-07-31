@@ -214,6 +214,13 @@ async function main(): Promise<void> {
         const videoNode = mgFull?.nodes.find((n) => n.agentId === 'video');
         check('media-gating: video node SKIPPED for a carousel post', videoNode?.status === 'skipped', videoNode?.status);
         check('media-gating: videoFn NEVER invoked (no unapproved Veo spend)', videoCalls === 0, { videoCalls });
+        // F3: two-sided. Skipping the video isn't enough — the carousel deliverable that SHOULD run must
+        // actually run, else "gate everything off" would also pass this test (carousel post → no slides).
+        const sbNode = mgFull?.nodes.find((n) => n.agentId === 'storyboard');
+        check('media-gating: storyboard node RUNS for a carousel post (not over-skipped)', sbNode?.status === 'completed', sbNode?.status);
+        const mgPost = await getPostByRunId(mgRun.id);
+        const mgMedia = (mgPost?.assetMedia ?? null) as Record<string, string> | null;
+        check('media-gating: carousel media populated (slides actually attached)', typeof mgMedia?.['carousel'] === 'string' && mgMedia['carousel'].length > 0, mgMedia?.['carousel']);
       }
     }
 
@@ -254,8 +261,13 @@ async function main(): Promise<void> {
       check('abort: mid-run abort returns status aborted', rAbort.status === 'aborted', rAbort);
       const abFull = await getRunWithNodes(abRun.id, user.id);
       const publisherProduced = abFull?.nodes.find((n) => n.agentId === 'publisher')?.status;
-      check('abort: publisher never ran after mid-run abort', publisherProduced !== 'completed' && publisherProduced !== 'awaiting_approval',
-        { publisher: publisherProduced, nodes: abFull?.nodes.map((n) => `${n.agentId}:${n.status}`) });
+      // F6: pin the EXACT resting state, not just "not terminal". A mid-run abort stops before the node
+      // iterates, so the publisher must sit at its initial `pending` (never entered running/skipped/failed).
+      // The looser "!= completed && != awaiting_approval" would also pass on `failed` or `running`, hiding
+      // an abort that leaks a node into a live state. ('pending' is also the schema default — a deliberate
+      // rename of the initial node state across schema+repo is a real contract change this test surfaces.)
+      check('abort: publisher rests at pending after mid-run abort (never entered a live state)',
+        publisherProduced === 'pending', { publisher: publisherProduced, nodes: abFull?.nodes.map((n) => `${n.agentId}:${n.status}`) });
     }
     // ── Phase-0 characterization: publisher FAIL-LOUD (H1). A publish where every target failed
     //    (publishFn returns ok:false for each platform → aggregate status 'error') must surface as a

@@ -77,16 +77,29 @@ async function main(): Promise<void> {
     await prisma.workflowRun.create({ data: { id: run2, ownerId: user.id, status: 'running', goal, plan: { nodes: [] } } });
     const post2 = await createPostForOwner({ campaignId: camp.id, ownerId: user.id, assetType: 'carousel', platforms: ['facebook'], runId: run2 });
     let calls = 0;
-    const flakyImage = async (req: { mode?: string }) => {
+    const skipReqs: Array<{ mode?: string; referenceImagePath?: string }> = [];
+    const flakyImage = async (req: { mode?: string; referenceImagePath?: string }) => {
       calls++;
-      if (calls === 2) throw new Error('image model returned nothing (stub flake)');
+      skipReqs.push({ mode: req.mode, referenceImagePath: req.referenceImagePath });
+      if (calls === 2) throw new Error('image model returned nothing (stub flake)'); // the MIDDLE frame (index 1) flakes
       return { imagePath: `/tmp/s${calls}.png`, outputFile: `/tmp/s${calls}.png`, cached: false, durationMs: 1 };
     };
     const out2 = await getRunner('storyboard')({
       runId: run2, ownerId: user.id, goal, upstream: { content_concept: {} },
       postId: post2.id, llmJsonFn: framePlanStub as never, imageFn: flakyImage as never,
     });
-    check('frame-skip: one flaky frame skipped, 2 of 3 survive', (out2.data as { frames?: unknown[] }).frames?.length === 2, (out2.data as { frames?: unknown[] }).frames?.length);
+    // F1: pin the SURVIVING indices, not just the count — a wrong-frame drop (e.g. index 0 gone) or an
+    // anchor-loss regression also yields length===2, so length alone can't catch a Phase-3 break.
+    const survivors = ((out2.data as { frames?: Array<{ index: number }> }).frames ?? []).map((f) => f.index);
+    check('frame-skip: exactly the flaky middle frame (index 1) is dropped → survivors [0,2]',
+      JSON.stringify(survivors) === '[0,2]', survivors);
+    // The anchor must survive the skip: frame 0 rendered first → becomes anchor; the surviving frame 2
+    // must still run in edit mode conditioned on it (a lost anchor would silently break visual consistency).
+    check('frame-skip: surviving frame still anchor-conditioned (edit mode after the skip)',
+      // '/tmp/s1.png' is frame-0's outputFile (call #1 of the stub, `/tmp/s${calls}`) → it becomes the anchor;
+      // a stub-filename rename must update this literal in lockstep, it is not a magic constant.
+      skipReqs[0]?.mode === 'text-to-image' && skipReqs[2]?.mode === 'edit' && skipReqs[2]?.referenceImagePath === '/tmp/s1.png',
+      skipReqs.map((r) => r.mode));
 
     // ── ALL-FAIL: every frame throws → the runner throws (no empty storyboard).
     const run3 = crypto.randomUUID();
@@ -94,10 +107,41 @@ async function main(): Promise<void> {
     const post3 = await createPostForOwner({ campaignId: camp.id, ownerId: user.id, assetType: 'carousel', platforms: ['facebook'], runId: run3 });
     const deadImage = async () => { throw new Error('every frame fails'); };
     let threw = false;
+    let caught: unknown;
     try {
       await getRunner('storyboard')({ runId: run3, ownerId: user.id, goal, upstream: { content_concept: {} }, postId: post3.id, llmJsonFn: framePlanStub as never, imageFn: deadImage as never });
-    } catch { threw = true; }
+    } catch (e) { threw = true; caught = e; }
     check('all-fail: runner throws when no frame renders', threw);
+    // F4: pin the error IDENTITY — a bare catch passes on ANY crash. If the empty-storyboard guard is
+    // removed in a split, the failure surfaces as an unrelated Zod/DB error; matching /no frames/i keeps
+    // this test honest that it's the intended guard firing, not incidental breakage.
+    check('all-fail: error is the empty-storyboard guard (/no frames/i), not an unrelated crash',
+      caught instanceof Error && /no frames/i.test(caught.message), caught instanceof Error ? caught.message : String(caught));
+
+    // ── VIDEO branch: a VIDEO post (not carousel) → frames are keyframes, NO carousel attach. This is
+    //    the branch the media-family split most risks conflating; carousel-vs-video is the split's point.
+    const run4 = crypto.randomUUID();
+    await prisma.workflowRun.create({ data: { id: run4, ownerId: user.id, status: 'running', goal, plan: { nodes: [] } } });
+    const post4 = await createPostForOwner({ campaignId: camp.id, ownerId: user.id, assetType: 'video', platforms: ['facebook'], runId: run4 });
+    const vidReqs: Array<{ mode?: string; referenceImagePath?: string }> = [];
+    let vn = 0;
+    const vidImage = async (req: { mode?: string; referenceImagePath?: string }) => {
+      vidReqs.push({ mode: req.mode, referenceImagePath: req.referenceImagePath }); vn++;
+      return { imagePath: `/tmp/v${vn}.png`, outputFile: `/tmp/v${vn}.png`, cached: false, durationMs: 1 };
+    };
+    const out4 = await getRunner('storyboard')({
+      runId: run4, ownerId: user.id, goal, upstream: { content_concept: {} },
+      postId: post4.id, llmJsonFn: framePlanStub as never, imageFn: vidImage as never,
+    });
+    check('video: 3 keyframes generated', (out4.data as { frames?: unknown[] }).frames?.length === 3, (out4.data as { frames?: unknown[] }).frames?.length);
+    // Anchor-chaining is branch-independent — keyframes stay coherent too.
+    check('video: keyframes still anchor-chained (first text-to-image, rest edit)',
+      vidReqs[0]?.mode === 'text-to-image' && vidReqs[1]?.mode === 'edit' && vidReqs[2]?.mode === 'edit', vidReqs.map((r) => r.mode));
+    // The deliverable divergence: a video post must NOT get a carousel media attachment (the video step
+    // sets the stitched-video hero instead). Over-attaching here would publish loose slides as a carousel.
+    const vidPost = await getPostByRunId(run4);
+    const vidMedia = (vidPost?.assetMedia ?? null) as Record<string, string> | null;
+    check('video: NO carousel media attached (video branch, not carousel)', !vidMedia || typeof vidMedia['carousel'] !== 'string', vidMedia?.['carousel']);
   } finally {
     await prisma.user.delete({ where: { id: user.id } });
     console.log('cleanup: throwaway tenant removed');

@@ -13,6 +13,8 @@
 > A "KNOWN limit" assertion is characterization, not a bug fix: the regex mis-drops facebook on "I no longer want just Facebook…". Pinned as CURRENT behavior so a Phase-3 split can't change it silently.
 
 ## ⏸ NEXT SESSION — apply 4 Medium review findings (approved fixes NOT yet applied; quota-out 2026-07-26)
+> **✅ APPLIED 2026-07-31 (`refactor/full-product`).** F1–F6 all landed, tsc clean, storyboard/executor/master characterization re-run green individually. All test-only, zero product code. See "APPLIED" note at the bottom of this section.
+
 3-agent review of `babb9f7` found the storyboard characterization too LOOSE (doesn't pin wrong behavior today, but too weak to catch a Phase-3 regression — defeats its purpose). All test-only, no product code. Fixes to apply, then re-run verify + re-review:
 - **F1** (`verify-storyboard-node.ts` frame-skip): assert surviving frame INDICES are `[0,2]` (flaky middle frame specifically gone) + anchor still applied to the survivor — not just `length===2` (which a wrong-frame-drop or anchor-loss also produces).
 - **F2** (`verify-storyboard-node.ts`): add an `assetType:'video'` post case → assert `isCarousel=false` behavior (NO carousel `attachPostMedia`, frames still anchor-chained). The video branch is currently UNCOVERED — the split's whole point.
@@ -20,6 +22,17 @@
 - **F4** (`verify-storyboard-node.ts` all-fail): bare `catch` passes on ANY crash. Assert caught error matches `/no frames/i` so a removed empty-storyboard guard isn't masked by an unrelated crash.
 - F5/F6 (Low/Info, optional): abort test assert publisher explicitly pending/null; parseAutoPublish VN false-branch (`đăng bài này` NOT auto-publish).
 The 6 highest-risk "passes for wrong reason" checks (anchor coincidence, 24-char boundary vs "add", VN autoPublish, schedule clobber write, abort-vs-crash, error-vs-partial) ALL held up under review — no change needed there.
+
+### APPLIED 2026-07-31 — exactly what landed
+- **F1** `verify-storyboard-node.ts` frame-skip: now records `skipReqs`, asserts surviving indices `JSON.stringify(survivors)==='[0,2]'`, and that the survivor still runs `mode:'edit'` on anchor `/tmp/s1.png`. Flaky frame forced to the MIDDLE (index 1) via `calls===2`.
+- **F2** `verify-storyboard-node.ts` VIDEO branch: added a 4th run with `assetType:'video'` → 3 keyframes, anchor-chained (first `text-to-image`, rest `edit`), and **NO** `carousel` key in `assetMedia` (the deliverable divergence). Previously UNCOVERED.
+- **F3** `verify-executor.ts` media-gating: made two-sided — also asserts the `storyboard` node ends `completed` and `assetMedia.carousel` is a non-empty string, so "gate everything off" can't pass.
+- **F4** `verify-storyboard-node.ts` all-fail: captures the error and asserts `/no frames/i` — an unrelated crash no longer satisfies the bare catch.
+- **F5** `verify-master.ts`: VN false-branch `analyzeDeterministic('đăng bài này lên facebook').autoPublish===false` (verified against source: plain VN post verb does NOT waive review; only the explicit no-review phrasing flips it).
+- **F6** `verify-executor.ts` abort: tightened to `publisher === 'pending'` (exact resting state) instead of the looser not-terminal check; confirmed `createNodes` seeds `status:'pending'`.
+
+**Pre-existing unrelated failure (NOT introduced here):** `verify-master.ts` live-Gemini check "EN message + VN brand + VN memory → reply is NOT Vietnamese" flakes when a real `GEMINI_API_KEY` is present — the model apologized about a memory hiccup and drifted into VN. This is the known non-deterministic live-smoke section; the verify gate runs it with the key cleared (`DETERMINISTIC_ENV`) and it is SKIPPED. Reproduced pre-existing by clearing the key → PASS. Left for the Phase-2 reply-language track, out of scope for characterization.
+
 
 
 **Method:** 3 read-only gap-analyst agents mapped the 91 existing `verify-*.ts` against the 5 Phase-3 god-files. Only behaviors NOT already pinned are listed (DRY — extend existing verifies, don't duplicate). Every gap is **deterministic** (stub LLM/publish/connection readers already exist) unless noted.

@@ -1184,3 +1184,8 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `MKTAgent/src/orchestration/verify-master.ts`
   - `MKTAgent/src/orchestration/verify-storyboard-node.ts`
   - `MKTAgent/src/scripts/verify-intent-corpus.ts`
+- **docs(phase0): characterization gap-analysis + ledger** (92c36bb)
+  - `docs/feature-map.md`
+  - `plans/260725-1600-architecture-map/characterization/gap-analysis.md`
+- **docs(phase0): record 4 Medium review findings + next-session checklist** (5ef3c60)
+  - `plans/260725-1600-architecture-map/characterization/gap-analysis.md`
