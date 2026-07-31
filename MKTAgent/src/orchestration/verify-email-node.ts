@@ -75,5 +75,43 @@ const resParsed = emailResult.safeParse(sender.data);
 check('email_agent produces a valid email_result', sender.type === 'email_result' && resParsed.success);
 check('status = sent (stub), no real send', resParsed.success && resParsed.data.status === 'sent');
 
+// ── P5 characterization: email_writer nurture-brain VERBATIM seed. When goal.slots.nurtureReplyBody is
+//    set, the runner returns it verbatim (groundedOn:'nurture_brain') and NEVER calls the LLM — the
+//    nurture brain already authored the reply. A Phase-3 email-family split must preserve this early
+//    return, else it would re-LLM a reply the brain composed (spend + drift). The LLM stub throws so a
+//    single call fails the test loudly.
+{
+  let llmCalled = false;
+  const seedCtx: RunnerContext = {
+    ...ctx,
+    goal: goalSpec.parse({ ...emailGoal, slots: { ...emailGoal.slots, emailTo: 'lam.nguyen@example.com', nurtureReplyBody: '  Thanks for reaching out — here is the info you asked for.  ', nurtureReplySubject: '  Re: your pricing question  ' } }),
+    llmJsonFn: async () => { llmCalled = true; throw new Error('email_writer must not call the LLM on the verbatim seed path'); },
+  };
+  const seeded = await getRunner('email_writer')(seedCtx);
+  const sd = seeded.data as { subject: string; body: string; groundedOn?: string };
+  check('P5: verbatim seed → LLM never called', !llmCalled);
+  check('P5: body is the trimmed seed verbatim', sd.body === 'Thanks for reaching out — here is the info you asked for.', sd.body);
+  check("P5: groundedOn marker = 'nurture_brain'", sd.groundedOn === 'nurture_brain', sd.groundedOn);
+  check('P5: subject = trimmed nurtureReplySubject', sd.subject === 'Re: your pricing question', sd.subject);
+  check('P5: verbatim draft carries no cost field (LLM path only sets cost)', (seeded as { cost?: unknown }).cost === undefined, (seeded as { cost?: unknown }).cost);
+
+  // Fallback subject: seed body but NO subject → literal 'Re: your message'.
+  const noSubj = await getRunner('email_writer')({
+    ...ctx,
+    goal: goalSpec.parse({ ...emailGoal, slots: { ...emailGoal.slots, emailTo: 'lam.nguyen@example.com', nurtureReplyBody: 'Body only.' } }),
+    llmJsonFn: async () => { throw new Error('should not be called'); },
+  });
+  check("P5: missing subject → fallback 'Re: your message'", (noSubj.data as { subject: string }).subject === 'Re: your message', (noSubj.data as { subject: string }).subject);
+
+  // Negative control: whitespace-only seed trims to '' → falls through to the LLM path (groundedOn ≠ nurture_brain).
+  let ctrlLlm = false;
+  const ctrl = await getRunner('email_writer')({
+    ...ctx,
+    goal: goalSpec.parse({ ...emailGoal, slots: { ...emailGoal.slots, emailTo: 'lam.nguyen@example.com', nurtureReplyBody: '   ' } }),
+    llmJsonFn: async () => { ctrlLlm = true; return { subject: 's', body: 'b' }; },
+  });
+  check('P5: whitespace-only seed falls through to the LLM path', ctrlLlm && (ctrl.data as { groundedOn?: string }).groundedOn !== 'nurture_brain', (ctrl.data as { groundedOn?: string }).groundedOn);
+}
+
 console.log(failures === 0 ? '\nPASS — email-node checks green (0 real emails, 0 LLM spend)' : `\nFAIL — ${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

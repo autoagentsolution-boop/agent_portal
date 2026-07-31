@@ -8,6 +8,7 @@
 // self-cleaned.  npx tsx src/orchestration/verify-nurture-email-from-chat.ts
 import { prisma } from '../db/client.ts';
 import { createLead, getLead } from '../db/repos/lead-repo.ts';
+import { getThreadById, suppressEmail } from '../nurture/nurture-thread-repo.ts';
 import { dispatchTool, type ToolContext } from './atria/atria-tools.ts';
 import { getRunner } from './executor/agent-runners.ts';
 import { goalSpec } from './schemas/goal-spec.ts';
@@ -115,6 +116,57 @@ async function main(): Promise<void> {
     await new Promise((r) => setTimeout(r, 50));
     const after = await getLead(lam.id, user.id);
     ok(after?.nurturedAt != null, 'lead stamped nurturedAt after send', after?.nurturedAt);
+
+    // ── P4 characterization: email_agent gmail THREADING + runner-level OPT-OUT (HARD invariants #6 + #3).
+    //    A Phase-3 email-family split must preserve (a) reusing a nurture thread's stored Gmail ids so a
+    //    reply collapses into the existing conversation, and (b) the pre-send suppression gate that blocks
+    //    an opted-out recipient and fails LOUD when everyone is suppressed.
+    console.log('runEmailAgent threading + opt-out (P4)');
+    // A GmailSendFn stub that captures the (raw, threadId) it receives so we can assert threading without
+    // decoding MIME. threadId is passed through verbatim from nurtureThread.gmailThreadId.
+    const capture: { raw?: string; threadArg?: string } = {};
+    const captureSend: GmailSendFn = async (raw, _owner, threadId) => { capture.raw = raw; capture.threadArg = threadId; return { id: 'sent-1', threadId: threadId ?? 'srv-thread' }; };
+    const decodeRaw = (raw?: string): string => (raw ? Buffer.from(raw, 'base64url').toString('utf8') : '');
+
+    // Thread WITH stored gmail ids → threading carried: threadId arg = gmailThreadId; In-Reply-To/References = lastMessageId.
+    const threadedLead = await seedLead(user.id, 'Threaded', 'threaded@example.com');
+    const thread = await prisma.leadNurtureThread.create({
+      data: { ownerId: user.id, leadId: threadedLead.id, sequenceId: 'default3', status: 'active', mode: 'drip',
+        gmailThreadId: 'gmail-thread-abc', lastMessageId: '<prev-msg-99@mktagent.local>' },
+    });
+    const threadedGoal = goalSpec.parse({ outputs: { needsEmail: true, needsTextPost: false, needsPublishing: false }, slots: { emailTo: 'threaded@example.com', leadId: threadedLead.id, nurtureThreadId: thread.id, language: 'en' }, provider: 'test' });
+    await getRunner('email_agent')({ runId: 'r', ownerId: user.id, goal: threadedGoal, upstream: { email_draft: { to: ['threaded@example.com'], subject: 'Re: hi', body: 'Following up.' } }, gmailSendFn: captureSend }) as any;
+    ok(capture.threadArg === 'gmail-thread-abc', 'P4: reply carries the stored gmailThreadId (collapses into the thread)', capture.threadArg);
+    const rawHdr = decodeRaw(capture.raw);
+    ok(rawHdr.includes('In-Reply-To: <prev-msg-99@mktagent.local>'), 'P4: In-Reply-To = the thread lastMessageId', rawHdr.slice(0, 200));
+    ok(rawHdr.includes('References: <prev-msg-99@mktagent.local>'), 'P4: References = the thread lastMessageId', rawHdr.slice(0, 200));
+    ok(rawHdr.includes('List-Unsubscribe:'), 'P4: a nurture send (nurtureThreadId present) carries List-Unsubscribe', rawHdr.slice(0, 300));
+
+    // Fresh conversation: a plain send (NO nurtureThreadId) → threadId undefined, no threading headers, no unsubscribe footer.
+    capture.raw = undefined; capture.threadArg = undefined;
+    const plainSendGoal = goalSpec.parse({ outputs: { needsEmail: true, needsTextPost: false, needsPublishing: false }, slots: { emailTo: 'threaded@example.com', leadId: threadedLead.id, language: 'en' }, provider: 'test' });
+    await getRunner('email_agent')({ runId: 'r', ownerId: user.id, goal: plainSendGoal, upstream: { email_draft: { to: ['threaded@example.com'], subject: 'Hi', body: 'First touch.' } }, gmailSendFn: captureSend }) as any;
+    ok(capture.threadArg === undefined, 'P4: plain send (no nurtureThreadId) → no threadId (new conversation)', capture.threadArg);
+    const plainHdr = decodeRaw(capture.raw);
+    ok(!plainHdr.includes('In-Reply-To:') && !plainHdr.includes('List-Unsubscribe:'), 'P4: plain send has no threading/unsubscribe headers', plainHdr.slice(0, 200));
+
+    // Opt-out: suppress the only recipient → the runner throws LOUD (never a silent no-op).
+    const suppressedLead = await seedLead(user.id, 'OptedOut', 'optout@example.com');
+    await suppressEmail(user.id, 'optout@example.com', 'unsubscribed');
+    const optGoal = goalSpec.parse({ outputs: { needsEmail: true, needsTextPost: false, needsPublishing: false }, slots: { emailTo: 'optout@example.com', leadId: suppressedLead.id, language: 'en' }, provider: 'test' });
+    let optThrew: string | null = null;
+    try {
+      await getRunner('email_agent')({ runId: 'r', ownerId: user.id, goal: optGoal, upstream: { email_draft: { to: ['optout@example.com'], subject: 'Hi', body: 'Hello.' } }, gmailSendFn: captureSend });
+    } catch (e) { optThrew = e instanceof Error ? e.message : String(e); }
+    ok(optThrew != null && /opted out/i.test(optThrew), 'P4: all-suppressed send throws LOUD (/opted out/)', optThrew);
+
+    // Partial suppression: one of two recipients suppressed → the survivor is sent, status stays 'sent'
+    //    (the FILTERED recipient list drives the partial/sent decision, so a dropped opt-out ≠ partial).
+    capture.raw = undefined;
+    const partialGoal = goalSpec.parse({ outputs: { needsEmail: true, needsTextPost: false, needsPublishing: false }, slots: { emailTo: 'optout@example.com, threaded@example.com', language: 'en' }, provider: 'test' });
+    const partial = await getRunner('email_agent')({ runId: 'r', ownerId: user.id, goal: partialGoal, upstream: { email_draft: { to: ['optout@example.com', 'threaded@example.com'], subject: 'Hi', body: 'Hello.' } }, gmailSendFn: captureSend }) as any;
+    ok(partial.data.status === 'sent' && partial.data.to.length === 1 && partial.data.to[0] === 'threaded@example.com',
+      'P4: partial suppression drops the opted-out recipient, sends the survivor, status=sent', partial.data);
   } finally {
     await prisma.lead.deleteMany({ where: { ownerId: user.id } }).catch(() => {});
     await prisma.user.delete({ where: { id: user.id } }).catch(() => {});

@@ -15,7 +15,10 @@ import { agentIdList } from '../orchestration/schemas/workflow-plan.ts';
 import { agentGate, getAgent } from '../orchestration/registry/agent-registry.ts';
 import { greetingDraft, greetingResult } from '../orchestration/schemas/artifact-schemas.ts';
 import { getRunner } from '../orchestration/executor/agent-runners.ts';
+import { runnableAgentIds } from '../orchestration/executor/agent-runners.ts';
 import type { RunnerContext } from '../orchestration/executor/agent-runners.ts';
+import type { RunnableAgentId } from '../orchestration/registry/agent-types.ts';
+import { setExternalActionsPaused } from '../system/kill-switch.ts';
 import { greetTo } from './greeting.ts';
 import { xAdapter } from './x.ts';
 import type { GreetFn } from './greeting.ts';
@@ -143,11 +146,52 @@ async function main(): Promise<void> {
       check(`${platform} reply supported=${replyOk}`, (rres.error !== 'unsupported') === replyOk, rres);
     }
 
+    await p8Characterization();
+
     console.log(failures === 0 ? '\nPASS — greeting-node checks green (0 real posts, 0 LLM spend)' : `\nFAIL — ${failures} check(s) failed`);
   } finally {
     await prisma.externalActionAuditLog.deleteMany({ where: { ownerId } }).catch(() => {});
+    // Always leave the global pause OFF — a leaked ON would fail-close every later verify script.
+    await setExternalActionsPaused(false, ownerId).catch(() => {});
   }
   process.exit(failures === 0 ? 0 : 1);
+}
+
+// ── P8 characterization: dispatcher COMPLETENESS + greeting kill-switch throw. Invoked from inside
+//    main() (before its process.exit) so it shares the run and its failure counter.
+async function p8Characterization(): Promise<void> {
+  console.log('P8 — dispatcher completeness (every registered runner resolves to a function)');
+  // Derive the id list from the REAL dispatch Record (runnableAgentIds = Object.keys(runners)), not a
+  // hand-maintained array that silently rots — the compile-time exhaustiveness guard already lives in
+  // `runners: Record<RunnableAgentId,…>`; this asserts the runtime companion: every key is a function.
+  for (const id of runnableAgentIds) {
+    check(`dispatch: getRunner('${id}') is a function`, typeof getRunner(id) === 'function', typeof getRunner(id));
+  }
+  // Cross-check the Record covers the full RunnableAgentId union: assign each member into a keyed map so
+  // a union member with no runner key fails COMPILATION here (the true completeness guard, referenced —
+  // not merely claimed). The values are irrelevant; the object literal's exhaustiveness is the assertion.
+  const _exhaustive: Record<RunnableAgentId, true> = {
+    ideation: true, strategy: true, content_search: true, campaign_strategist: true, concept_writer: true,
+    infographic: true, storyboard: true, video_script: true, video: true, publisher: true,
+    email_writer: true, email_agent: true, dm_writer: true, dm_agent: true, greeting_writer: true,
+    greeting_agent: true, scheduler: true, security: true, summarize: true,
+  };
+  check('dispatch: registry union size matches the runners Record', Object.keys(_exhaustive).length === runnableAgentIds.length, { union: Object.keys(_exhaustive).length, runners: runnableAgentIds.length });
+
+  console.log('P8 — greeting_agent kill-switch: a global pause makes the send runner throw (fail-closed)');
+  const ksOwner = randomUUID();
+  const ksDraft = { action: 'mention' as const, target: 'somebrand', body: 'Congrats!' };
+  const ksGoal = goalSpec.parse({ outputs: { needsWallGreeting: true, needsTextPost: false, needsPublishing: false }, slots: { greetHandle: 'somebrand' }, platforms: ['x'], provider: 'test' });
+  const ksCtx: RunnerContext = { runId: randomUUID(), ownerId: ksOwner, goal: ksGoal, upstream: { greeting_draft: ksDraft } };
+  try {
+    await setExternalActionsPaused(true, ksOwner);
+    let paused = false;
+    try { await getRunner('greeting_agent')(ksCtx); } catch (e) { paused = /external actions are paused/i.test(String(e)); }
+    check('kill-switch ON → greeting_agent throws before any send', paused);
+  } finally {
+    await setExternalActionsPaused(false, ksOwner).catch(() => {});
+    await prisma.externalActionAuditLog.deleteMany({ where: { ownerId: ksOwner } }).catch(() => {});
+  }
 }
 
 await main();

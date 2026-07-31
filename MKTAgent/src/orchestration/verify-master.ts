@@ -7,7 +7,7 @@ import { MasterAgent } from './master/master-agent.ts';
 import { deterministicReply, conversationAuthor } from './master/conversation-author.ts';
 import { detectLanguage, contentLanguageFor, replyLanguageHint, looksVietnamese } from './master/detect-language.ts';
 import { mergeGoals, applyRemovals } from './master/goal-merge.ts';
-import { parseRemovals, parsePlatforms } from './master/deterministic-analyzer.ts';
+import { parseRemovals, parsePlatforms, parseEmailIntent } from './master/deterministic-analyzer.ts';
 import { goalSpec, type GoalSpec } from './schemas/goal-spec.ts';
 import { agentIdList } from './schemas/workflow-plan.ts';
 import { env } from '../config/env.ts';
@@ -370,6 +370,38 @@ const check = (name: string, cond: boolean, extra?: unknown): void => {
   check('autoPublish false on VN "đăng bài này" (plain post, no waiver)',
     analyzeDeterministic('đăng bài này lên facebook').autoPublish === false,
     analyzeDeterministic('đăng bài này lên facebook').autoPublish);
+
+  // ── P2 characterization: analyzer slot parsers (guards the deterministic-analyzer split-by-concern).
+  //    parseEmailIntent multi-recipient DEDUP + subject; parseLanguage/parseLength slots; needsResearch
+  //    narrowing. All pure (no DB). Only the split-fragile edges are pinned — not every alternation.
+  {
+    // Multi-recipient dedup: repeated addresses collapse via new Set, joined ', '. A split that dropped
+    // the Set would resurface duplicate recipients (double-send).
+    const em = parseEmailIntent('send an email to a@x.com and a@x.com and b@y.com');
+    check('P2: parseEmailIntent dedups recipients (Set, comma-space join)', em.to === 'a@x.com, b@y.com', em.to);
+    const subj = parseEmailIntent('send email to jo@x.com subject Q3 pricing update. thanks');
+    check('P2: parseEmailIntent extracts subject after the key (stops at sentence end)', subj.subject === 'Q3 pricing update', subj.subject);
+    // Non-email message → all-null (isEmail false short-circuits).
+    check('P2: non-email message → isEmail false, to null', parseEmailIntent('write a facebook post').to === null);
+
+    // parseLanguage slot (analyzer surface): explicit language phrase → slots.language.
+    check('P2: parseLanguage vi → slots.language vi', analyzeDeterministic('viết bài bằng tiếng Việt về sản phẩm').slots.language === 'vi', analyzeDeterministic('viết bài bằng tiếng Việt').slots.language);
+    check('P2: parseLanguage th → slots.language th', analyzeDeterministic('write it in Thai for our launch').slots.language === 'th', analyzeDeterministic('write it in Thai').slots.language);
+
+    // parseLength slot: keyword form and 2-4 digit word-count form.
+    check('P2: parseLength keyword → slots.lengthSpec short', analyzeDeterministic('a short facebook post about it').slots.lengthSpec === 'short', analyzeDeterministic('a short facebook post').slots.lengthSpec);
+    check('P2: parseLength "300 words" → slots.lengthSpec 300', analyzeDeterministic('write a 300 words post for facebook').slots.lengthSpec === '300', analyzeDeterministic('write a 300 words post').slots.lengthSpec);
+
+    // needsResearch narrowing: "go-to-market" must NOT trigger research (bare "market" is excluded); an
+    // explicit research/competitor ask must. This is the exact narrowing the concern-split risks breaking.
+    check('P2: "go-to-market" does NOT force research (bare "market" is excluded)', analyzeDeterministic('a go-to-market plan for our product on facebook').outputs.needsResearch === false, analyzeDeterministic('a go-to-market plan on facebook').outputs.needsResearch);
+    check('P2: "target market" does NOT force research', analyzeDeterministic('define our target market for facebook').outputs.needsResearch === false, analyzeDeterministic('define our target market').outputs.needsResearch);
+    // The narrowing keeps an explicit research/competitor ask TRUE. (Note: `market research` in the source
+    // alternation is redundant — bare `\bresearch\b` already subsumes it — so the real contract is
+    // "bare market → false, but any explicit research/competitor intent → true".)
+    check('P2: explicit research intent DOES set needsResearch', analyzeDeterministic('run some market research then post it on facebook').outputs.needsResearch === true, analyzeDeterministic('run some market research then post').outputs.needsResearch);
+    check('P2: explicit competitor ask DOES set needsResearch', analyzeDeterministic('analyze a competitor then post on facebook').outputs.needsResearch === true, analyzeDeterministic('analyze a competitor then post').outputs.needsResearch);
+  }
 }
 
 // Conversation author (deterministic fallback — no LLM needed). Voices each outcome.

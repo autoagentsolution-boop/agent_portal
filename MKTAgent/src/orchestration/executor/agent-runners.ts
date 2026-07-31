@@ -1419,3 +1419,6 @@ const runners: Record<RunnableAgentId, (ctx: RunnerContext) => Promise<RunnerOut
 };
 
 export const getRunner = (agentId: RunnableAgentId) => runners[agentId];
+// The dispatch keys, exported so a characterization test can assert completeness against the REAL
+// source of truth (the Record<RunnableAgentId,…> above) instead of a hand-maintained list that rots.
+export const runnableAgentIds = Object.keys(runners) as RunnableAgentId[];
