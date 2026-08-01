@@ -1200,3 +1200,21 @@ artifact so the workflow view reflects the change, but all three copied only `co
   - `MKTAgent/src/orchestration/verify-researcher.ts`
   - `MKTAgent/src/social/verify-greeting-node.ts`
   - `MKTAgent/src/orchestration/verify-master.ts`
+- **test(characterization): FE Phase-0 net — Vitest companions + 4 P0 browser journeys** (1d1547a)
+  - `MKTAgent/src/scripts/seed-fe-characterization.ts`
+  - `MKTAgent/web/package-lock.json`
+  - `MKTAgent/web/package.json`
+  - `MKTAgent/web/src/App.merge-posts.test.ts`
+  - `MKTAgent/web/src/api/client.test.ts`
+  - `MKTAgent/web/src/components/orchestrate-panel.autostart-guard.test.tsx`
+  - `MKTAgent/web/src/hooks/events-bus.test.ts`
+  - `MKTAgent/web/src/lib/credits-mirror.test.ts`
+  - `MKTAgent/web/src/test/setup.ts`
+  - `MKTAgent/web/vitest.config.ts`
+  - `plans/260725-1600-architecture-map/characterization/baselines/j1-cc-chat-reentry.json`
+  - `plans/260725-1600-architecture-map/characterization/baselines/j1-cc-chat-send.json`
+  - `plans/260725-1600-architecture-map/characterization/baselines/j2-flow-execute-approve.json`
+  - `plans/260725-1600-architecture-map/characterization/baselines/j3-postboard-merge.json`
+  - `plans/260725-1600-architecture-map/characterization/baselines/j4-voice-launch-close.json`
+  - `plans/260725-1600-architecture-map/characterization/journeys.md`
+  - `plans/260725-1600-architecture-map/characterization/scripts/launch-fe-char.sh`
